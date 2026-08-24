@@ -1,37 +1,55 @@
 export type Agent = {
   id: string;
   name: string;
-  instructions: string;
-  created_at: string;
-  updated_at: string;
+  title: string;
+  description: string;
+  avatar: string | null;
+  createdAt: string;
+  updatedAt: string;
 };
 
-export type Attachment = {
+export type MessageImage = {
   id: string;
-  filename: string;
-  media_type: string;
-  sent_to_model: boolean;
+  mime: string;
+  url: string;
 };
 
 export type ChatMessage = {
   id: string;
-  agent_id: string;
+  agentId: string;
   role: "user" | "assistant";
   content: string;
-  attachments: Attachment[];
-  created_at: string;
+  images: MessageImage[];
+  createdAt: string;
+};
+
+export type MessageDelta = {
+  id: string;
+  role: "assistant";
+  delta: string;
 };
 
 export type RuntimeHealth = {
-  status: string;
-  model: string;
-  inference_backend: string;
-  seeded_agent_id: string;
-  bind_host: string;
+  ok: boolean;
+  name: string;
+  version: string;
 };
 
-export type AttachmentIn = {
-  filename: string;
-  media_type: string;
-  data_base64?: string;
+export type ImageIn = {
+  mime: string;
+  data: string;
 };
+
+export type AgentPatch = {
+  name?: string;
+  title?: string;
+  description?: string;
+  avatar?: string | null;
+};
+
+export type Session = {
+  baseUrl: string;
+  token: string;
+};
+
+export type ThemePref = "system" | "light" | "dark";

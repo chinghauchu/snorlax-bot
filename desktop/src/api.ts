@@ -1,9 +1,14 @@
 import type {
   Agent,
-  AttachmentIn,
+  AgentPatch,
   ChatMessage,
+  ImageIn,
+  MessageImage,
   RuntimeHealth,
+  Session,
 } from "./types";
+
+export const SEED_AGENT_ID = "snorlax-bot";
 
 export class ApiError extends Error {
   constructor(
@@ -16,15 +21,67 @@ export class ApiError extends Error {
   }
 }
 
-type Session = {
-  baseUrl: string;
-  token: string;
-};
-
 function headers(session: Session, extra?: HeadersInit): Headers {
   const h = new Headers(extra);
   h.set("Authorization", `Bearer ${session.token}`);
   return h;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
+}
+
+function asString(value: unknown, fallback = ""): string {
+  return typeof value === "string" ? value : fallback;
+}
+
+function unwrapList(body: unknown, wrappedKey: string): unknown[] {
+  if (Array.isArray(body)) return body;
+  if (isRecord(body) && Array.isArray(body[wrappedKey])) {
+    return body[wrappedKey] as unknown[];
+  }
+  return [];
+}
+
+/** Tiny read adapter so the camelCase UI still paints while Backend rewrites snake_case. */
+export function normalizeAgent(raw: unknown): Agent {
+  const o = isRecord(raw) ? raw : {};
+  const avatar = o.avatar;
+  return {
+    id: asString(o.id),
+    name: asString(o.name, "Agent"),
+    title: asString(o.title),
+    description: asString(o.description) || asString(o.instructions),
+    avatar: typeof avatar === "string" && avatar.length > 0 ? avatar : null,
+    createdAt: asString(o.createdAt) || asString(o.created_at),
+    updatedAt: asString(o.updatedAt) || asString(o.updated_at),
+  };
+}
+
+function normalizeImage(raw: unknown): MessageImage {
+  const o = isRecord(raw) ? raw : {};
+  return {
+    id: asString(o.id),
+    mime: asString(o.mime) || asString(o.media_type),
+    url: asString(o.url),
+  };
+}
+
+export function normalizeMessage(raw: unknown): ChatMessage {
+  const o = isRecord(raw) ? raw : {};
+  const images = Array.isArray(o.images)
+    ? o.images
+    : Array.isArray(o.attachments)
+      ? o.attachments
+      : [];
+  return {
+    id: asString(o.id),
+    agentId: asString(o.agentId) || asString(o.agent_id),
+    role: o.role === "assistant" ? "assistant" : "user",
+    content: asString(o.content),
+    images: images.map(normalizeImage),
+    createdAt: asString(o.createdAt) || asString(o.created_at),
+  };
 }
 
 async function parseError(response: Response): Promise<ApiError> {
@@ -48,32 +105,61 @@ async function json<T>(response: Response): Promise<T> {
   return (await response.json()) as T;
 }
 
-export async function health(session: Session): Promise<RuntimeHealth> {
-  const response = await fetch(`${session.baseUrl}/v1/health`, {
-    headers: headers(session),
-  });
-  return json<RuntimeHealth>(response);
+export async function health(baseUrl: string): Promise<RuntimeHealth> {
+  const response = await fetch(`${baseUrl}/v1/health`);
+  const body = await json<Record<string, unknown>>(response);
+  return {
+    ok: body.ok === true || asString(body.status) === "ok",
+    name: asString(body.name, "snorlax-runtime"),
+    version: asString(body.version),
+  };
 }
 
 export async function listAgents(session: Session): Promise<Agent[]> {
   const response = await fetch(`${session.baseUrl}/v1/agents`, {
     headers: headers(session),
   });
-  const body = await json<{ agents: Agent[] }>(response);
-  return body.agents;
+  const body = await json<unknown>(response);
+  return unwrapList(body, "agents").map(normalizeAgent);
 }
 
 export async function createAgent(
   session: Session,
-  name: string,
-  instructions: string,
+  name = "New agent",
 ): Promise<Agent> {
   const response = await fetch(`${session.baseUrl}/v1/agents`, {
     method: "POST",
     headers: headers(session, { "Content-Type": "application/json" }),
-    body: JSON.stringify({ name, instructions }),
+    body: JSON.stringify({ name }),
   });
-  return json<Agent>(response);
+  return normalizeAgent(await json<unknown>(response));
+}
+
+export async function patchAgent(
+  session: Session,
+  agentId: string,
+  patch: AgentPatch,
+): Promise<Agent> {
+  const response = await fetch(
+    `${session.baseUrl}/v1/agents/${encodeURIComponent(agentId)}`,
+    {
+      method: "PATCH",
+      headers: headers(session, { "Content-Type": "application/json" }),
+      body: JSON.stringify(patch),
+    },
+  );
+  return normalizeAgent(await json<unknown>(response));
+}
+
+export async function deleteAgent(
+  session: Session,
+  agentId: string,
+): Promise<void> {
+  const response = await fetch(
+    `${session.baseUrl}/v1/agents/${encodeURIComponent(agentId)}`,
+    { method: "DELETE", headers: headers(session) },
+  );
+  if (!response.ok) throw await parseError(response);
 }
 
 export async function listMessages(
@@ -84,13 +170,13 @@ export async function listMessages(
     `${session.baseUrl}/v1/agents/${encodeURIComponent(agentId)}/messages`,
     { headers: headers(session) },
   );
-  const body = await json<{ messages: ChatMessage[] }>(response);
-  return body.messages;
+  const body = await json<unknown>(response);
+  return unwrapList(body, "messages").map(normalizeMessage);
 }
 
 export type StreamHandlers = {
   onDelta: (messageId: string, delta: string) => void;
-  onDone: (message: ChatMessage) => void;
+  onDone: (message: ChatMessage | null) => void;
   onError: (code: string, message: string) => void;
 };
 
@@ -98,7 +184,7 @@ export async function sendMessage(
   session: Session,
   agentId: string,
   content: string,
-  attachments: AttachmentIn[],
+  images: ImageIn[],
   handlers: StreamHandlers,
 ): Promise<void> {
   const response = await fetch(
@@ -106,7 +192,7 @@ export async function sendMessage(
     {
       method: "POST",
       headers: headers(session, { "Content-Type": "application/json" }),
-      body: JSON.stringify({ content, attachments }),
+      body: JSON.stringify({ content, images }),
     },
   );
   if (!response.ok) throw await parseError(response);
@@ -122,9 +208,7 @@ export async function sendMessage(
     buffer += decoder.decode(value, { stream: true });
     const chunks = buffer.split("\n\n");
     buffer = chunks.pop() ?? "";
-    for (const chunk of chunks) {
-      dispatchSse(chunk, handlers);
-    }
+    for (const chunk of chunks) dispatchSse(chunk, handlers);
   }
   if (buffer.trim()) dispatchSse(buffer, handlers);
 }
@@ -137,13 +221,37 @@ function dispatchSse(raw: string, handlers: StreamHandlers): void {
     else if (line.startsWith("data:")) dataLines.push(line.slice(5).trim());
   }
   if (dataLines.length === 0) return;
-  const payload = JSON.parse(dataLines.join("\n")) as Record<string, unknown>;
+  const payload = JSON.parse(dataLines.join("\n")) as unknown;
+  const record = isRecord(payload) ? payload : {};
+
   if (event === "message.delta") {
-    handlers.onDelta(String(payload.message_id), String(payload.delta ?? ""));
+    const id = asString(record.id) || asString(record.message_id);
+    handlers.onDelta(id, asString(record.delta));
   } else if (event === "message.done") {
-    handlers.onDone(payload.message as ChatMessage);
+    const messageRaw = isRecord(record.message) ? record.message : payload;
+    handlers.onDone(
+      isRecord(messageRaw) && (messageRaw.id || messageRaw.role)
+        ? normalizeMessage(messageRaw)
+        : null,
+    );
   } else if (event === "error") {
-    const err = payload.error as { code?: string; message?: string };
-    handlers.onError(err?.code ?? "error", err?.message ?? "Unknown error");
+    const err = isRecord(record.error) ? record.error : record;
+    handlers.onError(
+      asString(err.code, "error"),
+      asString(err.message, "Unknown error"),
+    );
   }
+}
+
+export function resolveMediaUrl(baseUrl: string, url: string): string {
+  if (!url) return "";
+  if (
+    url.startsWith("data:") ||
+    url.startsWith("blob:") ||
+    /^https?:\/\//i.test(url)
+  ) {
+    return url;
+  }
+  const root = baseUrl.replace(/\/$/, "");
+  return url.startsWith("/") ? `${root}${url}` : `${root}/${url}`;
 }
