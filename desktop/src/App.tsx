@@ -198,7 +198,7 @@ export function App() {
     () => agents.find((a) => a.id === activeId) ?? null,
     [agents, activeId],
   );
-  const canSend = credsReady && !!active && !busy;
+  const composerDisabled = !credsReady || busy;
 
   useEffect(() => {
     applyChrome(themePref, accent);
@@ -472,8 +472,6 @@ export function App() {
     setContextMenu({ x: event.clientX, y: event.clientY, agent });
   }
 
-  const composerDisabled = !canSend;
-
   return (
     <div className="app">
       <aside className="sidebar">
@@ -622,7 +620,7 @@ export function App() {
               type="button"
               className="send"
               aria-label="Send"
-              disabled={composerDisabled || !draft.trim()}
+              disabled={composerDisabled || !draft.trim() || !active}
               onClick={() => void onSend()}
             >
               <SendIcon />
