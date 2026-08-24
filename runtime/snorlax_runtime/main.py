@@ -7,7 +7,7 @@ import uvicorn
 
 from snorlax_runtime.app import create_app
 from snorlax_runtime.config import Settings, resolve_bind_host
-from snorlax_runtime.db import token_exists_on_disk
+from snorlax_runtime.token import token_exists_on_disk
 
 
 def main(argv: list[str] | None = None) -> None:

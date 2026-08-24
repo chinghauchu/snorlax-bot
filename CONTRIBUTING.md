@@ -29,8 +29,9 @@ NVIDIA DGX Spark.
 - Default model: 70B-class FP8, config-swappable. Images persist, no VL.
 
 If a change needs to break the OpenAPI contract, update
-[protocol/openapi.yaml](protocol/openapi.yaml) in the same PR and add a
-runtime test.
+[protocol/openapi.yaml](protocol/openapi.yaml) (source of truth) in the same
+PR and add a runtime test. Do not reintroduce `instructions`, snake_case
+`created_at`, `attachments`, or `{ agents: [] }` / `{ messages: [] }` wrappers.
 
 ## Development
 
@@ -46,7 +47,7 @@ pytest
 Desktop web UI (no Rust toolchain required):
 
 ```bash
-cd desktop
+cd apps/desktop
 npm install
 npm run build
 ```

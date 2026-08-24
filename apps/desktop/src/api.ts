@@ -1,14 +1,8 @@
-import type {
-  Agent,
-  AttachmentIn,
-  ChatMessage,
-  RuntimeHealth,
-} from "./types";
+import type { Agent, ChatMessage, Health, ImageIn } from "./types";
 
 export class ApiError extends Error {
   constructor(
     public status: number,
-    public code: string,
     message: string,
   ) {
     super(message);
@@ -29,16 +23,10 @@ function headers(session: Session, extra?: HeadersInit): Headers {
 
 async function parseError(response: Response): Promise<ApiError> {
   try {
-    const body = (await response.json()) as {
-      error?: { code?: string; message?: string };
-    };
-    return new ApiError(
-      response.status,
-      body.error?.code ?? "http_error",
-      body.error?.message ?? response.statusText,
-    );
+    const body = (await response.json()) as { error?: string };
+    return new ApiError(response.status, body.error ?? response.statusText);
   } catch {
-    return new ApiError(response.status, "http_error", response.statusText);
+    return new ApiError(response.status, response.statusText);
   }
 }
 
@@ -48,30 +36,28 @@ async function json<T>(response: Response): Promise<T> {
   return (await response.json()) as T;
 }
 
-export async function health(session: Session): Promise<RuntimeHealth> {
-  const response = await fetch(`${session.baseUrl}/v1/health`, {
-    headers: headers(session),
-  });
-  return json<RuntimeHealth>(response);
+export async function health(baseUrl: string): Promise<Health> {
+  const response = await fetch(`${baseUrl}/v1/health`);
+  return json<Health>(response);
 }
 
 export async function listAgents(session: Session): Promise<Agent[]> {
   const response = await fetch(`${session.baseUrl}/v1/agents`, {
     headers: headers(session),
   });
-  const body = await json<{ agents: Agent[] }>(response);
-  return body.agents;
+  return json<Agent[]>(response);
 }
 
 export async function createAgent(
   session: Session,
   name: string,
-  instructions: string,
+  title: string,
+  description: string,
 ): Promise<Agent> {
   const response = await fetch(`${session.baseUrl}/v1/agents`, {
     method: "POST",
     headers: headers(session, { "Content-Type": "application/json" }),
-    body: JSON.stringify({ name, instructions }),
+    body: JSON.stringify({ name, title, description, avatar: null }),
   });
   return json<Agent>(response);
 }
@@ -84,21 +70,20 @@ export async function listMessages(
     `${session.baseUrl}/v1/agents/${encodeURIComponent(agentId)}/messages`,
     { headers: headers(session) },
   );
-  const body = await json<{ messages: ChatMessage[] }>(response);
-  return body.messages;
+  return json<ChatMessage[]>(response);
 }
 
 export type StreamHandlers = {
   onDelta: (messageId: string, delta: string) => void;
   onDone: (message: ChatMessage) => void;
-  onError: (code: string, message: string) => void;
+  onError: (message: string) => void;
 };
 
 export async function sendMessage(
   session: Session,
   agentId: string,
   content: string,
-  attachments: AttachmentIn[],
+  images: ImageIn[],
   handlers: StreamHandlers,
 ): Promise<void> {
   const response = await fetch(
@@ -106,7 +91,7 @@ export async function sendMessage(
     {
       method: "POST",
       headers: headers(session, { "Content-Type": "application/json" }),
-      body: JSON.stringify({ content, attachments }),
+      body: JSON.stringify({ content, images }),
     },
   );
   if (!response.ok) throw await parseError(response);
@@ -139,11 +124,10 @@ function dispatchSse(raw: string, handlers: StreamHandlers): void {
   if (dataLines.length === 0) return;
   const payload = JSON.parse(dataLines.join("\n")) as Record<string, unknown>;
   if (event === "message.delta") {
-    handlers.onDelta(String(payload.message_id), String(payload.delta ?? ""));
+    handlers.onDelta(String(payload.id), String(payload.delta ?? ""));
   } else if (event === "message.done") {
-    handlers.onDone(payload.message as ChatMessage);
+    handlers.onDone(payload as unknown as ChatMessage);
   } else if (event === "error") {
-    const err = payload.error as { code?: string; message?: string };
-    handlers.onError(err?.code ?? "error", err?.message ?? "Unknown error");
+    handlers.onError(String(payload.error ?? "Unknown error"));
   }
 }

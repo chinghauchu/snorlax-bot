@@ -6,23 +6,23 @@ struct RuntimeClient: Sendable {
     var baseURL: URL
     var token: String
 
-    func health() async throws -> RuntimeHealth {
-        try await get("v1/health")
+    func health() async throws -> Health {
+        try await get("v1/health", authorized: false)
     }
 
     func agents() async throws -> [Agent] {
-        let body: AgentList = try await get("v1/agents")
-        return body.agents
+        try await get("v1/agents")
     }
 
     func messages(agentId: String) async throws -> [Message] {
-        let body: MessageList = try await get("v1/agents/\(agentId)/messages")
-        return body.messages
+        try await get("v1/agents/\(agentId)/messages")
     }
 
-    private func get<T: Decodable>(_ path: String) async throws -> T {
+    private func get<T: Decodable>(_ path: String, authorized: Bool = true) async throws -> T {
         var request = URLRequest(url: baseURL.appending(path: path))
-        request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        if authorized {
+            request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        }
         let (data, response) = try await URLSession.shared.data(for: request)
         guard let http = response as? HTTPURLResponse, (200 ..< 300).contains(http.statusCode) else {
             throw RuntimeError.http
@@ -35,34 +35,33 @@ enum RuntimeError: Error {
     case http
 }
 
-struct RuntimeHealth: Codable, Sendable {
-    var status: String
-    var model: String
-    var inference_backend: String
-    var seeded_agent_id: String
-    var bind_host: String
+struct Health: Codable, Sendable {
+    var ok: Bool
+    var name: String
+    var version: String
 }
 
 struct Agent: Codable, Identifiable, Sendable {
     var id: String
     var name: String
-    var instructions: String
-    var created_at: String
-    var updated_at: String
-}
-
-struct AgentList: Codable, Sendable {
-    var agents: [Agent]
+    var title: String
+    var description: String
+    var avatar: String?
+    var createdAt: String
+    var updatedAt: String
 }
 
 struct Message: Codable, Identifiable, Sendable {
     var id: String
-    var agent_id: String
+    var agentId: String
     var role: String
     var content: String
-    var created_at: String
+    var images: [ImageOut]
+    var createdAt: String
 }
 
-struct MessageList: Codable, Sendable {
-    var messages: [Message]
+struct ImageOut: Codable, Identifiable, Sendable {
+    var id: String
+    var mime: String
+    var url: String
 }

@@ -7,34 +7,29 @@ from typing import Annotated
 from fastapi import Depends, Header, HTTPException, Request, status
 
 from snorlax_runtime.config import Settings
-from snorlax_runtime.db import Store
+from snorlax_runtime.token import resolve_token
 
 
 def _settings(request: Request) -> Settings:
     return request.app.state.settings
 
 
-def _store(request: Request) -> Store:
-    return request.app.state.store
-
-
 async def require_bearer(
     request: Request,
     authorization: Annotated[str | None, Header()] = None,
     settings: Settings = Depends(_settings),
-    store: Store = Depends(_store),
 ) -> str:
     del request
     if not authorization or not authorization.startswith("Bearer "):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail={"code": "unauthorized", "message": "Bearer token required"},
+            detail="Bearer token required",
         )
     offered = authorization.removeprefix("Bearer ").strip()
-    expected = settings.token or await store.get_setting("auth_token")
+    expected = resolve_token(env_token=settings.token, data_dir=settings.data_dir)
     if not expected or not hmac.compare_digest(offered, expected):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail={"code": "unauthorized", "message": "Invalid bearer token"},
+            detail="Invalid bearer token",
         )
     return offered

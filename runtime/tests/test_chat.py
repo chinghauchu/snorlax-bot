@@ -19,13 +19,25 @@ def test_chat_sse_mock(client) -> None:
     names = [name for name, _ in events]
     assert "message.delta" in names
     assert names[-1] == "message.done"
-    deltas = "".join(payload["delta"] for name, payload in events if name == "message.delta")
+    deltas = "".join(
+        payload["delta"] for name, payload in events if name == "message.delta"
+    )
     assert "mock backend" in deltas
     assert "Draft a Monday briefing." in deltas
-    done = events[-1][1]["message"]
+    first_delta = next(p for n, p in events if n == "message.delta")
+    assert first_delta == {
+        "id": first_delta["id"],
+        "role": "assistant",
+        "delta": first_delta["delta"],
+    }
+    done = events[-1][1]
+    assert "message" not in done
     assert done["role"] == "assistant"
+    assert done["agentId"] == "snorlax-bot"
     assert done["content"] == deltas
-    assert done["id"].startswith("msg_")
+    assert done["images"] == []
+    assert "createdAt" in done
+    assert done["id"] == first_delta["id"]
 
 
 def test_transcript_persists_and_images_stay_off_model(client) -> None:
@@ -35,29 +47,56 @@ def test_transcript_persists_and_images_stay_off_model(client) -> None:
         headers=AUTH,
         json={
             "content": "Look at this screenshot.",
-            "attachments": [
-                {
-                    "filename": "board.png",
-                    "media_type": "image/png",
-                    "data_base64": "aGVsbG8=",
-                }
-            ],
+            "images": [{"mime": "image/png", "data": "aGVsbG8="}],
         },
     ) as response:
         body = "".join(response.iter_text())
 
     events = parse_sse(body)
     deltas = "".join(p["delta"] for n, p in events if n == "message.delta")
-    assert "board.png" not in deltas
     assert "aGVsbG8" not in deltas
+    done = events[-1][1]
+    assert done["images"] == []
 
     listed = client.get("/v1/agents/snorlax-bot/messages", headers=AUTH)
     assert listed.status_code == 200
-    messages = listed.json()["messages"]
+    messages = listed.json()
+    assert isinstance(messages, list)
     assert messages[0]["role"] == "user"
-    assert messages[0]["attachments"][0]["filename"] == "board.png"
-    assert messages[0]["attachments"][0]["sent_to_model"] is False
+    assert messages[0]["agentId"] == "snorlax-bot"
+    image = messages[0]["images"][0]
+    assert image["mime"] == "image/png"
+    assert image["url"] == f"/v1/images/{image['id']}"
+    assert set(image) == {"id", "mime", "url"}
     assert messages[1]["role"] == "assistant"
+    assert messages[0]["createdAt"] <= messages[1]["createdAt"]
+
+    fetched = client.get(image["url"], headers=AUTH)
+    assert fetched.status_code == 200
+    assert fetched.content == b"hello"
+
+
+def test_messages_oldest_first_and_before_cursor(client) -> None:
+    for text in ("one", "two", "three"):
+        with client.stream(
+            "POST",
+            "/v1/agents/snorlax-bot/messages",
+            headers=AUTH,
+            json={"content": text},
+        ) as response:
+            "".join(response.iter_text())
+
+    messages = client.get("/v1/agents/snorlax-bot/messages", headers=AUTH).json()
+    users = [m for m in messages if m["role"] == "user"]
+    assert [m["content"] for m in users] == ["one", "two", "three"]
+
+    oldest_user = users[0]
+    page = client.get(
+        "/v1/agents/snorlax-bot/messages",
+        headers=AUTH,
+        params={"before": oldest_user["id"], "limit": 10},
+    )
+    assert page.json() == []
 
 
 def test_unknown_agent_chat(client) -> None:
@@ -67,6 +106,7 @@ def test_unknown_agent_chat(client) -> None:
         json={"content": "hi"},
     )
     assert response.status_code == 404
+    assert isinstance(response.json()["error"], str)
 
 
 def test_empty_content_rejected(client) -> None:
@@ -76,3 +116,4 @@ def test_empty_content_rejected(client) -> None:
         json={"content": ""},
     )
     assert response.status_code == 422
+    assert isinstance(response.json()["error"], str)

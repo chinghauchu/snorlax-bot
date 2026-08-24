@@ -61,7 +61,7 @@ Implications for us:
                            ▼
 ┌──────────────────── snorlax-runtime ──────────────────┐
 │  FastAPI on the Spark                                  │
-│  • agents, transcripts, attachments (SQLite)           │
+│  • agents, transcripts, images (SQLite)                │
 │  • LAN auth, bind policy                               │
 │  • inference interface (mock | vLLM)                   │
 │  later: tools, MCP, sandbox, scheduler                 │
@@ -81,25 +81,27 @@ the model URL, the system prompts, the tool list (later), and the token.
 
 Bootstrap is intentionally awkward in the safe direction:
 
-1. If no bearer token exists on disk, listen on `127.0.0.1` only, generate a
-   token, print it, persist it. Pairing happens on the Spark itself (or via
-   SSH port-forward).
+1. If no bearer token file exists, listen on `127.0.0.1` only, generate a
+   token, print it, persist it at `~/.snorlax-bot/token`. Pairing happens
+   on the Spark itself (or via SSH port-forward). `SNORLAX_TOKEN` overrides
+   the file. Clients never read that file.
 2. Once a token exists, listen on `0.0.0.0` so an iPhone or another machine
-   on the LAN can connect. Every `/v1` route requires
-   `Authorization: Bearer <token>`.
+   on the LAN can connect. Every `/v1` route except `GET /v1/health`
+   requires `Authorization: Bearer <token>`.
 3. `SNORLAX_BIND` overrides the policy for tests and forced localhost.
 
 There is no anonymous LAN. There is also no cloud account.
 
 ## Data
 
-SQLite file under `SNORLAX_DATA_DIR` (default `~/.snorlax-bot`):
+SQLite file `~/.snorlax-bot/snorlax.db` (override with `SNORLAX_DATA_DIR`):
 
-- `agents` — id, name, instructions, timestamps. Seeded row `snorlax-bot`.
+- `agents` — id, name, title, description, avatar, timestamps. Seeded row
+  `snorlax-bot` (name Snorlax-Bot, title Assistant). Not auto-reseeded.
 - `messages` — per-agent transcript, `user` | `assistant`.
-- `attachments` — metadata + files on disk. **v0 does not forward image
-  bytes to the model.**
-- `settings` — includes the generated token.
+- `images` — bytes on disk; API shape `{ id, mime, url }`. **Never forwarded
+  to the model.**
+- Token is a sibling file `~/.snorlax-bot/token`, not a SQLite setting.
 
 v0 has no extra “thread” object. One agent, one transcript. Group chats and
 handoffs are a later table, not a v0 schema guess.
@@ -112,9 +114,9 @@ stream(messages: list[{role, content}]) -> async iter[str]
 
 - `mock` — deterministic-ish streaming reply. Default off-Spark and in CI.
 - `vllm` — `POST {VLLM_BASE_URL}/chat/completions` with `stream: true`.
-  Only text `role`/`content` pairs are sent. Attachments stay in SQLite.
+  Only text `role`/`content` pairs are sent. Images stay on disk.
 
-System prompt is assembled by the runtime from the agent’s `instructions`.
+System prompt is assembled by the runtime from the agent’s `description`.
 The desktop cannot inject a hidden system prompt around the runtime.
 
 ## What “always-on teammates” means here

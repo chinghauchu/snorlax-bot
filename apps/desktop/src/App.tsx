@@ -7,7 +7,7 @@ import {
   listMessages,
   sendMessage,
 } from "./api";
-import type { Agent, AttachmentIn, ChatMessage, RuntimeHealth } from "./types";
+import type { Agent, ChatMessage, Health, ImageIn } from "./types";
 
 const URL_KEY = "snorlax.runtimeUrl";
 const TOKEN_KEY = "snorlax.token";
@@ -16,13 +16,16 @@ type Session = { baseUrl: string; token: string };
 
 export function App() {
   const [urlInput, setUrlInput] = useState(
-    () => localStorage.getItem(URL_KEY) ?? "http://127.0.0.1:8787",
+    () =>
+      import.meta.env.SNORLAX_URL ??
+      localStorage.getItem(URL_KEY) ??
+      "http://127.0.0.1:8787",
   );
   const [tokenInput, setTokenInput] = useState(
-    () => localStorage.getItem(TOKEN_KEY) ?? "",
+    () => import.meta.env.SNORLAX_TOKEN ?? localStorage.getItem(TOKEN_KEY) ?? "",
   );
   const [session, setSession] = useState<Session | null>(null);
-  const [healthInfo, setHealthInfo] = useState<RuntimeHealth | null>(null);
+  const [healthInfo, setHealthInfo] = useState<Health | null>(null);
   const [pairError, setPairError] = useState<string | null>(null);
   const [agents, setAgents] = useState<Agent[]>([]);
   const [activeId, setActiveId] = useState<string | null>(null);
@@ -32,8 +35,8 @@ export function App() {
   const [composerError, setComposerError] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
   const [newName, setNewName] = useState("");
-  const [newInstructions, setNewInstructions] = useState("");
-  const [pendingFile, setPendingFile] = useState<AttachmentIn | null>(null);
+  const [newDescription, setNewDescription] = useState("");
+  const [pendingFile, setPendingFile] = useState<ImageIn | null>(null);
   const scroller = useRef<HTMLDivElement>(null);
 
   const active = useMemo(
@@ -53,7 +56,7 @@ export function App() {
       token: tokenInput.trim(),
     };
     try {
-      const info = await health(next);
+      const info = await health(next.baseUrl);
       localStorage.setItem(URL_KEY, next.baseUrl);
       localStorage.setItem(TOKEN_KEY, next.token);
       setSession(next);
@@ -61,9 +64,7 @@ export function App() {
       const roster = await listAgents(next);
       setAgents(roster);
       const seed =
-        roster.find((a) => a.id === info.seeded_agent_id)?.id ??
-        roster[0]?.id ??
-        null;
+        roster.find((a) => a.id === "snorlax-bot")?.id ?? roster[0]?.id ?? null;
       setActiveId(seed);
       if (seed) setMessages(await listMessages(next, seed));
     } catch (err) {
@@ -80,11 +81,16 @@ export function App() {
 
   async function onCreate(event: FormEvent) {
     event.preventDefault();
-    if (!session || !newName.trim()) return;
-    const agent = await createAgent(session, newName.trim(), newInstructions);
+    if (!session) return;
+    const agent = await createAgent(
+      session,
+      newName.trim() || "New agent",
+      "Assistant",
+      newDescription,
+    );
     setAgents((prev) => [...prev, agent]);
     setNewName("");
-    setNewInstructions("");
+    setNewDescription("");
     setCreating(false);
     await selectAgent(agent.id);
   }
@@ -95,25 +101,20 @@ export function App() {
     if (!content) return;
     setDraft("");
     setComposerError(null);
-    const attachments = pendingFile ? [pendingFile] : [];
+    const images = pendingFile ? [pendingFile] : [];
     setPendingFile(null);
     const userMsg: ChatMessage = {
       id: `local-${Date.now()}`,
-      agent_id: active.id,
+      agentId: active.id,
       role: "user",
       content,
-      attachments: attachments.map((a, i) => ({
-        id: `local-att-${i}`,
-        filename: a.filename,
-        media_type: a.media_type,
-        sent_to_model: false,
-      })),
-      created_at: new Date().toISOString(),
+      images: [],
+      createdAt: new Date().toISOString(),
     };
     setMessages((prev) => [...prev, userMsg]);
     setBusy(true);
     try {
-      await sendMessage(session, active.id, content, attachments, {
+      await sendMessage(session, active.id, content, images, {
         onDelta(messageId, delta) {
           setMessages((prev) => {
             const existing = prev.find((m) => m.id === messageId);
@@ -122,11 +123,11 @@ export function App() {
                 ...prev,
                 {
                   id: messageId,
-                  agent_id: active.id,
+                  agentId: active.id,
                   role: "assistant",
                   content: delta,
-                  attachments: [],
-                  created_at: new Date().toISOString(),
+                  images: [],
+                  createdAt: new Date().toISOString(),
                 },
               ];
             }
@@ -138,8 +139,8 @@ export function App() {
         onDone() {
           void listMessages(session, active.id).then(setMessages);
         },
-        onError(code, message) {
-          setComposerError(`${code}: ${message}`);
+        onError(message) {
+          setComposerError(message);
         },
       });
     } catch (err) {
@@ -158,11 +159,10 @@ export function App() {
 
   async function onPickFile(file: File | undefined) {
     if (!file) return;
-    const data_base64 = await fileToBase64(file);
+    const data = await fileToBase64(file);
     setPendingFile({
-      filename: file.name,
-      media_type: file.type || "application/octet-stream",
-      data_base64,
+      mime: file.type || "application/octet-stream",
+      data,
     });
   }
 
@@ -174,7 +174,8 @@ export function App() {
           <p className="eyebrow">Local teammate runtime</p>
           <h1>Snorlax-Bot</h1>
           <p className="lede">
-            Named agents on your DGX Spark. Inference stays on the box. Paste
+            Named agents on your DGX Spark. Inference stays on the box. Use{" "}
+            <code>SNORLAX_URL</code> and <code>SNORLAX_TOKEN</code>, or paste
             the token printed by <code>snorlax-runtime</code>.
           </p>
           <form onSubmit={connect} className="stack">
@@ -215,8 +216,7 @@ export function App() {
           <div>
             <strong>Snorlax-Bot</strong>
             <span>
-              {healthInfo?.inference_backend === "vllm" ? "vLLM" : "mock"} ·{" "}
-              local
+              {healthInfo?.name} v{healthInfo?.version}
             </span>
           </div>
         </div>
@@ -229,12 +229,11 @@ export function App() {
               placeholder="Name"
               value={newName}
               onChange={(e) => setNewName(e.target.value)}
-              required
             />
             <textarea
-              placeholder="Instructions (system prompt)"
-              value={newInstructions}
-              onChange={(e) => setNewInstructions(e.target.value)}
+              placeholder="Description"
+              value={newDescription}
+              onChange={(e) => setNewDescription(e.target.value)}
               rows={3}
             />
             <button type="submit" className="primary compact">
@@ -254,7 +253,7 @@ export function App() {
                 </span>
                 <span>
                   <b>{agent.name}</b>
-                  <small>{agent.id}</small>
+                  <small>{agent.title || agent.id}</small>
                 </span>
               </button>
             </li>
@@ -276,9 +275,9 @@ export function App() {
             <header className="stage-head">
               <div>
                 <h2>{active.name}</h2>
-                <p>Message like a coworker. v0 is chat-only — no tools yet.</p>
+                <p>{active.title || "Message like a coworker. v0 is chat-only."}</p>
               </div>
-              <code className="pill">{healthInfo?.model.split("/").pop()}</code>
+              <code className="pill">{active.id}</code>
             </header>
             <div className="transcript" ref={scroller}>
               {messages.length === 0 ? (
@@ -295,9 +294,9 @@ export function App() {
                       {message.role === "user" ? "You" : active.name}
                     </span>
                     <pre>{message.content}</pre>
-                    {message.attachments.map((att) => (
-                      <span key={att.id} className="chip">
-                        {att.filename}
+                    {message.images.map((img) => (
+                      <span key={img.id} className="chip">
+                        {img.mime}
                         <em>not sent to model</em>
                       </span>
                     ))}
@@ -311,7 +310,7 @@ export function App() {
               {pendingFile ? (
                 <div className="chip-row">
                   <span className="chip">
-                    {pendingFile.filename}
+                    {pendingFile.mime}
                     <em>will persist, not inferred</em>
                   </span>
                   <button
@@ -371,11 +370,12 @@ function Mark({ small = false }: { small?: boolean }) {
 
 function initials(name: string): string {
   const parts = name.trim().split(/\s+/);
-  return (parts[0][0] + (parts[1]?.[0] ?? "")).toUpperCase();
+  const first = parts[0]?.[0] ?? "?";
+  return (first + (parts[1]?.[0] ?? "")).toUpperCase();
 }
 
 function describeError(err: unknown): string {
-  if (err instanceof ApiError) return `${err.code}: ${err.message}`;
+  if (err instanceof ApiError) return err.message;
   if (err instanceof TypeError) {
     return "Cannot reach the runtime. Is snorlax-runtime listening?";
   }
