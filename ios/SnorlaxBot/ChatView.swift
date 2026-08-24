@@ -52,7 +52,7 @@ struct ChatView: View {
     private var transcript: some View {
         ScrollViewReader { proxy in
             ScrollView {
-                LazyVStack(alignment: .leading, spacing: 10) {
+                LazyVStack(alignment: .leading, spacing: 0) {
                     if model.messages.isEmpty, !model.isConfigured {
                         Text("Paste your Spark URL and token in Settings to start.")
                             .font(.system(size: 14))
@@ -61,13 +61,14 @@ struct ChatView: View {
                             .padding(.horizontal, 16)
                             .padding(.top, 12)
                     } else {
-                        ForEach(model.messages) { message in
+                        ForEach(Array(model.messages.enumerated()), id: \.element.id) { index, message in
                             MessageBubble(
                                 message: message,
                                 agent: agent,
                                 localPreviews: model.localPreviews[message.id] ?? []
                             )
-                                .id(message.id)
+                            .padding(.top, turnSpacing(at: index))
+                            .id(message.id)
                         }
                     }
                     Color.clear.frame(height: 1).id("bottom")
@@ -81,6 +82,12 @@ struct ChatView: View {
                 proxy.scrollTo("bottom", anchor: .bottom)
             }
         }
+    }
+
+    /// 4pt inside a turn (same role), 16pt when the speaker changes — matches desktop.
+    private func turnSpacing(at index: Int) -> CGFloat {
+        guard index > 0 else { return 0 }
+        return model.messages[index - 1].role == model.messages[index].role ? 4 : 16
     }
 }
 
@@ -159,9 +166,8 @@ private struct MessageBubble: View {
     var localPreviews: [Data] = []
 
     var body: some View {
-        HStack {
-            if message.role == .user { Spacer(minLength: 48) }
-            VStack(alignment: message.role == .user ? .trailing : .leading, spacing: 6) {
+        HStack(alignment: .top, spacing: 0) {
+            VStack(alignment: .leading, spacing: 6) {
                 ForEach(Array(localPreviews.enumerated()), id: \.offset) { _, data in
                     if let image = UIImage(data: data) {
                         Image(uiImage: image)
@@ -180,12 +186,13 @@ private struct MessageBubble: View {
                     Text(message.content)
                         .font(.system(size: 14))
                         .textSelection(.enabled)
+                        .multilineTextAlignment(.leading)
                 }
             }
             .padding(.horizontal, 12)
             .padding(.vertical, 8)
             .background(bubbleColor, in: RoundedRectangle(cornerRadius: 16))
-            if message.role == .assistant { Spacer(minLength: 48) }
+            Spacer(minLength: 48)
         }
         .padding(.horizontal, 12)
         .accessibilityElement(children: .combine)
