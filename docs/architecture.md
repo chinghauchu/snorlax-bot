@@ -1,0 +1,138 @@
+# Architecture: a Grok-Bot-like runtime on DGX Spark
+
+Snorlax-Bot maps the public Grok Bot product shape onto a deskside NVIDIA DGX
+Spark. The Spark is not a client GPU for a SaaS model. It *is* the always-on
+machine the bots live on.
+
+This is an original mapping. It is not a description of Grok Bot internals.
+
+## Product shape we are matching
+
+From public Grok Bot docs and the Aug 2026 launch:
+
+| Grok Bot (cloud) | Snorlax-Bot (Spark) |
+| --- | --- |
+| Persistent named bots / teammates | `/v1/agents`, seeded `snorlax-bot` |
+| Message a bot like a coworker | `POST /v1/agents/{id}/messages` (SSE) |
+| One user-scoped computer shared by all bots | Later: one sandbox on the Spark, shared files/logins, per-bot screen |
+| Skills (how) and routines (when) | Later: stored on the runtime, executed locally |
+| MCP + computer-use for sites without an API | Later: local MCP + sandbox browser |
+| Question / approval moments | Later: widgets in the transcript |
+| Desktop + iOS, same bots | Tauri desktop now; Swift iOS stub now, LAN client later |
+| Cloud LLM | vLLM on GB10 (70B FP8 default; 200B-class in-range) |
+
+The important inversion: **work does not stall when the laptop closes**,
+because the laptop was never the runtime. The DGX Spark stays on the desk,
+bound to the LAN, with a bearer token.
+
+## Hardware: why GB10 looks like a local “bot computer”
+
+DGX Spark (GB10 Grace Blackwell):
+
+- 20-core Arm CPU + Blackwell GPU on one superchip (`sm_121`).
+- **128 GB coherent unified memory** (LPDDR5x), not discrete HBM VRAM.
+  CUDA sees on the order of ~120 GiB of that pool. CPU, GPU, OS, container
+  runtime, model weights, and KV cache all draw from it.
+- Bandwidth is deskside, not datacenter HBM. This box is for **small-batch
+  interactive inference**, not high-QPS serving.
+- NVIDIA’s published envelope: up to ~200B-class models on one Spark; two
+  units linked via ConnectX-7 for ~405B.
+
+Implications for us:
+
+1. **One resident model at a time** is the v0/v1 assumption. A 70B FP8
+   checkpoint plus KV cache plus OS plus (later) a browser sandbox must fit
+   together. `--gpu-memory-utilization` should start around 0.7–0.8 and leave
+   RAM for everything that is not vLLM.
+2. **Keep `--max-num-seqs` low.** A handful of bots chatting and (later)
+   using the computer is the workload, not a public API.
+3. The FastAPI runtime is cheap compared to weights. It can stay resident.
+   The sandbox computer, when it lands, is the other heavy tenant — treat it
+   as a first-class memory budget, not an afterthought.
+
+## Process topology (v0)
+
+```
+┌──────────────────── desktop / iOS ────────────────────┐
+│  Tauri webview  or  SwiftUI  (LAN)                    │
+│  Authorization: Bearer <token>                        │
+└──────────────────────────┬────────────────────────────┘
+                           │ HTTP /v1  (never /vllm)
+                           ▼
+┌──────────────────── snorlax-runtime ──────────────────┐
+│  FastAPI on the Spark                                  │
+│  • agents, transcripts, attachments (SQLite)           │
+│  • LAN auth, bind policy                               │
+│  • inference interface (mock | vLLM)                   │
+│  later: tools, MCP, sandbox, scheduler                 │
+└──────────────────────────┬────────────────────────────┘
+                           │ OpenAI-compat streaming
+                           ▼
+┌──────────────────── vLLM (or mock) ───────────────────┐
+│  70B-class FP8 by default, config-swappable            │
+│  TensorRT-LLM is a later drop-in behind the same iface │
+└────────────────────────────────────────────────────────┘
+```
+
+Clients **must not** call vLLM. The runtime is the only process that holds
+the model URL, the system prompts, the tool list (later), and the token.
+
+## Bind and auth
+
+Bootstrap is intentionally awkward in the safe direction:
+
+1. If no bearer token exists on disk, listen on `127.0.0.1` only, generate a
+   token, print it, persist it. Pairing happens on the Spark itself (or via
+   SSH port-forward).
+2. Once a token exists, listen on `0.0.0.0` so an iPhone or another machine
+   on the LAN can connect. Every `/v1` route requires
+   `Authorization: Bearer <token>`.
+3. `SNORLAX_BIND` overrides the policy for tests and forced localhost.
+
+There is no anonymous LAN. There is also no cloud account.
+
+## Data
+
+SQLite file under `SNORLAX_DATA_DIR` (default `~/.snorlax-bot`):
+
+- `agents` — id, name, instructions, timestamps. Seeded row `snorlax-bot`.
+- `messages` — per-agent transcript, `user` | `assistant`.
+- `attachments` — metadata + files on disk. **v0 does not forward image
+  bytes to the model.**
+- `settings` — includes the generated token.
+
+v0 has no extra “thread” object. One agent, one transcript. Group chats and
+handoffs are a later table, not a v0 schema guess.
+
+## Inference interface
+
+```text
+stream(messages: list[{role, content}]) -> async iter[str]
+```
+
+- `mock` — deterministic-ish streaming reply. Default off-Spark and in CI.
+- `vllm` — `POST {VLLM_BASE_URL}/chat/completions` with `stream: true`.
+  Only text `role`/`content` pairs are sent. Attachments stay in SQLite.
+
+System prompt is assembled by the runtime from the agent’s `instructions`.
+The desktop cannot inject a hidden system prompt around the runtime.
+
+## What “always-on teammates” means here
+
+On Grok Bot, the computer is a cloud VM that outlives the laptop. On
+Snorlax-Bot:
+
+- The **Spark stays powered**. Closing the Tauri window does not unload
+  vLLM (separate process) and does not delete transcripts.
+- Later, routines fire inside the runtime’s scheduler, not inside the GUI.
+- Later, multiple bots share one sandbox so a “chief of staff” bot can hand
+  a file to an “inbox” bot without the human pasting.
+
+Until v1, “always-on” is: the runtime + model stay up, chat history is on
+disk, and the seeded teammate is still `snorlax-bot` after a reboot.
+
+## Non-copy constraint
+
+We match nouns the public product uses (bot, computer, skill, routine, MCP,
+widget) because those are the product. We do not match private APIs, asset
+files, or source. The `/v1` contract in this repo is ours.

@@ -1,0 +1,6 @@
+{
+  "identifier": "default",
+  "description": "Default Snorlax-Bot window capabilities",
+  "windows": ["main"],
+  "permissions": ["core:default"]
+}

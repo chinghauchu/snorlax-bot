@@ -1,0 +1,36 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.pytest_cache/
+.coverage
+htmlcov/
+dist/
+build/
+
+# Node
+node_modules/
+desktop/dist/
+
+# Rust / Tauri
+desktop/src-tauri/target/
+desktop/src-tauri/gen/
+
+# Runtime data
+data/
+*.db
+*.sqlite
+.snorlax-bot/
+
+# OS / editors
+.DS_Store
+.idea/
+.vscode/
+*.swp
+
+# Env
+.env
+.env.local
+*.token

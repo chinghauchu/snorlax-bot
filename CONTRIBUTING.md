@@ -1,0 +1,68 @@
+# Contributing to Snorlax-Bot
+
+Thank you for helping build a local, Apache-2.0 Grok Bot-like assistant for
+NVIDIA DGX Spark.
+
+## Ground rules
+
+- **Public OSS, Apache-2.0.** New files should carry the SPDX header
+  `SPDX-License-Identifier: Apache-2.0` where that is conventional (source),
+  and must be compatible with Apache-2.0.
+- **No Grok Bot source.** Recreate from the public product shape. Do not
+  vendor, decompile, or paste proprietary client/server code.
+- **No cloud LLM required.** Features must run with the mock inference backend
+  in CI and on machines without a 70B checkpoint. vLLM is the Spark path, not
+  a development dependency.
+- **Keep v0 small.** Chat-only named agents until the vertical slice is
+  boringly solid. Tools, MCP, sandbox computer, vision, and routines are
+  later — see [ROADMAP.md](ROADMAP.md).
+
+## Locked v0 decisions (do not reopen in drive-by PRs)
+
+- Serving: vLLM now; TensorRT-LLM is a later swap behind the same interface.
+- Clients never hit vLLM. The FastAPI runtime owns agents, transcripts, LAN
+  auth.
+- HTTP is `/v1` with `Authorization: Bearer <token>`. Seeded agent id is
+  `snorlax-bot`. SQLite on disk. Bind `127.0.0.1` until a token exists, then
+  `0.0.0.0`.
+- Desktop is TypeScript + Tauri. iOS is Swift/SwiftUI.
+- Default model: 70B-class FP8, config-swappable. Images persist, no VL.
+
+If a change needs to break the OpenAPI contract, update
+[protocol/openapi.yaml](protocol/openapi.yaml) in the same PR and add a
+runtime test.
+
+## Development
+
+Runtime:
+
+```bash
+cd runtime
+python3 -m venv .venv && source .venv/bin/activate
+pip install -e ".[dev]"
+pytest
+```
+
+Desktop web UI (no Rust toolchain required):
+
+```bash
+cd desktop
+npm install
+npm run build
+```
+
+Please run `pytest` before sending a runtime change.
+
+## PR hygiene
+
+- One concern per PR when possible.
+- Match the existing voice: named *teammates*, not “sessions” or “threads”
+  as the primary object.
+- Do not add analytics, phone-home, or extra cloud inference paths.
+- New endpoints live under `/v1` and require the bearer token.
+
+## License of contributions
+
+By contributing, you agree that your contributions are licensed under the
+Apache License 2.0, copyright assigned per the license’s contribution terms
+(see [LICENSE](LICENSE)).
