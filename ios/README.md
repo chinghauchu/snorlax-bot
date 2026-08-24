@@ -1,36 +1,44 @@
-# iOS companion (stub)
+# iOS companion
 
-Snorlax-Bot’s phone client is Swift/SwiftUI. Same `/v1` contract as desktop,
-same bearer token, LAN to the DGX Spark. **This pass is a stub**: it compiles
-as a mental model and documents pairing. It does not yet stream chat.
+Snorlax-Bot’s phone client. SwiftUI, iOS 18+, same locked `/v1` camelCase
+contract as desktop. Chat-only: named agents, streaming transcript, image
+previews that are **never** sent to the model.
 
-The Spark is the always-on machine. Closing the phone must not unload vLLM.
-Reconnect is `GET /v1/agents/{id}/messages`.
+The Spark stays up when the phone sleeps. Reconnect is
+`GET /v1/agents/{id}/messages`.
 
-## v0 status
+## v0
 
 | | |
 | --- | --- |
 | Language | Swift 5.9+, SwiftUI |
-| Target | iOS 18+ (matches the public Grok Bot companion baseline) |
-| Network | URLSession, `Authorization: Bearer` |
-| Chat SSE | Not wired — see ticket I1 |
-| Pairing | UI only; Keychain comes in I2 |
+| Target | iOS 18+ (iPhone + iPad) |
+| Network | URLSession, `Authorization: Bearer` on everything except `GET /v1/health` |
+| Chat | `POST /v1/agents/{id}/messages` as SSE (`message.delta` / `message.done` / `error`) |
+| Pairing | Settings sheet. Token in Keychain, URL in AppStorage. No gate screen |
+| Seed | `snorlax-bot` (Snorlax-Bot / Assistant). Delete is hidden |
 
-## How this will run (next)
+Open `SnorlaxBot.xcodeproj` in Xcode. Product name is **SnorlaxBot**; chrome
+says **Snorlax-Bot**.
 
-1. Runtime on the Spark is bound to `0.0.0.0` (token already on disk).
+## Pairing
+
+1. Runtime on the Spark is bound to `0.0.0.0:8787` (token already on disk).
 2. iPhone on the same LAN.
-3. User enters `http://<spark-lan-ip>:8787` and the token.
-4. Roster + transcript use [../protocol/openapi.yaml](../protocol/openapi.yaml).
+3. Settings → paste `http://<spark-lan>:8787` and the bearer token.
+4. Launch with both set: `GET /v1/agents`, select `snorlax-bot`, load
+   messages, focus the composer.
 
-Until then, develop against the desktop web UI.
+URL and token start empty. The client never defaults to `127.0.0.1`.
+`GET /v1/health` is unauthenticated and does not enable send.
 
 ## Sources
 
-- `SnorlaxBot/SnorlaxBotApp.swift` — app entry
-- `SnorlaxBot/ContentView.swift` — pairing + empty roster
-- `SnorlaxBot/RuntimeClient.swift` — `/v1` types and a non-streaming client sketch
+Hand-written against the locked camelCase `/v1` contract. Do not generate
+types from a snake_case `protocol/openapi.yaml` draft.
 
-Drop these files into a new Xcode iOS App target named **SnorlaxBot**, or wait
-for ticket I3 which will add a real `.xcodeproj`.
+- `SnorlaxBot/SnorlaxBotApp.swift` — entry, theme, accent
+- `SnorlaxBot/ContentView.swift` — iPhone stack / iPad split chrome
+- `SnorlaxBot/AppModel.swift` — roster, chat, settings persistence
+- `SnorlaxBot/RuntimeClient.swift` — `/v1` + SSE
+- `SnorlaxBot/KeychainStore.swift` — bearer token

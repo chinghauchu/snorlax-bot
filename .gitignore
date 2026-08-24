@@ -24,6 +24,13 @@ data/
 *.sqlite
 .snorlax-bot/
 
+# Xcode / iOS
+ios/DerivedData/
+ios/**/xcuserdata/
+*.xcuserstate
+*.xccheckout
+*.moved-aside
+
 # OS / editors
 .DS_Store
 .idea/

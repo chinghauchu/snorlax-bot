@@ -1,45 +1,81 @@
 // SPDX-License-Identifier: Apache-2.0
 import SwiftUI
 
-/// v0 stub. Pairing fields are real; chat and Keychain are later tickets.
 struct ContentView: View {
-    @State private var runtimeURL = "http://127.0.0.1:8787"
-    @State private var token = ""
-    @State private var status = "iOS companion is a stub this pass. Use the desktop client to chat."
+    @Environment(AppModel.self) private var model
+    @Environment(\.scenePhase) private var scenePhase
 
     var body: some View {
-        NavigationStack {
-            VStack(alignment: .leading, spacing: 16) {
-                Text("Snorlax-Bot")
-                    .font(.largeTitle.weight(.medium))
-                Text("Local teammates on your DGX Spark. Same bots as desktop, same LAN token.")
-                    .foregroundStyle(.secondary)
-
-                TextField("Runtime URL", text: $runtimeURL)
-                    .textInputAutocapitalization(.never)
-                    .keyboardType(.URL)
-                    .textFieldStyle(.roundedBorder)
-
-                SecureField("Bearer token", text: $token)
-                    .textFieldStyle(.roundedBorder)
-
-                Button("Save locally (not yet talking to /v1)") {
-                    status = "Chat + Keychain pairing ship in tickets I1–I3. Runtime contract is protocol/openapi.yaml."
-                }
-                .buttonStyle(.borderedProminent)
-
-                Text(status)
-                    .font(.footnote)
-                    .foregroundStyle(.secondary)
-
-                Spacer()
+        @Bindable var model = model
+        Group {
+            if UIDevice.current.userInterfaceIdiom == .pad {
+                iPadRoot()
+            } else {
+                iPhoneRoot()
             }
-            .padding()
-            .navigationTitle("Companion")
         }
+        .sheet(isPresented: $model.showSettings) {
+            SettingsSheet()
+        }
+        .alert("Error", isPresented: errorPresented) {
+            Button("OK", role: .cancel) { model.errorMessage = nil }
+        } message: {
+            Text(model.errorMessage ?? "")
+        }
+        .task { await model.bootstrap() }
+        .onChange(of: scenePhase) { _, phase in
+            if phase == .active {
+                Task { await model.handleSceneActive() }
+            }
+        }
+    }
+
+    private var errorPresented: Binding<Bool> {
+        Binding(
+            get: { model.errorMessage != nil },
+            set: { if !$0 { model.errorMessage = nil } }
+        )
+    }
+}
+
+private struct iPhoneRoot: View {
+    @Environment(AppModel.self) private var model
+
+    var body: some View {
+        @Bindable var model = model
+        NavigationStack(path: $model.navigationPath) {
+            AgentListView()
+                .navigationTitle("Snorlax-Bot")
+                .navigationBarTitleDisplayMode(.large)
+                .navigationDestination(for: String.self) { id in
+                    ChatView(agentID: id)
+                }
+        }
+    }
+}
+
+private struct iPadRoot: View {
+    @Environment(AppModel.self) private var model
+
+    var body: some View {
+        @Bindable var model = model
+        NavigationSplitView {
+            AgentListView()
+                .navigationTitle("Snorlax-Bot")
+                .navigationBarTitleDisplayMode(.large)
+        } detail: {
+            if let id = model.selectedAgentID {
+                ChatView(agentID: id)
+            } else {
+                ChatView(agentID: Agent.seedID)
+            }
+        }
+        .navigationSplitViewStyle(.balanced)
     }
 }
 
 #Preview {
     ContentView()
+        .environment(AppModel())
+        .preferredColorScheme(.dark)
 }

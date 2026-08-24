@@ -18,7 +18,7 @@ From public Grok Bot docs and the Aug 2026 launch:
 | Skills (how) and routines (when) | Later: stored on the runtime, executed locally |
 | MCP + computer-use for sites without an API | Later: local MCP + sandbox browser |
 | Question / approval moments | Later: widgets in the transcript |
-| Desktop + iOS, same bots | Tauri desktop now; Swift iOS stub now, LAN client later |
+| Desktop + iOS, same bots | Tauri desktop now; Swift iOS companion on the LAN |
 | Cloud LLM | vLLM on GB10 (70B FP8 default; 200B-class in-range) |
 
 The important inversion: **work does not stall when the laptop closes**,
