@@ -32,9 +32,18 @@ const TOKEN_KEY = "snorlax.token";
 const THEME_KEY = "snorlax.theme";
 const ACCENT_KEY = "snorlax.accent";
 
-const URL_PLACEHOLDER = "http://<spark-lan>:8787";
+const URL_PLACEHOLDER = "http://" + "<" + "spark-lan" + ">" + ":8787";
 const MISSING_CREDS =
   "Paste your Spark URL and token in Settings to start.";
+const PLACEHOLDER_SEED: Agent = {
+  id: SEED_AGENT_ID,
+  name: "Snorlax-Bot",
+  title: "Assistant",
+  description: "",
+  avatar: null,
+  createdAt: "",
+  updatedAt: "",
+};
 const DEFAULT_ACCENT = "#6d8bff";
 const ACCENT_SWATCHES = [
   "#6d8bff",
@@ -154,8 +163,8 @@ export function App() {
   const [contextMenu, setContextMenu] = useState<ContextMenu | null>(null);
   const [pendingDelete, setPendingDelete] = useState<Agent | null>(null);
 
-  const [agents, setAgents] = useState<Agent[]>([]);
-  const [activeId, setActiveId] = useState<string | null>(null);
+  const [agents, setAgents] = useState<Agent[]>([PLACEHOLDER_SEED]);
+  const [activeId, setActiveId] = useState<string | null>(SEED_AGENT_ID);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [draft, setDraft] = useState("");
   const [pendingImage, setPendingImage] = useState<PendingImage | null>(null);
@@ -269,8 +278,8 @@ export function App() {
 
   useEffect(() => {
     if (!session) {
-      setAgents([]);
-      setActiveId(null);
+      setAgents([PLACEHOLDER_SEED]);
+      setActiveId(SEED_AGENT_ID);
       setMessages([]);
       setLoadError(null);
       return;
@@ -279,10 +288,13 @@ export function App() {
   }, [session, loadRoster]);
 
   async function selectAgent(id: string) {
-    if (!session) return;
     setActiveId(id);
     setComposerError(null);
     setProfileOpen(false);
+    if (!session) {
+      setMessages([]);
+      return;
+    }
     try {
       setMessages(await listMessages(session, id));
     } catch (err) {
