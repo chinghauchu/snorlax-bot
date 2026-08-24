@@ -1,0 +1,426 @@
+openapi: 3.1.0
+info:
+  title: Snorlax-Bot Runtime API
+  version: 0.1.0
+  description: |
+    LAN HTTP contract for Snorlax-Bot. Clients talk only to this runtime.
+    They never call vLLM. All `/v1` routes require a bearer token.
+
+    Seeded agent id is `snorlax-bot`. v0 is chat-only (no tools).
+  license:
+    name: Apache-2.0
+    identifier: Apache-2.0
+  contact:
+    name: Chinghau Chu
+
+servers:
+  - url: http://127.0.0.1:8787
+    description: First boot (no token on disk yet, localhost only)
+  - url: http://0.0.0.0:8787
+    description: After a token exists (LAN)
+
+tags:
+  - name: health
+  - name: agents
+  - name: messages
+
+security:
+  - bearerAuth: []
+
+paths:
+  /health:
+    get:
+      tags: [health]
+      summary: Process liveness (no auth)
+      security: []
+      operationId: processHealth
+      responses:
+        "200":
+          description: Process is up
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProcessHealth"
+
+  /v1/health:
+    get:
+      tags: [health]
+      summary: Authenticated runtime health
+      operationId: runtimeHealth
+      responses:
+        "200":
+          description: Runtime is up and the token is valid
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RuntimeHealth"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /v1/agents:
+    get:
+      tags: [agents]
+      summary: List agents
+      operationId: listAgents
+      responses:
+        "200":
+          description: Agents on this runtime
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgentList"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+    post:
+      tags: [agents]
+      summary: Create an agent
+      operationId: createAgent
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AgentCreate"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Agent"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "422":
+          $ref: "#/components/responses/Unprocessable"
+
+  /v1/agents/{agent_id}:
+    parameters:
+      - $ref: "#/components/parameters/AgentId"
+    get:
+      tags: [agents]
+      summary: Get one agent
+      operationId: getAgent
+      responses:
+        "200":
+          description: Agent
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Agent"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    patch:
+      tags: [agents]
+      summary: Update an agent
+      operationId: patchAgent
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AgentPatch"
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Agent"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "422":
+          $ref: "#/components/responses/Unprocessable"
+    delete:
+      tags: [agents]
+      summary: Delete an agent
+      description: The seeded agent `snorlax-bot` cannot be deleted.
+      operationId: deleteAgent
+      responses:
+        "204":
+          description: Deleted
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          description: Seeded agent cannot be deleted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorBody"
+
+  /v1/agents/{agent_id}/messages:
+    parameters:
+      - $ref: "#/components/parameters/AgentId"
+    get:
+      tags: [messages]
+      summary: List transcript messages
+      operationId: listMessages
+      parameters:
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 200
+            default: 100
+        - name: before
+          in: query
+          description: Message id cursor; return older messages
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Transcript page
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MessageList"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    post:
+      tags: [messages]
+      summary: Send a user message and stream the assistant reply
+      description: |
+        Server-Sent Events. Event names are `message.delta`, `message.done`,
+        and `error`. Images in `attachments` are stored and returned later;
+        they are not forwarded to the model in v0.
+      operationId: postMessage
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MessageCreate"
+      responses:
+        "200":
+          description: SSE stream
+          content:
+            text/event-stream:
+              schema:
+                type: string
+                examples:
+                  delta: |
+                    event: message.delta
+                    data: {"message_id":"msg_01","delta":"Hello"}
+                  done: |
+                    event: message.done
+                    data: {"message":{"id":"msg_01","agent_id":"snorlax-bot","role":"assistant","content":"Hello","attachments":[],"created_at":"2026-08-24T17:00:00Z"}}
+                  error: |
+                    event: error
+                    data: {"error":{"code":"inference_unavailable","message":"vLLM is not reachable"}}
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "422":
+          $ref: "#/components/responses/Unprocessable"
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: opaque
+      description: Token printed on first runtime boot and stored on disk.
+
+  parameters:
+    AgentId:
+      name: agent_id
+      in: path
+      required: true
+      schema:
+        type: string
+        examples:
+          - snorlax-bot
+
+  responses:
+    Unauthorized:
+      description: Missing or invalid bearer token
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorBody"
+    NotFound:
+      description: Unknown agent
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorBody"
+    Unprocessable:
+      description: Request failed validation
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorBody"
+
+  schemas:
+    ProcessHealth:
+      type: object
+      required: [status]
+      properties:
+        status:
+          type: string
+          const: ok
+
+    RuntimeHealth:
+      type: object
+      required: [status, model, inference_backend, seeded_agent_id]
+      properties:
+        status:
+          type: string
+          const: ok
+        model:
+          type: string
+          description: Configured checkpoint id (not necessarily loaded in mock mode)
+        inference_backend:
+          type: string
+          enum: [mock, vllm]
+        seeded_agent_id:
+          type: string
+          const: snorlax-bot
+        bind_host:
+          type: string
+
+    Agent:
+      type: object
+      required: [id, name, instructions, created_at, updated_at]
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        instructions:
+          type: string
+          description: Runtime-owned system prompt for this teammate
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    AgentList:
+      type: object
+      required: [agents]
+      properties:
+        agents:
+          type: array
+          items:
+            $ref: "#/components/schemas/Agent"
+
+    AgentCreate:
+      type: object
+      required: [name]
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 80
+        instructions:
+          type: string
+          default: ""
+          maxLength: 8000
+
+    AgentPatch:
+      type: object
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 80
+        instructions:
+          type: string
+          maxLength: 8000
+
+    Message:
+      type: object
+      required: [id, agent_id, role, content, attachments, created_at]
+      properties:
+        id:
+          type: string
+        agent_id:
+          type: string
+        role:
+          type: string
+          enum: [user, assistant]
+        content:
+          type: string
+        attachments:
+          type: array
+          items:
+            $ref: "#/components/schemas/Attachment"
+        created_at:
+          type: string
+          format: date-time
+
+    MessageList:
+      type: object
+      required: [messages]
+      properties:
+        messages:
+          type: array
+          items:
+            $ref: "#/components/schemas/Message"
+        next_cursor:
+          type: [string, "null"]
+
+    MessageCreate:
+      type: object
+      required: [content]
+      properties:
+        content:
+          type: string
+          minLength: 1
+          maxLength: 32000
+        attachments:
+          type: array
+          description: Persisted; not forwarded to the model in v0
+          items:
+            $ref: "#/components/schemas/AttachmentIn"
+
+    Attachment:
+      type: object
+      required: [id, filename, media_type]
+      properties:
+        id:
+          type: string
+        filename:
+          type: string
+        media_type:
+          type: string
+        sent_to_model:
+          type: boolean
+          const: false
+          description: v0 never sends attachment bytes to the model
+
+    AttachmentIn:
+      type: object
+      required: [filename, media_type]
+      properties:
+        filename:
+          type: string
+        media_type:
+          type: string
+        data_base64:
+          type: string
+          description: Optional raw bytes; stored on disk, omitted from inference
+
+    ErrorBody:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: object
+          required: [code, message]
+          properties:
+            code:
+              type: string
+            message:
+              type: string
