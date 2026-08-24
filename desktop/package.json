@@ -8,6 +8,7 @@
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview",
+    "generate:api": "openapi-typescript ./openapi.yaml -o src/openapi.ts",
     "tauri": "tauri"
   },
   "dependencies": {
@@ -19,6 +20,7 @@
     "@types/react": "^18.3.12",
     "@types/react-dom": "^18.3.1",
     "@vitejs/plugin-react": "^4.3.4",
+    "openapi-typescript": "^7.13.0",
     "typescript": "^5.6.3",
     "vite": "^6.0.3"
   }

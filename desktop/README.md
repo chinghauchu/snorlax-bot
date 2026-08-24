@@ -33,3 +33,7 @@ npm run tauri dev
 
 v0 chrome: 256px agent sidebar, chat, profile overlay, Settings. No computer
 pane.
+
+Types and the `/v1` client are generated from the locked camelCase OpenAPI
+(`openapi.yaml`, same contract as `protocol/openapi.yaml` on the Backend
+contract PR). Regenerate with `npm run generate:api`.

@@ -3,7 +3,7 @@ import type {
   AgentPatch,
   ChatMessage,
   ImageIn,
-  MessageImage,
+  MessageDelta,
   RuntimeHealth,
   Session,
 } from "./types";
@@ -31,71 +31,34 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
 }
 
-function asString(value: unknown, fallback = ""): string {
-  return typeof value === "string" ? value : fallback;
-}
-
-function unwrapList(body: unknown, wrappedKey: string): unknown[] {
-  if (Array.isArray(body)) return body;
+/** Bare arrays are the contract; unwrap a leftover `{ agents|messages: [] }` envelope. */
+function asList<T>(body: unknown, wrappedKey: string): T[] {
+  if (Array.isArray(body)) return body as T[];
   if (isRecord(body) && Array.isArray(body[wrappedKey])) {
-    return body[wrappedKey] as unknown[];
+    return body[wrappedKey] as T[];
   }
   return [];
 }
 
-/** Tiny read adapter so the camelCase UI still paints while Backend rewrites snake_case. */
-export function normalizeAgent(raw: unknown): Agent {
-  const o = isRecord(raw) ? raw : {};
-  const avatar = o.avatar;
-  return {
-    id: asString(o.id),
-    name: asString(o.name, "Agent"),
-    title: asString(o.title),
-    description: asString(o.description) || asString(o.instructions),
-    avatar: typeof avatar === "string" && avatar.length > 0 ? avatar : null,
-    createdAt: asString(o.createdAt) || asString(o.created_at),
-    updatedAt: asString(o.updatedAt) || asString(o.updated_at),
-  };
-}
-
-function normalizeImage(raw: unknown): MessageImage {
-  const o = isRecord(raw) ? raw : {};
-  return {
-    id: asString(o.id),
-    mime: asString(o.mime) || asString(o.media_type),
-    url: asString(o.url),
-  };
-}
-
-export function normalizeMessage(raw: unknown): ChatMessage {
-  const o = isRecord(raw) ? raw : {};
-  const images = Array.isArray(o.images)
-    ? o.images
-    : Array.isArray(o.attachments)
-      ? o.attachments
-      : [];
-  return {
-    id: asString(o.id),
-    agentId: asString(o.agentId) || asString(o.agent_id),
-    role: o.role === "assistant" ? "assistant" : "user",
-    content: asString(o.content),
-    images: images.map(normalizeImage),
-    createdAt: asString(o.createdAt) || asString(o.created_at),
-  };
+function errorMessage(body: unknown, fallback: string): string {
+  if (!isRecord(body)) return fallback;
+  if (typeof body.error === "string") return body.error;
+  if (isRecord(body.error) && typeof body.error.message === "string") {
+    return body.error.message;
+  }
+  return fallback;
 }
 
 async function parseError(response: Response): Promise<ApiError> {
   try {
-    const body = (await response.json()) as {
-      error?: { code?: string; message?: string };
-    };
+    const body = (await response.json()) as unknown;
     return new ApiError(
       response.status,
-      body.error?.code ?? "http_error",
-      body.error?.message ?? response.statusText,
+      "error",
+      errorMessage(body, response.statusText),
     );
   } catch {
-    return new ApiError(response.status, "http_error", response.statusText);
+    return new ApiError(response.status, "error", response.statusText);
   }
 }
 
@@ -105,22 +68,17 @@ async function json<T>(response: Response): Promise<T> {
   return (await response.json()) as T;
 }
 
+/** GET /v1/health — no auth. Does not unlock send. */
 export async function health(baseUrl: string): Promise<RuntimeHealth> {
   const response = await fetch(`${baseUrl}/v1/health`);
-  const body = await json<Record<string, unknown>>(response);
-  return {
-    ok: body.ok === true || asString(body.status) === "ok",
-    name: asString(body.name, "snorlax-runtime"),
-    version: asString(body.version),
-  };
+  return json<RuntimeHealth>(response);
 }
 
 export async function listAgents(session: Session): Promise<Agent[]> {
   const response = await fetch(`${session.baseUrl}/v1/agents`, {
     headers: headers(session),
   });
-  const body = await json<unknown>(response);
-  return unwrapList(body, "agents").map(normalizeAgent);
+  return asList<Agent>(await json<unknown>(response), "agents");
 }
 
 export async function createAgent(
@@ -132,7 +90,7 @@ export async function createAgent(
     headers: headers(session, { "Content-Type": "application/json" }),
     body: JSON.stringify({ name }),
   });
-  return normalizeAgent(await json<unknown>(response));
+  return json<Agent>(response);
 }
 
 export async function patchAgent(
@@ -148,7 +106,7 @@ export async function patchAgent(
       body: JSON.stringify(patch),
     },
   );
-  return normalizeAgent(await json<unknown>(response));
+  return json<Agent>(response);
 }
 
 export async function deleteAgent(
@@ -170,8 +128,7 @@ export async function listMessages(
     `${session.baseUrl}/v1/agents/${encodeURIComponent(agentId)}/messages`,
     { headers: headers(session) },
   );
-  const body = await json<unknown>(response);
-  return unwrapList(body, "messages").map(normalizeMessage);
+  return asList<ChatMessage>(await json<unknown>(response), "messages");
 }
 
 export type StreamHandlers = {
@@ -225,21 +182,18 @@ function dispatchSse(raw: string, handlers: StreamHandlers): void {
   const record = isRecord(payload) ? payload : {};
 
   if (event === "message.delta") {
-    const id = asString(record.id) || asString(record.message_id);
-    handlers.onDelta(id, asString(record.delta));
+    const delta = payload as MessageDelta;
+    const id = delta.id || (typeof record.message_id === "string" ? record.message_id : "");
+    handlers.onDelta(id, delta.delta ?? "");
   } else if (event === "message.done") {
     const messageRaw = isRecord(record.message) ? record.message : payload;
     handlers.onDone(
-      isRecord(messageRaw) && (messageRaw.id || messageRaw.role)
-        ? normalizeMessage(messageRaw)
+      isRecord(messageRaw) && typeof messageRaw.id === "string"
+        ? (messageRaw as ChatMessage)
         : null,
     );
   } else if (event === "error") {
-    const err = isRecord(record.error) ? record.error : record;
-    handlers.onError(
-      asString(err.code, "error"),
-      asString(err.message, "Unknown error"),
-    );
+    handlers.onError("error", errorMessage(payload, "Unknown error"));
   }
 }
 

@@ -1,51 +1,14 @@
-export type Agent = {
-  id: string;
-  name: string;
-  title: string;
-  description: string;
-  avatar: string | null;
-  createdAt: string;
-  updatedAt: string;
-};
+import type { components } from "./openapi";
 
-export type MessageImage = {
-  id: string;
-  mime: string;
-  url: string;
-};
-
-export type ChatMessage = {
-  id: string;
-  agentId: string;
-  role: "user" | "assistant";
-  content: string;
-  images: MessageImage[];
-  createdAt: string;
-};
-
-export type MessageDelta = {
-  id: string;
-  role: "assistant";
-  delta: string;
-};
-
-export type RuntimeHealth = {
-  ok: boolean;
-  name: string;
-  version: string;
-};
-
-export type ImageIn = {
-  mime: string;
-  data: string;
-};
-
-export type AgentPatch = {
-  name?: string;
-  title?: string;
-  description?: string;
-  avatar?: string | null;
-};
+export type Agent = components["schemas"]["Agent"];
+export type AgentCreate = components["schemas"]["AgentCreate"];
+export type AgentPatch = components["schemas"]["AgentPatch"];
+export type ChatMessage = components["schemas"]["Message"];
+export type MessageImage = components["schemas"]["ImageOut"];
+export type ImageIn = components["schemas"]["ImageIn"];
+export type MessageDelta = components["schemas"]["MessageDelta"];
+export type RuntimeHealth = components["schemas"]["Health"];
+export type ErrorBody = components["schemas"]["ErrorBody"];
 
 export type Session = {
   baseUrl: string;
