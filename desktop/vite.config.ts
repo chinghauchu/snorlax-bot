@@ -3,7 +3,6 @@ import react from "@vitejs/plugin-react";
 
 export default defineConfig({
   plugins: [react()],
-  envPrefix: ["VITE_", "SNORLAX_"],
   clearScreen: false,
   server: {
     port: 1420,

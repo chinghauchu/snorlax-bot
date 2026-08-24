@@ -47,7 +47,7 @@ pytest
 Desktop web UI (no Rust toolchain required):
 
 ```bash
-cd apps/desktop
+cd desktop
 npm install
 npm run build
 ```

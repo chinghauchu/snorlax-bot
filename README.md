@@ -42,11 +42,11 @@ see [docs/architecture.md](docs/architecture.md).
 ## Repository layout
 
 ```
-runtime/         FastAPI agent runtime (in front of vLLM)
-protocol/        Locked /v1 OpenAPI (source of truth)
-apps/desktop/    Tauri + TypeScript chat client
-apps/ios/        Swift/SwiftUI companion
-docs/            Architecture and next tickets
+desktop/     Tauri + TypeScript chat client
+ios/         Swift/SwiftUI companion stub
+runtime/     FastAPI agent runtime (in front of vLLM)
+protocol/    OpenAPI contract for /v1
+docs/        Architecture and next tickets
 ```
 
 ## Architecture (one paragraph)
@@ -113,17 +113,18 @@ cd runtime && pytest
 Node 20+.
 
 ```bash
-cd apps/desktop
+cd desktop
 npm install
-SNORLAX_URL=http://127.0.0.1:8787 SNORLAX_TOKEN='<token>' npm run dev
+npm run dev
 ```
 
-Open http://127.0.0.1:1420 (or paste URL + token). Chat with **Snorlax-Bot**.
+Open http://127.0.0.1:1420, paste the runtime URL (`http://127.0.0.1:8787`)
+and the bearer token, then chat with **Snorlax**.
 
-The same UI is wrapped by Tauri:
+The same UI is wrapped by Tauri for a native window:
 
 ```bash
-cd apps/desktop
+cd desktop
 npm run tauri dev
 ```
 
