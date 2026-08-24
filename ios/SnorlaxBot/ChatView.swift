@@ -62,7 +62,11 @@ struct ChatView: View {
                             .padding(.top, 12)
                     } else {
                         ForEach(model.messages) { message in
-                            MessageBubble(message: message, agent: agent)
+                            MessageBubble(
+                                message: message,
+                                agent: agent,
+                                localPreviews: model.localPreviews[message.id] ?? []
+                            )
                                 .id(message.id)
                         }
                     }
@@ -152,12 +156,13 @@ private struct ComposerBar: View {
 private struct MessageBubble: View {
     let message: Message
     let agent: Agent
+    var localPreviews: [Data] = []
 
     var body: some View {
         HStack {
             if message.role == .user { Spacer(minLength: 48) }
             VStack(alignment: message.role == .user ? .trailing : .leading, spacing: 6) {
-                ForEach(Array(message.localPreviews.enumerated()), id: \.offset) { _, data in
+                ForEach(Array(localPreviews.enumerated()), id: \.offset) { _, data in
                     if let image = UIImage(data: data) {
                         Image(uiImage: image)
                             .resizable()

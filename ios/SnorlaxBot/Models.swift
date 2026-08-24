@@ -2,27 +2,8 @@
 import Foundation
 import SwiftUI
 
-enum Role: String, Codable, Sendable {
-    case user
-    case assistant
-}
-
-struct Health: Codable, Sendable {
-    var ok: Bool
-    var name: String
-    var version: String
-}
-
-struct Agent: Codable, Identifiable, Hashable, Sendable {
+extension Agent {
     static let seedID = "snorlax-bot"
-
-    var id: String
-    var name: String
-    var title: String
-    var description: String
-    var avatar: String?
-    var createdAt: Date
-    var updatedAt: Date
 
     var isSeed: Bool { id == Self.seedID }
 
@@ -37,79 +18,15 @@ struct Agent: Codable, Identifiable, Hashable, Sendable {
     )
 }
 
-struct ImageOut: Codable, Identifiable, Hashable, Sendable {
-    var id: String
-    var mime: String
-    var url: String
-}
-
-struct ImageIn: Codable, Sendable {
-    var mime: String
-    var data: String
-}
-
-struct Message: Codable, Identifiable, Sendable {
-    var id: String
-    var agentId: String
-    var role: Role
-    var content: String
-    var images: [ImageOut]
-    var createdAt: Date
-    /// Local-only previews for an optimistic user bubble. Not in the wire format.
-    var localPreviews: [Data] = []
-
-    enum CodingKeys: String, CodingKey {
-        case id, agentId, role, content, images, createdAt
-    }
-
-    init(
-        id: String,
-        agentId: String,
-        role: Role,
-        content: String,
-        images: [ImageOut],
-        createdAt: Date,
-        localPreviews: [Data] = []
-    ) {
-        self.id = id
-        self.agentId = agentId
-        self.role = role
-        self.content = content
-        self.images = images
-        self.createdAt = createdAt
-        self.localPreviews = localPreviews
-    }
-
-    init(from decoder: Decoder) throws {
-        let container = try decoder.container(keyedBy: CodingKeys.self)
-        id = try container.decode(String.self, forKey: .id)
-        agentId = try container.decode(String.self, forKey: .agentId)
-        role = try container.decode(Role.self, forKey: .role)
-        content = try container.decode(String.self, forKey: .content)
-        images = try container.decode([ImageOut].self, forKey: .images)
-        createdAt = try container.decode(Date.self, forKey: .createdAt)
-        localPreviews = []
-    }
-
-    func encode(to encoder: Encoder) throws {
-        var container = encoder.container(keyedBy: CodingKeys.self)
-        try container.encode(id, forKey: .id)
-        try container.encode(agentId, forKey: .agentId)
-        try container.encode(role, forKey: .role)
-        try container.encode(content, forKey: .content)
-        try container.encode(images, forKey: .images)
-        try container.encode(createdAt, forKey: .createdAt)
-    }
-
-    static func optimisticUser(agentId: String, content: String, previews: [Data]) -> Message {
+extension Message {
+    static func optimisticUser(agentId: String, content: String) -> Message {
         Message(
             id: "local-\(UUID().uuidString)",
             agentId: agentId,
             role: .user,
             content: content,
             images: [],
-            createdAt: Date(),
-            localPreviews: previews
+            createdAt: Date()
         )
     }
 
@@ -132,13 +49,6 @@ struct PendingImage: Sendable {
     var asInput: ImageIn {
         ImageIn(mime: mime, data: data.base64EncodedString())
     }
-}
-
-struct AgentPatch: Encodable, Sendable {
-    var name: String
-    var title: String
-    var description: String
-    var avatar: String?
 }
 
 enum AppTheme: String, CaseIterable, Identifiable, Sendable {

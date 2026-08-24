@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 import Foundation
 
-/// Hand-written camelCase `/v1` client. Types are not generated from the
-/// snake_case `protocol/openapi.yaml` draft on main.
+/// URLSession client for the locked camelCase `/v1` contract.
+/// Wire types come from `Generated/V1Types.swift` (`protocol/openapi.yaml`).
 struct RuntimeClient: Sendable {
     var baseURL: URL
     var token: String
@@ -38,7 +38,7 @@ struct RuntimeClient: Sendable {
     }
 
     func createAgent(name: String = "New agent") async throws -> Agent {
-        try await send("v1/agents", method: "POST", body: ["name": name], expected: 201)
+        try await send("v1/agents", method: "POST", body: AgentCreate(name: name), expected: 201)
     }
 
     func getAgent(id: String) async throws -> Agent {
@@ -69,24 +69,10 @@ struct RuntimeClient: Sendable {
         images: [ImageIn],
         onEvent: @escaping @Sendable (StreamEvent) -> Void
     ) async throws {
-        struct Body: Encodable {
-            var content: String
-            var images: [ImageIn]
-
-            enum CodingKeys: String, CodingKey { case content, images }
-
-            func encode(to encoder: Encoder) throws {
-                var container = encoder.container(keyedBy: CodingKeys.self)
-                try container.encode(content, forKey: .content)
-                if !images.isEmpty {
-                    try container.encode(images, forKey: .images)
-                }
-            }
-        }
         var request = try makeRequest(
             "v1/agents/\(Self.encode(agentId))/messages",
             method: "POST",
-            body: Body(content: content, images: images)
+            body: MessageCreate(content: content, images: images.isEmpty ? nil : images)
         )
         request.setValue("text/event-stream", forHTTPHeaderField: "Accept")
         request.timeoutInterval = 600
@@ -160,19 +146,13 @@ struct RuntimeClient: Sendable {
             decoder.dateDecodingStrategy = .custom(RuntimeClient.decodeDate)
             switch name {
             case "message.delta":
-                struct Delta: Decodable {
-                    var id: String
-                    var role: String?
-                    var delta: String
-                }
-                guard let body = try? decoder.decode(Delta.self, from: payload) else { return nil }
+                guard let body = try? decoder.decode(MessageDelta.self, from: payload) else { return nil }
                 return .delta(id: body.id, text: body.delta)
             case "message.done":
                 guard let message = try? decoder.decode(Message.self, from: payload) else { return nil }
                 return .done(message)
             case "error":
-                struct Body: Decodable { var error: String }
-                let message = (try? decoder.decode(Body.self, from: payload))?.error ?? data
+                let message = (try? decoder.decode(ErrorBody.self, from: payload))?.error ?? data
                 return .error(message)
             default:
                 return nil
@@ -255,8 +235,7 @@ struct RuntimeClient: Sendable {
     }
 
     private static func error(from data: Data, status: Int) -> RuntimeError {
-        struct Body: Decodable { var error: String }
-        if let body = try? JSONDecoder().decode(Body.self, from: data), !body.error.isEmpty {
+        if let body = try? JSONDecoder().decode(ErrorBody.self, from: data), !body.error.isEmpty {
             return .http(status: status, message: body.error)
         }
         let text = String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines)

@@ -32,6 +32,7 @@ final class AppModel {
     var selectedAgentID: String?
     var navigationPath: [String] = []
     var messages: [Message] = []
+    var localPreviews: [String: [Data]] = [:]
     var draft = ""
     var pendingImage: PendingImage?
     var isSending = false
@@ -75,6 +76,7 @@ final class AppModel {
             agents = []
             selectedAgentID = Agent.seedID
             messages = []
+            localPreviews = [:]
             navigationPath = []
             return
         }
@@ -98,10 +100,12 @@ final class AppModel {
         }
         guard isConfigured, let client else {
             messages = []
+            localPreviews = [:]
             return
         }
         do {
             messages = try await client.listMessages(agentId: id)
+            prunePreviews()
         } catch {
             errorMessage = error.localizedDescription
             messages = []
@@ -173,11 +177,10 @@ final class AppModel {
         draft = ""
         pendingImage = nil
 
-        let user = Message.optimisticUser(
-            agentId: agent.id,
-            content: content,
-            previews: image.map { [$0.data] } ?? []
-        )
+        let user = Message.optimisticUser(agentId: agent.id, content: content)
+        if let data = image?.data {
+            localPreviews[user.id] = [data]
+        }
         messages.append(user)
         isSending = true
         defer { isSending = false }
@@ -194,6 +197,7 @@ final class AppModel {
             }
             if !Task.isCancelled, selectedAgentID == agent.id {
                 messages = try await client.listMessages(agentId: agent.id)
+                prunePreviews()
             }
         } catch is CancellationError {
             await refreshMessages()
@@ -206,6 +210,7 @@ final class AppModel {
         guard let client, let id = selectedAgentID, isConfigured else { return }
         do {
             messages = try await client.listMessages(agentId: id)
+            prunePreviews()
         } catch {
             errorMessage = error.localizedDescription
         }
@@ -238,5 +243,10 @@ final class AppModel {
         case .error(let message):
             errorMessage = message
         }
+    }
+
+    private func prunePreviews() {
+        let ids = Set(messages.map(\.id))
+        localPreviews = localPreviews.filter { ids.contains($0.key) }
     }
 }

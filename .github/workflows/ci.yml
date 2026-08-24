@@ -37,3 +37,15 @@ jobs:
         run: npm install
       - name: Typecheck and build
         run: npm run build
+
+  ios-types:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Check generated /v1 types
+        run: |
+          pip install -r ios/scripts/requirements.txt
+          python3 ios/scripts/generate_v1_types.py --check

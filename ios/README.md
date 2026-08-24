@@ -32,13 +32,23 @@ says **Snorlax-Bot**.
 URL and token start empty. The client never defaults to `127.0.0.1`.
 `GET /v1/health` is unauthenticated and does not enable send.
 
-## Sources
+## `/v1` types
 
-Hand-written against the locked camelCase `/v1` contract. Do not generate
-types from a snake_case `protocol/openapi.yaml` draft.
+Wire types are generated from [../protocol/openapi.yaml](../protocol/openapi.yaml)
+(the locked camelCase contract, not main’s old snake_case draft):
+
+```bash
+python3 ios/scripts/generate_v1_types.py
+python3 ios/scripts/generate_v1_types.py --check
+```
+
+Output: `SnorlaxBot/Generated/V1Types.swift`. Do not hand-edit that file.
+
+## Sources
 
 - `SnorlaxBot/SnorlaxBotApp.swift` — entry, theme, accent
 - `SnorlaxBot/ContentView.swift` — iPhone stack / iPad split chrome
 - `SnorlaxBot/AppModel.swift` — roster, chat, settings persistence
 - `SnorlaxBot/RuntimeClient.swift` — `/v1` + SSE
+- `SnorlaxBot/Generated/V1Types.swift` — OpenAPI models
 - `SnorlaxBot/KeychainStore.swift` — bearer token
