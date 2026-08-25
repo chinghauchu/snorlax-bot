@@ -4,6 +4,7 @@ import {
   MouseEvent,
   useCallback,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -24,9 +25,11 @@ import {
   USER_SENDER_ID,
   filterCandidates,
   insertMention,
+  isTranscriptVisible,
   isUserSender,
   mentionIdsInText,
   mentionTrigger,
+  pickedChipNames,
   senderKey,
   splitMentions,
 } from "./mentions";
@@ -199,6 +202,8 @@ export function App() {
   const [mentionQuery, setMentionQuery] = useState("");
   const [mentionIndex, setMentionIndex] = useState(0);
   const pickedMentions = useRef(new Map<string, string>());
+  const pendingCaret = useRef<number | null>(null);
+  const highlightRef = useRef<HTMLDivElement>(null);
 
   const [profileName, setProfileName] = useState("");
   const [profileTitle, setProfileTitle] = useState("");
@@ -262,15 +267,9 @@ export function App() {
     const caret = el?.selectionStart ?? draft.length;
     const next = insertMention(draft, caret, candidate.name);
     pickedMentions.current.set(candidate.name.toLowerCase(), candidate.id);
+    pendingCaret.current = next.caret;
     setDraft(next.text);
     setMentionOpen(false);
-    requestAnimationFrame(() => {
-      const node = composerRef.current;
-      if (!node) return;
-      node.focus();
-      node.setSelectionRange(next.caret, next.caret);
-      resizeComposer();
-    });
   }
 
   function isProtected(agent: Agent) {
@@ -293,12 +292,28 @@ export function App() {
     localStorage.setItem(TOKEN_KEY, tokenInput.trim());
   }, [urlInput, tokenInput]);
 
+  useLayoutEffect(() => {
+    const caret = pendingCaret.current;
+    if (caret == null) return;
+    pendingCaret.current = null;
+    const node = composerRef.current;
+    if (!node) return;
+    node.focus();
+    node.setSelectionRange(caret, caret);
+    resizeComposer();
+  }, [draft]);
+
   useEffect(() => {
     scroller.current?.scrollTo({ top: scroller.current.scrollHeight });
   }, [messages, busy]);
 
   useEffect(() => {
-    const onClick = () => setContextMenu(null);
+    const onPointerDown = (event: PointerEvent) => {
+      if (event.button !== 0) return;
+      const target = event.target;
+      if (target instanceof Element && target.closest(".menu")) return;
+      setContextMenu(null);
+    };
     const onKey = (event: globalThis.KeyboardEvent) => {
       if (event.key !== "Escape") return;
       setContextMenu(null);
@@ -306,10 +321,10 @@ export function App() {
       setProfileOpen(false);
       if (settingsOpen) closeSettings();
     };
-    window.addEventListener("click", onClick);
+    window.addEventListener("pointerdown", onPointerDown);
     window.addEventListener("keydown", onKey);
     return () => {
-      window.removeEventListener("click", onClick);
+      window.removeEventListener("pointerdown", onPointerDown);
       window.removeEventListener("keydown", onKey);
     };
   }, [settingsOpen, urlInput, tokenInput]);
@@ -598,8 +613,22 @@ export function App() {
   function onAgentContext(event: MouseEvent, agent: Agent) {
     if (isProtected(agent)) return;
     event.preventDefault();
+    event.stopPropagation();
     setContextMenu({ x: event.clientX, y: event.clientY, agent });
   }
+
+  function syncComposerScroll() {
+    const field = composerRef.current;
+    const overlay = highlightRef.current;
+    if (!field || !overlay) return;
+    overlay.scrollTop = field.scrollTop;
+    overlay.scrollLeft = field.scrollLeft;
+  }
+
+  const composerChipNames = pickedChipNames(pickedMentions.current);
+  const visibleMessages = active
+    ? messages.filter((message) => isTranscriptVisible(message, active))
+    : messages;
 
   return (
     <div className="app">
@@ -675,8 +704,8 @@ export function App() {
             ) : loadError ? (
               <p className="transcript-line error">{loadError}</p>
             ) : (
-              messages.map((message, index) => {
-                const prev = messages[index - 1];
+              visibleMessages.map((message, index) => {
+                const prev = visibleMessages[index - 1];
                 const mine = isUserSender(message.senderId, message.role);
                 const sameSender =
                   prev != null &&
@@ -796,15 +825,10 @@ export function App() {
               onChange={(e) => void onPickFile(e.target.files?.[0])}
             />
             <div className="composer-field">
-              <div className="composer-highlight" aria-hidden>
+              <div className="composer-highlight" aria-hidden ref={highlightRef}>
                 <MentionText
                   text={draft}
-                  knownNames={[
-                    ...agents.filter((a) => a.kind !== "channel").map((a) => a.name),
-                    ...(pickedMentions.current.has("everyone") || active?.kind === "channel"
-                      ? ["everyone"]
-                      : []),
-                  ]}
+                  knownNames={composerChipNames}
                   chips
                 />
               </div>
@@ -820,7 +844,9 @@ export function App() {
                   setDraft(e.target.value);
                   syncMentionTrigger(e.target.value, e.target.selectionStart);
                   resizeComposer();
+                  syncComposerScroll();
                 }}
+                onScroll={syncComposerScroll}
                 onKeyUp={(e) =>
                   syncMentionTrigger(e.currentTarget.value, e.currentTarget.selectionStart)
                 }

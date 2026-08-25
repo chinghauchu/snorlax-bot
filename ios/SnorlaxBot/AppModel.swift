@@ -266,6 +266,21 @@ final class AppModel {
 
     var pickedMentions: [String: String] = [:]
 
+    func visibleMessages(for agent: Agent) -> [Message] {
+        if agent.isChannel { return messages }
+        return messages.filter { $0.isFromUser || $0.senderId == agent.id }
+    }
+
+    func mentionTriggerRange() -> Range<String.Index>? {
+        let draft = self.draft
+        guard let at = draft.lastIndex(of: "@") else { return nil }
+        let prefix = draft[..<at]
+        if let last = prefix.last, last.isLetter || last.isNumber || last == "_" { return nil }
+        let after = draft[draft.index(after: at)...]
+        if after.contains(where: { $0.isWhitespace }) { return nil }
+        return at..<draft.endIndex
+    }
+
     func mentionIDs(in content: String) -> [String] {
         var ids: [String] = []
         var seen = Set<String>()
@@ -304,15 +319,11 @@ final class AppModel {
 
     func insertMention(_ agent: Agent) {
         pickedMentions[agent.name.lowercased()] = agent.id
-        if let at = draft.lastIndex(of: "@") {
-            let prefix = draft[..<at]
-            let afterAt = draft[draft.index(after: at)...]
-            let token = afterAt.prefix { ch in
-                ch.isLetter || ch.isNumber || ch == "." || ch == "_" || ch == "-"
-            }
-            let rest = String(afterAt.dropFirst(token.count))
+        if let range = mentionTriggerRange() {
+            let restStart = range.upperBound
+            let rest = String(draft[restStart...])
             let pad = rest.first == " " || rest.isEmpty ? "" : " "
-            draft = "\(prefix)@\(agent.name)\(pad)\(rest)"
+            draft = "\(draft[..<range.lowerBound])@\(agent.name)\(pad)\(rest)"
         } else {
             draft += "@\(agent.name) "
         }

@@ -8,6 +8,7 @@
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview",
+    "test": "node --experimental-strip-types --test src/mentions.test.ts src/layout.test.ts",
     "generate:api": "openapi-typescript ./openapi.yaml -o src/openapi.ts",
     "tauri": "tauri"
   },

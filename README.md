@@ -21,7 +21,8 @@ later versions) browse, click, schedule, and call tools without sending tokens
 off-box.
 
 v0.1 is still small: **seeded teammate + group channel + create more teammates
-+ chat with @mentions and agent DMs**. No tools, no sandbox computer, no vision.
++ chat with @mentions**. 1:1s are user ↔ that agent only; agent–agent traffic
+lives in the seeded channel. No tools, no sandbox computer, no vision.
 That slice is meant to actually run on a laptop *or* a Spark, with a mocked
 model backend when a 70B-class checkpoint is not present.
 

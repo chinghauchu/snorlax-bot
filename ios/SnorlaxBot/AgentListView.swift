@@ -66,6 +66,9 @@ struct AgentListView: View {
                         }
                     }
                 }
+                .modifier(UserAgentDeleteMenu(enabled: !agent.isProtected) {
+                    pendingDelete = agent
+                })
                 .deleteDisabled(agent.isProtected)
         }
     }
@@ -134,5 +137,37 @@ struct AccountChip: View {
         .buttonStyle(.plain)
         .background(.bar)
         .accessibilityLabel("Local account, Settings")
+    }
+}
+
+private struct UserAgentDeleteMenu: ViewModifier {
+    let enabled: Bool
+    var onDelete: () -> Void
+
+    @ViewBuilder
+    func body(content: Content) -> some View {
+        if enabled {
+            content.contextMenu {
+                Button("Delete", role: .destructive, action: onDelete)
+            }
+        } else {
+            content
+        }
+    }
+}
+
+private struct UserAgentDeleteMenu: ViewModifier {
+    let enabled: Bool
+    var onDelete: () -> Void
+
+    @ViewBuilder
+    func body(content: Content) -> some View {
+        if enabled {
+            content.contextMenu {
+                Button("Delete", role: .destructive, action: onDelete)
+            }
+        } else {
+            content
+        }
     }
 }

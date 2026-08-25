@@ -59,6 +59,20 @@ export function insertMention(
   return { text: next, caret: trigger.start + name.length + 1 + pad.length };
 }
 
+/** Composer chips are only names picked from typeahead, not every roster name. */
+export function pickedChipNames(picked: Map<string, string>): string[] {
+  return [...picked.keys()];
+}
+
+export function isTranscriptVisible(
+  message: { senderId?: string; role?: string },
+  conversation: { id: string; kind?: string },
+): boolean {
+  if (conversation.kind === "channel") return true;
+  if (isUserSender(message.senderId, message.role)) return true;
+  return (message.senderId || "") === conversation.id;
+}
+
 export function mentionIdsInText(
   text: string,
   picked: Map<string, string>,

@@ -12,6 +12,7 @@ from typing import Any
 from snorlax_runtime import (
     EVERYONE_ID,
     KIND_CHANNEL,
+    SEEDED_CHANNEL_ID,
     USER_SENDER_ID,
     USER_SENDER_NAME,
 )
@@ -77,6 +78,16 @@ def _by_id(agents: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
     return {a["id"]: a for a in agents}
 
 
+def _exact_name_id(token: str, agents: list[dict[str, Any]]) -> str | None:
+    """Exact display-name match only. Unknown or ambiguous → None (plain text)."""
+    if token.casefold() == EVERYONE_ID:
+        return EVERYONE_ID
+    exact = [a for a in agents if a["name"].casefold() == token.casefold()]
+    if len(exact) == 1:
+        return exact[0]["id"]
+    return None
+
+
 def resolve_user_mentions(
     content: str,
     payload_ids: list[str] | None,
@@ -84,7 +95,11 @@ def resolve_user_mentions(
     *,
     is_group: bool,
 ) -> list[dict[str, str]]:
-    """Resolve chips + @DisplayName. Unknown/ambiguous → MentionError."""
+    """Resolve typeahead chip ids, plus exact `@DisplayName` in the body.
+
+    422 only for an unknown chip id (or `@everyone` chip in a 1:1). Typed
+    `@text` that does not exactly match a teammate stays plain text.
+    """
     agents = _agents_only(roster)
     index = _by_id(agents)
     found: list[dict[str, str]] = []
@@ -108,12 +123,12 @@ def resolve_user_mentions(
         add(_mention_record(agent))
 
     for token in parse_at_tokens(content):
-        matched = match_token(token, agents)
+        matched = _exact_name_id(token, agents)
         if matched is None:
-            raise MentionError(f"Unknown @{token}")
+            continue
         if matched == EVERYONE_ID:
             if not is_group:
-                raise MentionError("@everyone is only valid in the group")
+                continue
             add(_mention_record(None, everyone=True))
             continue
         add(_mention_record(index[matched]))
@@ -210,16 +225,6 @@ class _Job:
     peer: bool
     edge_from: str
     edge_to: str
-    mirror_to: str | None = None
-    involve_from: str | None = None
-    involve_text: str | None = None
-
-
-def involve_text(through_name: str, quoted: str) -> str:
-    snippet = quoted.strip().replace("\n", " ")
-    if len(snippet) > 280:
-        snippet = snippet[:277] + "..."
-    return f"{USER_SENDER_NAME} mentioned you in {through_name}: {snippet}"
 
 
 def looks_like_ask(content: str) -> bool:
@@ -289,14 +294,16 @@ async def run_user_turn(
             )
         )
 
-    _enqueue_mentions(
+    await _enqueue_mentions(
         jobs,
         mentions,
+        store=store,
         roster=roster,
         source_id=origin_id,
         source_sender=USER_SENDER_ID,
         source_name=conversation["name"],
         quoted=content,
+        images=images,
         hop=0 if is_group else 1,
         is_group=is_group,
         peer=not is_group,
@@ -317,41 +324,6 @@ async def run_user_turn(
         if job.peer and not turn.allow_peer():
             continue
 
-        if job.involve_from and job.involve_text:
-            through = next(
-                (a for a in roster if a["id"] == job.involve_from), None
-            )
-            if through is None:
-                continue
-            involve = await store.add_message(
-                agent_id=job.conversation_id,
-                role="assistant",
-                content=job.involve_text,
-                sender_id=through["id"],
-                sender_name=through["name"],
-                sender_avatar=through["avatar"],
-                hop=job.hop,
-                mentions=[],
-            )
-            turn.commit_edge(job.edge_from, job.edge_to)
-            turn.commit_peer()
-            if job.conversation_id == origin_id:
-                yield "message.done", involve
-            # Mention-driven involve is an ask. FYI DMs with no ask stay silent.
-            if not looks_like_ask(job.involve_text):
-                continue
-            reply_job = _Job(
-                agent_id=job.agent_id,
-                conversation_id=job.conversation_id,
-                hop=job.hop,
-                peer=True,
-                edge_from=job.agent_id,
-                edge_to=job.involve_from,
-                mirror_to=job.mirror_to,
-            )
-            jobs.append(reply_job)
-            continue
-
         turn.commit_edge(job.edge_from, job.edge_to)
         if job.peer:
             turn.commit_peer()
@@ -370,62 +342,49 @@ async def run_user_turn(
                 yield event, payload
         if saved is None:
             continue
-        if job.mirror_to and job.mirror_to != job.conversation_id:
-            await store.add_message(
-                agent_id=job.mirror_to,
-                role="assistant",
-                content=saved["content"],
-                sender_id=saved["senderId"],
-                sender_name=saved["senderName"],
-                sender_avatar=saved["senderAvatar"],
-                hop=saved["hop"],
-                mentions=saved["mentions"],
-            )
 
-        reply_group = job.conversation_id == origin_id and is_group
-        in_origin_dm = job.conversation_id == origin_id and not is_group
-        source_is_group = reply_group or (
+        source_is_group = (
             (await store.get_agent(job.conversation_id) or {}).get("kind")
             == KIND_CHANNEL
         )
-        _enqueue_mentions(
+        await _enqueue_mentions(
             jobs,
             saved.get("mentions") or [],
+            store=store,
             roster=await store.list_agents(),
             source_id=job.conversation_id,
             source_sender=agent["id"],
             source_name=agent["name"],
             quoted=saved["content"],
+            images=[],
             hop=job.hop + 1,
             is_group=source_is_group,
             peer=True,
-            mirror_hint=job.conversation_id if in_origin_dm or not source_is_group else None,
         )
 
 
-def _enqueue_mentions(
+async def _enqueue_mentions(
     jobs: list[_Job],
     mentions: list[dict[str, str]],
     *,
+    store: Store,
     roster: list[dict[str, Any]],
     source_id: str,
     source_sender: str,
     source_name: str,
     quoted: str,
+    images: list[dict[str, Any]],
     hop: int,
     is_group: bool,
     peer: bool,
-    mirror_hint: str | None = None,
 ) -> None:
-    targets = expand_mention_targets(
-        mentions, roster, exclude=source_sender if source_sender != USER_SENDER_ID else None
-    )
-    queued = {(j.agent_id, j.conversation_id, j.hop, j.involve_from) for j in jobs}
-    for target in targets:
-        if not is_group and target == source_id:
-            continue
-        if is_group:
-            key = (target, source_id, hop, None)
+    del source_name  # surface is the channel; names stay on the copied bubble
+    exclude = source_sender if source_sender != USER_SENDER_ID else None
+    targets = expand_mention_targets(mentions, roster, exclude=exclude)
+    queued = {(j.agent_id, j.conversation_id, j.hop) for j in jobs}
+    if is_group:
+        for target in targets:
+            key = (target, source_id, hop)
             if key in queued:
                 continue
             queued.add(key)
@@ -439,24 +398,54 @@ def _enqueue_mentions(
                     edge_to=target,
                 )
             )
-            continue
-        # 1:1: deliver an involve into the mentioned agent's transcript.
-        text = involve_text(source_name, quoted)
-        key = (target, target, hop, source_id)
+        return
+
+    # 1:1 isolation: peer traffic is addressed in the seeded group channel.
+    # The originating 1:1 keeps the user (or A) bubble; B replies in the channel.
+    targets = [t for t in targets if t != source_id]
+    if not targets:
+        return
+    channel = next((a for a in roster if a["id"] == SEEDED_CHANNEL_ID), None)
+    if channel is None:
+        return
+    await store.add_message(
+        agent_id=SEEDED_CHANNEL_ID,
+        role="user" if source_sender == USER_SENDER_ID else "assistant",
+        content=quoted,
+        images=images or None,
+        sender_id=source_sender,
+        sender_name=(
+            USER_SENDER_NAME
+            if source_sender == USER_SENDER_ID
+            else next(
+                (a["name"] for a in roster if a["id"] == source_sender),
+                source_sender,
+            )
+        ),
+        sender_avatar=next(
+            (a.get("avatar") for a in roster if a["id"] == source_sender),
+            None,
+        ),
+        hop=max(hop - 1, 0),
+        mentions=mentions,
+    )
+    # FYI with no ask: copy into the channel so B is addressed, stay silent.
+    if source_sender == USER_SENDER_ID and not looks_like_ask(quoted):
+        return
+    edge_from = source_sender if source_sender != USER_SENDER_ID else source_id
+    for target in targets:
+        key = (target, SEEDED_CHANNEL_ID, hop)
         if key in queued:
             continue
         queued.add(key)
         jobs.append(
             _Job(
                 agent_id=target,
-                conversation_id=target,
+                conversation_id=SEEDED_CHANNEL_ID,
                 hop=hop,
                 peer=True,
-                edge_from=source_sender if source_sender != USER_SENDER_ID else source_id,
+                edge_from=edge_from,
                 edge_to=target,
-                mirror_to=source_id,
-                involve_from=source_id if source_sender == USER_SENDER_ID else source_sender,
-                involve_text=text,
             )
         )
 

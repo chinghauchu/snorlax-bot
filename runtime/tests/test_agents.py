@@ -76,13 +76,17 @@ def test_cannot_delete_seeded_agent(client) -> None:
 
 
 def test_delete_custom_agent(client) -> None:
-    client.post("/v1/agents", headers=AUTH, json={"name": "Temp"})
-    deleted = client.delete("/v1/agents/temp", headers=AUTH)
+    created = client.post("/v1/agents", headers=AUTH, json={"name": "Temp"})
+    assert created.status_code == 201
+    agent_id = created.json()["id"]
+    deleted = client.delete(f"/v1/agents/{agent_id}", headers=AUTH)
     assert deleted.status_code == 204
-    missing = client.get("/v1/agents/temp", headers=AUTH)
+    missing = client.get(f"/v1/agents/{agent_id}", headers=AUTH)
     assert missing.status_code == 404
     assert "error" in missing.json()
     assert isinstance(missing.json()["error"], str)
+    roster = client.get("/v1/agents", headers=AUTH).json()
+    assert all(a["id"] != agent_id for a in roster)
 
 
 def test_slug_collision(client) -> None:

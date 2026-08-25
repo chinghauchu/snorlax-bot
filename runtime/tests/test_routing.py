@@ -69,12 +69,13 @@ def test_mention_routing_in_group(client) -> None:
     assert snorlax_spoke == []
 
 
-def test_unknown_mention_on_user_send_errors(client) -> None:
-    status, body = _send(client, "snorlax-bot", "Hey @NotARealPerson")
-    # 422 is JSON, not SSE
-    assert status == 422
+def test_unknown_mention_on_user_send_is_plain_text(client) -> None:
+    status, _ = _send(client, "snorlax-bot", "Hey @NotARealPerson")
+    assert status == 200
     listed = _msgs(client, "snorlax-bot")
-    assert listed == []
+    assert listed[0]["role"] == "user"
+    assert listed[0]["content"] == "Hey @NotARealPerson"
+    assert listed[0]["mentions"] == []
 
 
 def test_unknown_mention_via_json(client) -> None:
@@ -87,34 +88,39 @@ def test_unknown_mention_via_json(client) -> None:
     assert "Unknown" in response.json()["error"]
 
 
-def test_everyone_is_group_only(client) -> None:
+def test_everyone_chip_is_group_only(client) -> None:
     response = client.post(
         "/v1/agents/snorlax-bot/messages",
         headers=AUTH,
-        json={"content": "hi @everyone"},
+        json={"content": "hi", "mentions": ["everyone"]},
     )
     assert response.status_code == 422
     assert "everyone" in response.json()["error"]
 
 
-def test_ambiguous_prefix_errors(client) -> None:
+def test_typed_everyone_in_one_to_one_is_plain_text(client) -> None:
+    status, _ = _send(client, "snorlax-bot", "hi @everyone")
+    assert status == 200
+    listed = _msgs(client, "snorlax-bot")
+    assert listed[0]["content"] == "hi @everyone"
+    assert listed[0]["mentions"] == []
+
+
+def test_ambiguous_prefix_is_plain_text(client) -> None:
     _create(client, "Ann")
     _create(client, "Anna")
-    response = client.post(
-        f"/v1/agents/{CHANNEL}/messages",
-        headers=AUTH,
-        json={"content": "hi @An"},
-    )
-    assert response.status_code == 422
-    assert "Ambiguous" in response.json()["error"]
+    status, _ = _send(client, CHANNEL, "hi @An")
+    assert status == 200
+    senders = [m["senderId"] for m in _msgs(client, CHANNEL)]
+    assert senders == ["user"]
 
 
-def test_unique_prefix_ok(client) -> None:
+def test_unique_prefix_without_chip_does_not_route(client) -> None:
     inbox = _create(client, "Inbox")
     status, _ = _send(client, CHANNEL, "ping @Inb")
     assert status == 200
     senders = [m["senderId"] for m in _msgs(client, CHANNEL)]
-    assert inbox["id"] in senders
+    assert inbox["id"] not in senders
 
 
 def test_agent_unknown_mention_ignored(client) -> None:
@@ -126,33 +132,44 @@ def test_agent_unknown_mention_ignored(client) -> None:
     assert any("@NotARealPerson" in m["content"] for m in msgs if m["senderId"] == alice["id"])
 
 
-def test_dm_both_one_to_ones_group_not_mirrored(client) -> None:
+def test_one_to_one_isolation_mention_goes_to_channel(client) -> None:
     alice = _create(client, "Alice")
     bob = _create(client, "Bob")
-    status, _ = _send(client, alice["id"], "Can you look at this @Bob?")
+    status, body = _send(client, alice["id"], "Can you look at this @Bob?")
     assert status == 200
+
+    events = parse_sse(body)
+    sse_senders = {
+        payload.get("senderId")
+        for name, payload in events
+        if name in {"message.delta", "message.done"}
+    }
+    assert bob["id"] not in sse_senders
+    assert alice["id"] in sse_senders
 
     alice_msgs = _msgs(client, alice["id"])
     alice_senders = [m["senderId"] for m in alice_msgs]
     assert alice_senders[0] == "user"
     assert alice_msgs[0]["role"] == "user"
-    assert alice["id"] in alice_senders
-    assert bob["id"] in alice_senders
-    bob_in_alice = [m for m in alice_msgs if m["senderId"] == bob["id"]]
-    assert bob_in_alice
-    assert bob_in_alice[0]["role"] == "assistant"
+    assert alice_msgs[0]["content"] == "Can you look at this @Bob?"
+    assert set(alice_senders) <= {"user", alice["id"]}
+    assert bob["id"] not in alice_senders
+    assert not any("mentioned you in" in m["content"] for m in alice_msgs)
+    assert not any("to Bob" in m["content"] for m in alice_msgs)
 
     bob_msgs = _msgs(client, bob["id"])
-    assert bob_msgs[0]["senderId"] == alice["id"]
-    assert bob_msgs[0]["role"] == "assistant"
-    assert "User mentioned you in Alice:" in bob_msgs[0]["content"]
-    assert "Can you look at this @Bob?" in bob_msgs[0]["content"]
-    assert any(m["senderId"] == bob["id"] for m in bob_msgs)
+    assert bob_msgs == []
+    assert not any("mentioned you in Alice" in m["content"] for m in bob_msgs)
 
     group = _msgs(client, CHANNEL)
-    contents = [m["content"] for m in group]
-    assert not any("Can you look at this @Bob?" in c for c in contents)
-    assert not any("mentioned you in Alice" in c for c in contents)
+    group_senders = [m["senderId"] for m in group]
+    assert "user" in group_senders
+    assert bob["id"] in group_senders
+    assert alice["id"] not in group_senders
+    user_in_group = [m for m in group if m["senderId"] == "user"]
+    assert user_in_group
+    assert "Can you look at this @Bob?" in user_in_group[0]["content"]
+    assert not any("mentioned you in Alice" in m["content"] for m in group)
 
 
 def test_hop_three_allowed_fourth_dropped(client) -> None:

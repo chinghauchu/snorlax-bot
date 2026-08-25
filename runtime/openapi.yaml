@@ -19,6 +19,10 @@ info:
     Mentions are runtime-routed. Hop 0 is the user→current-agent turn.
     Max depth 3 (A→B→C→D ok; D→E dropped). Max 4 peer sends per user turn.
     Same-edge A→B once per turn. Drops are silent in the UI.
+
+    v0.1.1: a 1:1 transcript is only the user and that agent. Peer traffic
+    is addressed in the seeded channel (`snorlax-bot-group`), not in 1:1s.
+    422 only for an unknown mention chip id.
   license:
     name: Apache-2.0
     identifier: Apache-2.0
@@ -403,7 +407,7 @@ components:
           type: string
         agentId:
           type: string
-          description: Transcript owner (agent id or channel id).
+          description: Transcript owner (agent id or channel id). 1:1 lists are only user + that agent; the channel is shared.
         role:
           type: string
           enum: [user, assistant]
@@ -450,7 +454,9 @@ components:
             type: string
           description: |
             Agent ids from typeahead chips. Unresolved `@text` is omitted
-            and is not a mention. Runtime also parses `@DisplayName`.
+            and is not a mention. Unknown chip ids 422. Runtime also
+            parses exact `@DisplayName`. Peer deliveries from a 1:1 land
+            in the seeded channel, not in another agent's 1:1.
 
     MessageDelta:
       type: object
