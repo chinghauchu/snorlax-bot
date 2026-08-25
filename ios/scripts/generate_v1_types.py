@@ -2,8 +2,8 @@
 # SPDX-License-Identifier: Apache-2.0
 """Generate iOS /v1 Codable types from protocol/openapi.yaml.
 
-Source of truth is the locked camelCase contract (PR #20), not main's
-snake_case draft. Do not hand-edit the Swift output.
+Source of truth is the locked camelCase contract in protocol/openapi.yaml.
+Do not hand-edit the Swift output.
 
     python3 ios/scripts/generate_v1_types.py
     python3 ios/scripts/generate_v1_types.py --check

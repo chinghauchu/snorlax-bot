@@ -35,7 +35,7 @@ URL and token start empty. The client never defaults to `127.0.0.1`.
 ## `/v1` types
 
 Wire types are generated from [../protocol/openapi.yaml](../protocol/openapi.yaml)
-(the locked camelCase contract, not main’s old snake_case draft):
+(the locked camelCase `/v1` contract):
 
 ```bash
 python3 ios/scripts/generate_v1_types.py

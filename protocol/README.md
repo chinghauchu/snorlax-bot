@@ -13,4 +13,3 @@ iOS `/v1` Codable types are generated from this file:
 ```bash
 python3 ios/scripts/generate_v1_types.py
 ```
-

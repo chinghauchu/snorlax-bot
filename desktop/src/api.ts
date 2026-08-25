@@ -1,9 +1,14 @@
 import type {
   Agent,
-  AttachmentIn,
+  AgentPatch,
   ChatMessage,
+  ImageIn,
+  MessageDelta,
   RuntimeHealth,
+  Session,
 } from "./types";
+
+export const SEED_AGENT_ID = "snorlax-bot";
 
 export class ApiError extends Error {
   constructor(
@@ -16,29 +21,44 @@ export class ApiError extends Error {
   }
 }
 
-type Session = {
-  baseUrl: string;
-  token: string;
-};
-
 function headers(session: Session, extra?: HeadersInit): Headers {
   const h = new Headers(extra);
   h.set("Authorization", `Bearer ${session.token}`);
   return h;
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
+}
+
+/** Bare arrays are the contract; unwrap a leftover `{ agents|messages: [] }` envelope. */
+function asList<T>(body: unknown, wrappedKey: string): T[] {
+  if (Array.isArray(body)) return body as T[];
+  if (isRecord(body) && Array.isArray(body[wrappedKey])) {
+    return body[wrappedKey] as T[];
+  }
+  return [];
+}
+
+function errorMessage(body: unknown, fallback: string): string {
+  if (!isRecord(body)) return fallback;
+  if (typeof body.error === "string") return body.error;
+  if (isRecord(body.error) && typeof body.error.message === "string") {
+    return body.error.message;
+  }
+  return fallback;
+}
+
 async function parseError(response: Response): Promise<ApiError> {
   try {
-    const body = (await response.json()) as {
-      error?: { code?: string; message?: string };
-    };
+    const body = (await response.json()) as unknown;
     return new ApiError(
       response.status,
-      body.error?.code ?? "http_error",
-      body.error?.message ?? response.statusText,
+      "error",
+      errorMessage(body, response.statusText),
     );
   } catch {
-    return new ApiError(response.status, "http_error", response.statusText);
+    return new ApiError(response.status, "error", response.statusText);
   }
 }
 
@@ -48,10 +68,9 @@ async function json<T>(response: Response): Promise<T> {
   return (await response.json()) as T;
 }
 
-export async function health(session: Session): Promise<RuntimeHealth> {
-  const response = await fetch(`${session.baseUrl}/v1/health`, {
-    headers: headers(session),
-  });
+/** GET /v1/health — no auth. Does not unlock send. */
+export async function health(baseUrl: string): Promise<RuntimeHealth> {
+  const response = await fetch(`${baseUrl}/v1/health`);
   return json<RuntimeHealth>(response);
 }
 
@@ -59,21 +78,46 @@ export async function listAgents(session: Session): Promise<Agent[]> {
   const response = await fetch(`${session.baseUrl}/v1/agents`, {
     headers: headers(session),
   });
-  const body = await json<{ agents: Agent[] }>(response);
-  return body.agents;
+  return asList<Agent>(await json<unknown>(response), "agents");
 }
 
 export async function createAgent(
   session: Session,
-  name: string,
-  instructions: string,
+  name = "New agent",
 ): Promise<Agent> {
   const response = await fetch(`${session.baseUrl}/v1/agents`, {
     method: "POST",
     headers: headers(session, { "Content-Type": "application/json" }),
-    body: JSON.stringify({ name, instructions }),
+    body: JSON.stringify({ name }),
   });
   return json<Agent>(response);
+}
+
+export async function patchAgent(
+  session: Session,
+  agentId: string,
+  patch: AgentPatch,
+): Promise<Agent> {
+  const response = await fetch(
+    `${session.baseUrl}/v1/agents/${encodeURIComponent(agentId)}`,
+    {
+      method: "PATCH",
+      headers: headers(session, { "Content-Type": "application/json" }),
+      body: JSON.stringify(patch),
+    },
+  );
+  return json<Agent>(response);
+}
+
+export async function deleteAgent(
+  session: Session,
+  agentId: string,
+): Promise<void> {
+  const response = await fetch(
+    `${session.baseUrl}/v1/agents/${encodeURIComponent(agentId)}`,
+    { method: "DELETE", headers: headers(session) },
+  );
+  if (!response.ok) throw await parseError(response);
 }
 
 export async function listMessages(
@@ -84,13 +128,12 @@ export async function listMessages(
     `${session.baseUrl}/v1/agents/${encodeURIComponent(agentId)}/messages`,
     { headers: headers(session) },
   );
-  const body = await json<{ messages: ChatMessage[] }>(response);
-  return body.messages;
+  return asList<ChatMessage>(await json<unknown>(response), "messages");
 }
 
 export type StreamHandlers = {
   onDelta: (messageId: string, delta: string) => void;
-  onDone: (message: ChatMessage) => void;
+  onDone: (message: ChatMessage | null) => void;
   onError: (code: string, message: string) => void;
 };
 
@@ -98,7 +141,7 @@ export async function sendMessage(
   session: Session,
   agentId: string,
   content: string,
-  attachments: AttachmentIn[],
+  images: ImageIn[],
   handlers: StreamHandlers,
 ): Promise<void> {
   const response = await fetch(
@@ -106,7 +149,7 @@ export async function sendMessage(
     {
       method: "POST",
       headers: headers(session, { "Content-Type": "application/json" }),
-      body: JSON.stringify({ content, attachments }),
+      body: JSON.stringify({ content, images }),
     },
   );
   if (!response.ok) throw await parseError(response);
@@ -122,9 +165,7 @@ export async function sendMessage(
     buffer += decoder.decode(value, { stream: true });
     const chunks = buffer.split("\n\n");
     buffer = chunks.pop() ?? "";
-    for (const chunk of chunks) {
-      dispatchSse(chunk, handlers);
-    }
+    for (const chunk of chunks) dispatchSse(chunk, handlers);
   }
   if (buffer.trim()) dispatchSse(buffer, handlers);
 }
@@ -137,13 +178,34 @@ function dispatchSse(raw: string, handlers: StreamHandlers): void {
     else if (line.startsWith("data:")) dataLines.push(line.slice(5).trim());
   }
   if (dataLines.length === 0) return;
-  const payload = JSON.parse(dataLines.join("\n")) as Record<string, unknown>;
+  const payload = JSON.parse(dataLines.join("\n")) as unknown;
+  const record = isRecord(payload) ? payload : {};
+
   if (event === "message.delta") {
-    handlers.onDelta(String(payload.message_id), String(payload.delta ?? ""));
+    const delta = payload as MessageDelta;
+    const id = delta.id || (typeof record.message_id === "string" ? record.message_id : "");
+    handlers.onDelta(id, delta.delta ?? "");
   } else if (event === "message.done") {
-    handlers.onDone(payload.message as ChatMessage);
+    const messageRaw = isRecord(record.message) ? record.message : payload;
+    handlers.onDone(
+      isRecord(messageRaw) && typeof messageRaw.id === "string"
+        ? (messageRaw as ChatMessage)
+        : null,
+    );
   } else if (event === "error") {
-    const err = payload.error as { code?: string; message?: string };
-    handlers.onError(err?.code ?? "error", err?.message ?? "Unknown error");
+    handlers.onError("error", errorMessage(payload, "Unknown error"));
   }
+}
+
+export function resolveMediaUrl(baseUrl: string, url: string): string {
+  if (!url) return "";
+  if (
+    url.startsWith("data:") ||
+    url.startsWith("blob:") ||
+    /^https?:\/\//i.test(url)
+  ) {
+    return url;
+  }
+  const root = baseUrl.replace(/\/$/, "");
+  return url.startsWith("/") ? `${root}${url}` : `${root}/${url}`;
 }
