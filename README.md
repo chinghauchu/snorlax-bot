@@ -46,7 +46,8 @@ desktop/     Tauri + TypeScript chat client
 ios/         Swift/SwiftUI companion stub
 runtime/     FastAPI agent runtime (in front of vLLM)
 protocol/    OpenAPI contract for /v1
-docs/        Architecture and next tickets
+docs/        Architecture, Spark vLLM recipe, next tickets
+scripts/     Spark operator entrypoints (vLLM + runtime)
 ```
 
 ## Architecture (one paragraph)
@@ -130,17 +131,28 @@ npm run tauri dev
 
 ### 3. On a real DGX Spark
 
-Point the runtime at a local vLLM server instead of the mock:
+Laptop and CI stay on `mock`. On the Spark, start vLLM first, then point the
+runtime at it. Full GB10 flags, memory budget, and compose file:
+[docs/vllm-spark.md](docs/vllm-spark.md).
+
+```bash
+./scripts/spark-up.sh vllm      # localhost:8000, 70B FP8, Spark-safe flags
+./scripts/spark-up.sh runtime   # SNORLAX_INFERENCE_BACKEND=vllm
+```
+
+Equivalent environment:
 
 ```bash
 export SNORLAX_INFERENCE_BACKEND=vllm
 export SNORLAX_VLLM_BASE_URL=http://127.0.0.1:8000/v1
-export SNORLAX_MODEL=meta-llama/Llama-3.3-70B-Instruct-FP8
+export SNORLAX_MODEL=nvidia/Llama-3.3-70B-Instruct-FP8
 snorlax-runtime
 ```
 
-Default model is **70B-class FP8**, config-swappable. Images may be attached
-and persisted; they are **not** sent to the model in v0 (no vision default).
+Recommended default is **`nvidia/Llama-3.3-70B-Instruct-FP8`** (70B-class FP8
+that fits 128 GB unified memory with KV headroom). Config-swappable. Images
+may be attached and persisted; they are **not** sent to the model in v0
+(no vision default). Clients still use `:8787` — never vLLM `:8000`.
 
 ## v0 vs later
 

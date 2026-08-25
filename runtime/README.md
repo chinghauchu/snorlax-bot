@@ -30,12 +30,23 @@ overrides the file.
 | `SNORLAX_TOKEN` | generated file | Override bearer token |
 | `SNORLAX_BIND` | auto | Force host (`127.0.0.1` / `0.0.0.0`) |
 | `SNORLAX_PORT` | `8787` | Listen port |
-| `SNORLAX_INFERENCE_BACKEND` | `mock` | `mock` or `vllm` |
+| `SNORLAX_INFERENCE_BACKEND` | `mock` | `mock` (laptop/CI) or `vllm` (Spark) |
 | `SNORLAX_VLLM_BASE_URL` | `http://127.0.0.1:8000/v1` | OpenAI-compat base |
-| `SNORLAX_MODEL` | `meta-llama/Llama-3.3-70B-Instruct-FP8` | Default 70B-class FP8 id |
+| `SNORLAX_MODEL` | `nvidia/Llama-3.3-70B-Instruct-FP8` | Default 70B-class FP8 id |
+| `SNORLAX_VLLM_CONNECT_TIMEOUT` | `10` | Seconds to reach vLLM |
+| `SNORLAX_VLLM_READ_TIMEOUT` | `120` | Seconds between streamed chunks |
+| `SNORLAX_VLLM_WRITE_TIMEOUT` | `30` | Seconds to write the prompt |
+
+Laptop and CI keep the default `mock` backend so `pytest` needs no GPU.
+On a DGX Spark, start vLLM on `:8000` first, then set
+`SNORLAX_INFERENCE_BACKEND=vllm`. Recipe, GB10 flags, and compose file:
+[docs/vllm-spark.md](../docs/vllm-spark.md). Shortcut: `../scripts/spark-up.sh`.
 
 ## Tests
 
 ```bash
 pytest
 ```
+
+vLLM-client tests mock the OpenAI-compat HTTP stream. They do not download
+a checkpoint.

@@ -115,6 +115,9 @@ stream(messages: list[{role, content}]) -> async iter[str]
 - `mock` — deterministic-ish streaming reply. Default off-Spark and in CI.
 - `vllm` — `POST {VLLM_BASE_URL}/chat/completions` with `stream: true`.
   Only text `role`/`content` pairs are sent. Images stay on disk.
+  Connection / 4xx / 5xx / timeouts become an SSE `error` event
+  `{ "error": "inference_unavailable: ..." }`. Spark operator recipe:
+  [vllm-spark.md](vllm-spark.md).
 
 System prompt is assembled by the runtime from the agent’s `description`.
 The desktop cannot inject a hidden system prompt around the runtime.
