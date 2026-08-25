@@ -20,6 +20,8 @@ class Agent(BaseModel):
     title: str
     description: str
     avatar: str | None
+    kind: str
+    memberIds: list[str]
     createdAt: str
     updatedAt: str
 
@@ -49,6 +51,11 @@ class ImageIn(BaseModel):
     data: str
 
 
+class Mention(BaseModel):
+    id: str
+    name: str
+
+
 class Message(BaseModel):
     id: str
     agentId: str
@@ -56,8 +63,23 @@ class Message(BaseModel):
     content: str
     images: list[ImageOut]
     createdAt: str
+    senderId: str
+    senderName: str
+    senderAvatar: str | None
+    hop: int
+    mentions: list[Mention]
 
 
 class MessageCreate(BaseModel):
     content: str = Field(min_length=1, max_length=32000)
     images: list[ImageIn] = Field(default_factory=list)
+    mentions: list[str] = Field(default_factory=list)
+
+
+class MessageDelta(BaseModel):
+    id: str
+    role: str
+    delta: str
+    senderId: str | None = None
+    senderName: str | None = None
+    senderAvatar: str | None = None

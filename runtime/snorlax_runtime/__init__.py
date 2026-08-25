@@ -15,3 +15,18 @@ SEEDED_AGENT_DESCRIPTION = (
     "answers compact unless they ask for depth."
 )
 SEEDED_AGENT_AVATAR = None
+
+SEEDED_CHANNEL_ID = "snorlax-bot-group"
+SEEDED_CHANNEL_NAME = "Snorlax-Bot"
+SEEDED_CHANNEL_TITLE = "Group"
+SEEDED_CHANNEL_DESCRIPTION = (
+    "Shared group for every teammate on this Spark. Mention someone with "
+    "@Name to bring them in. Unmentioned members stay silent by default."
+)
+SEEDED_CHANNEL_AVATAR = None
+
+USER_SENDER_ID = "user"
+USER_SENDER_NAME = "User"
+EVERYONE_ID = "everyone"
+KIND_AGENT = "agent"
+KIND_CHANNEL = "channel"

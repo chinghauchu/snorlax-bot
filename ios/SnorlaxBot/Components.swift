@@ -13,7 +13,14 @@ struct AgentAvatar: View {
 
     @ViewBuilder
     private var avatar: some View {
-        if let avatar = agent.avatar, !avatar.isEmpty {
+        if agent.isChannel, agent.avatar == nil || agent.avatar?.isEmpty == true {
+            ZStack {
+                Circle().fill(Color.accentColor.opacity(0.25))
+                Image(systemName: "person.2.fill")
+                    .font(.system(size: size * 0.42, weight: .semibold))
+                    .foregroundStyle(.primary)
+            }
+        } else if let avatar = agent.avatar, !avatar.isEmpty {
             if avatar.hasPrefix("data:"), let data = DataURI.decode(avatar), let image = UIImage(data: data) {
                 Image(uiImage: image)
                     .resizable()
@@ -81,5 +88,46 @@ enum DataURI {
         let marker = "base64,"
         guard let range = value.range(of: marker) else { return nil }
         return Data(base64Encoded: String(value[range.upperBound...]))
+    }
+}
+
+struct MentionLabel: View {
+    let text: String
+    let names: [String]
+
+    var body: some View {
+        Text(attributed)
+            .multilineTextAlignment(.leading)
+    }
+
+    private var attributed: AttributedString {
+        var output = AttributedString()
+        let pattern = try? NSRegularExpression(pattern: "(?<![A-Za-z0-9_])@([A-Za-z][A-Za-z0-9._-]*)")
+        let ns = text as NSString
+        let full = NSRange(location: 0, length: ns.length)
+        var last = 0
+        let lowered = names.map { $0.lowercased() } + ["everyone"]
+        pattern?.enumerateMatches(in: text, range: full) { match, _, _ in
+            guard let match else { return }
+            if match.range.location > last {
+                output.append(AttributedString(ns.substring(with: NSRange(location: last, length: match.range.location - last))))
+            }
+            let token = ns.substring(with: match.range(at: 1))
+            var chunk = AttributedString(ns.substring(with: match.range))
+            let resolved = lowered.contains(where: { $0 == token.lowercased() || $0.hasPrefix(token.lowercased()) })
+            if resolved {
+                chunk.foregroundColor = .accentColor
+                chunk.font = .system(size: 14, weight: .semibold)
+            }
+            output.append(chunk)
+            last = match.range.location + match.range.length
+        }
+        if last < ns.length {
+            output.append(AttributedString(ns.substring(from: last)))
+        }
+        if output.characters.isEmpty {
+            output = AttributedString(text)
+        }
+        return output
     }
 }

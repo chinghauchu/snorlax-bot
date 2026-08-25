@@ -10,11 +10,12 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, Response, StreamingResponse
 
-from snorlax_runtime import SEEDED_AGENT_ID, __version__
+from snorlax_runtime import SEEDED_AGENT_ID, SEEDED_CHANNEL_ID, __version__
 from snorlax_runtime.auth import require_bearer
 from snorlax_runtime.config import Settings
-from snorlax_runtime.db import Store, dump_json, new_id
-from snorlax_runtime.inference import InferenceError, build_backend
+from snorlax_runtime.db import Store, dump_json
+from snorlax_runtime.inference import build_backend
+from snorlax_runtime.routing import MentionError, resolve_user_mentions, run_user_turn
 from snorlax_runtime.schemas import Agent, AgentCreate, AgentPatch, Health, Message, MessageCreate
 from snorlax_runtime.token import resolve_token, write_token_file
 
@@ -151,6 +152,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     ) -> None:
         if id == SEEDED_AGENT_ID:
             raise _error(409, "seeded agent cannot be deleted")
+        if id == SEEDED_CHANNEL_ID:
+            raise _error(409, "seeded channel cannot be deleted")
         store: Store = request.app.state.store
         deleted = await store.delete_agent(id)
         if not deleted:
@@ -178,38 +181,33 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         _: str = Depends(require_bearer),
     ) -> StreamingResponse:
         store: Store = request.app.state.store
-        if await store.get_agent(id) is None:
+        conversation = await store.get_agent(id)
+        if conversation is None:
             raise _error(404, f"Agent {id!r} not found")
+        roster = await store.list_agents()
+        is_group = conversation.get("kind") == "channel"
+        try:
+            mentions = resolve_user_mentions(
+                payload.content,
+                payload.mentions,
+                roster,
+                is_group=is_group,
+            )
+        except MentionError as exc:
+            raise _error(422, exc.message) from exc
         images = [img.model_dump() for img in payload.images]
-        await store.add_message(
-            agent_id=id,
-            role="user",
-            content=payload.content,
-            images=images,
-        )
-        assistant_id = new_id("msg")
         backend = request.app.state.backend
-        transcript = await store.inference_transcript(id)
 
         async def events() -> AsyncIterator[bytes]:
-            pieces: list[str] = []
-            try:
-                async for delta in backend.stream(transcript):
-                    pieces.append(delta)
-                    yield _sse(
-                        "message.delta",
-                        {"id": assistant_id, "role": "assistant", "delta": delta},
-                    )
-            except InferenceError as exc:
-                yield _sse("error", {"error": exc.message})
-                return
-            saved = await store.add_message(
-                agent_id=id,
-                role="assistant",
-                content="".join(pieces),
-                message_id=assistant_id,
-            )
-            yield _sse("message.done", saved)
+            async for event, data in run_user_turn(
+                store=store,
+                backend=backend,
+                conversation=conversation,
+                content=payload.content,
+                images=images,
+                mentions=mentions,
+            ):
+                yield _sse(event, data)
 
         return StreamingResponse(
             events(),

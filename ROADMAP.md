@@ -17,7 +17,8 @@ Chat-only named agents. Meant to *run*, including without a GPU.
 | Bearer token LAN auth; bind localhost until a token exists | Vision (images persist, not sent to the model) |
 | Mock inference **or** vLLM OpenAI-compat | TensorRT-LLM |
 | Tauri + TypeScript chat UI | Computer pane / tools |
-| Swift/SwiftUI iOS companion | Agent-to-agent / group threads |
+| Swift/SwiftUI iOS companion | Skills, “teach a task”, routines |
+| Seeded group channel + agent DMs + @mentions | Extra user-created channels |
 | OpenAPI for `/v1` | Question widgets |
 
 Default model on Spark: **70B-class FP8**, swapped via config.
@@ -40,7 +41,6 @@ Default model on Spark: **70B-class FP8**, swapped via config.
   skill, human reviews.
 - Question widgets in the transcript (approve / pick / short answer) so a bot
   can stop for judgment without dumping a wall of text.
-- Agent-to-agent messages and a group thread so you are not the router.
 
 ## v3 — iOS companion and Spark ops
 

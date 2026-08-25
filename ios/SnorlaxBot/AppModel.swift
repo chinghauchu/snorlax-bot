@@ -37,6 +37,7 @@ final class AppModel {
     var pendingImage: PendingImage?
     var isSending = false
     var errorMessage: String?
+    var composerError: String?
     var wantsComposerFocus = false
     var showSettings = false
     var showProfile = false
@@ -63,7 +64,7 @@ final class AppModel {
     var canCompose: Bool { client != nil && !isSending }
 
     var visibleAgents: [Agent] {
-        agents.isEmpty ? [.placeholder] : agents
+        agents.isEmpty ? [.placeholderChannel, .placeholder] : agents
     }
 
     var selectedAgent: Agent? {
@@ -74,7 +75,7 @@ final class AppModel {
     func bootstrap() async {
         guard isConfigured, let client else {
             agents = []
-            selectedAgentID = Agent.seedID
+            selectedAgentID = Agent.channelID
             messages = []
             localPreviews = [:]
             navigationPath = []
@@ -83,7 +84,8 @@ final class AppModel {
         do {
             let roster = try await client.listAgents()
             agents = roster
-            let seed = roster.first(where: \.isSeed) ?? roster.first
+            let channel = roster.first(where: \.isChannel)
+            let seed = channel ?? roster.first(where: \.isSeed) ?? roster.first
             if let seed {
                 await select(seed.id, push: true)
                 wantsComposerFocus = true
@@ -128,16 +130,16 @@ final class AppModel {
     }
 
     func delete(_ agent: Agent) async {
-        guard !agent.isSeed, let client else { return }
+        guard !agent.isProtected, let client else { return }
         do {
             try await client.deleteAgent(id: agent.id)
             agents.removeAll { $0.id == agent.id }
             if selectedAgentID == agent.id {
-                let next = agents.first(where: \.isSeed) ?? agents.first
+                let next = agents.first(where: \.isChannel) ?? agents.first(where: \.isSeed) ?? agents.first
                 if let next {
                     await select(next.id, push: true)
                 } else {
-                    selectedAgentID = Agent.seedID
+                    selectedAgentID = Agent.channelID
                     messages = []
                     navigationPath = []
                 }
@@ -174,8 +176,10 @@ final class AppModel {
         let content = draft.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !content.isEmpty else { return }
         let image = pendingImage
+        let mentionIDs = mentionIDs(in: content)
         draft = ""
         pendingImage = nil
+        composerError = nil
 
         let user = Message.optimisticUser(agentId: agent.id, content: content)
         if let data = image?.data {
@@ -189,7 +193,8 @@ final class AppModel {
             try await client.sendMessage(
                 agentId: agent.id,
                 content: content,
-                images: image.map { [$0.asInput] } ?? []
+                images: image.map { [$0.asInput] } ?? [],
+                mentions: mentionIDs
             ) { [weak self] event in
                 Task { @MainActor in
                     self?.handle(event, agentId: agent.id)
@@ -202,7 +207,13 @@ final class AppModel {
         } catch is CancellationError {
             await refreshMessages()
         } catch {
-            errorMessage = error.localizedDescription
+            if let runtime = error as? RuntimeError, case .http(let status, let message) = runtime, status == 422 {
+                composerError = message
+                messages.removeAll { $0.id == user.id }
+                draft = content
+            } else {
+                errorMessage = error.localizedDescription
+            }
         }
     }
 
@@ -228,11 +239,19 @@ final class AppModel {
     private func handle(_ event: RuntimeClient.StreamEvent, agentId: String) {
         guard selectedAgentID == agentId else { return }
         switch event {
-        case .delta(let id, let text):
+        case .delta(let id, let text, let senderId, let senderName, let senderAvatar):
             if let index = messages.firstIndex(where: { $0.id == id }) {
                 messages[index].content += text
             } else {
-                messages.append(.streamingAssistant(id: id, agentId: agentId, content: text))
+                let agent = selectedAgent
+                messages.append(.streamingAssistant(
+                    id: id,
+                    agentId: agentId,
+                    content: text,
+                    senderId: senderId ?? agent?.id ?? agentId,
+                    senderName: senderName ?? agent?.name ?? "Agent",
+                    senderAvatar: senderAvatar ?? agent?.avatar
+                ))
             }
         case .done(let message):
             if let index = messages.firstIndex(where: { $0.id == message.id }) {
@@ -242,6 +261,59 @@ final class AppModel {
             }
         case .error(let message):
             errorMessage = message
+        }
+    }
+
+    var pickedMentions: [String: String] = [:]
+
+    func mentionIDs(in content: String) -> [String] {
+        var ids: [String] = []
+        var seen = Set<String>()
+        let regex = try? NSRegularExpression(pattern: "(?<![A-Za-z0-9_])@([A-Za-z][A-Za-z0-9._-]*)")
+        let range = NSRange(content.startIndex..., in: content)
+        regex?.enumerateMatches(in: content, range: range) { match, _, _ in
+            guard let match, let tokenRange = Range(match.range(at: 1), in: content) else { return }
+            let token = String(content[tokenRange]).lowercased()
+            if let id = pickedMentions[token], !seen.contains(id) {
+                seen.insert(id)
+                ids.append(id)
+            }
+        }
+        return ids
+    }
+
+    func mentionCandidates(query: String) -> [Agent] {
+        let q = query.lowercased()
+        var people = agents.filter { !$0.isChannel && $0.name.lowercased().hasPrefix(q) }
+        if selectedAgent?.isChannel == true, "everyone".hasPrefix(q) {
+            let everyone = Agent(
+                id: "everyone",
+                name: "everyone",
+                title: "",
+                description: "",
+                avatar: nil,
+                kind: .agent,
+                memberIds: [],
+                createdAt: .distantPast,
+                updatedAt: .distantPast
+            )
+            people.insert(everyone, at: 0)
+        }
+        return people
+    }
+
+    func insertMention(_ agent: Agent) {
+        pickedMentions[agent.name.lowercased()] = agent.id
+        if let at = draft.lastIndex(of: "@") {
+            let prefix = draft[..<at]
+            let afterAt = draft[draft.index(after: at)...]
+            let token = afterAt.prefix { ch in
+                ch.isLetter || ch.isNumber || ch == "." || ch == "_" || ch == "-"
+            }
+            let rest = afterAt.dropFirst(token.count)
+            draft = "\(prefix)@\(agent.name) \(rest)"
+        } else {
+            draft += "@\(agent.name) "
         }
     }
 

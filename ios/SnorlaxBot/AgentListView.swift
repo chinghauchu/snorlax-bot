@@ -60,13 +60,13 @@ struct AgentListView: View {
                 .tag(agent.id)
                 .listRowInsets(EdgeInsets(top: 0, leading: 16, bottom: 0, trailing: 16))
                 .swipeActions(edge: .trailing, allowsFullSwipe: false) {
-                    if !agent.isSeed {
+                    if !agent.isProtected {
                         Button("Delete", role: .destructive) {
                             pendingDelete = agent
                         }
                     }
                 }
-                .deleteDisabled(agent.isSeed)
+                .deleteDisabled(agent.isProtected)
         }
     }
 

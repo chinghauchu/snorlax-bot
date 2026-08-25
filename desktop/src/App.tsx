@@ -11,6 +11,7 @@ import {
 import {
   ApiError,
   SEED_AGENT_ID,
+  SEED_CHANNEL_ID,
   createAgent,
   deleteAgent,
   listAgents,
@@ -19,6 +20,16 @@ import {
   resolveMediaUrl,
   sendMessage,
 } from "./api";
+import {
+  USER_SENDER_ID,
+  filterCandidates,
+  insertMention,
+  isUserSender,
+  mentionIdsInText,
+  mentionTrigger,
+  senderKey,
+  splitMentions,
+} from "./mentions";
 import type {
   Agent,
   ChatMessage,
@@ -35,12 +46,25 @@ const ACCENT_KEY = "snorlax.accent";
 const URL_PLACEHOLDER = "http://" + "<" + "spark-lan" + ">" + ":8787";
 const MISSING_CREDS =
   "Paste your Spark URL and token in Settings to start.";
+const PLACEHOLDER_CHANNEL: Agent = {
+  id: SEED_CHANNEL_ID,
+  name: "Snorlax-Bot",
+  title: "Group",
+  description: "",
+  avatar: null,
+  kind: "channel",
+  memberIds: [SEED_AGENT_ID],
+  createdAt: "",
+  updatedAt: "",
+};
 const PLACEHOLDER_SEED: Agent = {
   id: SEED_AGENT_ID,
   name: "Snorlax-Bot",
   title: "Assistant",
   description: "",
   avatar: null,
+  kind: "agent",
+  memberIds: [],
   createdAt: "",
   updatedAt: "",
 };
@@ -163,14 +187,18 @@ export function App() {
   const [contextMenu, setContextMenu] = useState<ContextMenu | null>(null);
   const [pendingDelete, setPendingDelete] = useState<Agent | null>(null);
 
-  const [agents, setAgents] = useState<Agent[]>([PLACEHOLDER_SEED]);
-  const [activeId, setActiveId] = useState<string | null>(SEED_AGENT_ID);
+  const [agents, setAgents] = useState<Agent[]>([PLACEHOLDER_CHANNEL, PLACEHOLDER_SEED]);
+  const [activeId, setActiveId] = useState<string | null>(SEED_CHANNEL_ID);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [draft, setDraft] = useState("");
   const [pendingImage, setPendingImage] = useState<PendingImage | null>(null);
   const [busy, setBusy] = useState(false);
   const [composerError, setComposerError] = useState<string | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [mentionOpen, setMentionOpen] = useState(false);
+  const [mentionQuery, setMentionQuery] = useState("");
+  const [mentionIndex, setMentionIndex] = useState(0);
+  const pickedMentions = useRef(new Map<string, string>());
 
   const [profileName, setProfileName] = useState("");
   const [profileTitle, setProfileTitle] = useState("");
@@ -207,6 +235,47 @@ export function App() {
     () => agents.find((a) => a.id === activeId) ?? null,
     [agents, activeId],
   );
+  const mentionCandidates = useMemo(() => {
+    const people = agents
+      .filter((a) => a.kind !== "channel")
+      .map((a) => ({ id: a.id, name: a.name, avatar: a.avatar }));
+    return filterCandidates(
+      people,
+      mentionQuery,
+      active?.kind === "channel",
+    );
+  }, [agents, mentionQuery, active]);
+
+  function syncMentionTrigger(value: string, caret: number) {
+    const trigger = mentionTrigger(value, caret);
+    if (!trigger) {
+      setMentionOpen(false);
+      return;
+    }
+    setMentionQuery(trigger.query);
+    setMentionIndex(0);
+    setMentionOpen(true);
+  }
+
+  function pickMention(candidate: { id: string; name: string }) {
+    const el = composerRef.current;
+    const caret = el?.selectionStart ?? draft.length;
+    const next = insertMention(draft, caret, candidate.name);
+    pickedMentions.current.set(candidate.name.toLowerCase(), candidate.id);
+    setDraft(next.text);
+    setMentionOpen(false);
+    requestAnimationFrame(() => {
+      const node = composerRef.current;
+      if (!node) return;
+      node.focus();
+      node.setSelectionRange(next.caret, next.caret);
+      resizeComposer();
+    });
+  }
+
+  function isProtected(agent: Agent) {
+    return agent.id === SEED_AGENT_ID || agent.kind === "channel";
+  }
   const composerDisabled = !credsReady || busy;
 
   useEffect(() => {
@@ -255,13 +324,14 @@ export function App() {
       try {
         const roster = await listAgents(next);
         setAgents(roster);
-        const seed =
+        const preferred =
+          roster.find((a) => a.kind === "channel")?.id ??
           roster.find((a) => a.id === SEED_AGENT_ID)?.id ??
           roster[0]?.id ??
           null;
-        setActiveId(seed);
-        if (seed) {
-          setMessages(await listMessages(next, seed));
+        setActiveId(preferred);
+        if (preferred) {
+          setMessages(await listMessages(next, preferred));
           focusComposer();
         } else {
           setMessages([]);
@@ -278,8 +348,8 @@ export function App() {
 
   useEffect(() => {
     if (!session) {
-      setAgents([PLACEHOLDER_SEED]);
-      setActiveId(SEED_AGENT_ID);
+      setAgents([PLACEHOLDER_CHANNEL, PLACEHOLDER_SEED]);
+      setActiveId(SEED_CHANNEL_ID);
       setMessages([]);
       setLoadError(null);
       return;
@@ -358,6 +428,7 @@ export function App() {
       setAgents(roster);
       if (activeId === doomed.id) {
         const seed =
+          roster.find((a) => a.kind === "channel")?.id ??
           roster.find((a) => a.id === SEED_AGENT_ID)?.id ??
           roster[0]?.id ??
           null;
@@ -396,13 +467,24 @@ export function App() {
       content,
       images: localImages,
       createdAt: new Date().toISOString(),
+      senderId: USER_SENDER_ID,
+      senderName: "User",
+      senderAvatar: null,
+      hop: 0,
+      mentions: [],
     };
     setMessages((prev) => [...prev, userMsg]);
     setBusy(true);
     resizeComposer(true);
+    const mentionIds = mentionIdsInText(content, pickedMentions.current);
     try {
-      await sendMessage(session, active.id, content, images, {
-        onDelta(messageId, delta) {
+      await sendMessage(
+        session,
+        active.id,
+        content,
+        images,
+        {
+        onDelta(messageId, delta, sender) {
           setMessages((prev) => {
             const existing = prev.find((m) => m.id === messageId);
             if (!existing) {
@@ -415,6 +497,11 @@ export function App() {
                   content: delta,
                   images: [],
                   createdAt: new Date().toISOString(),
+                  senderId: sender?.senderId || active.id,
+                  senderName: sender?.senderName || active.name,
+                  senderAvatar: sender?.senderAvatar ?? active.avatar,
+                  hop: 0,
+                  mentions: [],
                 },
               ];
             }
@@ -426,21 +513,27 @@ export function App() {
         onDone(message) {
           if (message) {
             setMessages((prev) => {
-              const withoutLocal = prev.filter(
-                (m) => m.id !== userMsg.id && m.id !== message.id,
-              );
-              return [...withoutLocal, userMsg, message];
+              const without = prev.filter((m) => m.id !== message.id);
+              return [...without, message];
             });
-          } else {
-            void listMessages(session, active.id).then(setMessages);
           }
         },
         onError(code, message) {
           setComposerError(`${code}: ${message}`);
         },
-      });
+        },
+        mentionIds,
+      );
+      setMessages(await listMessages(session, active.id));
+      pickedMentions.current.clear();
     } catch (err) {
-      setComposerError(describeError(err));
+      if (err instanceof ApiError && err.status === 422) {
+        setComposerError(err.message);
+        setMessages((prev) => prev.filter((m) => m.id !== userMsg.id));
+        setDraft(content);
+      } else {
+        setComposerError(describeError(err));
+      }
     } finally {
       setBusy(false);
       focusComposer();
@@ -448,6 +541,30 @@ export function App() {
   }
 
   function onComposerKey(event: KeyboardEvent<HTMLTextAreaElement>) {
+    if (mentionOpen && mentionCandidates.length > 0) {
+      if (event.key === "ArrowDown") {
+        event.preventDefault();
+        setMentionIndex((i) => (i + 1) % mentionCandidates.length);
+        return;
+      }
+      if (event.key === "ArrowUp") {
+        event.preventDefault();
+        setMentionIndex(
+          (i) => (i - 1 + mentionCandidates.length) % mentionCandidates.length,
+        );
+        return;
+      }
+      if (event.key === "Enter" || event.key === "Tab") {
+        event.preventDefault();
+        pickMention(mentionCandidates[mentionIndex] ?? mentionCandidates[0]);
+        return;
+      }
+      if (event.key === "Escape") {
+        event.preventDefault();
+        setMentionOpen(false);
+        return;
+      }
+    }
     if (event.key === "Enter" && !event.shiftKey) {
       event.preventDefault();
       void onSend();
@@ -479,7 +596,7 @@ export function App() {
   }
 
   function onAgentContext(event: MouseEvent, agent: Agent) {
-    if (agent.id === SEED_AGENT_ID) return;
+    if (isProtected(agent)) return;
     event.preventDefault();
     setContextMenu({ x: event.clientX, y: event.clientY, agent });
   }
@@ -514,7 +631,12 @@ export function App() {
                   size={28}
                   session={session}
                 />
-                <span className="row-name">{agent.name}</span>
+                <span className="row-copy">
+                  <span className="row-name">{agent.name}</span>
+                  {agent.title ? (
+                    <span className="row-title">{agent.title}</span>
+                  ) : null}
+                </span>
               </button>
             </li>
           ))}
@@ -555,22 +677,56 @@ export function App() {
             ) : (
               messages.map((message, index) => {
                 const prev = messages[index - 1];
-                const sameTurn = prev?.role === message.role;
+                const mine = isUserSender(message.senderId, message.role);
+                const sameSender =
+                  prev != null &&
+                  senderKey(prev.senderId, prev.role) ===
+                    senderKey(message.senderId, message.role);
+                const knownNames = [
+                  ...agents.filter((a) => a.kind !== "channel").map((a) => a.name),
+                  "everyone",
+                ];
                 return (
                   <article
                     key={message.id}
-                    className={`bubble ${message.role}${sameTurn ? " same-turn" : " new-turn"}`}
+                    className={`turn ${mine ? "right" : "left"}${sameSender ? " same-sender" : " new-sender"}`}
                   >
-                    {message.images.map((image) => (
-                      <AuthedImg
-                        key={image.id}
-                        className="bubble-image"
-                        src={resolveMediaUrl(session?.baseUrl ?? "", image.url)}
-                        session={session}
-                        alt=""
-                      />
-                    ))}
-                    {message.content ? <pre>{message.content}</pre> : null}
+                    {!mine && !sameSender ? (
+                      <div className="sender-row">
+                        <Avatar
+                          src={
+                            message.senderAvatar ??
+                            agents.find((a) => a.id === message.senderId)?.avatar ??
+                            null
+                          }
+                          name={message.senderName || "Agent"}
+                          size={20}
+                          session={session}
+                        />
+                        <span className="sender-name">
+                          {message.senderName || "Agent"}
+                        </span>
+                      </div>
+                    ) : null}
+                    <div className={`bubble ${mine ? "user" : "agent"}`}>
+                      {message.images.map((image) => (
+                        <AuthedImg
+                          key={image.id}
+                          className="bubble-image"
+                          src={resolveMediaUrl(session?.baseUrl ?? "", image.url)}
+                          session={session}
+                          alt=""
+                        />
+                      ))}
+                      {message.content ? (
+                        <pre>
+                          <MentionText
+                            text={message.content}
+                            knownNames={knownNames}
+                          />
+                        </pre>
+                      ) : null}
+                    </div>
                   </article>
                 );
               })
@@ -580,7 +736,6 @@ export function App() {
         </div>
 
         <footer className="composer">
-          {composerError ? <p className="error">{composerError}</p> : null}
           {pendingImage ? (
             <div className="attach-preview">
               <img src={pendingImage.previewUrl} alt="Attachment preview" />
@@ -596,6 +751,32 @@ export function App() {
                 ×
               </button>
             </div>
+          ) : null}
+          {mentionOpen && mentionCandidates.length > 0 ? (
+            <ul className="typeahead" role="listbox">
+              {mentionCandidates.map((candidate, index) => (
+                <li key={candidate.id}>
+                  <button
+                    type="button"
+                    role="option"
+                    aria-selected={index === mentionIndex}
+                    className={index === mentionIndex ? "on" : ""}
+                    onMouseDown={(e) => {
+                      e.preventDefault();
+                      pickMention(candidate);
+                    }}
+                  >
+                    <Avatar
+                      src={candidate.avatar}
+                      name={candidate.name}
+                      size={20}
+                      session={session}
+                    />
+                    <span>{candidate.name}</span>
+                  </button>
+                </li>
+              ))}
+            </ul>
           ) : null}
           <div className="composer-bar">
             <button
@@ -614,20 +795,41 @@ export function App() {
               hidden
               onChange={(e) => void onPickFile(e.target.files?.[0])}
             />
-            <textarea
-              ref={composerRef}
-              value={draft}
-              rows={1}
-              disabled={composerDisabled}
-              placeholder={
-                active ? `Message ${active.name}` : "Message"
-              }
-              onChange={(e) => {
-                setDraft(e.target.value);
-                resizeComposer();
-              }}
-              onKeyDown={onComposerKey}
-            />
+            <div className="composer-field">
+              <div className="composer-highlight" aria-hidden>
+                <MentionText
+                  text={draft}
+                  knownNames={[
+                    ...agents.filter((a) => a.kind !== "channel").map((a) => a.name),
+                    ...(pickedMentions.current.has("everyone") || active?.kind === "channel"
+                      ? ["everyone"]
+                      : []),
+                  ]}
+                  chips
+                />
+              </div>
+              <textarea
+                ref={composerRef}
+                value={draft}
+                rows={1}
+                disabled={composerDisabled}
+                placeholder={
+                  active ? `Message ${active.name}` : "Message"
+                }
+                onChange={(e) => {
+                  setDraft(e.target.value);
+                  syncMentionTrigger(e.target.value, e.target.selectionStart);
+                  resizeComposer();
+                }}
+                onKeyUp={(e) =>
+                  syncMentionTrigger(e.currentTarget.value, e.currentTarget.selectionStart)
+                }
+                onClick={(e) =>
+                  syncMentionTrigger(e.currentTarget.value, e.currentTarget.selectionStart)
+                }
+                onKeyDown={onComposerKey}
+              />
+            </div>
             <button
               type="button"
               className="send"
@@ -638,6 +840,7 @@ export function App() {
               <SendIcon />
             </button>
           </div>
+          {composerError ? <p className="error under">{composerError}</p> : null}
         </footer>
       </main>
 
@@ -850,6 +1053,32 @@ export function App() {
         </div>
       ) : null}
     </div>
+  );
+}
+
+function MentionText({
+  text,
+  knownNames,
+  chips = false,
+}: {
+  text: string;
+  knownNames: string[];
+  chips?: boolean;
+}) {
+  const pieces = splitMentions(text, knownNames);
+  if (pieces.length === 0) return text ? <>{text}</> : null;
+  return (
+    <>
+      {pieces.map((piece, index) =>
+        piece.type === "mention" && piece.resolved ? (
+          <span key={index} className={chips ? "mention-chip" : "mention"}>
+            {piece.value}
+          </span>
+        ) : (
+          <span key={index}>{piece.value}</span>
+        ),
+      )}
+    </>
   );
 }
 

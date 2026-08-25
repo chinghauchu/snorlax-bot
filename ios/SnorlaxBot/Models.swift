@@ -4,8 +4,23 @@ import SwiftUI
 
 extension Agent {
     static let seedID = "snorlax-bot"
+    static let channelID = "snorlax-bot-group"
 
     var isSeed: Bool { id == Self.seedID }
+    var isChannel: Bool { kind == .channel }
+    var isProtected: Bool { isSeed || isChannel }
+
+    static let placeholderChannel = Agent(
+        id: channelID,
+        name: "Snorlax-Bot",
+        title: "Group",
+        description: "",
+        avatar: nil,
+        kind: .channel,
+        memberIds: [seedID],
+        createdAt: .distantPast,
+        updatedAt: .distantPast
+    )
 
     static let placeholder = Agent(
         id: seedID,
@@ -13,12 +28,16 @@ extension Agent {
         title: "Assistant",
         description: "",
         avatar: nil,
+        kind: .agent,
+        memberIds: [],
         createdAt: .distantPast,
         updatedAt: .distantPast
     )
 }
 
 extension Message {
+    var isFromUser: Bool { senderId == "user" || (senderId.isEmpty && role == .user) }
+
     static func optimisticUser(agentId: String, content: String) -> Message {
         Message(
             id: "local-\(UUID().uuidString)",
@@ -26,18 +45,35 @@ extension Message {
             role: .user,
             content: content,
             images: [],
-            createdAt: Date()
+            createdAt: Date(),
+            senderId: "user",
+            senderName: "User",
+            senderAvatar: nil,
+            hop: 0,
+            mentions: []
         )
     }
 
-    static func streamingAssistant(id: String, agentId: String, content: String) -> Message {
+    static func streamingAssistant(
+        id: String,
+        agentId: String,
+        content: String,
+        senderId: String,
+        senderName: String,
+        senderAvatar: String?
+    ) -> Message {
         Message(
             id: id,
             agentId: agentId,
             role: .assistant,
             content: content,
             images: [],
-            createdAt: Date()
+            createdAt: Date(),
+            senderId: senderId,
+            senderName: senderName,
+            senderAvatar: senderAvatar,
+            hop: 0,
+            mentions: []
         )
     }
 }

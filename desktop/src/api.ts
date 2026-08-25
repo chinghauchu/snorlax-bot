@@ -9,6 +9,7 @@ import type {
 } from "./types";
 
 export const SEED_AGENT_ID = "snorlax-bot";
+export const SEED_CHANNEL_ID = "snorlax-bot-group";
 
 export class ApiError extends Error {
   constructor(
@@ -132,7 +133,11 @@ export async function listMessages(
 }
 
 export type StreamHandlers = {
-  onDelta: (messageId: string, delta: string) => void;
+  onDelta: (
+    messageId: string,
+    delta: string,
+    sender?: { senderId?: string; senderName?: string; senderAvatar?: string | null },
+  ) => void;
   onDone: (message: ChatMessage | null) => void;
   onError: (code: string, message: string) => void;
 };
@@ -143,13 +148,19 @@ export async function sendMessage(
   content: string,
   images: ImageIn[],
   handlers: StreamHandlers,
+  mentions: string[] = [],
 ): Promise<void> {
+  const body: { content: string; images: ImageIn[]; mentions?: string[] } = {
+    content,
+    images,
+  };
+  if (mentions.length) body.mentions = mentions;
   const response = await fetch(
     `${session.baseUrl}/v1/agents/${encodeURIComponent(agentId)}/messages`,
     {
       method: "POST",
       headers: headers(session, { "Content-Type": "application/json" }),
-      body: JSON.stringify({ content, images }),
+      body: JSON.stringify(body),
     },
   );
   if (!response.ok) throw await parseError(response);
@@ -184,7 +195,11 @@ function dispatchSse(raw: string, handlers: StreamHandlers): void {
   if (event === "message.delta") {
     const delta = payload as MessageDelta;
     const id = delta.id || (typeof record.message_id === "string" ? record.message_id : "");
-    handlers.onDelta(id, delta.delta ?? "");
+    handlers.onDelta(id, delta.delta ?? "", {
+      senderId: delta.senderId,
+      senderName: delta.senderName,
+      senderAvatar: delta.senderAvatar ?? null,
+    });
   } else if (event === "message.done") {
     const messageRaw = isRecord(record.message) ? record.message : payload;
     handlers.onDone(

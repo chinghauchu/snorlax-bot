@@ -25,15 +25,20 @@ def test_chat_sse_mock(client) -> None:
     assert "mock backend" in deltas
     assert "Draft a Monday briefing." in deltas
     first_delta = next(p for n, p in events if n == "message.delta")
-    assert first_delta == {
-        "id": first_delta["id"],
-        "role": "assistant",
-        "delta": first_delta["delta"],
-    }
+    assert first_delta["id"] == first_delta["id"]
+    assert first_delta["role"] == "assistant"
+    assert first_delta["senderId"] == "snorlax-bot"
+    assert first_delta["senderName"] == "Snorlax-Bot"
+    assert first_delta["senderAvatar"] is None
+    assert first_delta["delta"]
     done = events[-1][1]
     assert "message" not in done
     assert done["role"] == "assistant"
     assert done["agentId"] == "snorlax-bot"
+    assert done["senderId"] == "snorlax-bot"
+    assert done["senderName"] == "Snorlax-Bot"
+    assert done["hop"] == 0
+    assert done["mentions"] == []
     assert done["content"] == deltas
     assert done["images"] == []
     assert "createdAt" in done
@@ -64,6 +69,9 @@ def test_transcript_persists_and_images_stay_off_model(client) -> None:
     assert isinstance(messages, list)
     assert messages[0]["role"] == "user"
     assert messages[0]["agentId"] == "snorlax-bot"
+    assert messages[0]["senderId"] == "user"
+    assert messages[0]["senderName"] == "User"
+    assert messages[0]["hop"] == 0
     image = messages[0]["images"][0]
     assert image["mime"] == "image/png"
     assert image["url"] == f"/v1/images/{image['id']}"

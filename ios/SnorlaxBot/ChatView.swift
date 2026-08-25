@@ -8,7 +8,7 @@ struct ChatView: View {
     @FocusState private var composerFocused: Bool
 
     private var agent: Agent {
-        model.visibleAgents.first(where: { $0.id == agentID }) ?? .placeholder
+        model.visibleAgents.first(where: { $0.id == agentID }) ?? .placeholderChannel
     }
 
     var body: some View {
@@ -64,8 +64,9 @@ struct ChatView: View {
                         ForEach(Array(model.messages.enumerated()), id: \.element.id) { index, message in
                             MessageBubble(
                                 message: message,
-                                agent: agent,
-                                localPreviews: model.localPreviews[message.id] ?? []
+                                agents: model.visibleAgents,
+                                localPreviews: model.localPreviews[message.id] ?? [],
+                                sameSender: sameSender(at: index)
                             )
                             .padding(.top, turnSpacing(at: index))
                             .id(message.id)
@@ -84,10 +85,19 @@ struct ChatView: View {
         }
     }
 
-    /// 4pt inside a turn (same role), 16pt when the speaker changes — matches desktop.
+    private func senderKey(_ message: Message) -> String {
+        message.senderId.isEmpty ? (message.role == .user ? "user" : message.agentId) : message.senderId
+    }
+
+    private func sameSender(at index: Int) -> Bool {
+        guard index > 0 else { return false }
+        return senderKey(model.messages[index - 1]) == senderKey(model.messages[index])
+    }
+
+    /// 4pt inside a streak (same sender), 16pt when the sender changes.
     private func turnSpacing(at index: Int) -> CGFloat {
         guard index > 0 else { return 0 }
-        return model.messages[index - 1].role == model.messages[index].role ? 4 : 16
+        return sameSender(at: index) ? 4 : 16
     }
 }
 
@@ -96,6 +106,16 @@ private struct ComposerBar: View {
     var focused: FocusState<Bool>.Binding
     @Environment(AppModel.self) private var model
     @State private var pickerItem: PhotosPickerItem?
+
+    private var mentionQuery: String? {
+        let draft = model.draft
+        guard let at = draft.lastIndex(of: "@") else { return nil }
+        let prefix = draft[..<at]
+        if let last = prefix.last, last.isLetter || last.isNumber || last == "_" { return nil }
+        let after = draft[draft.index(after: at)...]
+        if after.contains(where: { $0.isWhitespace }) { return nil }
+        return String(after)
+    }
 
     var body: some View {
         @Bindable var model = model
@@ -115,6 +135,35 @@ private struct ComposerBar: View {
                             .foregroundStyle(.secondary)
                     }
                     .accessibilityLabel("Remove image")
+                }
+            }
+            if let query = mentionQuery {
+                let candidates = model.mentionCandidates(query: query)
+                if !candidates.isEmpty {
+                    VStack(alignment: .leading, spacing: 0) {
+                        ForEach(candidates) { candidate in
+                            Button {
+                                model.insertMention(candidate)
+                            } label: {
+                                HStack(spacing: 8) {
+                                    AgentAvatar(agent: candidate, size: 20)
+                                    Text(candidate.name)
+                                        .font(.system(size: 14))
+                                        .foregroundStyle(.primary)
+                                    Spacer(minLength: 0)
+                                }
+                                .padding(.horizontal, 10)
+                                .padding(.vertical, 6)
+                            }
+                            .buttonStyle(.plain)
+                        }
+                    }
+                    .frame(width: 240, alignment: .leading)
+                    .background(.bar, in: RoundedRectangle(cornerRadius: 12))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 12)
+                            .stroke(Color(uiColor: .separator), lineWidth: 0.5)
+                    )
                 }
             }
             HStack(alignment: .bottom, spacing: 8) {
@@ -141,6 +190,11 @@ private struct ComposerBar: View {
                 .disabled(!model.canCompose || model.draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                 .accessibilityLabel("Send")
             }
+            if let error = model.composerError, !error.isEmpty {
+                Text(error)
+                    .font(.system(size: 13))
+                    .foregroundStyle(.red)
+            }
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 8)
@@ -162,45 +216,77 @@ private struct ComposerBar: View {
 
 private struct MessageBubble: View {
     let message: Message
-    let agent: Agent
+    let agents: [Agent]
     var localPreviews: [Data] = []
+    var sameSender = false
+
+    private var isUser: Bool { message.isFromUser }
+
+    private var senderAgent: Agent? {
+        agents.first(where: { $0.id == message.senderId })
+    }
 
     var body: some View {
-        HStack(alignment: .top, spacing: 0) {
-            VStack(alignment: .leading, spacing: 6) {
-                ForEach(Array(localPreviews.enumerated()), id: \.offset) { _, data in
-                    if let image = UIImage(data: data) {
-                        Image(uiImage: image)
-                            .resizable()
-                            .scaledToFit()
+        VStack(alignment: isUser ? .trailing : .leading, spacing: 4) {
+            if !isUser && !sameSender {
+                HStack(spacing: 6) {
+                    AgentAvatar(
+                        agent: senderAgent ?? Agent(
+                            id: message.senderId,
+                            name: message.senderName,
+                            title: "",
+                            description: "",
+                            avatar: message.senderAvatar,
+                            kind: .agent,
+                            memberIds: [],
+                            createdAt: .distantPast,
+                            updatedAt: .distantPast
+                        ),
+                        size: 20
+                    )
+                    Text(message.senderName)
+                        .font(.system(size: 13, weight: .medium))
+                        .foregroundStyle(.secondary)
+                }
+                .padding(.horizontal, 12)
+            }
+            HStack(alignment: .top, spacing: 0) {
+                if isUser { Spacer(minLength: 48) }
+                VStack(alignment: .leading, spacing: 6) {
+                    ForEach(Array(localPreviews.enumerated()), id: \.offset) { _, data in
+                        if let image = UIImage(data: data) {
+                            Image(uiImage: image)
+                                .resizable()
+                                .scaledToFit()
+                                .frame(maxWidth: 220, maxHeight: 220)
+                                .clipShape(RoundedRectangle(cornerRadius: 12))
+                        }
+                    }
+                    ForEach(message.images) { image in
+                        RemoteImage(urlString: image.url, mime: image.mime)
                             .frame(maxWidth: 220, maxHeight: 220)
                             .clipShape(RoundedRectangle(cornerRadius: 12))
                     }
+                    if !message.content.isEmpty {
+                        MentionLabel(text: message.content, names: agents.filter { !$0.isChannel }.map(\.name))
+                            .font(.system(size: 14))
+                            .textSelection(.enabled)
+                    }
                 }
-                ForEach(message.images) { image in
-                    RemoteImage(urlString: image.url, mime: image.mime)
-                        .frame(maxWidth: 220, maxHeight: 220)
-                        .clipShape(RoundedRectangle(cornerRadius: 12))
-                }
-                if !message.content.isEmpty {
-                    Text(message.content)
-                        .font(.system(size: 14))
-                        .textSelection(.enabled)
-                        .multilineTextAlignment(.leading)
-                }
+                .padding(.horizontal, 12)
+                .padding(.vertical, 8)
+                .background(bubbleColor, in: RoundedRectangle(cornerRadius: 16))
+                if !isUser { Spacer(minLength: 48) }
             }
             .padding(.horizontal, 12)
-            .padding(.vertical, 8)
-            .background(bubbleColor, in: RoundedRectangle(cornerRadius: 16))
-            Spacer(minLength: 48)
         }
-        .padding(.horizontal, 12)
+        .frame(maxWidth: .infinity, alignment: isUser ? .trailing : .leading)
         .accessibilityElement(children: .combine)
-        .accessibilityLabel(message.role == .user ? "You" : agent.name)
+        .accessibilityLabel(isUser ? "You" : message.senderName)
     }
 
     private var bubbleColor: Color {
-        message.role == .user
+        isUser
             ? Color.accentColor.opacity(0.22)
             : Color(uiColor: .secondarySystemFill)
     }

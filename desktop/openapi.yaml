@@ -3,14 +3,22 @@ info:
   title: Snorlax-Bot
   version: 0.1.0
   description: |
-    Locked v0 LAN contract. Clients use SNORLAX_URL + SNORLAX_TOKEN.
+    Locked v0.1 LAN contract. Clients use SNORLAX_URL + SNORLAX_TOKEN.
     They never call vLLM and never read the Spark filesystem.
 
     Seeded agent: id `snorlax-bot`, name Snorlax-Bot, title Assistant.
-    Deleting it returns 409 `{ error }` and is not auto-reseeded.
+    Seeded group channel: id `snorlax-bot-group`, name Snorlax-Bot, kind
+    `channel`. Listed by GET /v1/agents like an agent. Every agent is a
+    member; new agents auto-join. Extra user-created channels wait.
+    Deleting either seed returns 409 `{ error }` and is not auto-reseeded.
 
-    Chat-only. No tools, no VL. Images persist and are returned; they are
+    Chat-only. No tools, no VL, no MCP, no skills, no box, no computer-use,
+    no routines, no widgets. Images persist and are returned; they are
     never sent to the model. No mDNS.
+
+    Mentions are runtime-routed. Hop 0 is the user→current-agent turn.
+    Max depth 3 (A→B→C→D ok; D→E dropped). Max 4 peer sends per user turn.
+    Same-edge A→B once per turn. Drops are silent in the UI.
   license:
     name: Apache-2.0
     identifier: Apache-2.0
@@ -133,7 +141,9 @@ paths:
           $ref: "#/components/responses/Error"
     delete:
       summary: Delete an agent
-      description: Seeded `snorlax-bot` returns 409 `{ error }`.
+      description: |
+        Seeded `snorlax-bot` and seeded channel `snorlax-bot-group`
+        return 409 `{ error }`.
       operationId: deleteAgent
       responses:
         "204":
@@ -178,14 +188,26 @@ paths:
         "404":
           $ref: "#/components/responses/Error"
     post:
-      summary: Send a user message and stream the assistant reply
+      summary: Send a user message and stream agent replies
       description: |
         SSE, chat-only (no tools). Images are stored and returned; never
         forwarded to vLLM.
 
-        - event `message.delta` data `{ id, role: "assistant", delta }`
+        For a 1:1 agent, hop 0 is that agent. For the group channel,
+        unmentioned members stay silent; mentioned members reply in this
+        transcript. Agent DMs stay in the two 1:1 transcripts and are not
+        mirrored into the group.
+
+        Unknown or ambiguous `@Name` on a user send is 422 `{ error }`
+        (composer error). Agent-authored unknown `@Name` is ignored.
+        `@everyone` is group-only.
+
+        - event `message.delta` data `{ id, role: "assistant", delta, senderId, senderName, senderAvatar }`
         - event `message.done` data full Message (not wrapped)
         - event `error` data `{ error }` (string)
+
+        Multiple `message.done` events may appear on one stream when more
+        than one agent speaks in this transcript.
       operationId: postMessage
       requestBody:
         required: true
@@ -267,7 +289,7 @@ components:
 
     Agent:
       type: object
-      required: [id, name, title, description, avatar, createdAt, updatedAt]
+      required: [id, name, title, description, avatar, kind, memberIds, createdAt, updatedAt]
       properties:
         id:
           type: string
@@ -279,6 +301,14 @@ components:
           type: string
         avatar:
           type: [string, "null"]
+        kind:
+          type: string
+          enum: [agent, channel]
+        memberIds:
+          type: array
+          items:
+            type: string
+          description: Agent ids in a channel. Empty for kind=agent. Always all agents for the seeded group.
         createdAt:
           type: string
           format: date-time
@@ -342,14 +372,38 @@ components:
           type: string
           description: Base64 image bytes. Persisted; never sent to the model.
 
+    Mention:
+      type: object
+      required: [id, name]
+      properties:
+        id:
+          type: string
+          description: Agent id, or `everyone` for @everyone.
+        name:
+          type: string
+
     Message:
       type: object
-      required: [id, agentId, role, content, images, createdAt]
+      required:
+        [
+          id,
+          agentId,
+          role,
+          content,
+          images,
+          createdAt,
+          senderId,
+          senderName,
+          senderAvatar,
+          hop,
+          mentions,
+        ]
       properties:
         id:
           type: string
         agentId:
           type: string
+          description: Transcript owner (agent id or channel id).
         role:
           type: string
           enum: [user, assistant]
@@ -362,6 +416,21 @@ components:
         createdAt:
           type: string
           format: date-time
+        senderId:
+          type: string
+          description: "`user` or an agent id. Layout uses senderId === user → right; else left."
+        senderName:
+          type: string
+        senderAvatar:
+          type: [string, "null"]
+        hop:
+          type: integer
+          minimum: 0
+          description: User→current agent is 0. Mentions increment. Max depth 3.
+        mentions:
+          type: array
+          items:
+            $ref: "#/components/schemas/Mention"
 
     MessageCreate:
       type: object
@@ -375,6 +444,13 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/ImageIn"
+        mentions:
+          type: array
+          items:
+            type: string
+          description: |
+            Agent ids from typeahead chips. Unresolved `@text` is omitted
+            and is not a mention. Runtime also parses `@DisplayName`.
 
     MessageDelta:
       type: object
@@ -387,6 +463,12 @@ components:
           const: assistant
         delta:
           type: string
+        senderId:
+          type: string
+        senderName:
+          type: string
+        senderAvatar:
+          type: [string, "null"]
 
     ErrorBody:
       type: object

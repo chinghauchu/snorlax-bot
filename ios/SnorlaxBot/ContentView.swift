@@ -67,7 +67,7 @@ private struct iPadRoot: View {
             if let id = model.selectedAgentID {
                 ChatView(agentID: id)
             } else {
-                ChatView(agentID: Agent.seedID)
+                ChatView(agentID: Agent.channelID)
             }
         }
         .navigationSplitViewStyle(.balanced)
