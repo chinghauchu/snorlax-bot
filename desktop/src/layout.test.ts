@@ -47,3 +47,23 @@ test("jump line is 12px muted under the user bubble", () => {
   assert.match(jump, /font-size:\s*12px/);
   assert.match(jump, /color:\s*var\(--text-muted\)/);
 });
+
+test("info pane is a 320px overlay, not a third column", () => {
+  const app = block(".app");
+  const profile = block(".profile");
+  assert.match(app, /grid-template-columns:\s*256px\s+1fr/);
+  assert.doesNotMatch(app, /320px/);
+  assert.match(profile, /position:\s*absolute/);
+  assert.match(profile, /width:\s*320px/);
+});
+
+test("agent identity type sizes and channel member rows", () => {
+  const name = block(".info-name");
+  const muted = block(".info-muted");
+  const member = block(".info-member");
+  assert.match(name, /font-size:\s*16px/);
+  assert.match(muted, /font-size:\s*13px/);
+  assert.match(muted, /color:\s*var\(--text-muted\)/);
+  assert.match(member, /height:\s*44px/);
+});
+

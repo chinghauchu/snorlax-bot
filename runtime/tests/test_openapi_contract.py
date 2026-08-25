@@ -27,3 +27,10 @@ def test_protocol_openapi_is_locked_v0_contract() -> None:
     assert "kind=channel" in text
     assert "threadId" in text
     assert "kind=handoff" in text
+    assert "An empty agent roster is OK" in text
+    assert "kind=agent including seed" in text
+    assert "Never treat snorlax-bot-group as an agent profile" in text
+    assert "seeded agent cannot be deleted" not in text
+    assert "No new upload route" in text
+    assert "identity PATCH is 409" in text
+    assert "DELETE stays 409" in text

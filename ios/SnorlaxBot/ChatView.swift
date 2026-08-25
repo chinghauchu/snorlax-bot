@@ -36,11 +36,16 @@ struct ChatView: View {
                 Button {
                     model.showProfile = true
                 } label: {
-                    Text(agent.name)
-                        .font(.system(size: 14, weight: .semibold))
-                        .foregroundStyle(.primary)
+                    HStack(spacing: 8) {
+                        AgentAvatar(agent: agent, size: 24)
+                        Text(agent.name)
+                            .font(.system(size: 14, weight: .semibold))
+                            .foregroundStyle(.primary)
+                            .lineLimit(1)
+                    }
                 }
-                .accessibilityHint("Opens profile")
+                .accessibilityLabel(agent.name)
+                .accessibilityHint("Opens info")
             }
         }
         .sheet(isPresented: $model.showProfile) {

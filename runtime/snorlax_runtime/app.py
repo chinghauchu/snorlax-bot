@@ -10,7 +10,7 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, Response, StreamingResponse
 
-from snorlax_runtime import SEEDED_AGENT_ID, SEEDED_CHANNEL_ID, __version__
+from snorlax_runtime import KIND_CHANNEL, SEEDED_CHANNEL_ID, __version__
 from snorlax_runtime.auth import require_bearer
 from snorlax_runtime.config import Settings
 from snorlax_runtime.db import Store, dump_json
@@ -140,6 +140,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         _: str = Depends(require_bearer),
     ) -> Agent:
         store: Store = request.app.state.store
+        existing = await store.get_agent(id)
+        if existing is None:
+            raise _error(404, f"Agent {id!r} not found")
+        if existing.get("kind") == KIND_CHANNEL or id == SEEDED_CHANNEL_ID:
+            raise _error(409, "seeded channel cannot be patched")
         fields = payload.model_dump(exclude_unset=True)
         row = await store.patch_agent(
             id,
@@ -156,8 +161,6 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     async def delete_agent(
         id: str, request: Request, _: str = Depends(require_bearer)
     ) -> None:
-        if id == SEEDED_AGENT_ID:
-            raise _error(409, "seeded agent cannot be deleted")
         if id == SEEDED_CHANNEL_ID:
             raise _error(409, "seeded channel cannot be deleted")
         store: Store = request.app.state.store

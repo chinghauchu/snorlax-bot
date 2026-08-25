@@ -8,7 +8,7 @@ extension Agent {
 
     var isSeed: Bool { id == Self.seedID }
     var isChannel: Bool { kind == .channel }
-    var isProtected: Bool { isSeed || isChannel }
+    var isProtected: Bool { isChannel }
 
     var rosterSubtitle: String { isChannel ? "Channel" : title }
 

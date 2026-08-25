@@ -20,10 +20,12 @@ computer. Bots live on your LAN, talk through a thin local runtime, and (in
 later versions) browse, click, schedule, and call tools without sending tokens
 off-box.
 
-v0.2 is still small: **seeded teammate + group channel threads + create more teammates
-+ chat with @mentions**. 1:1s are user ↔ that agent only; a user `@chip` (or
+v0.3 is still small: **named teammates + identity pane + group channel threads
++ chat with @mentions**. Header click opens agent identity (PATCH) or the
+channel member list. 1:1s are user ↔ that agent only; a user `@chip` (or
 agent DM) opens a handoff thread in the seeded channel with a jump chip back
-from A's 1:1. No tools, no sandbox computer, no vision.
+from A's 1:1. Seed `snorlax-bot` can be deleted (no auto-reseed). No tools,
+no sandbox computer, no vision.
 That slice is meant to actually run on a laptop *or* a Spark, with a mocked
 model backend when a 70B-class checkpoint is not present.
 
@@ -57,7 +59,7 @@ Clients never talk to the model server. A thin FastAPI runtime owns agents,
 transcripts, and LAN bearer-token auth. It sits in front of **oMLX**
 (Mac-local OpenAI-compat) or **vLLM** (Spark); TensorRT-LLM is a later swap
 behind the same interface. SQLite on disk holds agents and messages. The
-seeded agent id is stable: `snorlax-bot`. Bind is `127.0.0.1` until a token
+seeded agent id is `snorlax-bot` (PATCH-able; DELETE 204, no auto-reseed). Bind is `127.0.0.1` until a token
 exists, then `0.0.0.0` so a phone on the same LAN can reach the host. Details:
 [docs/architecture.md](docs/architecture.md). Mac-local recipe:
 [docs/mac-local.md](docs/mac-local.md). Locked HTTP contract:
@@ -87,7 +89,8 @@ On first start the process:
    `SNORLAX_DATA_DIR`)
 2. Writes `~/.snorlax-bot/token` and `~/.snorlax-bot/snorlax.db`
 3. Seeds agent `snorlax-bot` (name Snorlax, title Assistant) and channel
-   `snorlax-bot-group` (name Snorlax-Bot)
+   `snorlax-bot-group` (name Snorlax-Bot) on a first empty DB. Deleting the
+   seed does not reseed.
 4. Listens on `127.0.0.1:8787` until that token file exists, then
    `0.0.0.0:8787` on later launches. `SNORLAX_TOKEN` overrides the file.
    Clients use `SNORLAX_URL` + `SNORLAX_TOKEN`; they never read the Spark disk.

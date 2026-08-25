@@ -29,7 +29,7 @@ Concrete follow-ups after v0. Filed on GitHub against
 
 - [F1 — Streaming markdown without flicker](https://github.com/chinghauchu/snorlax-bot/issues/6)
 - [F2 — Pairing: local token file and LAN paste](https://github.com/chinghauchu/snorlax-bot/issues/16)
-- [F3 — Edit agent name and instructions in the desktop UI](https://github.com/chinghauchu/snorlax-bot/issues/19)
+- [F3 — Edit agent name and instructions in the desktop UI](https://github.com/chinghauchu/snorlax-bot/issues/19) — v0.3 identity pane PATCHes name/title/description/avatar (no `instructions` field)
 - Attachment chips with “not sent to model” already exist in v0; VL-on
   treatment stays with D3.
 - Computer pane shell stays with D2 until B4 lands.

@@ -101,9 +101,11 @@ SQLite file `~/.snorlax-bot/snorlax.db` (override with `SNORLAX_DATA_DIR`):
 - `agents` — id, name, title, description, avatar, kind (`agent` | `channel`), timestamps.
   Seeded agent `snorlax-bot` (name Snorlax, title Assistant, kind agent).
   Seeded group channel `snorlax-bot-group` (name Snorlax-Bot, kind channel).
-  Every agent is a member; new agents auto-join. Not auto-reseeded except the
-  channel is created if missing on an existing DB. Clients show a muted
-  “Channel” subtitle from `kind`, not by guessing id.
+  Every agent is a member; new agents auto-join. Seed DELETE is 204 and is
+  not auto-reseeded (an empty agent roster is fine). Channel DELETE is 409.
+  Channel is created if missing on an existing DB. Clients show a muted
+  “Channel” subtitle from `kind`, not by guessing id. Seed identity
+  (name / title / description / avatar) may be PATCHed and persists.
 - `messages` — per-transcript (agent 1:1 or the group), `user` | `assistant`,
   plus `senderId` / `senderName` / `senderAvatar` / `hop` / `mentions`.
   Additive v0.2: `kind` (`message` | `handoff`), `replyTo`, `handoff`
@@ -125,6 +127,11 @@ v0.2: a 1:1 `@chip` or agent DM opens a channel **thread** under a
 roots only. Pack B wakes with `{ originating, userAsk, brief, mentionedIds }`
 (not a quote). The originating user message may include `handoff: { channelId,
 threadId }` so clients can show a jump chip.
+
+v0.3: clicking the chat header opens an info pane. `kind=agent` is identity
+(PATCH `{ name, title, description, avatar }`). `kind=channel` is a read-only
+member list from `memberIds`. Desktop is a 320px overlay on chat; iOS is a
+sheet. Delete stays on the sidebar, including the seed row.
 
 ## Inference interface
 

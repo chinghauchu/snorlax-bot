@@ -107,7 +107,7 @@ def emit_struct(name: str, schema: dict, schemas: dict) -> str:
     chunks: list[str] = [f"struct {name}: {', '.join(protocols)} {{"]
 
     nested: list[str] = []
-    fields: list[tuple[str, str, bool, bool]] = []  # name, type, optional, required_nullable
+    fields: list[tuple[str, str, bool, bool, bool]] = []  # name, type, optional, required_nullable, nullable
 
     for prop, spec in props.items():
         spec, nullable = unwrap_nullable(spec)
@@ -125,7 +125,7 @@ def emit_struct(name: str, schema: dict, schemas: dict) -> str:
         if optional and not field_type.endswith("?"):
             field_type += "?"
         required_nullable = prop in required and field_type.endswith("?")
-        fields.append((prop, field_type, optional, required_nullable))
+        fields.append((prop, field_type, optional, required_nullable, nullable))
         chunks.append(f"    var {swift_ident(prop)}: {field_type}")
 
     if nested:
@@ -135,23 +135,23 @@ def emit_struct(name: str, schema: dict, schemas: dict) -> str:
 
     # memberwise init
     init_args = []
-    for prop, field_type, optional, _ in fields:
+    for prop, field_type, optional, _required_nullable, _nullable in fields:
         default = " = nil" if optional else ""
         init_args.append(f"{swift_ident(prop)}: {field_type}{default}")
     chunks.append("")
     chunks.append(f"    init({', '.join(init_args)}) {{")
-    for prop, _, _, _ in fields:
+    for prop, _, _, _, _ in fields:
         ident = swift_ident(prop)
         chunks.append(f"        self.{ident} = {ident}")
     chunks.append("    }")
 
-    keys = ", ".join(prop for prop, _, _, _ in fields)
+    keys = ", ".join(prop for prop, _, _, _, _ in fields)
     chunks.append("")
     chunks.append(f"    enum CodingKeys: String, CodingKey {{ case {keys} }}")
     chunks.append("")
     chunks.append("    init(from decoder: Decoder) throws {")
     chunks.append("        let container = try decoder.container(keyedBy: CodingKeys.self)")
-    for prop, field_type, optional, required_nullable in fields:
+    for prop, field_type, optional, required_nullable, _nullable in fields:
         ident = swift_ident(prop)
         base = field_type[:-1] if field_type.endswith("?") else field_type
         if optional:
@@ -170,9 +170,13 @@ def emit_struct(name: str, schema: dict, schemas: dict) -> str:
     chunks.append("")
     chunks.append("    func encode(to encoder: Encoder) throws {")
     chunks.append("        var container = encoder.container(keyedBy: CodingKeys.self)")
-    for prop, field_type, optional, required_nullable in fields:
+    for prop, field_type, optional, required_nullable, nullable in fields:
         ident = swift_ident(prop)
-        if optional:
+        if optional and nullable:
+            chunks.append(
+                f"        try container.encode({ident}, forKey: .{prop})"
+            )
+        elif optional:
             chunks.append(
                 f"        try container.encodeIfPresent({ident}, forKey: .{prop})"
             )

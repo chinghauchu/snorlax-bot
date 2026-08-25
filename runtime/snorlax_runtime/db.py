@@ -165,13 +165,14 @@ class Store:
         await self.conn.commit()
 
     async def _seed(self) -> None:
-        """Insert snorlax-bot only when the roster has no agents. Never auto-reseed.
+        """Insert snorlax-bot only when the agents table is empty. Never auto-reseed.
 
-        The group channel is created if missing so existing DBs pick up v0.1.
+        DELETE of the seed is 204. The channel row stays, so a reconnect with
+        only `snorlax-bot-group` present must not recreate Snorlax. An empty
+        agent roster is fine. The group channel is still created if missing so
+        existing DBs pick up v0.1.
         """
-        cur = await self.conn.execute(
-            "SELECT COUNT(*) AS n FROM agents WHERE kind = ?", (KIND_AGENT,)
-        )
+        cur = await self.conn.execute("SELECT COUNT(*) AS n FROM agents")
         row = await cur.fetchone()
         if row is not None and int(row["n"]) == 0:
             now = utcnow()
@@ -191,7 +192,7 @@ class Store:
                 ),
             )
         await self._ensure_channel()
-        await self._lock_seed_labels()
+        await self._lock_channel_label()
         await self.conn.commit()
 
     async def _ensure_channel(self) -> None:
@@ -215,12 +216,8 @@ class Store:
             ),
         )
 
-    async def _lock_seed_labels(self) -> None:
-        """Keep roster names distinct: Snorlax (1:1) vs Snorlax-Bot (channel)."""
-        await self.conn.execute(
-            "UPDATE agents SET name = ?, title = ? WHERE id = ?",
-            (SEEDED_AGENT_NAME, SEEDED_AGENT_TITLE, SEEDED_AGENT_ID),
-        )
+    async def _lock_channel_label(self) -> None:
+        """Keep the seeded channel named Snorlax-Bot. Seed agent PATCH persists."""
         await self.conn.execute(
             "UPDATE agents SET name = ?, title = ? WHERE id = ?",
             (SEEDED_CHANNEL_NAME, SEEDED_CHANNEL_TITLE, SEEDED_CHANNEL_ID),

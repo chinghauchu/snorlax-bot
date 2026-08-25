@@ -71,13 +71,22 @@ export interface paths {
         post?: never;
         /**
          * Delete an agent
-         * @description Seeded `snorlax-bot` and seeded channel `snorlax-bot-group`
-         *     return 409 `{ error }`.
+         * @description kind=agent including seed `snorlax-bot` returns 204 and is gone
+         *     from GET /v1/agents. No auto-reseed; an empty agent roster is OK.
+         *     User-created DELETE is still 204. Seeded channel
+         *     `snorlax-bot-group` DELETE stays 409 `{ error }`.
          */
         delete: operations["deleteAgent"];
         options?: never;
         head?: never;
-        /** Patch profile fields */
+        /**
+         * Patch profile fields
+         * @description PATCH body stays `{ name, title, description, avatar }`. Avatar is
+         *     string|null (data URL or existing image id). No new upload route.
+         *     kind=agent including seed `snorlax-bot` returns 200. Id is not
+         *     editable. kind=channel (`snorlax-bot-group`) identity PATCH
+         *     returns 409 `{ error }`.
+         */
         patch: operations["patchAgent"];
         trace?: never;
     };
@@ -171,6 +180,10 @@ export interface components {
             name: string;
             title: string;
             description: string;
+            /**
+             * @description Data URL, existing image id, or null. Empty/null shows initials
+             *     from name.
+             */
             avatar: string | null;
             /**
              * @description Clients show a muted "Channel" subtitle from kind=channel.
@@ -178,7 +191,7 @@ export interface components {
              * @enum {string}
              */
             kind: "agent" | "channel";
-            /** @description Agent ids in a channel. Empty for kind=agent. Always all agents for the seeded group. */
+            /** @description Agent ids in a channel. Empty for kind=agent. Channel members come from memberIds. */
             memberIds: string[];
             /** Format: date-time */
             createdAt: string;
@@ -198,6 +211,10 @@ export interface components {
             name?: string;
             title?: string;
             description?: string;
+            /**
+             * @description Data URL, existing image id, or null. Empty/null shows initials
+             *     from name. PATCH only; no new upload route.
+             */
             avatar?: string | null;
         };
         ImageOut: {
@@ -472,6 +489,7 @@ export interface operations {
             };
             401: components["responses"]["Error"];
             404: components["responses"]["Error"];
+            409: components["responses"]["Error"];
             422: components["responses"]["Error"];
         };
     };

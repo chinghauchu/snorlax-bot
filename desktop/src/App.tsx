@@ -29,6 +29,13 @@ import {
   repliesLabel,
 } from "./handoff";
 import {
+  canDeleteAgent,
+  channelMembers,
+  displayInitials,
+  infoPaneKind,
+  nextRosterSelection,
+} from "./infoPane";
+import {
   USER_SENDER_ID,
   filterCandidates,
   insertMention,
@@ -138,13 +145,6 @@ function rosterSubtitle(agent: Agent): string {
   return agent.kind === "channel" ? "Channel" : agent.title;
 }
 
-function initials(name: string): string {
-  const parts = name.split(/\s+/).filter(Boolean);
-  if (parts.length === 0) return "?";
-  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
-  return `${parts[0][0] ?? ""}${parts[1][0] ?? ""}`.toUpperCase();
-}
-
 function describeError(err: unknown): string {
   if (err instanceof ApiError) return `${err.code}: ${err.message}`;
   if (err instanceof TypeError) {
@@ -192,6 +192,7 @@ export function App() {
   const [showToken, setShowToken] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
+  const [profileEditing, setProfileEditing] = useState(false);
   const [contextMenu, setContextMenu] = useState<ContextMenu | null>(null);
   const [pendingDelete, setPendingDelete] = useState<Agent | null>(null);
 
@@ -279,8 +280,8 @@ export function App() {
     setMentionOpen(false);
   }
 
-  function isProtected(agent: Agent) {
-    return agent.id === SEED_AGENT_ID || agent.kind === "channel";
+  function canDelete(agent: Agent) {
+    return canDeleteAgent(agent);
   }
   const composerDisabled = !credsReady || busy;
 
@@ -326,6 +327,7 @@ export function App() {
       setContextMenu(null);
       setPendingDelete(null);
       setProfileOpen(false);
+      setProfileEditing(false);
       if (settingsOpen) closeSettings();
     };
     window.addEventListener("pointerdown", onPointerDown);
@@ -385,6 +387,7 @@ export function App() {
     setThreadId(thread);
     setComposerError(null);
     setProfileOpen(false);
+    setProfileEditing(false);
     const agent = agents.find((a) => a.id === id);
     if (agent?.kind === "channel") setChannelUnread(false);
     if (!session) {
@@ -425,20 +428,43 @@ export function App() {
       setMessages([]);
       setComposerError(null);
       setProfileOpen(false);
+      setProfileEditing(false);
       focusComposer();
     } catch (err) {
       setLoadError(describeError(err));
     }
   }
 
-  function openProfile() {
+  function openInfo() {
     if (!active) return;
     setProfileName(active.name);
     setProfileTitle(active.title);
     setProfileDescription(active.description);
     setProfileAvatar(active.avatar);
+    setProfileEditing(false);
     setProfileOpen(true);
   }
+
+  useEffect(() => {
+    const onKey = (event: globalThis.KeyboardEvent) => {
+      if (
+        (event.metaKey || event.ctrlKey) &&
+        event.shiftKey &&
+        event.key.toLowerCase() === "i"
+      ) {
+        event.preventDefault();
+        if (!active) return;
+        setProfileName(active.name);
+        setProfileTitle(active.title);
+        setProfileDescription(active.description);
+        setProfileAvatar(active.avatar);
+        setProfileEditing(false);
+        setProfileOpen(true);
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [active]);
 
   async function saveProfile(event: FormEvent) {
     event.preventDefault();
@@ -452,7 +478,11 @@ export function App() {
         avatar: profileAvatar,
       });
       setAgents((prev) => prev.map((a) => (a.id === updated.id ? updated : a)));
-      setProfileOpen(false);
+      setProfileName(updated.name);
+      setProfileTitle(updated.title);
+      setProfileDescription(updated.description);
+      setProfileAvatar(updated.avatar);
+      setProfileEditing(false);
     } catch (err) {
       setComposerError(describeError(err));
     } finally {
@@ -466,17 +496,24 @@ export function App() {
     setPendingDelete(null);
     try {
       await deleteAgent(session, doomed.id);
-      const roster = agents.filter((a) => a.id !== doomed.id);
+      const roster = agents
+        .filter((a) => a.id !== doomed.id)
+        .map((a) =>
+          a.kind === "channel"
+            ? {
+                ...a,
+                memberIds: a.memberIds.filter((id) => id !== doomed.id),
+              }
+            : a,
+        );
       setAgents(roster);
       if (activeId === doomed.id) {
-        const seed =
-          roster.find((a) => a.kind === "channel")?.id ??
-          roster.find((a) => a.id === SEED_AGENT_ID)?.id ??
-          roster[0]?.id ??
-          null;
-        setActiveId(seed);
+        const next = nextRosterSelection(roster, doomed.id, activeId);
+        setActiveId(next);
         setThreadId(null);
-        setMessages(seed ? await listMessages(session, seed) : []);
+        setProfileOpen(false);
+        setProfileEditing(false);
+        setMessages(next ? await listMessages(session, next) : []);
       }
     } catch (err) {
       setLoadError(describeError(err));
@@ -660,7 +697,7 @@ export function App() {
   }
 
   function onAgentContext(event: MouseEvent, agent: Agent) {
-    if (isProtected(agent)) return;
+    if (!canDelete(agent)) return;
     event.preventDefault();
     event.stopPropagation();
     setContextMenu({ x: event.clientX, y: event.clientY, agent });
@@ -746,7 +783,7 @@ export function App() {
                   ←
                 </button>
               ) : null}
-              <button type="button" className="chat-who" onClick={openProfile}>
+              <button type="button" className="chat-who" onClick={openInfo}>
                 <Avatar
                   src={active.avatar}
                   name={active.name}
@@ -1006,65 +1043,129 @@ export function App() {
       </main>
 
       {profileOpen && active ? (
-        <aside className="profile" role="dialog" aria-label="Agent profile">
+        <aside
+          className="profile"
+          role="dialog"
+          aria-label={
+            infoPaneKind(active) === "channel" ? "Channel" : "Agent"
+          }
+        >
           <header>
-            <h2>Profile</h2>
-            <button
-              type="button"
-              className="icon-btn"
-              aria-label="Close"
-              onClick={() => setProfileOpen(false)}
-            >
-              ×
-            </button>
+            <h2>
+              {infoPaneKind(active) === "channel" ? "Channel" : "Agent"}
+            </h2>
+            <div className="profile-actions">
+              {infoPaneKind(active) === "agent" && !profileEditing ? (
+                <button
+                  type="button"
+                  className="icon-btn"
+                  aria-label="Edit"
+                  onClick={() => setProfileEditing(true)}
+                >
+                  <GearIcon />
+                </button>
+              ) : null}
+              <button
+                type="button"
+                className="icon-btn"
+                aria-label="Close"
+                onClick={() => {
+                  setProfileOpen(false);
+                  setProfileEditing(false);
+                }}
+              >
+                ×
+              </button>
+            </div>
           </header>
-          <form className="profile-form" onSubmit={saveProfile}>
-            <button
-              type="button"
-              className="avatar-edit"
-              onClick={() => avatarFileRef.current?.click()}
-            >
+          {infoPaneKind(active) === "channel" ? (
+            <div>
+              <div className="info-identity">
+                <p className="info-name">{active.name}</p>
+                <p className="info-muted">Channel</p>
+              </div>
+              <div className="info-members">
+                {channelMembers(active.memberIds, agents).map((member) => (
+                  <div className="info-member" key={member.id}>
+                    <Avatar
+                      src={member.avatar}
+                      name={member.name}
+                      size={28}
+                      session={session}
+                    />
+                    <span className="info-member-copy">
+                      <strong>{member.name}</strong>
+                      {member.title ? <span>{member.title}</span> : null}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ) : profileEditing ? (
+            <form className="profile-form" onSubmit={saveProfile}>
+              <button
+                type="button"
+                className="avatar-edit"
+                onClick={() => avatarFileRef.current?.click()}
+              >
+                <Avatar
+                  src={profileAvatar}
+                  name={profileName || active.name}
+                  size={72}
+                  session={session}
+                />
+                <span>Change</span>
+              </button>
+              <input
+                ref={avatarFileRef}
+                type="file"
+                accept="image/*"
+                hidden
+                onChange={(e) => void onPickAvatar(e.target.files?.[0])}
+              />
+              <label>
+                Name
+                <input
+                  value={profileName}
+                  onChange={(e) => setProfileName(e.target.value)}
+                />
+              </label>
+              <label>
+                Title
+                <input
+                  value={profileTitle}
+                  onChange={(e) => setProfileTitle(e.target.value)}
+                />
+              </label>
+              <label>
+                Description
+                <textarea
+                  rows={4}
+                  value={profileDescription}
+                  onChange={(e) => setProfileDescription(e.target.value)}
+                />
+              </label>
+              <button type="submit" className="primary" disabled={profileSaving}>
+                Save
+              </button>
+            </form>
+          ) : (
+            <div className="info-identity">
               <Avatar
-                src={profileAvatar}
-                name={profileName || active.name}
-                size={64}
+                src={active.avatar}
+                name={active.name}
+                size={72}
                 session={session}
               />
-              <span>Change</span>
-            </button>
-            <input
-              ref={avatarFileRef}
-              type="file"
-              accept="image/*"
-              hidden
-              onChange={(e) => void onPickAvatar(e.target.files?.[0])}
-            />
-            <label>
-              Name
-              <input
-                value={profileName}
-                onChange={(e) => setProfileName(e.target.value)}
-              />
-            </label>
-            <label>
-              Title
-              <input
-                value={profileTitle}
-                onChange={(e) => setProfileTitle(e.target.value)}
-              />
-            </label>
-            <label>
-              Description
-              <textarea
-                rows={4}
-                value={profileDescription}
-                onChange={(e) => setProfileDescription(e.target.value)}
-              />
-            </label>
-            <button type="submit" className="primary" disabled={profileSaving}>
-              Save
-            </button>
-          </form>
+              <p className="info-name">{active.name}</p>
+              {active.title ? (
+                <p className="info-muted">{active.title}</p>
+              ) : null}
+              {active.description ? (
+                <p className="info-muted">{active.description}</p>
+              ) : null}
+            </div>
+          )}
         </aside>
       ) : null}
 
@@ -1269,7 +1370,7 @@ function Avatar({
       {resolved ? (
         <AuthedImg src={resolved} session={session} alt="" />
       ) : (
-        <span>{initials(name)}</span>
+        <span>{displayInitials(name)}</span>
       )}
     </span>
   );
@@ -1323,6 +1424,24 @@ function Paperclip() {
         stroke="currentColor"
         strokeWidth="1.8"
         strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+function GearIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden>
+      <path
+        d="M12 15.5a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7Z"
+        stroke="currentColor"
+        strokeWidth="1.8"
+      />
+      <path
+        d="M19.4 13a7.6 7.6 0 0 0 .1-2l2-1.5-2-3.5-2.4.5a7.7 7.7 0 0 0-1.7-1L15 3h-4l-.4 2.5a7.7 7.7 0 0 0-1.7 1L6.5 6 4.5 9.5 6.5 11a7.6 7.6 0 0 0 0 2l-2 1.5 2 3.5 2.4-.5a7.7 7.7 0 0 0 1.7 1L11 21h4l.4-2.5a7.7 7.7 0 0 0 1.7-1l2.4.5 2-3.5-2.1-1.5Z"
+        stroke="currentColor"
+        strokeWidth="1.8"
         strokeLinejoin="round"
       />
     </svg>

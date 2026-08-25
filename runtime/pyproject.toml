@@ -1,6 +1,6 @@
 [project]
 name = "snorlax-runtime"
-version = "0.2.0"
+version = "0.3.0"
 description = "Snorlax-Bot FastAPI runtime — agents, transcripts, LAN auth in front of oMLX or vLLM."
 readme = "README.md"
 license = { text = "Apache-2.0" }
