@@ -1,0 +1,396 @@
+openapi: 3.1.0
+info:
+  title: Snorlax-Bot
+  version: 0.1.0
+  description: |
+    Locked v0 LAN contract. Clients use SNORLAX_URL + SNORLAX_TOKEN.
+    They never call vLLM and never read the Spark filesystem.
+
+    Seeded agent: id `snorlax-bot`, name Snorlax-Bot, title Assistant.
+    Deleting it returns 409 `{ error }` and is not auto-reseeded.
+
+    Chat-only. No tools, no VL. Images persist and are returned; they are
+    never sent to the model. No mDNS.
+  license:
+    name: Apache-2.0
+    identifier: Apache-2.0
+  contact:
+    name: Chinghau Chu
+
+servers:
+  - url: http://127.0.0.1:8787
+    description: First boot (no token file yet, localhost only)
+  - url: http://0.0.0.0:8787
+    description: After a token exists (LAN)
+
+security:
+  - bearerAuth: []
+
+paths:
+  /health:
+    get:
+      summary: Extra process ping (not the locked client ping)
+      security: []
+      operationId: processHealth
+      responses:
+        "200":
+          description: Process is up
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [ok]
+                properties:
+                  ok:
+                    type: boolean
+                    const: true
+
+  /v1/health:
+    get:
+      summary: Unauthenticated ping
+      security: []
+      operationId: health
+      responses:
+        "200":
+          description: Runtime is up
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Health"
+
+  /v1/agents:
+    get:
+      summary: List agents
+      operationId: listAgents
+      responses:
+        "200":
+          description: JSON array of Agent (not wrapped)
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Agent"
+        "401":
+          $ref: "#/components/responses/Error"
+    post:
+      summary: Create an agent
+      operationId: createAgent
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AgentCreate"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Agent"
+        "401":
+          $ref: "#/components/responses/Error"
+        "422":
+          $ref: "#/components/responses/Error"
+
+  /v1/agents/{id}:
+    parameters:
+      - $ref: "#/components/parameters/Id"
+    get:
+      summary: Get one agent
+      operationId: getAgent
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Agent"
+        "401":
+          $ref: "#/components/responses/Error"
+        "404":
+          $ref: "#/components/responses/Error"
+    patch:
+      summary: Patch profile fields
+      operationId: patchAgent
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AgentPatch"
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Agent"
+        "401":
+          $ref: "#/components/responses/Error"
+        "404":
+          $ref: "#/components/responses/Error"
+        "422":
+          $ref: "#/components/responses/Error"
+    delete:
+      summary: Delete an agent
+      description: Seeded `snorlax-bot` returns 409 `{ error }`.
+      operationId: deleteAgent
+      responses:
+        "204":
+          description: Deleted
+        "401":
+          $ref: "#/components/responses/Error"
+        "404":
+          $ref: "#/components/responses/Error"
+        "409":
+          $ref: "#/components/responses/Error"
+
+  /v1/agents/{id}/messages:
+    parameters:
+      - $ref: "#/components/parameters/Id"
+    get:
+      summary: List transcript messages
+      description: Oldest-first. `before` is a message id cursor for older pages.
+      operationId: listMessages
+      parameters:
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 200
+            default: 100
+        - name: before
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: JSON array of Message (not wrapped)
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Message"
+        "401":
+          $ref: "#/components/responses/Error"
+        "404":
+          $ref: "#/components/responses/Error"
+    post:
+      summary: Send a user message and stream the assistant reply
+      description: |
+        SSE, chat-only (no tools). Images are stored and returned; never
+        forwarded to vLLM.
+
+        - event `message.delta` data `{ id, role: "assistant", delta }`
+        - event `message.done` data full Message (not wrapped)
+        - event `error` data `{ error }` (string)
+      operationId: postMessage
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MessageCreate"
+      responses:
+        "200":
+          description: SSE stream
+          content:
+            text/event-stream:
+              schema:
+                type: string
+        "401":
+          $ref: "#/components/responses/Error"
+        "404":
+          $ref: "#/components/responses/Error"
+        "422":
+          $ref: "#/components/responses/Error"
+
+  /v1/images/{id}:
+    get:
+      summary: Fetch persisted image bytes
+      description: Supports Message.images[].url. Never sent to the model.
+      operationId: getImage
+      parameters:
+        - $ref: "#/components/parameters/Id"
+      responses:
+        "200":
+          description: Image bytes
+          content:
+            application/octet-stream:
+              schema:
+                type: string
+                format: binary
+        "401":
+          $ref: "#/components/responses/Error"
+        "404":
+          $ref: "#/components/responses/Error"
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: opaque
+      description: SNORLAX_TOKEN, or the value of ~/.snorlax-bot/token on the Spark.
+
+  parameters:
+    Id:
+      name: id
+      in: path
+      required: true
+      schema:
+        type: string
+
+  responses:
+    Error:
+      description: "`{ error }` as a string"
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorBody"
+
+  schemas:
+    Health:
+      type: object
+      required: [ok, name, version]
+      properties:
+        ok:
+          type: boolean
+          const: true
+        name:
+          type: string
+          const: Snorlax-Bot
+        version:
+          type: string
+
+    Agent:
+      type: object
+      required: [id, name, title, description, avatar, createdAt, updatedAt]
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        title:
+          type: string
+        description:
+          type: string
+        avatar:
+          type: [string, "null"]
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    AgentCreate:
+      type: object
+      properties:
+        name:
+          type: string
+          default: New agent
+          minLength: 1
+          maxLength: 80
+        title:
+          type: string
+          default: ""
+          maxLength: 80
+        description:
+          type: string
+          default: ""
+          maxLength: 8000
+        avatar:
+          type: [string, "null"]
+
+    AgentPatch:
+      type: object
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 80
+        title:
+          type: string
+          maxLength: 80
+        description:
+          type: string
+          maxLength: 8000
+        avatar:
+          type: [string, "null"]
+
+    ImageOut:
+      type: object
+      required: [id, mime, url]
+      properties:
+        id:
+          type: string
+        mime:
+          type: string
+        url:
+          type: string
+
+    ImageIn:
+      type: object
+      required: [mime, data]
+      properties:
+        mime:
+          type: string
+        data:
+          type: string
+          description: Base64 image bytes. Persisted; never sent to the model.
+
+    Message:
+      type: object
+      required: [id, agentId, role, content, images, createdAt]
+      properties:
+        id:
+          type: string
+        agentId:
+          type: string
+        role:
+          type: string
+          enum: [user, assistant]
+        content:
+          type: string
+        images:
+          type: array
+          items:
+            $ref: "#/components/schemas/ImageOut"
+        createdAt:
+          type: string
+          format: date-time
+
+    MessageCreate:
+      type: object
+      required: [content]
+      properties:
+        content:
+          type: string
+          minLength: 1
+          maxLength: 32000
+        images:
+          type: array
+          items:
+            $ref: "#/components/schemas/ImageIn"
+
+    MessageDelta:
+      type: object
+      required: [id, role, delta]
+      properties:
+        id:
+          type: string
+        role:
+          type: string
+          const: assistant
+        delta:
+          type: string
+
+    ErrorBody:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: string

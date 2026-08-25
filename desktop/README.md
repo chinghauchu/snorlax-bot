@@ -13,8 +13,14 @@ npm install
 npm run dev
 ```
 
-Open http://127.0.0.1:1420. Paste `http://127.0.0.1:8787` and the token
-printed by `snorlax-runtime`.
+Open http://127.0.0.1:1420. There is no Connect gate — the two-column chrome
+is always on screen. Click the **Local** chip (sidebar footer) and paste the
+Spark LAN URL plus token under Settings → General.
+
+- Prefill `SNORLAX_URL` / `SNORLAX_TOKEN` if those env vars are set.
+- Otherwise leave the fields empty. Placeholder: `http://<spark-lan>:8787`.
+- Health (`GET /v1/health`) is unauthenticated and does not unlock send.
+  The composer stays disabled until both URL and token are present.
 
 ## Native window
 
@@ -25,5 +31,9 @@ npm install
 npm run tauri dev
 ```
 
-v0 is chat-only: roster, create teammate, streaming transcript. Computer
-pane, widgets, and skills are later (see [../docs/tickets.md](../docs/tickets.md)).
+v0 chrome: 256px agent sidebar, chat, profile overlay, Settings. No computer
+pane.
+
+Types and the `/v1` client are generated from the locked camelCase OpenAPI
+(`openapi.yaml`, same contract as `protocol/openapi.yaml` on the Backend
+contract PR). Regenerate with `npm run generate:api`.

@@ -1,37 +1,18 @@
-export type Agent = {
-  id: string;
-  name: string;
-  instructions: string;
-  created_at: string;
-  updated_at: string;
+import type { components } from "./openapi";
+
+export type Agent = components["schemas"]["Agent"];
+export type AgentCreate = components["schemas"]["AgentCreate"];
+export type AgentPatch = components["schemas"]["AgentPatch"];
+export type ChatMessage = components["schemas"]["Message"];
+export type MessageImage = components["schemas"]["ImageOut"];
+export type ImageIn = components["schemas"]["ImageIn"];
+export type MessageDelta = components["schemas"]["MessageDelta"];
+export type RuntimeHealth = components["schemas"]["Health"];
+export type ErrorBody = components["schemas"]["ErrorBody"];
+
+export type Session = {
+  baseUrl: string;
+  token: string;
 };
 
-export type Attachment = {
-  id: string;
-  filename: string;
-  media_type: string;
-  sent_to_model: boolean;
-};
-
-export type ChatMessage = {
-  id: string;
-  agent_id: string;
-  role: "user" | "assistant";
-  content: string;
-  attachments: Attachment[];
-  created_at: string;
-};
-
-export type RuntimeHealth = {
-  status: string;
-  model: string;
-  inference_backend: string;
-  seeded_agent_id: string;
-  bind_host: string;
-};
-
-export type AttachmentIn = {
-  filename: string;
-  media_type: string;
-  data_base64?: string;
-};
+export type ThemePref = "system" | "light" | "dark";
