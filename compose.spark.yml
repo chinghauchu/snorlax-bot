@@ -1,0 +1,48 @@
+# SPDX-License-Identifier: Apache-2.0
+# Operator recipe for vLLM on a DGX Spark (GB10, 128 GB unified memory).
+# Not used by CI. Does not pull a 70B checkpoint until you run this file
+# on a machine with NVIDIA GPUs and a Hugging Face cache/token.
+#
+#   export HF_TOKEN=hf_...
+#   docker compose -f compose.spark.yml up
+#
+# Then start the FastAPI runtime on the host:
+#   ./scripts/spark-up.sh runtime
+#
+# vLLM stays on localhost:8000. Clients use snorlax-runtime :8787.
+
+services:
+  vllm:
+    image: vllm/vllm-openai:cu130-nightly
+    ipc: host
+    ports:
+      - "127.0.0.1:8000:8000"
+    environment:
+      HF_TOKEN: ${HF_TOKEN:-}
+      HUGGING_FACE_HUB_TOKEN: ${HF_TOKEN:-}
+    volumes:
+      - ${HF_HOME:-${HOME}/.cache/huggingface}:/root/.cache/huggingface
+    # Official image entrypoint is `vllm serve`; only pass model + flags.
+    entrypoint: ["vllm", "serve"]
+    command:
+      - nvidia/Llama-3.3-70B-Instruct-FP8
+      - --host
+      - "0.0.0.0"
+      - --port
+      - "8000"
+      - --dtype
+      - auto
+      - --max-model-len
+      - "8192"
+      - --gpu-memory-utilization
+      - "0.75"
+      - --max-num-seqs
+      - "4"
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    restart: unless-stopped

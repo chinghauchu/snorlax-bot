@@ -40,6 +40,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             settings.resolved_backend(),
             vllm_base_url=settings.vllm_base_url,
             model=settings.model,
+            connect_timeout=settings.vllm_connect_timeout,
+            read_timeout=settings.vllm_read_timeout,
+            write_timeout=settings.vllm_write_timeout,
         )
         print(
             "Snorlax-Bot runtime ready\n"

@@ -19,7 +19,10 @@ class Settings(BaseSettings):
     port: int = 8787
     inference_backend: str = "mock"
     vllm_base_url: str = "http://127.0.0.1:8000/v1"
-    model: str = "meta-llama/Llama-3.3-70B-Instruct-FP8"
+    model: str = "nvidia/Llama-3.3-70B-Instruct-FP8"
+    vllm_connect_timeout: float = 10.0
+    vllm_read_timeout: float = 120.0
+    vllm_write_timeout: float = 30.0
 
     def resolved_backend(self) -> str:
         name = self.inference_backend.strip().lower()
