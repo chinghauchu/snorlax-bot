@@ -22,6 +22,8 @@ Chat-only named agents. Meant to *run*, including without a GPU.
 
 Default model on Spark: **70B-class FP8**, swapped via config.
 
+Locked v0.1 (chat layout + agent messaging): [docs/specs/v0.1-chat-and-agents.md](docs/specs/v0.1-chat-and-agents.md).
+
 ## v1 — computer and tools
 
 - Local sandbox computer shared by all bots on the Spark (browser, filesystem,
