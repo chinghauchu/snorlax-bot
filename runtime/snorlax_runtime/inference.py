@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import re
 from collections.abc import AsyncIterator
 from typing import Protocol
 
@@ -13,11 +14,18 @@ class InferenceBackend(Protocol):
         ...
 
 
+FORWARD_RE = re.compile(r"FORWARD:@(\S+)")
+
+
 class MockBackend:
     """Local stand-in so the slice runs without a 70B checkpoint."""
 
     async def stream(self, messages: list[dict[str, str]]) -> AsyncIterator[str]:
         last_user = ""
+        system = ""
+        for item in messages:
+            if item.get("role") == "system" and not system:
+                system = item.get("content", "")
         for item in reversed(messages):
             if item.get("role") == "user":
                 last_user = item.get("content", "")
@@ -25,6 +33,11 @@ class MockBackend:
         snippet = last_user.strip().replace("\n", " ")
         if len(snippet) > 280:
             snippet = snippet[:277] + "..."
+        # Neutralize @ in the echo so quoting a prior turn does not re-fire
+        # mentions. FORWARD:@Name in the system prompt still appends real ones.
+        snippet = re.sub(r"(?<![A-Za-z0-9_])@", "(at)", snippet)
+        forwarded = " ".join(f"@{name}" for name in FORWARD_RE.findall(system))
+        extra = f"\n\n{forwarded}" if forwarded else ""
         reply = (
             "Heard. I'm Snorlax, running locally — mock backend, no cloud LLM, "
             "no tools in v0.\n\n"
@@ -32,6 +45,7 @@ class MockBackend:
             "When this Spark is wired to vLLM I'll keep the same SSE contract. "
             "Until then I can still take the brief, remember this transcript, "
             "and wait for the computer, skills, and MCP work."
+            f"{extra}"
         )
         for token in _tokenize(reply):
             yield token

@@ -20,10 +20,10 @@ computer. Bots live on your LAN, talk through a thin local runtime, and (in
 later versions) browse, click, schedule, and call tools without sending tokens
 off-box.
 
-v0 is deliberately small: **seeded teammate + create more teammates + chat**.
-No tools, no sandbox computer, no vision. That slice is meant to actually run
-on a laptop *or* a Spark, with a mocked model backend when a 70B-class
-checkpoint is not present.
+v0.1 is still small: **seeded teammate + group channel + create more teammates
++ chat with @mentions and agent DMs**. No tools, no sandbox computer, no vision.
+That slice is meant to actually run on a laptop *or* a Spark, with a mocked
+model backend when a 70B-class checkpoint is not present.
 
 ## Hardware target
 

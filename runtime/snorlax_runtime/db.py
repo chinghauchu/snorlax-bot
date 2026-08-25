@@ -12,11 +12,20 @@ from typing import Any
 import aiosqlite
 
 from snorlax_runtime import (
+    KIND_AGENT,
+    KIND_CHANNEL,
     SEEDED_AGENT_AVATAR,
     SEEDED_AGENT_DESCRIPTION,
     SEEDED_AGENT_ID,
     SEEDED_AGENT_NAME,
     SEEDED_AGENT_TITLE,
+    SEEDED_CHANNEL_AVATAR,
+    SEEDED_CHANNEL_DESCRIPTION,
+    SEEDED_CHANNEL_ID,
+    SEEDED_CHANNEL_NAME,
+    SEEDED_CHANNEL_TITLE,
+    USER_SENDER_ID,
+    USER_SENDER_NAME,
 )
 
 ISO = "%Y-%m-%dT%H:%M:%S.%fZ"
@@ -47,6 +56,7 @@ CREATE TABLE IF NOT EXISTS agents (
     title TEXT NOT NULL DEFAULT '',
     description TEXT NOT NULL DEFAULT '',
     avatar TEXT,
+    kind TEXT NOT NULL DEFAULT 'agent',
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL
 );
@@ -57,6 +67,11 @@ CREATE TABLE IF NOT EXISTS messages (
     role TEXT NOT NULL,
     content TEXT NOT NULL,
     created_at TEXT NOT NULL,
+    sender_id TEXT NOT NULL DEFAULT 'user',
+    sender_name TEXT NOT NULL DEFAULT 'User',
+    sender_avatar TEXT,
+    hop INTEGER NOT NULL DEFAULT 0,
+    mentions TEXT NOT NULL DEFAULT '[]',
     FOREIGN KEY (agent_id) REFERENCES agents(id) ON DELETE CASCADE
 );
 
@@ -69,18 +84,6 @@ CREATE TABLE IF NOT EXISTS images (
     FOREIGN KEY (message_id) REFERENCES messages(id) ON DELETE CASCADE
 );
 """
-
-
-def agent_public(row: Any) -> dict[str, Any]:
-    return {
-        "id": row["id"],
-        "name": row["name"],
-        "title": row["title"],
-        "description": row["description"],
-        "avatar": row["avatar"],
-        "createdAt": row["created_at"],
-        "updatedAt": row["updated_at"],
-    }
 
 
 class Store:
@@ -97,6 +100,7 @@ class Store:
         self._conn.row_factory = aiosqlite.Row
         await self._conn.execute("PRAGMA foreign_keys = ON")
         await self._conn.executescript(SCHEMA)
+        await self._migrate()
         await self._conn.commit()
         await self._seed()
 
@@ -111,41 +115,136 @@ class Store:
             raise RuntimeError("store is not connected")
         return self._conn
 
+    async def _columns(self, table: str) -> set[str]:
+        cur = await self.conn.execute(f"PRAGMA table_info({table})")
+        return {str(row["name"]) for row in await cur.fetchall()}
+
+    async def _migrate(self) -> None:
+        agent_cols = await self._columns("agents")
+        if "kind" not in agent_cols:
+            await self.conn.execute(
+                "ALTER TABLE agents ADD COLUMN kind TEXT NOT NULL DEFAULT 'agent'"
+            )
+        msg_cols = await self._columns("messages")
+        additions = {
+            "sender_id": "TEXT NOT NULL DEFAULT 'user'",
+            "sender_name": "TEXT NOT NULL DEFAULT 'User'",
+            "sender_avatar": "TEXT",
+            "hop": "INTEGER NOT NULL DEFAULT 0",
+            "mentions": "TEXT NOT NULL DEFAULT '[]'",
+        }
+        for name, spec in additions.items():
+            if name not in msg_cols:
+                await self.conn.execute(
+                    f"ALTER TABLE messages ADD COLUMN {name} {spec}"
+                )
+        await self.conn.execute(
+            "UPDATE messages SET sender_id = ?, sender_name = ? "
+            "WHERE role = 'user' AND (sender_id IS NULL OR sender_id = '')",
+            (USER_SENDER_ID, USER_SENDER_NAME),
+        )
+        await self.conn.execute(
+            "UPDATE messages SET sender_id = agent_id "
+            "WHERE role = 'assistant' AND (sender_id IS NULL OR sender_id = '' "
+            "OR sender_id = 'user')"
+        )
+        await self.conn.execute(
+            "UPDATE messages SET sender_name = ("
+            "  SELECT name FROM agents WHERE agents.id = messages.sender_id"
+            ") WHERE role = 'assistant' AND (sender_name IS NULL OR sender_name = '' "
+            "OR sender_name = 'User')"
+        )
+        await self.conn.commit()
+
     async def _seed(self) -> None:
-        """Insert snorlax-bot only when the roster is empty. Never auto-reseed."""
-        cur = await self.conn.execute("SELECT COUNT(*) AS n FROM agents")
+        """Insert snorlax-bot only when the roster has no agents. Never auto-reseed.
+
+        The group channel is created if missing so existing DBs pick up v0.1.
+        """
+        cur = await self.conn.execute(
+            "SELECT COUNT(*) AS n FROM agents WHERE kind = ?", (KIND_AGENT,)
+        )
         row = await cur.fetchone()
-        if row is None or int(row["n"]) > 0:
+        if row is not None and int(row["n"]) == 0:
+            now = utcnow()
+            await self.conn.execute(
+                "INSERT INTO agents "
+                "(id, name, title, description, avatar, kind, created_at, updated_at) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                (
+                    SEEDED_AGENT_ID,
+                    SEEDED_AGENT_NAME,
+                    SEEDED_AGENT_TITLE,
+                    SEEDED_AGENT_DESCRIPTION,
+                    SEEDED_AGENT_AVATAR,
+                    KIND_AGENT,
+                    now,
+                    now,
+                ),
+            )
+        await self._ensure_channel()
+        await self.conn.commit()
+
+    async def _ensure_channel(self) -> None:
+        existing = await self.get_agent(SEEDED_CHANNEL_ID)
+        if existing is not None:
             return
         now = utcnow()
         await self.conn.execute(
             "INSERT INTO agents "
-            "(id, name, title, description, avatar, created_at, updated_at) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?)",
+            "(id, name, title, description, avatar, kind, created_at, updated_at) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
             (
-                SEEDED_AGENT_ID,
-                SEEDED_AGENT_NAME,
-                SEEDED_AGENT_TITLE,
-                SEEDED_AGENT_DESCRIPTION,
-                SEEDED_AGENT_AVATAR,
+                SEEDED_CHANNEL_ID,
+                SEEDED_CHANNEL_NAME,
+                SEEDED_CHANNEL_TITLE,
+                SEEDED_CHANNEL_DESCRIPTION,
+                SEEDED_CHANNEL_AVATAR,
+                KIND_CHANNEL,
                 now,
                 now,
             ),
         )
-        await self.conn.commit()
+
+    async def _member_ids(self) -> list[str]:
+        cur = await self.conn.execute(
+            "SELECT id FROM agents WHERE kind = ? ORDER BY created_at ASC",
+            (KIND_AGENT,),
+        )
+        return [str(row["id"]) for row in await cur.fetchall()]
+
+    def _agent_public(self, row: Any, member_ids: list[str]) -> dict[str, Any]:
+        kind = row["kind"] if "kind" in row.keys() else KIND_AGENT
+        return {
+            "id": row["id"],
+            "name": row["name"],
+            "title": row["title"],
+            "description": row["description"],
+            "avatar": row["avatar"],
+            "kind": kind,
+            "memberIds": list(member_ids) if kind == KIND_CHANNEL else [],
+            "createdAt": row["created_at"],
+            "updatedAt": row["updated_at"],
+        }
 
     async def list_agents(self) -> list[dict[str, Any]]:
         cur = await self.conn.execute(
-            "SELECT * FROM agents ORDER BY created_at ASC"
+            "SELECT * FROM agents ORDER BY "
+            "CASE kind WHEN 'channel' THEN 0 ELSE 1 END, created_at ASC"
         )
-        return [agent_public(r) for r in await cur.fetchall()]
+        rows = await cur.fetchall()
+        members = [str(r["id"]) for r in rows if r["kind"] != KIND_CHANNEL]
+        return [self._agent_public(r, members) for r in rows]
 
     async def get_agent(self, agent_id: str) -> dict[str, Any] | None:
         cur = await self.conn.execute(
             "SELECT * FROM agents WHERE id = ?", (agent_id,)
         )
         row = await cur.fetchone()
-        return None if row is None else agent_public(row)
+        if row is None:
+            return None
+        members = await self._member_ids() if row["kind"] == KIND_CHANNEL else []
+        return self._agent_public(row, members)
 
     async def create_agent(
         self,
@@ -163,9 +262,9 @@ class Store:
         now = utcnow()
         await self.conn.execute(
             "INSERT INTO agents "
-            "(id, name, title, description, avatar, created_at, updated_at) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?)",
-            (agent_id, name, title, description, avatar, now, now),
+            "(id, name, title, description, avatar, kind, created_at, updated_at) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            (agent_id, name, title, description, avatar, KIND_AGENT, now, now),
         )
         await self.conn.commit()
         agent = await self.get_agent(agent_id)
@@ -233,6 +332,14 @@ class Store:
         return [await self._message_public(message) for message in rows]
 
     async def _message_public(self, message: dict[str, Any]) -> dict[str, Any]:
+        raw_mentions = message.get("mentions") or "[]"
+        if isinstance(raw_mentions, list):
+            mentions = raw_mentions
+        else:
+            try:
+                mentions = json.loads(raw_mentions)
+            except json.JSONDecodeError:
+                mentions = []
         return {
             "id": message["id"],
             "agentId": message["agent_id"],
@@ -240,6 +347,11 @@ class Store:
             "content": message["content"],
             "images": await self.list_images(message["id"]),
             "createdAt": message["created_at"],
+            "senderId": message.get("sender_id") or USER_SENDER_ID,
+            "senderName": message.get("sender_name") or USER_SENDER_NAME,
+            "senderAvatar": message.get("sender_avatar"),
+            "hop": int(message.get("hop") or 0),
+            "mentions": mentions,
         }
 
     async def list_images(self, message_id: str) -> list[dict[str, Any]]:
@@ -277,13 +389,36 @@ class Store:
         content: str,
         images: list[dict[str, Any]] | None = None,
         message_id: str | None = None,
+        sender_id: str | None = None,
+        sender_name: str | None = None,
+        sender_avatar: str | None = None,
+        hop: int = 0,
+        mentions: list[dict[str, Any]] | None = None,
     ) -> dict[str, Any]:
         message_id = message_id or new_id("msg")
         created = utcnow()
+        if sender_id is None:
+            sender_id = USER_SENDER_ID if role == "user" else agent_id
+        if sender_name is None:
+            sender_name = USER_SENDER_NAME if sender_id == USER_SENDER_ID else sender_id
+        stored_mentions = json.dumps(mentions or [], ensure_ascii=False)
         await self.conn.execute(
-            "INSERT INTO messages (id, agent_id, role, content, created_at) "
-            "VALUES (?, ?, ?, ?, ?)",
-            (message_id, agent_id, role, content, created),
+            "INSERT INTO messages "
+            "(id, agent_id, role, content, created_at, sender_id, sender_name, "
+            "sender_avatar, hop, mentions) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (
+                message_id,
+                agent_id,
+                role,
+                content,
+                created,
+                sender_id,
+                sender_name,
+                sender_avatar,
+                hop,
+                stored_mentions,
+            ),
         )
         stored: list[dict[str, Any]] = []
         for image in images or []:
@@ -296,6 +431,11 @@ class Store:
             "content": content,
             "images": stored,
             "createdAt": created,
+            "senderId": sender_id,
+            "senderName": sender_name,
+            "senderAvatar": sender_avatar,
+            "hop": hop,
+            "mentions": mentions or [],
         }
 
     async def _add_image(
@@ -318,20 +458,51 @@ class Store:
             "url": image_url(image_id),
         }
 
-    async def inference_transcript(self, agent_id: str) -> list[dict[str, str]]:
+    async def inference_transcript(
+        self, conversation_id: str, for_agent_id: str | None = None
+    ) -> list[dict[str, str]]:
         """Text-only history. Images are omitted on purpose (no VL)."""
-        agent = await self.get_agent(agent_id)
-        assert agent is not None
-        messages: list[dict[str, str]] = [
-            {"role": "system", "content": agent["description"] or ""}
-        ]
+        conversation = await self.get_agent(conversation_id)
+        assert conversation is not None
+        speaker = (
+            await self.get_agent(for_agent_id) if for_agent_id else conversation
+        )
+        assert speaker is not None
+        is_group = conversation.get("kind") == KIND_CHANNEL
+        who = speaker["id"] if for_agent_id else conversation_id
+        place = (
+            "a shared group channel with every teammate"
+            if is_group
+            else "a 1:1 with the user"
+        )
+        system = (
+            f"You are {speaker['name']}. You are in {place}. "
+            "Mention another teammate with @DisplayName to involve them; "
+            "the runtime routes that mention. Do not invent cues like "
+            "[agent] or [Group chat:]. Stay silent on FYI notes that do "
+            "not ask you anything.\n\n"
+            f"{speaker['description'] or ''}"
+        ).strip()
+        messages: list[dict[str, str]] = [{"role": "system", "content": system}]
         cur = await self.conn.execute(
-            "SELECT role, content FROM messages WHERE agent_id = ? "
-            "ORDER BY created_at ASC",
-            (agent_id,),
+            "SELECT sender_id, sender_name, role, content FROM messages "
+            "WHERE agent_id = ? ORDER BY created_at ASC",
+            (conversation_id,),
         )
         for row in await cur.fetchall():
-            messages.append({"role": row["role"], "content": row["content"]})
+            sender = row["sender_id"]
+            body = row["content"]
+            if sender == who:
+                messages.append({"role": "assistant", "content": body})
+            elif sender == USER_SENDER_ID:
+                messages.append({"role": "user", "content": body})
+            else:
+                messages.append(
+                    {
+                        "role": "user",
+                        "content": f"{row['sender_name']}: {body}",
+                    }
+                )
         return messages
 
 

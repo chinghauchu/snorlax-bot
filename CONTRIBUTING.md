@@ -13,9 +13,9 @@ NVIDIA DGX Spark.
 - **No cloud LLM required.** Features must run with the mock inference backend
   in CI and on machines without a 70B checkpoint. vLLM is the Spark path, not
   a development dependency.
-- **Keep v0 small.** Chat-only named agents until the vertical slice is
-  boringly solid. Tools, MCP, sandbox computer, vision, and routines are
-  later — see [ROADMAP.md](ROADMAP.md).
+- **Keep v0.1 small.** Named teammates, one seeded group, @mentions and agent
+  DMs. Tools, MCP, sandbox computer, vision, and routines are later — see
+  [ROADMAP.md](ROADMAP.md).
 
 ## Locked v0 decisions (do not reopen in drive-by PRs)
 

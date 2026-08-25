@@ -16,6 +16,8 @@ def test_seeded_agent_present(client) -> None:
     assert snorlax["name"] == "Snorlax-Bot"
     assert snorlax["title"] == "Assistant"
     assert snorlax["avatar"] is None
+    assert snorlax["kind"] == "agent"
+    assert snorlax["memberIds"] == []
     assert "description" in snorlax
     assert "instructions" not in snorlax
     assert "createdAt" in snorlax

@@ -67,12 +67,17 @@ struct RuntimeClient: Sendable {
         agentId: String,
         content: String,
         images: [ImageIn],
+        mentions: [String] = [],
         onEvent: @escaping @Sendable (StreamEvent) -> Void
     ) async throws {
         var request = try makeRequest(
             "v1/agents/\(Self.encode(agentId))/messages",
             method: "POST",
-            body: MessageCreate(content: content, images: images.isEmpty ? nil : images)
+            body: MessageCreate(
+                content: content,
+                images: images.isEmpty ? nil : images,
+                mentions: mentions.isEmpty ? nil : mentions
+            )
         )
         request.setValue("text/event-stream", forHTTPHeaderField: "Accept")
         request.timeoutInterval = 600
@@ -136,7 +141,7 @@ struct RuntimeClient: Sendable {
     }
 
     enum StreamEvent: Sendable {
-        case delta(id: String, text: String)
+        case delta(id: String, text: String, senderId: String?, senderName: String?, senderAvatar: String?)
         case done(Message)
         case error(String)
 
@@ -147,7 +152,13 @@ struct RuntimeClient: Sendable {
             switch name {
             case "message.delta":
                 guard let body = try? decoder.decode(MessageDelta.self, from: payload) else { return nil }
-                return .delta(id: body.id, text: body.delta)
+                return .delta(
+                    id: body.id,
+                    text: body.delta,
+                    senderId: body.senderId,
+                    senderName: body.senderName,
+                    senderAvatar: body.senderAvatar
+                )
             case "message.done":
                 guard let message = try? decoder.decode(Message.self, from: payload) else { return nil }
                 return .done(message)
