@@ -49,12 +49,14 @@ export function insertMention(
   name: string,
 ): { text: string; caret: number } {
   const trigger = mentionTrigger(text, caret);
+  const after = text.slice(caret);
+  const pad = after.startsWith(" ") ? "" : " ";
   if (!trigger) {
-    const inserted = `${text.slice(0, caret)}@${name} ${text.slice(caret)}`;
-    return { text: inserted, caret: caret + name.length + 2 };
+    const inserted = `${text.slice(0, caret)}@${name}${pad}${after}`;
+    return { text: inserted, caret: caret + name.length + 1 + pad.length };
   }
-  const next = `${text.slice(0, trigger.start)}@${name} ${text.slice(caret)}`;
-  return { text: next, caret: trigger.start + name.length + 2 };
+  const next = `${text.slice(0, trigger.start)}@${name}${pad}${after}`;
+  return { text: next, caret: trigger.start + name.length + 1 + pad.length };
 }
 
 export function mentionIdsInText(
@@ -91,9 +93,10 @@ export function splitMentions(
     const idx = match.index ?? 0;
     if (idx > last) pieces.push({ type: "text", value: text.slice(last, idx) });
     const token = match[1];
-    const resolved = names.some(
-      (n) => n === token.toLowerCase() || n.startsWith(token.toLowerCase()),
-    );
+    const t = token.toLowerCase();
+    const exact = names.includes(t);
+    const prefixes = names.filter((n) => n.startsWith(t));
+    const resolved = exact || prefixes.length === 1;
     pieces.push({ type: "mention", value: match[0], resolved });
     last = idx + match[0].length;
   }

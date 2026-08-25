@@ -310,8 +310,9 @@ final class AppModel {
             let token = afterAt.prefix { ch in
                 ch.isLetter || ch.isNumber || ch == "." || ch == "_" || ch == "-"
             }
-            let rest = afterAt.dropFirst(token.count)
-            draft = "\(prefix)@\(agent.name) \(rest)"
+            let rest = String(afterAt.dropFirst(token.count))
+            let pad = rest.first == " " || rest.isEmpty ? "" : " "
+            draft = "\(prefix)@\(agent.name)\(pad)\(rest)"
         } else {
             draft += "@\(agent.name) "
         }
