@@ -2,7 +2,7 @@
 
 TypeScript + Tauri shell for Snorlax-Bot. The web UI is the product; Tauri
 is the native window. Talks only to the FastAPI runtime (`/v1`) with a
-bearer token. Never talks to vLLM.
+bearer token. Never talks to oMLX or vLLM.
 
 ## Web (no Rust)
 
@@ -15,12 +15,17 @@ npm run dev
 
 Open http://127.0.0.1:1420. There is no Connect gate — the two-column chrome
 is always on screen. Click the **Local** chip (sidebar footer) and paste the
-Spark LAN URL plus token under Settings → General.
+Runtime URL plus token under Settings → General.
 
 - Prefill `SNORLAX_URL` / `SNORLAX_TOKEN` if those env vars are set.
-- Otherwise leave the fields empty. Placeholder: `http://<spark-lan>:8787`.
+- Loopback is first-class: `http://127.0.0.1:8787` and `http://localhost:8787`
+  save and survive reload.
+- Otherwise leave the fields empty. Placeholder: `http://<spark-lan>:8787`
+  (hint for a phone on the Spark LAN; not a ban on loopback).
 - Health (`GET /v1/health`) is unauthenticated and does not unlock send.
   The composer stays disabled until both URL and token are present.
+
+Mac-local runtime + oMLX: [../docs/mac-local.md](../docs/mac-local.md).
 
 ## Native window
 

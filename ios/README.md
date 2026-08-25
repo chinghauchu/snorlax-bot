@@ -23,14 +23,20 @@ says **Snorlax-Bot**.
 
 ## Pairing
 
-1. Runtime on the Spark is bound to `0.0.0.0:8787` (token already on disk).
-2. iPhone on the same LAN.
-3. Settings → paste `http://<spark-lan>:8787` and the bearer token.
-4. Launch with both set: `GET /v1/agents`, select `snorlax-bot`, load
+1. Runtime bound to `127.0.0.1:8787` (Mac-local) or `0.0.0.0:8787` (Spark LAN,
+   token already on disk).
+2. Settings → paste Runtime URL and the bearer token.
+   - Mac-local / Simulator: `http://127.0.0.1:8787` or `http://localhost:8787`.
+     Loopback is valid and persisted.
+   - Phone on the Spark LAN: `http://<spark-lan>:8787` (the field placeholder).
+3. Launch with both set: `GET /v1/agents`, select `snorlax-bot`, load
    messages, focus the composer.
 
-URL and token start empty. The client never defaults to `127.0.0.1`.
-`GET /v1/health` is unauthenticated and does not enable send.
+URL and token start empty (no silent default). Loopback is allowed when you
+paste it. `GET /v1/health` is unauthenticated and does not enable send. The
+client never calls oMLX/vLLM (`:8000`).
+
+Mac-local recipe: [../docs/mac-local.md](../docs/mac-local.md).
 
 ## `/v1` types
 

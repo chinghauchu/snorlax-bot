@@ -11,16 +11,18 @@ NVIDIA DGX Spark.
 - **No Grok Bot source.** Recreate from the public product shape. Do not
   vendor, decompile, or paste proprietary client/server code.
 - **No cloud LLM required.** Features must run with the mock inference backend
-  in CI and on machines without a 70B checkpoint. vLLM is the Spark path, not
-  a development dependency.
+  in CI and on machines without a 70B checkpoint. `omlx` is the Mac-local
+  OpenAI-compat path. `vllm` is the Spark path. Neither is a development
+  dependency.
 - **Keep v0.1 small.** Named teammates, one seeded group, @mentions, and
   1:1 isolation (peer traffic in the group channel). Tools, MCP, sandbox
   computer, vision, and routines are later — see [ROADMAP.md](ROADMAP.md).
 
 ## Locked v0 decisions (do not reopen in drive-by PRs)
 
-- Serving: vLLM now; TensorRT-LLM is a later swap behind the same interface.
-- Clients never hit vLLM. The FastAPI runtime owns agents, transcripts, LAN
+- Serving: oMLX on Mac-local; vLLM on Spark; TensorRT-LLM is a later swap
+  behind the same interface.
+- Clients never hit oMLX or vLLM. The FastAPI runtime owns agents, transcripts, LAN
   auth.
 - HTTP is `/v1` with `Authorization: Bearer <token>`. Seeded agent id is
   `snorlax-bot`. SQLite on disk. Bind `127.0.0.1` until a token exists, then

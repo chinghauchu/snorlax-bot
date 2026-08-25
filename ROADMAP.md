@@ -15,7 +15,7 @@ Chat-only named agents. Meant to *run*, including without a GPU.
 | Transcript persistence (SQLite) | Skills, “teach a task”, routines |
 | `POST .../messages` as SSE (`message.delta` / `message.done` / `error`) | MCP connectors |
 | Bearer token LAN auth; bind localhost until a token exists | Vision (images persist, not sent to the model) |
-| Mock inference **or** vLLM OpenAI-compat | TensorRT-LLM |
+| Mock inference, **oMLX**, or **vLLM** OpenAI-compat | TensorRT-LLM |
 | Tauri + TypeScript chat UI | Computer pane / tools |
 | Swift/SwiftUI iOS companion | Skills, “teach a task”, routines |
 | Seeded group channel + agent DMs + @mentions | Extra user-created channels |

@@ -12,6 +12,8 @@ final class AppModel {
         static let accent = "snorlax.accent"
     }
 
+    /// Runtime URL. Loopback (`http://127.0.0.1:8787`, `http://localhost:8787`)
+    /// is valid and persisted across launch.
     var runtimeURL: String {
         didSet { UserDefaults.standard.set(runtimeURL, forKey: Keys.runtimeURL) }
     }

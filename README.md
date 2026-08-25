@@ -47,25 +47,26 @@ desktop/     Tauri + TypeScript chat client
 ios/         Swift/SwiftUI companion (list, chat, settings)
 runtime/     FastAPI agent runtime (in front of vLLM)
 protocol/    OpenAPI contract for /v1
-docs/        Architecture and next tickets
+docs/        Architecture, Mac-local oMLX recipe, next tickets
 ```
 
 ## Architecture (one paragraph)
 
-Clients never talk to vLLM. A thin FastAPI runtime owns agents, transcripts,
-and LAN bearer-token auth. It sits in front of vLLM (OpenAI-compatible
-streaming) today; TensorRT-LLM is a later swap behind the same interface.
-SQLite on disk holds agents and messages. The seeded agent id is stable:
-`snorlax-bot`. Bind is `127.0.0.1` until a token exists, then `0.0.0.0` so a
-phone on the same LAN can reach the Spark. Details:
-[docs/architecture.md](docs/architecture.md). Locked HTTP contract:
+Clients never talk to the model server. A thin FastAPI runtime owns agents,
+transcripts, and LAN bearer-token auth. It sits in front of **oMLX**
+(Mac-local OpenAI-compat) or **vLLM** (Spark); TensorRT-LLM is a later swap
+behind the same interface. SQLite on disk holds agents and messages. The
+seeded agent id is stable: `snorlax-bot`. Bind is `127.0.0.1` until a token
+exists, then `0.0.0.0` so a phone on the same LAN can reach the host. Details:
+[docs/architecture.md](docs/architecture.md). Mac-local recipe:
+[docs/mac-local.md](docs/mac-local.md). Locked HTTP contract:
 [protocol/openapi.yaml](protocol/openapi.yaml) (copy: `runtime/openapi.yaml`).
 
 ## How to run locally (v0 vertical slice)
 
 You do **not** need a DGX Spark or a cloud LLM. The default inference backend
-is `mock`, which streams a local reply over the same SSE contract vLLM will
-use.
+is `mock` (CI and first boot). On a Mac, point the runtime at local **oMLX**.
+On a Spark, use **vLLM**. Clients always talk to `:8787`, never `:8000`.
 
 ### 1. Runtime
 
@@ -120,8 +121,9 @@ npm install
 npm run dev
 ```
 
-Open http://127.0.0.1:1420, paste the runtime URL (`http://127.0.0.1:8787`)
-and the bearer token, then chat with **Snorlax**.
+Open http://127.0.0.1:1420, paste the runtime URL (`http://127.0.0.1:8787`
+or `http://localhost:8787`) and the bearer token, then chat with **Snorlax**.
+Loopback URLs persist across reload.
 
 The same UI is wrapped by Tauri for a native window:
 
@@ -130,9 +132,26 @@ cd desktop
 npm run tauri dev
 ```
 
-### 3. On a real DGX Spark
+### 3. On a Mac (oMLX)
 
-Point the runtime at a local vLLM server instead of the mock:
+oMLX is the first-class local OpenAI-compat backend. It is not vLLM. Recipe:
+[docs/mac-local.md](docs/mac-local.md).
+
+```bash
+curl -sS http://127.0.0.1:8000/v1/models   # copy data[0].id
+export SNORLAX_INFERENCE_BACKEND=omlx
+export SNORLAX_OMLX_BASE_URL=http://127.0.0.1:8000/v1
+export SNORLAX_MODEL='<id from GET /v1/models>'
+# No API key: runtime does not send Authorization to localhost inference.
+snorlax-runtime
+```
+
+Turn API-key auth **off** in oMLX admin. Desktop Settings: Runtime URL
+`http://127.0.0.1:8787`. Clients never call `:8000`.
+
+### 4. On a real DGX Spark
+
+Point the runtime at local vLLM instead of mock or oMLX:
 
 ```bash
 export SNORLAX_INFERENCE_BACKEND=vllm
@@ -141,8 +160,9 @@ export SNORLAX_MODEL=meta-llama/Llama-3.3-70B-Instruct-FP8
 snorlax-runtime
 ```
 
-Default model is **70B-class FP8**, config-swappable. Images may be attached
-and persisted; they are **not** sent to the model in v0 (no vision default).
+Default Spark model is **70B-class FP8**, config-swappable. Images may be
+attached and persisted; they are **not** sent to the model in v0 (no vision
+default).
 
 ## v0 vs later
 

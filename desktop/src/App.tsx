@@ -33,6 +33,10 @@ import {
   senderKey,
   splitMentions,
 } from "./mentions";
+import {
+  loadInitialRuntimeUrl,
+  normalizeRuntimeUrl,
+} from "./runtimeUrl";
 import type {
   Agent,
   ChatMessage,
@@ -46,9 +50,10 @@ const TOKEN_KEY = "snorlax.token";
 const THEME_KEY = "snorlax.theme";
 const ACCENT_KEY = "snorlax.accent";
 
+// Placeholder hints Spark LAN for a remote phone. Loopback is valid and persisted.
 const URL_PLACEHOLDER = "http://" + "<" + "spark-lan" + ">" + ":8787";
 const MISSING_CREDS =
-  "Paste your Spark URL and token in Settings to start.";
+  "Paste the Runtime URL and token in Settings to start.";
 const PLACEHOLDER_CHANNEL: Agent = {
   id: SEED_CHANNEL_ID,
   name: "Snorlax-Bot",
@@ -101,20 +106,8 @@ function envToken(): string {
   ).trim();
 }
 
-function isLoopbackUrl(value: string): boolean {
-  try {
-    const host = new URL(value).hostname;
-    return host === "127.0.0.1" || host === "localhost" || host === "[::1]";
-  } catch {
-    return /127\.0\.0\.1|localhost/i.test(value);
-  }
-}
-
 function initialUrl(): string {
-  const stored = (localStorage.getItem(URL_KEY) ?? "").trim();
-  const candidate = stored || envUrl();
-  if (!candidate || isLoopbackUrl(candidate)) return "";
-  return candidate.replace(/\/$/, "");
+  return loadInitialRuntimeUrl(localStorage.getItem(URL_KEY) ?? "", envUrl());
 }
 
 function initialToken(): string {
@@ -148,7 +141,7 @@ function initials(name: string): string {
 function describeError(err: unknown): string {
   if (err instanceof ApiError) return `${err.code}: ${err.message}`;
   if (err instanceof TypeError) {
-    return "Cannot reach the runtime. Check the Spark URL in Settings.";
+    return "Cannot reach the runtime. Check the Runtime URL in Settings.";
   }
   return err instanceof Error ? err.message : "Unknown error";
 }
@@ -224,7 +217,7 @@ export function App() {
   const credsReady = session !== null;
 
   function commitSession(url = urlInput, token = tokenInput) {
-    const baseUrl = url.trim().replace(/\/$/, "");
+    const baseUrl = normalizeRuntimeUrl(url);
     const tok = token.trim();
     localStorage.setItem(URL_KEY, baseUrl);
     localStorage.setItem(TOKEN_KEY, tok);
@@ -293,7 +286,7 @@ export function App() {
   }, [themePref, accent]);
 
   useEffect(() => {
-    localStorage.setItem(URL_KEY, urlInput.trim().replace(/\/$/, ""));
+    localStorage.setItem(URL_KEY, normalizeRuntimeUrl(urlInput));
     localStorage.setItem(TOKEN_KEY, tokenInput.trim());
   }, [urlInput, tokenInput]);
 
@@ -1009,6 +1002,10 @@ export function App() {
                   autoComplete="off"
                   onChange={(e) => setUrlInput(e.target.value)}
                 />
+                <span className="section-label">
+                  Mac-local: http://127.0.0.1:8787 or http://localhost:8787.
+                  Spark: LAN hostname. Never the model port.
+                </span>
               </label>
               <label>
                 Token
