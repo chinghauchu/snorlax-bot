@@ -3,8 +3,12 @@ from __future__ import annotations
 
 import pytest
 
+from fastapi.testclient import TestClient
+
+from snorlax_runtime.app import create_app
+from snorlax_runtime.config import Settings
 from snorlax_runtime.db import Store
-from tests.conftest import AUTH
+from tests.conftest import AUTH, TOKEN
 
 
 def test_seeded_agent_present(client) -> None:
@@ -84,6 +88,28 @@ def test_delete_seeded_agent_is_204_and_gone(client) -> None:
     assert "snorlax-bot" not in channel["memberIds"]
 
 
+def test_delete_seed_does_not_reseed_on_runtime_restart(tmp_path) -> None:
+    settings = Settings(
+        data_dir=tmp_path,
+        token=TOKEN,
+        bind="127.0.0.1",
+        inference_backend="mock",
+        port=8787,
+    )
+    with TestClient(create_app(settings)) as client:
+        deleted = client.delete("/v1/agents/snorlax-bot", headers=AUTH)
+        assert deleted.status_code == 204
+        roster = client.get("/v1/agents", headers=AUTH).json()
+        assert [a["id"] for a in roster] == ["snorlax-bot-group"]
+    with TestClient(create_app(settings)) as client:
+        roster = client.get("/v1/agents", headers=AUTH).json()
+        ids = [a["id"] for a in roster]
+        assert "snorlax-bot" not in ids
+        assert ids == ["snorlax-bot-group"]
+        missing = client.get("/v1/agents/snorlax-bot", headers=AUTH)
+        assert missing.status_code == 404
+
+
 def test_patch_seed_identity(client) -> None:
     patched = client.patch(
         "/v1/agents/snorlax-bot",
@@ -117,6 +143,14 @@ def test_cannot_patch_seeded_channel(client) -> None:
     assert response.json() == {"error": "seeded channel cannot be patched"}
     still = client.get("/v1/agents/snorlax-bot-group", headers=AUTH).json()
     assert still["name"] == "Snorlax-Bot"
+
+
+def test_cannot_delete_seeded_channel(client) -> None:
+    response = client.delete("/v1/agents/snorlax-bot-group", headers=AUTH)
+    assert response.status_code == 409
+    assert response.json() == {"error": "seeded channel cannot be deleted"}
+    still = client.get("/v1/agents/snorlax-bot-group", headers=AUTH)
+    assert still.status_code == 200
 
 
 def test_patch_avatar_null_clears(client) -> None:

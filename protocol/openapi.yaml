@@ -9,14 +9,16 @@ info:
     Seeded agent: id `snorlax-bot`, name Snorlax, title Assistant, kind
     `agent`. GET/POST /v1/agents/snorlax-bot/messages is the user–Snorlax
     1:1 only (user + that agent). Never the channel transcript.
-    PATCH `{ name, title, description, avatar }` is allowed; id is not
-    editable. DELETE is 204, gone from GET /v1/agents, and is not
-    auto-reseeded. An empty agent roster is fine.
+    PATCH `{ name, title, description, avatar }` on kind=agent (including
+    seed `snorlax-bot`) returns 200. Avatar is string|null (data URL or
+    existing image id). No new upload route. Id is not a patch field.
+    DELETE of kind=agent including seed `snorlax-bot` is 204, gone from
+    GET /v1/agents, and is not auto-reseeded. An empty agent roster is OK.
     Seeded group channel: id `snorlax-bot-group`, name Snorlax-Bot, kind
     `channel`. Listed by GET /v1/agents like an agent. Every agent is a
     member; new agents auto-join. Extra user-created channels wait.
-    Channel DELETE and PATCH return 409 `{ error }`.
-    User-created agent PATCH and DELETE (204) work as today.
+    Channel identity PATCH is 409 `{ error }`. Channel DELETE stays 409.
+    Members come from memberIds. User-created agent DELETE is still 204.
 
     Chat-only. No tools, no VL, no MCP, no skills, no box, no computer-use,
     no routines, no widgets. Images persist and are returned; they are
@@ -146,12 +148,11 @@ paths:
     patch:
       summary: Patch profile fields
       description: |
-        kind=agent (including seed `snorlax-bot`) accepts
-        `{ name, title, description, avatar }`. Id is not editable.
-        Empty/null avatar shows initials from name. Avatar is a string
-        (data URI or persisted `/v1/images/{id}`) or null. There is no
-        separate avatar upload route.
-        kind=channel (`snorlax-bot-group`) returns 409 `{ error }`.
+        PATCH body stays `{ name, title, description, avatar }`. Avatar is
+        string|null (data URL or existing image id). No new upload route.
+        kind=agent including seed `snorlax-bot` returns 200. Id is not
+        editable. kind=channel (`snorlax-bot-group`) identity PATCH
+        returns 409 `{ error }`.
       operationId: patchAgent
       requestBody:
         required: true
@@ -176,10 +177,10 @@ paths:
     delete:
       summary: Delete an agent
       description: |
-        kind=agent (including seed `snorlax-bot`) returns 204 and is gone
-        from GET /v1/agents. The seed is not auto-reseeded; an empty agent
-        roster is fine. Seeded channel `snorlax-bot-group` returns 409
-        `{ error }`.
+        kind=agent including seed `snorlax-bot` returns 204 and is gone
+        from GET /v1/agents. No auto-reseed; an empty agent roster is OK.
+        User-created DELETE is still 204. Seeded channel
+        `snorlax-bot-group` DELETE stays 409 `{ error }`.
       operationId: deleteAgent
       responses:
         "204":
@@ -359,8 +360,8 @@ components:
         avatar:
           type: [string, "null"]
           description: |
-            Data URI, persisted image id or `/v1/images/{id}` URL, or null.
-            Empty/null shows initials from name.
+            Data URL, existing image id, or null. Empty/null shows initials
+            from name.
         kind:
           type: string
           enum: [agent, channel]
@@ -371,7 +372,7 @@ components:
           type: array
           items:
             type: string
-          description: Agent ids in a channel. Empty for kind=agent. Always all agents for the seeded group.
+          description: Agent ids in a channel. Empty for kind=agent. Channel members come from memberIds.
         createdAt:
           type: string
           format: date-time
@@ -414,8 +415,8 @@ components:
         avatar:
           type: [string, "null"]
           description: |
-            Data URI, persisted image id or `/v1/images/{id}` URL, or null.
-            Empty/null shows initials from name. Id is not a patch field.
+            Data URL, existing image id, or null. Empty/null shows initials
+            from name. PATCH only; no new upload route.
 
     ImageOut:
       type: object

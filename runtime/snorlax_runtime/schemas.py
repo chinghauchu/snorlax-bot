@@ -40,8 +40,8 @@ class AgentPatch(BaseModel):
     avatar: str | None = Field(
         default=None,
         description=(
-            "Data URI, persisted image id/url (`/v1/images/{id}`), or null. "
-            "Empty/null shows initials from name. No separate avatar upload route."
+            "Data URL, existing image id, or null. Empty/null shows initials "
+            "from name. No new upload route."
         ),
     )
 

@@ -71,22 +71,21 @@ export interface paths {
         post?: never;
         /**
          * Delete an agent
-         * @description kind=agent (including seed `snorlax-bot`) returns 204 and is gone
-         *     from GET /v1/agents. The seed is not auto-reseeded; an empty agent
-         *     roster is fine. Seeded channel `snorlax-bot-group` returns 409
-         *     `{ error }`.
+         * @description kind=agent including seed `snorlax-bot` returns 204 and is gone
+         *     from GET /v1/agents. No auto-reseed; an empty agent roster is OK.
+         *     User-created DELETE is still 204. Seeded channel
+         *     `snorlax-bot-group` DELETE stays 409 `{ error }`.
          */
         delete: operations["deleteAgent"];
         options?: never;
         head?: never;
         /**
          * Patch profile fields
-         * @description kind=agent (including seed `snorlax-bot`) accepts
-         *     `{ name, title, description, avatar }`. Id is not editable.
-         *     Empty/null avatar shows initials from name. Avatar is a string
-         *     (data URI or persisted `/v1/images/{id}`) or null. There is no
-         *     separate avatar upload route.
-         *     kind=channel (`snorlax-bot-group`) returns 409 `{ error }`.
+         * @description PATCH body stays `{ name, title, description, avatar }`. Avatar is
+         *     string|null (data URL or existing image id). No new upload route.
+         *     kind=agent including seed `snorlax-bot` returns 200. Id is not
+         *     editable. kind=channel (`snorlax-bot-group`) identity PATCH
+         *     returns 409 `{ error }`.
          */
         patch: operations["patchAgent"];
         trace?: never;
@@ -182,8 +181,8 @@ export interface components {
             title: string;
             description: string;
             /**
-             * @description Data URI, persisted image id or `/v1/images/{id}` URL, or null.
-             *     Empty/null shows initials from name.
+             * @description Data URL, existing image id, or null. Empty/null shows initials
+             *     from name.
              */
             avatar: string | null;
             /**
@@ -192,7 +191,7 @@ export interface components {
              * @enum {string}
              */
             kind: "agent" | "channel";
-            /** @description Agent ids in a channel. Empty for kind=agent. Always all agents for the seeded group. */
+            /** @description Agent ids in a channel. Empty for kind=agent. Channel members come from memberIds. */
             memberIds: string[];
             /** Format: date-time */
             createdAt: string;
@@ -213,8 +212,8 @@ export interface components {
             title?: string;
             description?: string;
             /**
-             * @description Data URI, persisted image id or `/v1/images/{id}` URL, or null.
-             *     Empty/null shows initials from name. Id is not a patch field.
+             * @description Data URL, existing image id, or null. Empty/null shows initials
+             *     from name. PATCH only; no new upload route.
              */
             avatar?: string | null;
         };
