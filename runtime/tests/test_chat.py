@@ -28,7 +28,7 @@ def test_chat_sse_mock(client) -> None:
     assert first_delta["id"] == first_delta["id"]
     assert first_delta["role"] == "assistant"
     assert first_delta["senderId"] == "snorlax-bot"
-    assert first_delta["senderName"] == "Snorlax-Bot"
+    assert first_delta["senderName"] == "Snorlax"
     assert first_delta["senderAvatar"] is None
     assert first_delta["delta"]
     done = events[-1][1]
@@ -36,7 +36,7 @@ def test_chat_sse_mock(client) -> None:
     assert done["role"] == "assistant"
     assert done["agentId"] == "snorlax-bot"
     assert done["senderId"] == "snorlax-bot"
-    assert done["senderName"] == "Snorlax-Bot"
+    assert done["senderName"] == "Snorlax"
     assert done["hop"] == 0
     assert done["mentions"] == []
     assert done["content"] == deltas

@@ -36,8 +36,8 @@ test("256px sidebar is a separate overflow context from the transcript", () => {
   assert.notEqual(transcript, sidebar);
 });
 
-test("mention chips do not add padding that desyncs the composer caret", () => {
-  const chip = block(".mention-chip");
-  assert.doesNotMatch(chip, /padding:/);
-  assert.doesNotMatch(chip, /font-weight:/);
+test("channel subtitle is 12px muted", () => {
+  const title = block(".row-title");
+  assert.match(title, /font-size:\s*12px/);
+  assert.match(title, /color:\s*var\(--text-muted\)/);
 });

@@ -10,10 +10,12 @@ extension Agent {
     var isChannel: Bool { kind == .channel }
     var isProtected: Bool { isSeed || isChannel }
 
+    var rosterSubtitle: String { isChannel ? "Channel" : title }
+
     static let placeholderChannel = Agent(
         id: channelID,
         name: "Snorlax-Bot",
-        title: "Group",
+        title: "",
         description: "",
         avatar: nil,
         kind: .channel,
@@ -24,7 +26,7 @@ extension Agent {
 
     static let placeholder = Agent(
         id: seedID,
-        name: "Snorlax-Bot",
+        name: "Snorlax",
         title: "Assistant",
         description: "",
         avatar: nil,

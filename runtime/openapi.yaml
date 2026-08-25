@@ -6,11 +6,14 @@ info:
     Locked v0.1 LAN contract. Clients use SNORLAX_URL + SNORLAX_TOKEN.
     They never call vLLM and never read the Spark filesystem.
 
-    Seeded agent: id `snorlax-bot`, name Snorlax-Bot, title Assistant.
+    Seeded agent: id `snorlax-bot`, name Snorlax, title Assistant, kind
+    `agent`. GET/POST /v1/agents/snorlax-bot/messages is the user–Snorlax
+    1:1 only (user + that agent). Never the channel transcript.
     Seeded group channel: id `snorlax-bot-group`, name Snorlax-Bot, kind
     `channel`. Listed by GET /v1/agents like an agent. Every agent is a
     member; new agents auto-join. Extra user-created channels wait.
     Deleting either seed returns 409 `{ error }` and is not auto-reseeded.
+    User-created agent DELETE is 204.
 
     Chat-only. No tools, no VL, no MCP, no skills, no box, no computer-use,
     no routines, no widgets. Images persist and are returned; they are
@@ -20,9 +23,9 @@ info:
     Max depth 3 (A→B→C→D ok; D→E dropped). Max 4 peer sends per user turn.
     Same-edge A→B once per turn. Drops are silent in the UI.
 
-    v0.1.1: a 1:1 transcript is only the user and that agent. Peer traffic
-    is addressed in the seeded channel (`snorlax-bot-group`), not in 1:1s.
-    422 only for an unknown mention chip id.
+    v0.1.1: a 1:1 transcript is only the user and that agent. Peer /
+    involve / DM / hop traffic is addressed in `snorlax-bot-group` only.
+    422 only for an unknown mention chip id. Typed `@foo` is plain text.
   license:
     name: Apache-2.0
     identifier: Apache-2.0
@@ -164,7 +167,12 @@ paths:
       - $ref: "#/components/parameters/Id"
     get:
       summary: List transcript messages
-      description: Oldest-first. `before` is a message id cursor for older pages.
+      description: |
+        Oldest-first. `before` is a message id cursor for older pages.
+        For kind=agent (including seed `snorlax-bot`), the list is only
+        `senderId=user` and that agent. Peer/involve/DM/hop messages are
+        never in a 1:1. For kind=channel (`snorlax-bot-group`) the list is
+        the shared transcript.
       operationId: listMessages
       parameters:
         - name: limit
@@ -197,14 +205,14 @@ paths:
         SSE, chat-only (no tools). Images are stored and returned; never
         forwarded to vLLM.
 
-        For a 1:1 agent, hop 0 is that agent. For the group channel,
-        unmentioned members stay silent; mentioned members reply in this
-        transcript. Agent DMs stay in the two 1:1 transcripts and are not
-        mirrored into the group.
+        For a 1:1 agent, hop 0 is that agent. Mentioned peers and hops
+        reply in `snorlax-bot-group`, not in either 1:1. For the group
+        channel, unmentioned members stay silent; mentioned members reply
+        in this transcript.
 
-        Unknown or ambiguous `@Name` on a user send is 422 `{ error }`
-        (composer error). Agent-authored unknown `@Name` is ignored.
-        `@everyone` is group-only.
+        422 only for an unknown mention chip id (and `@everyone` chip
+        outside the group). Typed `@foo` with no chip is plain text.
+        Agent-authored unknown `@Name` is ignored. `@everyone` is group-only.
 
         - event `message.delta` data `{ id, role: "assistant", delta, senderId, senderName, senderAvatar }`
         - event `message.done` data full Message (not wrapped)
@@ -297,8 +305,12 @@ components:
       properties:
         id:
           type: string
+          description: |
+            Seed 1:1 is `snorlax-bot`. Seeded channel is `snorlax-bot-group`.
+            Never reuse `snorlax-bot` as the channel transcript.
         name:
           type: string
+          description: Display name. Seed 1:1 is Snorlax. Seeded channel is Snorlax-Bot.
         title:
           type: string
         description:
@@ -308,6 +320,9 @@ components:
         kind:
           type: string
           enum: [agent, channel]
+          description: |
+            Clients show a muted "Channel" subtitle from kind=channel.
+            Do not guess from id. Seed agent is kind=agent.
         memberIds:
           type: array
           items:
@@ -407,7 +422,9 @@ components:
           type: string
         agentId:
           type: string
-          description: Transcript owner (agent id or channel id). 1:1 lists are only user + that agent; the channel is shared.
+          description: |
+            Transcript owner. `snorlax-bot` is the Snorlax 1:1. `snorlax-bot-group`
+            is the seeded channel. 1:1 lists are only user + that agent.
         role:
           type: string
           enum: [user, assistant]

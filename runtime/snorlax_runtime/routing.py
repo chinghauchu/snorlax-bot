@@ -227,6 +227,14 @@ class _Job:
     edge_to: str
 
 
+def involve_channel_text(from_name: str, quoted: str) -> str:
+    """Peer/involve chrome for the seeded channel only — never a 1:1."""
+    snippet = quoted.strip().replace("\n", " ")
+    if len(snippet) > 280:
+        snippet = snippet[:277] + "..."
+    return f"from {from_name}: {snippet}"
+
+
 def looks_like_ask(content: str) -> bool:
     stripped = content.strip()
     if not stripped:
@@ -378,7 +386,7 @@ async def _enqueue_mentions(
     is_group: bool,
     peer: bool,
 ) -> None:
-    del source_name  # surface is the channel; names stay on the copied bubble
+    del images  # 1:1 isolation: involve clip is text-only in the channel
     exclude = source_sender if source_sender != USER_SENDER_ID else None
     targets = expand_mention_targets(mentions, roster, exclude=exclude)
     queued = {(j.agent_id, j.conversation_id, j.hop) for j in jobs}
@@ -400,39 +408,30 @@ async def _enqueue_mentions(
             )
         return
 
-    # 1:1 isolation: peer traffic is addressed in the seeded group channel.
-    # The originating 1:1 keeps the user (or A) bubble; B replies in the channel.
+    # 1:1 isolation: never write peer/involve/DM into either 1:1.
+    # Address B in the seeded channel with "from A" + quoted clip, then B replies there.
     targets = [t for t in targets if t != source_id]
     if not targets:
         return
-    channel = next((a for a in roster if a["id"] == SEEDED_CHANNEL_ID), None)
-    if channel is None:
+    if next((a for a in roster if a["id"] == SEEDED_CHANNEL_ID), None) is None:
+        return
+    through_id = source_sender if source_sender != USER_SENDER_ID else source_id
+    through = next((a for a in roster if a["id"] == through_id), None)
+    if through is None:
         return
     await store.add_message(
         agent_id=SEEDED_CHANNEL_ID,
-        role="user" if source_sender == USER_SENDER_ID else "assistant",
-        content=quoted,
-        images=images or None,
-        sender_id=source_sender,
-        sender_name=(
-            USER_SENDER_NAME
-            if source_sender == USER_SENDER_ID
-            else next(
-                (a["name"] for a in roster if a["id"] == source_sender),
-                source_sender,
-            )
-        ),
-        sender_avatar=next(
-            (a.get("avatar") for a in roster if a["id"] == source_sender),
-            None,
-        ),
+        role="assistant",
+        content=involve_channel_text(source_name if source_sender != USER_SENDER_ID else through["name"], quoted),
+        sender_id=through["id"],
+        sender_name=through["name"],
+        sender_avatar=through.get("avatar"),
         hop=max(hop - 1, 0),
         mentions=mentions,
     )
-    # FYI with no ask: copy into the channel so B is addressed, stay silent.
     if source_sender == USER_SENDER_ID and not looks_like_ask(quoted):
         return
-    edge_from = source_sender if source_sender != USER_SENDER_ID else source_id
+    edge_from = through["id"]
     for target in targets:
         key = (target, SEEDED_CHANNEL_ID, hop)
         if key in queued:

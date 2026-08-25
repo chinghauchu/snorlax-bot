@@ -176,11 +176,15 @@ private struct ComposerBar: View {
                 .disabled(!model.canCompose)
                 .accessibilityLabel("Attach image")
 
-                TextField("Message \(agentName)", text: $model.draft, axis: .vertical)
-                    .font(.system(size: 14))
-                    .lineLimit(1...6)
-                    .focused(focused)
-                    .disabled(!model.canCompose)
+                ComposerTextView(
+                    text: $model.draft,
+                    chipNames: model.composerChipNames,
+                    placeholder: "Message \(agentName)",
+                    disabled: !model.canCompose,
+                    pendingCaret: $model.pendingComposerCaret,
+                    focused: focused
+                )
+                .frame(minHeight: 22, maxHeight: 120)
 
                 Button {
                     Task { await model.send() }

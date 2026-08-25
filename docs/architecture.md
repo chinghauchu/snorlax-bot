@@ -97,10 +97,11 @@ There is no anonymous LAN. There is also no cloud account.
 SQLite file `~/.snorlax-bot/snorlax.db` (override with `SNORLAX_DATA_DIR`):
 
 - `agents` — id, name, title, description, avatar, kind (`agent` | `channel`), timestamps.
-  Seeded agent `snorlax-bot` (name Snorlax-Bot, title Assistant). Seeded group
-  channel `snorlax-bot-group` (name Snorlax-Bot, title Group). Every agent is a
-  member; new agents auto-join. Not auto-reseeded except the channel is created
-  if missing on an existing DB.
+  Seeded agent `snorlax-bot` (name Snorlax, title Assistant, kind agent).
+  Seeded group channel `snorlax-bot-group` (name Snorlax-Bot, kind channel).
+  Every agent is a member; new agents auto-join. Not auto-reseeded except the
+  channel is created if missing on an existing DB. Clients show a muted
+  “Channel” subtitle from `kind`, not by guessing id.
 - `messages` — per-transcript (agent 1:1 or the group), `user` | `assistant`,
   plus `senderId` / `senderName` / `senderAvatar` / `hop` / `mentions`. User
   bubbles are `senderId=user`; every agent is left and labeled as themselves.
@@ -109,9 +110,10 @@ SQLite file `~/.snorlax-bot/snorlax.db` (override with `SNORLAX_DATA_DIR`):
 - Token is a sibling file `~/.snorlax-bot/token`, not a SQLite setting.
 
 v0.1 keeps one transcript per agent (the 1:1) plus one seeded group channel.
-DMs stay in the two 1:1 transcripts and are not mirrored into the group.
-Mentions are runtime-routed with hop depth 3, 4 peer sends per user turn, and
-a same-edge cap. Extra user-created channels wait.
+GET `/v1/agents/snorlax-bot/messages` is only user + Snorlax. Peer / involve /
+DM / hop traffic writes only to `snorlax-bot-group`. Mentions are runtime-routed
+with hop depth 3, 4 peer sends per user turn, and a same-edge cap. Extra
+user-created channels wait.
 
 ## Inference interface
 

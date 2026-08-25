@@ -183,6 +183,7 @@ class Store:
                 ),
             )
         await self._ensure_channel()
+        await self._lock_seed_labels()
         await self.conn.commit()
 
     async def _ensure_channel(self) -> None:
@@ -204,6 +205,17 @@ class Store:
                 now,
                 now,
             ),
+        )
+
+    async def _lock_seed_labels(self) -> None:
+        """Keep roster names distinct: Snorlax (1:1) vs Snorlax-Bot (channel)."""
+        await self.conn.execute(
+            "UPDATE agents SET name = ?, title = ? WHERE id = ?",
+            (SEEDED_AGENT_NAME, SEEDED_AGENT_TITLE, SEEDED_AGENT_ID),
+        )
+        await self.conn.execute(
+            "UPDATE agents SET name = ?, title = ? WHERE id = ?",
+            (SEEDED_CHANNEL_NAME, SEEDED_CHANNEL_TITLE, SEEDED_CHANNEL_ID),
         )
 
     async def _member_ids(self) -> list[str]:

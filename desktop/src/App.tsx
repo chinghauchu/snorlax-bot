@@ -52,7 +52,7 @@ const MISSING_CREDS =
 const PLACEHOLDER_CHANNEL: Agent = {
   id: SEED_CHANNEL_ID,
   name: "Snorlax-Bot",
-  title: "Group",
+  title: "",
   description: "",
   avatar: null,
   kind: "channel",
@@ -62,7 +62,7 @@ const PLACEHOLDER_CHANNEL: Agent = {
 };
 const PLACEHOLDER_SEED: Agent = {
   id: SEED_AGENT_ID,
-  name: "Snorlax-Bot",
+  name: "Snorlax",
   title: "Assistant",
   description: "",
   avatar: null,
@@ -134,10 +134,15 @@ function applyChrome(pref: ThemePref, accent: string) {
   root.style.setProperty("--accent", accent);
 }
 
+function rosterSubtitle(agent: Agent): string {
+  return agent.kind === "channel" ? "Channel" : agent.title;
+}
+
 function initials(name: string): string {
-  const parts = name.trim().split(/\s+/).filter(Boolean);
+  const parts = name.split(/\s+/).filter(Boolean);
   if (parts.length === 0) return "?";
-  return (parts[0][0] + (parts[1]?.[0] ?? "")).toUpperCase();
+  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
+  return `${parts[0][0] ?? ""}${parts[1][0] ?? ""}`.toUpperCase();
 }
 
 function describeError(err: unknown): string {
@@ -662,8 +667,8 @@ export function App() {
                 />
                 <span className="row-copy">
                   <span className="row-name">{agent.name}</span>
-                  {agent.title ? (
-                    <span className="row-title">{agent.title}</span>
+                  {rosterSubtitle(agent) ? (
+                    <span className="row-title">{rosterSubtitle(agent)}</span>
                   ) : null}
                 </span>
               </button>

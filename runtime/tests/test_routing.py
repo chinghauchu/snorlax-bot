@@ -41,8 +41,11 @@ def test_seed_channel_auto_join(client) -> None:
     assert roster[0]["id"] == CHANNEL
     assert channel["kind"] == "channel"
     assert channel["name"] == "Snorlax-Bot"
-    assert channel["title"] == "Group"
+    assert channel["title"] == ""
     assert "snorlax-bot" in channel["memberIds"]
+    seed = next(a for a in roster if a["id"] == "snorlax-bot")
+    assert seed["name"] == "Snorlax"
+    assert seed["kind"] == "agent"
 
     inbox = _create(client, "Inbox")
     channel = client.get(f"/v1/agents/{CHANNEL}", headers=AUTH).json()
@@ -163,13 +166,49 @@ def test_one_to_one_isolation_mention_goes_to_channel(client) -> None:
 
     group = _msgs(client, CHANNEL)
     group_senders = [m["senderId"] for m in group]
-    assert "user" in group_senders
+    assert "user" not in group_senders
     assert bob["id"] in group_senders
-    assert alice["id"] not in group_senders
-    user_in_group = [m for m in group if m["senderId"] == "user"]
-    assert user_in_group
-    assert "Can you look at this @Bob?" in user_in_group[0]["content"]
-    assert not any("mentioned you in Alice" in m["content"] for m in group)
+    assert alice["id"] in group_senders
+    involve = [m for m in group if m["senderId"] == alice["id"]]
+    assert involve
+    assert involve[0]["content"].startswith("from Alice:")
+    assert "Can you look at this @Bob?" in involve[0]["content"]
+    assert not any("mentioned you in" in m["content"] for m in group)
+
+
+def test_seed_agent_transcript_is_not_the_channel(client) -> None:
+    inbox = _create(client, "Inbox")
+    status, body = _send(client, "snorlax-bot", "Can you look at this @Inbox?")
+    assert status == 200
+    events = parse_sse(body)
+    sse_senders = {
+        payload.get("senderId")
+        for name, payload in events
+        if name in {"message.delta", "message.done"}
+    }
+    assert inbox["id"] not in sse_senders
+    assert "snorlax-bot" in sse_senders
+
+    seed_msgs = _msgs(client, "snorlax-bot")
+    assert seed_msgs[0]["senderId"] == "user"
+    assert {m["senderId"] for m in seed_msgs} <= {"user", "snorlax-bot"}
+    assert all(m["agentId"] == "snorlax-bot" for m in seed_msgs)
+    assert not any(m["senderId"] == inbox["id"] for m in seed_msgs)
+    assert not any(m["content"].startswith("from ") for m in seed_msgs)
+
+    assert _msgs(client, inbox["id"]) == []
+
+    group = _msgs(client, CHANNEL)
+    assert all(m["agentId"] == CHANNEL for m in group)
+    assert any(m["senderId"] == "snorlax-bot" and m["content"].startswith("from Snorlax:") for m in group)
+    assert any(m["senderId"] == inbox["id"] for m in group)
+    assert not any(m["senderId"] == "user" for m in group)
+
+    status, _ = _send(client, CHANNEL, "Need a hand @Inbox")
+    assert status == 200
+    seed_after = _msgs(client, "snorlax-bot")
+    assert {m["senderId"] for m in seed_after} <= {"user", "snorlax-bot"}
+    assert any(m["senderId"] == inbox["id"] for m in _msgs(client, CHANNEL))
 
 
 def test_hop_three_allowed_fourth_dropped(client) -> None:
@@ -209,3 +248,32 @@ def test_chip_mention_ids_route(client) -> None:
     )
     assert status == 200
     assert any(m["senderId"] == inbox["id"] for m in _msgs(client, CHANNEL))
+
+
+def test_two_mentions_on_one_user_send(client) -> None:
+    alice = _create(client, "Alice")
+    bob = _create(client, "Bob")
+    status, _ = _send(
+        client,
+        CHANNEL,
+        "Need you both @Alice @Bob",
+        mentions=[alice["id"], bob["id"]],
+    )
+    assert status == 200
+    senders = {m["senderId"] for m in _msgs(client, CHANNEL)}
+    assert alice["id"] in senders
+    assert bob["id"] in senders
+
+
+def test_fyi_one_to_one_mention_is_channel_involve_only(client) -> None:
+    alice = _create(client, "Alice")
+    bob = _create(client, "Bob")
+    status, _ = _send(client, alice["id"], "FYI @Bob")
+    assert status == 200
+    alice_msgs = _msgs(client, alice["id"])
+    assert {m["senderId"] for m in alice_msgs} <= {"user", alice["id"]}
+    assert _msgs(client, bob["id"]) == []
+    group = _msgs(client, CHANNEL)
+    assert any(m["senderId"] == alice["id"] and m["content"].startswith("from Alice:") for m in group)
+    assert not any(m["senderId"] == bob["id"] for m in group)
+    assert not any(m["senderId"] == "user" for m in group)

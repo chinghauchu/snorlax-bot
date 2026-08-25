@@ -114,7 +114,7 @@ struct MentionLabel: View {
             }
             let token = ns.substring(with: match.range(at: 1))
             var chunk = AttributedString(ns.substring(with: match.range))
-            let resolved = lowered.contains(where: { $0 == token.lowercased() || $0.hasPrefix(token.lowercased()) })
+            let resolved = lowered.contains(token.lowercased())
             if resolved {
                 chunk.foregroundColor = .accentColor
                 chunk.font = .system(size: 14, weight: .semibold)

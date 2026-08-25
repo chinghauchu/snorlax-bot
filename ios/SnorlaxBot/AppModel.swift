@@ -178,6 +178,8 @@ final class AppModel {
         let image = pendingImage
         let mentionIDs = mentionIDs(in: content)
         draft = ""
+        pendingComposerCaret = 0
+        pickedMentions = [:]
         pendingImage = nil
         composerError = nil
 
@@ -265,6 +267,7 @@ final class AppModel {
     }
 
     var pickedMentions: [String: String] = [:]
+    var pendingComposerCaret: Int?
 
     func visibleMessages(for agent: Agent) -> [Message] {
         if agent.isChannel { return messages }
@@ -320,13 +323,20 @@ final class AppModel {
     func insertMention(_ agent: Agent) {
         pickedMentions[agent.name.lowercased()] = agent.id
         if let range = mentionTriggerRange() {
-            let restStart = range.upperBound
-            let rest = String(draft[restStart...])
+            let rest = String(draft[range.upperBound...])
             let pad = rest.first == " " || rest.isEmpty ? "" : " "
-            draft = "\(draft[..<range.lowerBound])@\(agent.name)\(pad)\(rest)"
+            let prefix = String(draft[..<range.lowerBound])
+            let chip = "@\(agent.name)\(pad)"
+            draft = "\(prefix)\(chip)\(rest)"
+            pendingComposerCaret = (prefix + chip).utf16.count
         } else {
             draft += "@\(agent.name) "
+            pendingComposerCaret = draft.utf16.count
         }
+    }
+
+    var composerChipNames: [String] {
+        Array(pickedMentions.keys)
     }
 
     private func prunePreviews() {
