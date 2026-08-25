@@ -1,19 +1,22 @@
 openapi: 3.1.0
 info:
   title: Snorlax-Bot
-  version: 0.2.0
+  version: 0.3.0
   description: |
-    Locked v0.2 LAN contract. Clients use SNORLAX_URL + SNORLAX_TOKEN.
+    Locked v0.3 LAN contract. Clients use SNORLAX_URL + SNORLAX_TOKEN.
     They never call vLLM and never read the Spark filesystem.
 
     Seeded agent: id `snorlax-bot`, name Snorlax, title Assistant, kind
     `agent`. GET/POST /v1/agents/snorlax-bot/messages is the user–Snorlax
     1:1 only (user + that agent). Never the channel transcript.
+    PATCH `{ name, title, description, avatar }` is allowed; id is not
+    editable. DELETE is 204, gone from GET /v1/agents, and is not
+    auto-reseeded. An empty agent roster is fine.
     Seeded group channel: id `snorlax-bot-group`, name Snorlax-Bot, kind
     `channel`. Listed by GET /v1/agents like an agent. Every agent is a
     member; new agents auto-join. Extra user-created channels wait.
-    Deleting either seed returns 409 `{ error }` and is not auto-reseeded.
-    User-created agent DELETE is 204.
+    Channel DELETE and PATCH return 409 `{ error }`.
+    User-created agent PATCH and DELETE (204) work as today.
 
     Chat-only. No tools, no VL, no MCP, no skills, no box, no computer-use,
     no routines, no widgets. Images persist and are returned; they are
@@ -35,6 +38,12 @@ info:
     `?threadId=` (alias `?replyTo=`) returns that thread. Originating
     user messages that caused a handoff include `handoff: { channelId,
     threadId }`. Hop/cap drops omit that field.
+
+    v0.3: header click opens an info pane (desktop 320px overlay on chat,
+    iOS sheet). kind=agent is identity. kind=channel is a read-only member
+    list from memberIds. Never treat snorlax-bot-group as an agent profile.
+    Delete stays on the sidebar (right-click / iOS swipe), including the
+    seed row. No computer preview, routines, connectors, or extra channels.
   license:
     name: Apache-2.0
     identifier: Apache-2.0
@@ -136,6 +145,13 @@ paths:
           $ref: "#/components/responses/Error"
     patch:
       summary: Patch profile fields
+      description: |
+        kind=agent (including seed `snorlax-bot`) accepts
+        `{ name, title, description, avatar }`. Id is not editable.
+        Empty/null avatar shows initials from name. Avatar is a string
+        (data URI or persisted `/v1/images/{id}`) or null. There is no
+        separate avatar upload route.
+        kind=channel (`snorlax-bot-group`) returns 409 `{ error }`.
       operationId: patchAgent
       requestBody:
         required: true
@@ -153,13 +169,17 @@ paths:
           $ref: "#/components/responses/Error"
         "404":
           $ref: "#/components/responses/Error"
+        "409":
+          $ref: "#/components/responses/Error"
         "422":
           $ref: "#/components/responses/Error"
     delete:
       summary: Delete an agent
       description: |
-        Seeded `snorlax-bot` and seeded channel `snorlax-bot-group`
-        return 409 `{ error }`.
+        kind=agent (including seed `snorlax-bot`) returns 204 and is gone
+        from GET /v1/agents. The seed is not auto-reseeded; an empty agent
+        roster is fine. Seeded channel `snorlax-bot-group` returns 409
+        `{ error }`.
       operationId: deleteAgent
       responses:
         "204":
@@ -338,6 +358,9 @@ components:
           type: string
         avatar:
           type: [string, "null"]
+          description: |
+            Data URI, persisted image id or `/v1/images/{id}` URL, or null.
+            Empty/null shows initials from name.
         kind:
           type: string
           enum: [agent, channel]
@@ -390,6 +413,9 @@ components:
           maxLength: 8000
         avatar:
           type: [string, "null"]
+          description: |
+            Data URI, persisted image id or `/v1/images/{id}` URL, or null.
+            Empty/null shows initials from name. Id is not a patch field.
 
     ImageOut:
       type: object

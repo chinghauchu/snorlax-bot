@@ -115,6 +115,9 @@ final class AppModel {
     }
 
     func loadConversation(_ id: String, thread: String?, push: Bool) async {
+        if selectedAgentID != id || threadID != thread {
+            showProfile = false
+        }
         selectedAgentID = id
         threadID = thread
         if push, navigationPath.last != id {
@@ -153,10 +156,13 @@ final class AppModel {
     }
 
     func delete(_ agent: Agent) async {
-        guard !agent.isProtected, let client else { return }
+        guard !agent.isChannel, let client else { return }
         do {
             try await client.deleteAgent(id: agent.id)
             agents.removeAll { $0.id == agent.id }
+            for index in agents.indices where agents[index].isChannel {
+                agents[index].memberIds.removeAll { $0 == agent.id }
+            }
             if selectedAgentID == agent.id {
                 let next = agents.first(where: \.isChannel) ?? agents.first(where: \.isSeed) ?? agents.first
                 if let next {
@@ -167,6 +173,7 @@ final class AppModel {
                     navigationPath = []
                 }
             }
+            showProfile = false
         } catch {
             errorMessage = error.localizedDescription
         }

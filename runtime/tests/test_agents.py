@@ -72,12 +72,68 @@ def test_patch_profile_fields(client) -> None:
     assert body["avatar"] is None
 
 
-def test_cannot_delete_seeded_agent(client) -> None:
+def test_delete_seeded_agent_is_204_and_gone(client) -> None:
     response = client.delete("/v1/agents/snorlax-bot", headers=AUTH)
+    assert response.status_code == 204
+    missing = client.get("/v1/agents/snorlax-bot", headers=AUTH)
+    assert missing.status_code == 404
+    roster = client.get("/v1/agents", headers=AUTH).json()
+    assert all(a["id"] != "snorlax-bot" for a in roster)
+    channel = next(a for a in roster if a["id"] == "snorlax-bot-group")
+    assert channel["kind"] == "channel"
+    assert "snorlax-bot" not in channel["memberIds"]
+
+
+def test_patch_seed_identity(client) -> None:
+    patched = client.patch(
+        "/v1/agents/snorlax-bot",
+        headers=AUTH,
+        json={
+            "name": "Sleepy",
+            "title": "Nap lead",
+            "description": "Dreams in tokens.",
+            "avatar": None,
+        },
+    )
+    assert patched.status_code == 200
+    body = patched.json()
+    assert body["id"] == "snorlax-bot"
+    assert body["name"] == "Sleepy"
+    assert body["title"] == "Nap lead"
+    assert body["description"] == "Dreams in tokens."
+    assert body["avatar"] is None
+    fetched = client.get("/v1/agents/snorlax-bot", headers=AUTH).json()
+    assert fetched["name"] == "Sleepy"
+    assert fetched["title"] == "Nap lead"
+
+
+def test_cannot_patch_seeded_channel(client) -> None:
+    response = client.patch(
+        "/v1/agents/snorlax-bot-group",
+        headers=AUTH,
+        json={"name": "Nope"},
+    )
     assert response.status_code == 409
-    assert response.json() == {"error": "seeded agent cannot be deleted"}
-    still = client.get("/v1/agents/snorlax-bot", headers=AUTH)
-    assert still.status_code == 200
+    assert response.json() == {"error": "seeded channel cannot be patched"}
+    still = client.get("/v1/agents/snorlax-bot-group", headers=AUTH).json()
+    assert still["name"] == "Snorlax-Bot"
+
+
+def test_patch_avatar_null_clears(client) -> None:
+    set_avatar = client.patch(
+        "/v1/agents/snorlax-bot",
+        headers=AUTH,
+        json={"avatar": "/v1/images/img_existing"},
+    )
+    assert set_avatar.status_code == 200
+    assert set_avatar.json()["avatar"] == "/v1/images/img_existing"
+    cleared = client.patch(
+        "/v1/agents/snorlax-bot",
+        headers=AUTH,
+        json={"avatar": None},
+    )
+    assert cleared.status_code == 200
+    assert cleared.json()["avatar"] is None
 
 
 def test_delete_custom_agent(client) -> None:
@@ -113,6 +169,53 @@ async def test_does_not_reseed_if_roster_not_empty(tmp_path) -> None:
     await again.connect()
     assert await again.get_agent("snorlax-bot") is None
     assert await again.get_agent("inbox") is not None
+    await again.close()
+
+
+@pytest.mark.asyncio
+async def test_delete_seed_does_not_reseed_when_only_channel_remains(
+    tmp_path,
+) -> None:
+    store = Store(tmp_path)
+    await store.connect()
+    assert await store.delete_agent("snorlax-bot")
+    await store.close()
+
+    again = Store(tmp_path)
+    await again.connect()
+    assert await again.get_agent("snorlax-bot") is None
+    channel = await again.get_agent("snorlax-bot-group")
+    assert channel is not None
+    assert channel["kind"] == "channel"
+    assert channel["memberIds"] == []
+    await again.close()
+
+
+@pytest.mark.asyncio
+async def test_seed_identity_patch_survives_reconnect(tmp_path) -> None:
+    store = Store(tmp_path)
+    await store.connect()
+    updated = await store.patch_agent(
+        "snorlax-bot",
+        name="Sleepy",
+        title="Nap lead",
+        description="Dreams in tokens.",
+        avatar=None,
+    )
+    assert updated is not None
+    assert updated["name"] == "Sleepy"
+    await store.close()
+
+    again = Store(tmp_path)
+    await again.connect()
+    seed = await again.get_agent("snorlax-bot")
+    assert seed is not None
+    assert seed["name"] == "Sleepy"
+    assert seed["title"] == "Nap lead"
+    assert seed["description"] == "Dreams in tokens."
+    channel = await again.get_agent("snorlax-bot-group")
+    assert channel is not None
+    assert channel["name"] == "Snorlax-Bot"
     await again.close()
 
 

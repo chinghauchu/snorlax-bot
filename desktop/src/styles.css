@@ -227,12 +227,16 @@ button:disabled {
   display: flex;
   align-items: center;
   gap: 8px;
+  flex: 1;
+  min-width: 0;
+  height: 100%;
   border: 0;
   background: transparent;
-  padding: 4px 8px;
-  border-radius: 8px;
+  padding: 0 4px;
+  border-radius: 0;
   font-size: 14px;
   font-weight: 600;
+  text-align: left;
 }
 
 .chat-who.muted {
@@ -506,6 +510,8 @@ button:disabled {
   display: flex;
   flex-direction: column;
   z-index: 4;
+  overflow: auto;
+  min-height: 0;
 }
 
 .profile header,
@@ -517,11 +523,73 @@ button:disabled {
   padding: 14px 14px 0;
 }
 
+.profile-actions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  margin-left: auto;
+}
+
 .profile h2,
 .modal h2 {
   margin: 0;
   font-size: 14px;
   font-weight: 600;
+}
+
+.info-identity {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 16px 14px 18px;
+}
+
+.info-name {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+}
+
+.info-muted {
+  margin: 0;
+  font-size: 13px;
+  color: var(--text-muted);
+  line-height: 1.45;
+  white-space: pre-wrap;
+}
+
+.info-members {
+  display: flex;
+  flex-direction: column;
+  padding: 8px 0 12px;
+}
+
+.info-member {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  height: 44px;
+  padding: 0 14px;
+  pointer-events: none;
+}
+
+.info-member-copy {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  gap: 1px;
+}
+
+.info-member-copy strong {
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.info-member-copy span {
+  font-size: 13px;
+  color: var(--text-muted);
 }
 
 .section-label {

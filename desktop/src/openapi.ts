@@ -71,13 +71,23 @@ export interface paths {
         post?: never;
         /**
          * Delete an agent
-         * @description Seeded `snorlax-bot` and seeded channel `snorlax-bot-group`
-         *     return 409 `{ error }`.
+         * @description kind=agent (including seed `snorlax-bot`) returns 204 and is gone
+         *     from GET /v1/agents. The seed is not auto-reseeded; an empty agent
+         *     roster is fine. Seeded channel `snorlax-bot-group` returns 409
+         *     `{ error }`.
          */
         delete: operations["deleteAgent"];
         options?: never;
         head?: never;
-        /** Patch profile fields */
+        /**
+         * Patch profile fields
+         * @description kind=agent (including seed `snorlax-bot`) accepts
+         *     `{ name, title, description, avatar }`. Id is not editable.
+         *     Empty/null avatar shows initials from name. Avatar is a string
+         *     (data URI or persisted `/v1/images/{id}`) or null. There is no
+         *     separate avatar upload route.
+         *     kind=channel (`snorlax-bot-group`) returns 409 `{ error }`.
+         */
         patch: operations["patchAgent"];
         trace?: never;
     };
@@ -171,6 +181,10 @@ export interface components {
             name: string;
             title: string;
             description: string;
+            /**
+             * @description Data URI, persisted image id or `/v1/images/{id}` URL, or null.
+             *     Empty/null shows initials from name.
+             */
             avatar: string | null;
             /**
              * @description Clients show a muted "Channel" subtitle from kind=channel.
@@ -198,6 +212,10 @@ export interface components {
             name?: string;
             title?: string;
             description?: string;
+            /**
+             * @description Data URI, persisted image id or `/v1/images/{id}` URL, or null.
+             *     Empty/null shows initials from name. Id is not a patch field.
+             */
             avatar?: string | null;
         };
         ImageOut: {
@@ -472,6 +490,7 @@ export interface operations {
             };
             401: components["responses"]["Error"];
             404: components["responses"]["Error"];
+            409: components["responses"]["Error"];
             422: components["responses"]["Error"];
         };
     };

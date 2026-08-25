@@ -36,8 +36,8 @@ npm install
 npm run tauri dev
 ```
 
-v0 chrome: 256px agent sidebar, chat, profile overlay, Settings. No computer
-pane.
+v0 chrome: 256px agent sidebar, chat, 320px identity overlay on the chat
+(not a third column), Settings. No computer pane.
 
 Types and the `/v1` client are generated from the locked camelCase OpenAPI
 (`openapi.yaml`, same contract as `protocol/openapi.yaml` on the Backend

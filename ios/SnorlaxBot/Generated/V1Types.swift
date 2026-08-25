@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 //
-// Generated from protocol/openapi.yaml (Snorlax-Bot 0.2.0).
+// Generated from protocol/openapi.yaml (Snorlax-Bot 0.3.0).
 // Do not edit by hand. Regenerate with:
 //   python3 ios/scripts/generate_v1_types.py
 //
@@ -119,7 +119,7 @@ struct AgentCreate: Codable, Hashable, Sendable {
         try container.encodeIfPresent(name, forKey: .name)
         try container.encodeIfPresent(title, forKey: .title)
         try container.encodeIfPresent(description, forKey: .description)
-        try container.encodeIfPresent(avatar, forKey: .avatar)
+        try container.encode(avatar, forKey: .avatar)
     }
 }
 
@@ -151,7 +151,7 @@ struct AgentPatch: Codable, Hashable, Sendable {
         try container.encodeIfPresent(name, forKey: .name)
         try container.encodeIfPresent(title, forKey: .title)
         try container.encodeIfPresent(description, forKey: .description)
-        try container.encodeIfPresent(avatar, forKey: .avatar)
+        try container.encode(avatar, forKey: .avatar)
     }
 }
 
@@ -340,10 +340,10 @@ struct Message: Codable, Hashable, Identifiable, Sendable {
         try container.encode(hop, forKey: .hop)
         try container.encode(mentions, forKey: .mentions)
         try container.encodeIfPresent(kind, forKey: .kind)
-        try container.encodeIfPresent(replyTo, forKey: .replyTo)
+        try container.encode(replyTo, forKey: .replyTo)
         try container.encodeIfPresent(handoff, forKey: .handoff)
-        try container.encodeIfPresent(userAsk, forKey: .userAsk)
-        try container.encodeIfPresent(brief, forKey: .brief)
+        try container.encode(userAsk, forKey: .userAsk)
+        try container.encode(brief, forKey: .brief)
         try container.encodeIfPresent(replyCount, forKey: .replyCount)
     }
 }
@@ -376,7 +376,7 @@ struct MessageCreate: Codable, Hashable, Sendable {
         try container.encode(content, forKey: .content)
         try container.encodeIfPresent(images, forKey: .images)
         try container.encodeIfPresent(mentions, forKey: .mentions)
-        try container.encodeIfPresent(replyTo, forKey: .replyTo)
+        try container.encode(replyTo, forKey: .replyTo)
     }
 }
 
@@ -416,7 +416,7 @@ struct MessageDelta: Codable, Hashable, Identifiable, Sendable {
         try container.encode(delta, forKey: .delta)
         try container.encodeIfPresent(senderId, forKey: .senderId)
         try container.encodeIfPresent(senderName, forKey: .senderName)
-        try container.encodeIfPresent(senderAvatar, forKey: .senderAvatar)
+        try container.encode(senderAvatar, forKey: .senderAvatar)
     }
 }
 

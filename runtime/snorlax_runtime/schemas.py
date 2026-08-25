@@ -37,7 +37,13 @@ class AgentPatch(BaseModel):
     name: str | None = Field(default=None, min_length=1, max_length=80)
     title: str | None = Field(default=None, max_length=80)
     description: str | None = Field(default=None, max_length=8000)
-    avatar: str | None = None
+    avatar: str | None = Field(
+        default=None,
+        description=(
+            "Data URI, persisted image id/url (`/v1/images/{id}`), or null. "
+            "Empty/null shows initials from name. No separate avatar upload route."
+        ),
+    )
 
 
 class ImageOut(BaseModel):

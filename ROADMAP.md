@@ -10,7 +10,7 @@ Chat-only named agents. Meant to *run*, including without a GPU.
 
 | In | Out |
 | --- | --- |
-| Seeded agent `snorlax-bot` (Snorlax 1:1) and channel `snorlax-bot-group` | Tools / function calling |
+| Seeded agent `snorlax-bot` (Snorlax 1:1, PATCH identity; DELETE 204) and channel `snorlax-bot-group` (DELETE 409) | Tools / function calling |
 | Create / list / patch / delete agents | Sandbox computer (browser, fs, terminal) |
 | Transcript persistence (SQLite) | Skills, “teach a task”, routines |
 | `POST .../messages` as SSE (`message.delta` / `message.done` / `error`) | MCP connectors |
@@ -18,12 +18,12 @@ Chat-only named agents. Meant to *run*, including without a GPU.
 | Mock inference, **oMLX**, or **vLLM** OpenAI-compat | TensorRT-LLM |
 | Tauri + TypeScript chat UI | Computer pane / tools |
 | Swift/SwiftUI iOS companion | Skills, “teach a task”, routines |
-| Seeded group channel + agent DMs + @mentions + v0.2 handoff threads | Extra user-created channels |
+| Seeded group channel + agent DMs + @mentions + v0.2 handoff threads + v0.3 identity pane | Extra user-created channels |
 | OpenAPI for `/v1` | Question widgets |
 
 Default model on Spark: **70B-class FP8**, swapped via config.
 
-Locked v0.1 / v0.2 (chat layout + agent messaging + collaboration handoff): [docs/specs/v0.1-chat-and-agents.md](docs/specs/v0.1-chat-and-agents.md).
+Locked v0.1 / v0.2 / v0.3 (chat layout + agent messaging + collaboration handoff + identity pane): [docs/specs/v0.1-chat-and-agents.md](docs/specs/v0.1-chat-and-agents.md).
 
 ## v1 — computer and tools
 
