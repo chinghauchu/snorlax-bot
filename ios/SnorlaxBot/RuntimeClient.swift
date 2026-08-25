@@ -1,68 +1,260 @@
 // SPDX-License-Identifier: Apache-2.0
 import Foundation
 
-/// Sketch of the locked `/v1` client. SSE streaming is ticket I1.
+/// URLSession client for the locked camelCase `/v1` contract.
+/// Wire types come from `Generated/V1Types.swift` (`protocol/openapi.yaml`).
 struct RuntimeClient: Sendable {
     var baseURL: URL
     var token: String
 
-    func health() async throws -> RuntimeHealth {
-        try await get("v1/health")
+    private var decoder: JSONDecoder {
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .custom(Self.decodeDate)
+        return decoder
     }
 
-    func agents() async throws -> [Agent] {
-        let body: AgentList = try await get("v1/agents")
-        return body.agents
+    private var encoder: JSONEncoder {
+        let encoder = JSONEncoder()
+        encoder.dateEncodingStrategy = .iso8601
+        return encoder
     }
 
-    func messages(agentId: String) async throws -> [Message] {
-        let body: MessageList = try await get("v1/agents/\(agentId)/messages")
-        return body.messages
+    static func normalizeBase(_ raw: String) -> URL? {
+        var value = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        while value.hasSuffix("/") { value.removeLast() }
+        guard !value.isEmpty else { return nil }
+        if !value.contains("://") {
+            value = "http://\(value)"
+        }
+        return URL(string: value)
     }
 
-    private func get<T: Decodable>(_ path: String) async throws -> T {
-        var request = URLRequest(url: baseURL.appending(path: path))
+    func health() async throws -> Health {
+        try await get("v1/health", authorized: false)
+    }
+
+    func listAgents() async throws -> [Agent] {
+        try await get("v1/agents")
+    }
+
+    func createAgent(name: String = "New agent") async throws -> Agent {
+        try await send("v1/agents", method: "POST", body: AgentCreate(name: name), expected: 201)
+    }
+
+    func getAgent(id: String) async throws -> Agent {
+        try await get("v1/agents/\(Self.encode(id))")
+    }
+
+    func patchAgent(_ patch: AgentPatch, id: String) async throws -> Agent {
+        try await send("v1/agents/\(Self.encode(id))", method: "PATCH", body: patch, expected: 200)
+    }
+
+    func deleteAgent(id: String) async throws {
+        let request = try makeRequest("v1/agents/\(Self.encode(id))", method: "DELETE")
+        let (data, response) = try await URLSession.shared.data(for: request)
+        try Self.throwIfNeeded(data: data, response: response, allowed: [204])
+    }
+
+    func listMessages(agentId: String, limit: Int = 100, before: String? = nil) async throws -> [Message] {
+        var items: [URLQueryItem] = [URLQueryItem(name: "limit", value: String(limit))]
+        if let before {
+            items.append(URLQueryItem(name: "before", value: before))
+        }
+        return try await get("v1/agents/\(Self.encode(agentId))/messages", query: items)
+    }
+
+    func sendMessage(
+        agentId: String,
+        content: String,
+        images: [ImageIn],
+        onEvent: @escaping @Sendable (StreamEvent) -> Void
+    ) async throws {
+        var request = try makeRequest(
+            "v1/agents/\(Self.encode(agentId))/messages",
+            method: "POST",
+            body: MessageCreate(content: content, images: images.isEmpty ? nil : images)
+        )
+        request.setValue("text/event-stream", forHTTPHeaderField: "Accept")
+        request.timeoutInterval = 600
+
+        let config = URLSessionConfiguration.default
+        config.timeoutIntervalForRequest = 600
+        config.timeoutIntervalForResource = 3600
+        config.waitsForConnectivity = false
+        let streamSession = URLSession(configuration: config)
+        let (bytes, response) = try await streamSession.bytes(for: request)
+        guard let http = response as? HTTPURLResponse else { throw RuntimeError.http(status: 0, message: "No response") }
+        if !(200 ..< 300).contains(http.statusCode) {
+            var collected = Data()
+            for try await chunk in bytes {
+                collected.append(chunk)
+            }
+            throw Self.error(from: collected, status: http.statusCode)
+        }
+
+        var eventName = "message"
+        var dataLines: [String] = []
+
+        func flush() {
+            guard !dataLines.isEmpty else { return }
+            let raw = dataLines.joined(separator: "\n")
+            dataLines = []
+            let name = eventName
+            eventName = "message"
+            guard let event = StreamEvent.parse(name: name, data: raw) else { return }
+            onEvent(event)
+        }
+
+        for try await line in bytes.lines {
+            if line.isEmpty {
+                flush()
+                continue
+            }
+            if line.hasPrefix(":") { continue }
+            if line.hasPrefix("event:") {
+                eventName = line.dropFirst(6).trimmingCharacters(in: .whitespaces)
+            } else if line.hasPrefix("data:") {
+                dataLines.append(line.dropFirst(5).trimmingCharacters(in: .whitespaces))
+            }
+        }
+        flush()
+    }
+
+    func resolve(_ urlString: String) -> URL? {
+        if let absolute = URL(string: urlString), let scheme = absolute.scheme, !scheme.isEmpty {
+            return absolute
+        }
+        return URL(string: urlString, relativeTo: baseURL)?.absoluteURL
+    }
+
+    func data(from url: URL) async throws -> Data {
+        var request = URLRequest(url: url)
         request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         let (data, response) = try await URLSession.shared.data(for: request)
-        guard let http = response as? HTTPURLResponse, (200 ..< 300).contains(http.statusCode) else {
-            throw RuntimeError.http
-        }
-        return try JSONDecoder().decode(T.self, from: data)
+        try Self.throwIfNeeded(data: data, response: response, allowed: [200])
+        return data
     }
-}
 
-enum RuntimeError: Error {
-    case http
-}
+    enum StreamEvent: Sendable {
+        case delta(id: String, text: String)
+        case done(Message)
+        case error(String)
 
-struct RuntimeHealth: Codable, Sendable {
-    var status: String
-    var model: String
-    var inference_backend: String
-    var seeded_agent_id: String
-    var bind_host: String
-}
+        static func parse(name: String, data: String) -> StreamEvent? {
+            guard let payload = data.data(using: .utf8) else { return nil }
+            let decoder = JSONDecoder()
+            decoder.dateDecodingStrategy = .custom(RuntimeClient.decodeDate)
+            switch name {
+            case "message.delta":
+                guard let body = try? decoder.decode(MessageDelta.self, from: payload) else { return nil }
+                return .delta(id: body.id, text: body.delta)
+            case "message.done":
+                guard let message = try? decoder.decode(Message.self, from: payload) else { return nil }
+                return .done(message)
+            case "error":
+                let message = (try? decoder.decode(ErrorBody.self, from: payload))?.error ?? data
+                return .error(message)
+            default:
+                return nil
+            }
+        }
+    }
 
-struct Agent: Codable, Identifiable, Sendable {
-    var id: String
-    var name: String
-    var instructions: String
-    var created_at: String
-    var updated_at: String
-}
+    private func get<T: Decodable>(
+        _ path: String,
+        authorized: Bool = true,
+        query: [URLQueryItem] = []
+    ) async throws -> T {
+        let request = try makeRequest(path, method: "GET", authorized: authorized, query: query)
+        let (data, response) = try await URLSession.shared.data(for: request)
+        try Self.throwIfNeeded(data: data, response: response, allowed: [200])
+        do {
+            return try decoder.decode(T.self, from: data)
+        } catch {
+            throw RuntimeError.decoding
+        }
+    }
 
-struct AgentList: Codable, Sendable {
-    var agents: [Agent]
-}
+    private func send<Body: Encodable, T: Decodable>(
+        _ path: String,
+        method: String,
+        body: Body,
+        expected: Int
+    ) async throws -> T {
+        let request = try makeRequest(path, method: method, body: body)
+        let (data, response) = try await URLSession.shared.data(for: request)
+        try Self.throwIfNeeded(data: data, response: response, allowed: [expected, 200])
+        do {
+            return try decoder.decode(T.self, from: data)
+        } catch {
+            throw RuntimeError.decoding
+        }
+    }
 
-struct Message: Codable, Identifiable, Sendable {
-    var id: String
-    var agent_id: String
-    var role: String
-    var content: String
-    var created_at: String
-}
+    private func makeRequest<Body: Encodable>(
+        _ path: String,
+        method: String,
+        body: Body,
+        authorized: Bool = true,
+        query: [URLQueryItem] = []
+    ) throws -> URLRequest {
+        var request = try makeRequest(path, method: method, authorized: authorized, query: query)
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = try encoder.encode(body)
+        return request
+    }
 
-struct MessageList: Codable, Sendable {
-    var messages: [Message]
+    private func makeRequest(
+        _ path: String,
+        method: String,
+        authorized: Bool = true,
+        query: [URLQueryItem] = []
+    ) throws -> URLRequest {
+        let root = baseURL.absoluteString.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+        guard var components = URLComponents(string: "\(root)/\(path)") else {
+            throw RuntimeError.invalidURL
+        }
+        if !query.isEmpty {
+            components.queryItems = query
+        }
+        guard let url = components.url else { throw RuntimeError.invalidURL }
+        var request = URLRequest(url: url)
+        request.httpMethod = method
+        if authorized {
+            request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        }
+        return request
+    }
+
+    private static func throwIfNeeded(data: Data, response: URLResponse, allowed: [Int]) throws {
+        guard let http = response as? HTTPURLResponse else {
+            throw RuntimeError.http(status: 0, message: "No response")
+        }
+        if allowed.contains(http.statusCode) { return }
+        throw error(from: data, status: http.statusCode)
+    }
+
+    private static func error(from data: Data, status: Int) -> RuntimeError {
+        if let body = try? JSONDecoder().decode(ErrorBody.self, from: data), !body.error.isEmpty {
+            return .http(status: status, message: body.error)
+        }
+        let text = String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines)
+        return .http(status: status, message: text?.isEmpty == false ? text! : "HTTP \(status)")
+    }
+
+    private static func encode(_ id: String) -> String {
+        id.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? id
+    }
+
+    private static func decodeDate(_ decoder: Decoder) throws -> Date {
+        let container = try decoder.singleValueContainer()
+        let raw = try container.decode(String.self)
+        let withFraction = ISO8601DateFormatter()
+        withFraction.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        if let date = withFraction.date(from: raw) { return date }
+        let plain = ISO8601DateFormatter()
+        plain.formatOptions = [.withInternetDateTime]
+        if let date = plain.date(from: raw) { return date }
+        throw DecodingError.dataCorruptedError(in: container, debugDescription: "Invalid date \(raw)")
+    }
 }

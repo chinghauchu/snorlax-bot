@@ -43,7 +43,7 @@ see [docs/architecture.md](docs/architecture.md).
 
 ```
 desktop/     Tauri + TypeScript chat client
-ios/         Swift/SwiftUI companion stub
+ios/         Swift/SwiftUI companion (list, chat, settings)
 runtime/     FastAPI agent runtime (in front of vLLM)
 protocol/    OpenAPI contract for /v1
 docs/        Architecture and next tickets

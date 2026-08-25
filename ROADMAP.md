@@ -16,8 +16,8 @@ Chat-only named agents. Meant to *run*, including without a GPU.
 | `POST .../messages` as SSE (`message.delta` / `message.done` / `error`) | MCP connectors |
 | Bearer token LAN auth; bind localhost until a token exists | Vision (images persist, not sent to the model) |
 | Mock inference **or** vLLM OpenAI-compat | TensorRT-LLM |
-| Tauri + TypeScript chat UI | Production iOS client |
-| Swift/SwiftUI iOS stub | Agent-to-agent / group threads |
+| Tauri + TypeScript chat UI | Computer pane / tools |
+| Swift/SwiftUI iOS companion | Agent-to-agent / group threads |
 | OpenAPI for `/v1` | Question widgets |
 
 Default model on Spark: **70B-class FP8**, swapped via config.
