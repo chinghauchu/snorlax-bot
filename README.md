@@ -21,7 +21,8 @@ later versions) browse, click, schedule, and call tools without sending tokens
 off-box.
 
 v0.1 is still small: **seeded teammate + group channel + create more teammates
-+ chat with @mentions and agent DMs**. No tools, no sandbox computer, no vision.
++ chat with @mentions**. 1:1s are user ↔ that agent only; agent–agent traffic
+lives in the seeded channel. No tools, no sandbox computer, no vision.
 That slice is meant to actually run on a laptop *or* a Spark, with a mocked
 model backend when a 70B-class checkpoint is not present.
 
@@ -84,7 +85,8 @@ On first start the process:
 1. Creates a data directory (default `~/.snorlax-bot`, override with
    `SNORLAX_DATA_DIR`)
 2. Writes `~/.snorlax-bot/token` and `~/.snorlax-bot/snorlax.db`
-3. Seeds agent `snorlax-bot` (name Snorlax-Bot, title Assistant)
+3. Seeds agent `snorlax-bot` (name Snorlax, title Assistant) and channel
+   `snorlax-bot-group` (name Snorlax-Bot)
 4. Listens on `127.0.0.1:8787` until that token file exists, then
    `0.0.0.0:8787` on later launches. `SNORLAX_TOKEN` overrides the file.
    Clients use `SNORLAX_URL` + `SNORLAX_TOKEN`; they never read the Spark disk.

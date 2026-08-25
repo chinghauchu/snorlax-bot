@@ -13,8 +13,13 @@ def test_seeded_agent_present(client) -> None:
     agents = response.json()
     assert isinstance(agents, list)
     snorlax = next(a for a in agents if a["id"] == "snorlax-bot")
-    assert snorlax["name"] == "Snorlax-Bot"
+    assert snorlax["name"] == "Snorlax"
     assert snorlax["title"] == "Assistant"
+    assert snorlax["kind"] == "agent"
+    channel = next(a for a in agents if a["id"] == "snorlax-bot-group")
+    assert channel["name"] == "Snorlax-Bot"
+    assert channel["kind"] == "channel"
+    assert snorlax["name"] != channel["name"]
     assert snorlax["avatar"] is None
     assert snorlax["kind"] == "agent"
     assert snorlax["memberIds"] == []
@@ -76,13 +81,17 @@ def test_cannot_delete_seeded_agent(client) -> None:
 
 
 def test_delete_custom_agent(client) -> None:
-    client.post("/v1/agents", headers=AUTH, json={"name": "Temp"})
-    deleted = client.delete("/v1/agents/temp", headers=AUTH)
+    created = client.post("/v1/agents", headers=AUTH, json={"name": "Temp"})
+    assert created.status_code == 201
+    agent_id = created.json()["id"]
+    deleted = client.delete(f"/v1/agents/{agent_id}", headers=AUTH)
     assert deleted.status_code == 204
-    missing = client.get("/v1/agents/temp", headers=AUTH)
+    missing = client.get(f"/v1/agents/{agent_id}", headers=AUTH)
     assert missing.status_code == 404
     assert "error" in missing.json()
     assert isinstance(missing.json()["error"], str)
+    roster = client.get("/v1/agents", headers=AUTH).json()
+    assert all(a["id"] != agent_id for a in roster)
 
 
 def test_slug_collision(client) -> None:
@@ -105,3 +114,37 @@ async def test_does_not_reseed_if_roster_not_empty(tmp_path) -> None:
     assert await again.get_agent("snorlax-bot") is None
     assert await again.get_agent("inbox") is not None
     await again.close()
+
+
+@pytest.mark.asyncio
+async def test_one_to_one_list_filters_peer_rows(tmp_path) -> None:
+    store = Store(tmp_path)
+    await store.connect()
+    alice = await store.create_agent("Alice", "", "", None)
+    await store.add_message(agent_id=alice["id"], role="user", content="hi @Bob")
+    await store.add_message(
+        agent_id=alice["id"],
+        role="assistant",
+        content="from Alice: hi @Bob",
+        sender_id="bob",
+        sender_name="Bob",
+    )
+    await store.add_message(
+        agent_id=alice["id"],
+        role="assistant",
+        content="On it.",
+        sender_id=alice["id"],
+        sender_name="Alice",
+    )
+    listed = await store.list_messages(alice["id"], limit=100, before=None)
+    assert [m["senderId"] for m in listed] == ["user", alice["id"]]
+    await store.add_message(
+        agent_id="snorlax-bot-group",
+        role="assistant",
+        content="from Alice: hi @Bob",
+        sender_id=alice["id"],
+        sender_name="Alice",
+    )
+    channel = await store.list_messages("snorlax-bot-group", limit=100, before=None)
+    assert any(m["senderId"] == alice["id"] for m in channel)
+    await store.close()

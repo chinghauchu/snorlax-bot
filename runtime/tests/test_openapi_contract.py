@@ -22,3 +22,6 @@ def test_protocol_openapi_is_locked_v0_contract() -> None:
     assert "agentId" in text
     assert "const: Snorlax-Bot" in text
     assert "New agent" in text
+    assert "snorlax-bot-group" in text
+    assert "Never reuse `snorlax-bot` as the channel transcript" in text
+    assert "kind=channel" in text

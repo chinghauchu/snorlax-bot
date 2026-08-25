@@ -183,6 +183,7 @@ class Store:
                 ),
             )
         await self._ensure_channel()
+        await self._lock_seed_labels()
         await self.conn.commit()
 
     async def _ensure_channel(self) -> None:
@@ -204,6 +205,17 @@ class Store:
                 now,
                 now,
             ),
+        )
+
+    async def _lock_seed_labels(self) -> None:
+        """Keep roster names distinct: Snorlax (1:1) vs Snorlax-Bot (channel)."""
+        await self.conn.execute(
+            "UPDATE agents SET name = ?, title = ? WHERE id = ?",
+            (SEEDED_AGENT_NAME, SEEDED_AGENT_TITLE, SEEDED_AGENT_ID),
+        )
+        await self.conn.execute(
+            "UPDATE agents SET name = ?, title = ? WHERE id = ?",
+            (SEEDED_CHANNEL_NAME, SEEDED_CHANNEL_TITLE, SEEDED_CHANNEL_ID),
         )
 
     async def _member_ids(self) -> list[str]:
@@ -311,8 +323,14 @@ class Store:
     async def list_messages(
         self, agent_id: str, *, limit: int, before: str | None
     ) -> list[dict[str, Any]]:
+        conversation = await self.get_agent(agent_id)
         params: list[Any] = [agent_id]
         where = "WHERE agent_id = ?"
+        # 1:1 transcripts are only the user and that agent. Peer traffic lives
+        # in the seeded channel.
+        if conversation is not None and conversation.get("kind") != KIND_CHANNEL:
+            where += " AND (sender_id = ? OR sender_id = ?)"
+            params.extend([USER_SENDER_ID, agent_id])
         if before:
             cur = await self.conn.execute(
                 "SELECT created_at FROM messages WHERE id = ? AND agent_id = ?",
@@ -477,9 +495,10 @@ class Store:
         )
         system = (
             f"You are {speaker['name']}. You are in {place}. "
-            "Mention another teammate with @DisplayName to involve them; "
-            "the runtime routes that mention. Do not invent cues like "
-            "[agent] or [Group chat:]. Stay silent on FYI notes that do "
+            "Mention another teammate with @DisplayName to address them in "
+            "the group channel; the runtime routes that mention. 1:1 "
+            "transcripts stay between you and the user. Do not invent cues "
+            "like [agent] or [Group chat:]. Stay silent on FYI notes that do "
             "not ask you anything.\n\n"
             f"{speaker['description'] or ''}"
         ).strip()
@@ -491,6 +510,8 @@ class Store:
         )
         for row in await cur.fetchall():
             sender = row["sender_id"]
+            if not is_group and sender not in {USER_SENDER_ID, who}:
+                continue
             body = row["content"]
             if sender == who:
                 messages.append({"role": "assistant", "content": body})

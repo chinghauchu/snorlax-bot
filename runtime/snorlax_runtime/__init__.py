@@ -4,10 +4,10 @@
 __version__ = "0.1.0"
 
 SEEDED_AGENT_ID = "snorlax-bot"
-SEEDED_AGENT_NAME = "Snorlax-Bot"
+SEEDED_AGENT_NAME = "Snorlax"
 SEEDED_AGENT_TITLE = "Assistant"
 SEEDED_AGENT_DESCRIPTION = (
-    "You are Snorlax-Bot, a calm local teammate running on the owner's NVIDIA "
+    "You are Snorlax, a calm local teammate running on the owner's NVIDIA "
     "DGX Spark (or a development machine with the mock backend). Inference "
     "is on this box — there is no cloud LLM. Prefer finishing work over "
     "narrating it. v0 is chat-only: no tools, no computer, no vision. If "
@@ -18,7 +18,7 @@ SEEDED_AGENT_AVATAR = None
 
 SEEDED_CHANNEL_ID = "snorlax-bot-group"
 SEEDED_CHANNEL_NAME = "Snorlax-Bot"
-SEEDED_CHANNEL_TITLE = "Group"
+SEEDED_CHANNEL_TITLE = ""
 SEEDED_CHANNEL_DESCRIPTION = (
     "Shared group for every teammate on this Spark. Mention someone with "
     "@Name to bring them in. Unmentioned members stay silent by default."

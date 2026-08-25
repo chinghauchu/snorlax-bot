@@ -16,7 +16,7 @@ The Spark stays up when the phone sleeps. Reconnect is
 | Network | URLSession, `Authorization: Bearer` on everything except `GET /v1/health` |
 | Chat | `POST /v1/agents/{id}/messages` as SSE (`message.delta` / `message.done` / `error`) |
 | Pairing | Settings sheet. Token in Keychain, URL in AppStorage. No gate screen |
-| Seed | `snorlax-bot` (Snorlax-Bot / Assistant). Delete is hidden |
+| Seed | `snorlax-bot` (Snorlax / Assistant) and `snorlax-bot-group` (Snorlax-Bot, Channel). Delete is hidden on both |
 
 Open `SnorlaxBot.xcodeproj` in Xcode. Product name is **SnorlaxBot**; chrome
 says **Snorlax-Bot**.

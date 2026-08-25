@@ -93,6 +93,10 @@ export interface paths {
         /**
          * List transcript messages
          * @description Oldest-first. `before` is a message id cursor for older pages.
+         *     For kind=agent (including seed `snorlax-bot`), the list is only
+         *     `senderId=user` and that agent. Peer/involve/DM/hop messages are
+         *     never in a 1:1. For kind=channel (`snorlax-bot-group`) the list is
+         *     the shared transcript.
          */
         get: operations["listMessages"];
         put?: never;
@@ -101,14 +105,14 @@ export interface paths {
          * @description SSE, chat-only (no tools). Images are stored and returned; never
          *     forwarded to vLLM.
          *
-         *     For a 1:1 agent, hop 0 is that agent. For the group channel,
-         *     unmentioned members stay silent; mentioned members reply in this
-         *     transcript. Agent DMs stay in the two 1:1 transcripts and are not
-         *     mirrored into the group.
+         *     For a 1:1 agent, hop 0 is that agent. Mentioned peers and hops
+         *     reply in `snorlax-bot-group`, not in either 1:1. For the group
+         *     channel, unmentioned members stay silent; mentioned members reply
+         *     in this transcript.
          *
-         *     Unknown or ambiguous `@Name` on a user send is 422 `{ error }`
-         *     (composer error). Agent-authored unknown `@Name` is ignored.
-         *     `@everyone` is group-only.
+         *     422 only for an unknown mention chip id (and `@everyone` chip
+         *     outside the group). Typed `@foo` with no chip is plain text.
+         *     Agent-authored unknown `@Name` is ignored. `@everyone` is group-only.
          *
          *     - event `message.delta` data `{ id, role: "assistant", delta, senderId, senderName, senderAvatar }`
          *     - event `message.done` data full Message (not wrapped)
@@ -156,12 +160,21 @@ export interface components {
             version: string;
         };
         Agent: {
+            /**
+             * @description Seed 1:1 is `snorlax-bot`. Seeded channel is `snorlax-bot-group`.
+             *     Never reuse `snorlax-bot` as the channel transcript.
+             */
             id: string;
+            /** @description Display name. Seed 1:1 is Snorlax. Seeded channel is Snorlax-Bot. */
             name: string;
             title: string;
             description: string;
             avatar: string | null;
-            /** @enum {string} */
+            /**
+             * @description Clients show a muted "Channel" subtitle from kind=channel.
+             *     Do not guess from id. Seed agent is kind=agent.
+             * @enum {string}
+             */
             kind: "agent" | "channel";
             /** @description Agent ids in a channel. Empty for kind=agent. Always all agents for the seeded group. */
             memberIds: string[];
@@ -202,7 +215,10 @@ export interface components {
         };
         Message: {
             id: string;
-            /** @description Transcript owner (agent id or channel id). */
+            /**
+             * @description Transcript owner. `snorlax-bot` is the Snorlax 1:1. `snorlax-bot-group`
+             *     is the seeded channel. 1:1 lists are only user + that agent.
+             */
             agentId: string;
             /** @enum {string} */
             role: "user" | "assistant";
@@ -223,7 +239,9 @@ export interface components {
             images?: components["schemas"]["ImageIn"][];
             /**
              * @description Agent ids from typeahead chips. Unresolved `@text` is omitted
-             *     and is not a mention. Runtime also parses `@DisplayName`.
+             *     and is not a mention. Unknown chip ids 422. Runtime also
+             *     parses exact `@DisplayName`. Peer deliveries from a 1:1 land
+             *     in the seeded channel, not in another agent's 1:1.
              */
             mentions?: string[];
         };

@@ -63,6 +63,7 @@ private struct iPadRoot: View {
             AgentListView()
                 .navigationTitle("Snorlax-Bot")
                 .navigationBarTitleDisplayMode(.large)
+                .navigationSplitViewColumnWidth(min: 220, ideal: 256, max: 320)
         } detail: {
             if let id = model.selectedAgentID {
                 ChatView(agentID: id)

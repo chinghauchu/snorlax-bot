@@ -61,14 +61,15 @@ struct ChatView: View {
                             .padding(.horizontal, 16)
                             .padding(.top, 12)
                     } else {
-                        ForEach(Array(model.messages.enumerated()), id: \.element.id) { index, message in
+                        let visible = model.visibleMessages(for: agent)
+                        ForEach(Array(visible.enumerated()), id: \.element.id) { index, message in
                             MessageBubble(
                                 message: message,
                                 agents: model.visibleAgents,
                                 localPreviews: model.localPreviews[message.id] ?? [],
-                                sameSender: sameSender(at: index)
+                                sameSender: sameSender(at: index, in: visible)
                             )
-                            .padding(.top, turnSpacing(at: index))
+                            .padding(.top, turnSpacing(at: index, in: visible))
                             .id(message.id)
                         }
                     }
@@ -89,15 +90,15 @@ struct ChatView: View {
         message.senderId.isEmpty ? (message.role == .user ? "user" : message.agentId) : message.senderId
     }
 
-    private func sameSender(at index: Int) -> Bool {
+    private func sameSender(at index: Int, in messages: [Message]) -> Bool {
         guard index > 0 else { return false }
-        return senderKey(model.messages[index - 1]) == senderKey(model.messages[index])
+        return senderKey(messages[index - 1]) == senderKey(messages[index])
     }
 
     /// 4pt inside a streak (same sender), 16pt when the sender changes.
-    private func turnSpacing(at index: Int) -> CGFloat {
+    private func turnSpacing(at index: Int, in messages: [Message]) -> CGFloat {
         guard index > 0 else { return 0 }
-        return sameSender(at: index) ? 4 : 16
+        return sameSender(at: index, in: messages) ? 4 : 16
     }
 }
 
@@ -175,11 +176,15 @@ private struct ComposerBar: View {
                 .disabled(!model.canCompose)
                 .accessibilityLabel("Attach image")
 
-                TextField("Message \(agentName)", text: $model.draft, axis: .vertical)
-                    .font(.system(size: 14))
-                    .lineLimit(1...6)
-                    .focused(focused)
-                    .disabled(!model.canCompose)
+                ComposerTextView(
+                    text: $model.draft,
+                    chipNames: model.composerChipNames,
+                    placeholder: "Message \(agentName)",
+                    disabled: !model.canCompose,
+                    pendingCaret: $model.pendingComposerCaret,
+                    focused: focused
+                )
+                .frame(minHeight: 22, maxHeight: 120)
 
                 Button {
                     Task { await model.send() }

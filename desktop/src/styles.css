@@ -36,6 +36,7 @@ body,
 #root {
   margin: 0;
   height: 100%;
+  overflow: hidden;
   background: var(--bg);
   color: var(--text);
   font-family: system-ui, -apple-system, BlinkMacSystemFont, "SF Pro Text",
@@ -67,6 +68,7 @@ button:disabled {
   min-width: 720px;
   background: var(--bg);
   position: relative;
+  overflow: hidden;
 }
 
 .sidebar {
@@ -75,6 +77,9 @@ button:disabled {
   background: var(--bg-sidebar);
   border-right: 1px solid var(--border);
   min-width: 256px;
+  min-height: 0;
+  height: 100%;
+  overflow: hidden;
 }
 
 .sidebar-head,
@@ -175,7 +180,7 @@ button:disabled {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-size: 11px;
+  font-size: 12px;
   color: var(--text-muted);
 }
 
@@ -212,6 +217,9 @@ button:disabled {
   display: grid;
   grid-template-rows: 52px 1fr auto;
   min-width: 0;
+  min-height: 0;
+  height: 100%;
+  overflow: hidden;
   background: var(--bg);
 }
 
@@ -234,6 +242,7 @@ button:disabled {
 
 .transcript {
   overflow: auto;
+  min-height: 0;
   padding: 16px 20px 24px;
 }
 
@@ -330,12 +339,14 @@ button:disabled {
 }
 
 .mention-chip {
+  /* Overlay chips must keep the same metrics as the transparent textarea
+     or the caret and wrap points drift. No padding, no font-weight bump. */
   display: inline;
   color: var(--accent);
   background: color-mix(in srgb, var(--accent) 18%, transparent);
-  border-radius: 8px;
-  padding: 0 4px;
-  font-weight: 600;
+  border-radius: 4px;
+  box-decoration-break: clone;
+  -webkit-box-decoration-break: clone;
 }
 
 .bubble-image {
@@ -411,7 +422,9 @@ button:disabled {
   padding: 6px 4px;
   font-size: 14px;
   line-height: 1.4;
+  letter-spacing: inherit;
   white-space: pre-wrap;
+  overflow-wrap: break-word;
   word-wrap: break-word;
   color: var(--text);
   pointer-events: none;
@@ -423,6 +436,8 @@ button:disabled {
   width: 100%;
   color: transparent;
   background: transparent;
+  overflow-wrap: break-word;
+  word-wrap: break-word;
 }
 
 .composer-field textarea::placeholder {
