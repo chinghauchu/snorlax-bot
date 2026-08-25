@@ -58,7 +58,7 @@ SQLite on disk holds agents and messages. The seeded agent id is stable:
 `snorlax-bot`. Bind is `127.0.0.1` until a token exists, then `0.0.0.0` so a
 phone on the same LAN can reach the Spark. Details:
 [docs/architecture.md](docs/architecture.md). Locked HTTP contract:
-[protocol/openapi.yaml](protocol/openapi.yaml).
+[protocol/openapi.yaml](protocol/openapi.yaml) (copy: `runtime/openapi.yaml`).
 
 ## How to run locally (v0 vertical slice)
 
@@ -82,10 +82,11 @@ On first start the process:
 
 1. Creates a data directory (default `~/.snorlax-bot`, override with
    `SNORLAX_DATA_DIR`)
-2. Generates a bearer token and prints it
-3. Seeds agent `snorlax-bot`
-4. Listens on `127.0.0.1:8787` until that token exists on disk, then
-   `0.0.0.0:8787` on subsequent launches
+2. Writes `~/.snorlax-bot/token` and `~/.snorlax-bot/snorlax.db`
+3. Seeds agent `snorlax-bot` (name Snorlax-Bot, title Assistant)
+4. Listens on `127.0.0.1:8787` until that token file exists, then
+   `0.0.0.0:8787` on later launches. `SNORLAX_TOKEN` overrides the file.
+   Clients use `SNORLAX_URL` + `SNORLAX_TOKEN`; they never read the Spark disk.
 
 ```bash
 export SNORLAX_TOKEN='<printed token>'

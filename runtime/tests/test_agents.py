@@ -1,48 +1,74 @@
 # SPDX-License-Identifier: Apache-2.0
 from __future__ import annotations
 
+import pytest
+
+from snorlax_runtime.db import Store
 from tests.conftest import AUTH
 
 
 def test_seeded_agent_present(client) -> None:
     response = client.get("/v1/agents", headers=AUTH)
     assert response.status_code == 200
-    agents = response.json()["agents"]
-    assert any(a["id"] == "snorlax-bot" for a in agents)
+    agents = response.json()
+    assert isinstance(agents, list)
     snorlax = next(a for a in agents if a["id"] == "snorlax-bot")
-    assert snorlax["name"] == "Snorlax"
+    assert snorlax["name"] == "Snorlax-Bot"
+    assert snorlax["title"] == "Assistant"
+    assert snorlax["avatar"] is None
+    assert "description" in snorlax
+    assert "instructions" not in snorlax
+    assert "createdAt" in snorlax
+    assert "updatedAt" in snorlax
 
 
 def test_create_and_get_agent(client) -> None:
     created = client.post(
         "/v1/agents",
         headers=AUTH,
-        json={"name": "Inbox", "instructions": "Handle mail."},
+        json={
+            "name": "Inbox",
+            "title": "Mail",
+            "description": "Handle mail.",
+            "avatar": None,
+        },
     )
     assert created.status_code == 201
     body = created.json()
     assert body["id"] == "inbox"
+    assert body["title"] == "Mail"
+    assert body["description"] == "Handle mail."
     fetched = client.get(f"/v1/agents/{body['id']}", headers=AUTH)
     assert fetched.status_code == 200
-    assert fetched.json()["instructions"] == "Handle mail."
+    assert fetched.json()["description"] == "Handle mail."
 
 
-def test_patch_agent(client) -> None:
+def test_post_defaults_name_new_agent(client) -> None:
+    created = client.post("/v1/agents", headers=AUTH, json={})
+    assert created.status_code == 201
+    assert created.json()["name"] == "New agent"
+    assert created.json()["id"] == "new-agent"
+
+
+def test_patch_profile_fields(client) -> None:
     client.post("/v1/agents", headers=AUTH, json={"name": "Ops"})
     patched = client.patch(
         "/v1/agents/ops",
         headers=AUTH,
-        json={"instructions": "Keep the lights on."},
+        json={"title": "Ops", "description": "Keep the lights on.", "avatar": None},
     )
     assert patched.status_code == 200
-    assert patched.json()["instructions"] == "Keep the lights on."
-    assert patched.json()["name"] == "Ops"
+    body = patched.json()
+    assert body["description"] == "Keep the lights on."
+    assert body["name"] == "Ops"
+    assert body["title"] == "Ops"
+    assert body["avatar"] is None
 
 
 def test_cannot_delete_seeded_agent(client) -> None:
     response = client.delete("/v1/agents/snorlax-bot", headers=AUTH)
     assert response.status_code == 409
-    assert response.json()["error"]["code"] == "seeded_agent"
+    assert response.json() == {"error": "seeded agent cannot be deleted"}
     still = client.get("/v1/agents/snorlax-bot", headers=AUTH)
     assert still.status_code == 200
 
@@ -53,6 +79,8 @@ def test_delete_custom_agent(client) -> None:
     assert deleted.status_code == 204
     missing = client.get("/v1/agents/temp", headers=AUTH)
     assert missing.status_code == 404
+    assert "error" in missing.json()
+    assert isinstance(missing.json()["error"], str)
 
 
 def test_slug_collision(client) -> None:
@@ -60,3 +88,18 @@ def test_slug_collision(client) -> None:
     second = client.post("/v1/agents", headers=AUTH, json={"name": "Research"})
     assert first.json()["id"] == "research"
     assert second.json()["id"] == "research-2"
+
+
+@pytest.mark.asyncio
+async def test_does_not_reseed_if_roster_not_empty(tmp_path) -> None:
+    store = Store(tmp_path)
+    await store.connect()
+    await store.create_agent("Inbox", "Mail", "", None)
+    assert await store.delete_agent("snorlax-bot")
+    await store.close()
+
+    again = Store(tmp_path)
+    await again.connect()
+    assert await again.get_agent("snorlax-bot") is None
+    assert await again.get_agent("inbox") is not None
+    await again.close()

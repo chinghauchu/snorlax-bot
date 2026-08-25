@@ -1,6 +1,8 @@
 # SPDX-License-Identifier: Apache-2.0
 from __future__ import annotations
 
+import os
+
 import pytest
 from fastapi.testclient import TestClient
 
@@ -9,6 +11,14 @@ from snorlax_runtime.config import Settings
 
 TOKEN = "test-token-snorlax"
 AUTH = {"Authorization": f"Bearer {TOKEN}"}
+
+
+@pytest.fixture(autouse=True)
+def clear_snorlax_env(monkeypatch):
+    for key in list(os.environ):
+        if key.startswith("SNORLAX_"):
+            monkeypatch.delenv(key, raising=False)
+
 
 
 @pytest.fixture
