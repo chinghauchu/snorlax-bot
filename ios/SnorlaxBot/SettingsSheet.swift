@@ -46,7 +46,7 @@ struct SettingsSheet: View {
                 }
 
                 Section("Runtime") {
-                    TextField("Runtime URL", text: $model.runtimeURL, prompt: Text("http://<spark-lan>:8787"))
+                    TextField("Runtime URL", text: $model.runtimeURL, prompt: Text(verbatim: "http://<spark-lan>:8787"))
                         .font(.system(size: 14))
                         .textInputAutocapitalization(.never)
                         .autocorrectionDisabled()
