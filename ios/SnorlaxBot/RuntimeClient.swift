@@ -57,10 +57,13 @@ struct RuntimeClient: Sendable {
         try Self.throwIfNeeded(data: data, response: response, allowed: [204])
     }
 
-    func listMessages(agentId: String, limit: Int = 100, before: String? = nil) async throws -> [Message] {
+    func listMessages(agentId: String, limit: Int = 100, before: String? = nil, threadId: String? = nil) async throws -> [Message] {
         var items: [URLQueryItem] = [URLQueryItem(name: "limit", value: String(limit))]
         if let before {
             items.append(URLQueryItem(name: "before", value: before))
+        }
+        if let threadId {
+            items.append(URLQueryItem(name: "threadId", value: threadId))
         }
         return try await get("v1/agents/\(Self.encode(agentId))/messages", query: items)
     }
@@ -70,6 +73,7 @@ struct RuntimeClient: Sendable {
         content: String,
         images: [ImageIn],
         mentions: [String] = [],
+        replyTo: String? = nil,
         onEvent: @escaping @Sendable (StreamEvent) -> Void
     ) async throws {
         var request = try makeRequest(
@@ -78,7 +82,8 @@ struct RuntimeClient: Sendable {
             body: MessageCreate(
                 content: content,
                 images: images.isEmpty ? nil : images,
-                mentions: mentions.isEmpty ? nil : mentions
+                mentions: mentions.isEmpty ? nil : mentions,
+                replyTo: replyTo
             )
         )
         request.setValue("text/event-stream", forHTTPHeaderField: "Accept")

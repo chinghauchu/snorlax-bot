@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0
 """Snorlax-Bot LAN runtime."""
 
-__version__ = "0.1.0"
+__version__ = "0.2.0"
 
 SEEDED_AGENT_ID = "snorlax-bot"
 SEEDED_AGENT_NAME = "Snorlax"

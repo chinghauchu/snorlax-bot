@@ -105,8 +105,11 @@ SQLite file `~/.snorlax-bot/snorlax.db` (override with `SNORLAX_DATA_DIR`):
   channel is created if missing on an existing DB. Clients show a muted
   “Channel” subtitle from `kind`, not by guessing id.
 - `messages` — per-transcript (agent 1:1 or the group), `user` | `assistant`,
-  plus `senderId` / `senderName` / `senderAvatar` / `hop` / `mentions`. User
-  bubbles are `senderId=user`; every agent is left and labeled as themselves.
+  plus `senderId` / `senderName` / `senderAvatar` / `hop` / `mentions`.
+  Additive v0.2: `kind` (`message` | `handoff`), `replyTo`, `handoff`
+  `{ channelId, threadId }` on the originating user message, `userAsk` /
+  `brief` on a handoff root. User bubbles are `senderId=user`; every agent
+  is left and labeled as themselves.
 - `images` — bytes on disk; API shape `{ id, mime, url }`. **Never forwarded
   to the model.**
 - Token is a sibling file `~/.snorlax-bot/token`, not a SQLite setting.
@@ -116,6 +119,12 @@ GET `/v1/agents/snorlax-bot/messages` is only user + Snorlax. Peer / involve /
 DM / hop traffic writes only to `snorlax-bot-group`. Mentions are runtime-routed
 with hop depth 3, 4 peer sends per user turn, and a same-edge cap. Extra
 user-created channels wait.
+
+v0.2: a 1:1 `@chip` or agent DM opens a channel **thread** under a
+`kind=handoff` root. GET channel messages without `threadId` returns timeline
+roots only. Pack B wakes with `{ originating, userAsk, brief, mentionedIds }`
+(not a quote). The originating user message may include `handoff: { channelId,
+threadId }` so clients can show a jump chip.
 
 ## Inference interface
 

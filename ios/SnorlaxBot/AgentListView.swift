@@ -94,6 +94,7 @@ struct AgentListView: View {
 
 private struct AgentRow: View {
     let agent: Agent
+    @Environment(AppModel.self) private var model
 
     var body: some View {
         HStack(spacing: 10) {
@@ -111,6 +112,12 @@ private struct AgentRow: View {
                 }
             }
             Spacer(minLength: 0)
+            if agent.isChannel, model.channelUnread {
+                Circle()
+                    .fill(Color.accentColor)
+                    .frame(width: 6, height: 6)
+                    .accessibilityLabel("Unread")
+            }
         }
         .frame(height: 44)
         .contentShape(Rectangle())

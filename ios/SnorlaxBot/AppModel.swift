@@ -34,6 +34,8 @@ final class AppModel {
     var selectedAgentID: String?
     var navigationPath: [String] = []
     var messages: [Message] = []
+    var threadID: String?
+    var channelUnread = false
     var localPreviews: [String: [Data]] = [:]
     var draft = ""
     var pendingImage: PendingImage?
@@ -81,6 +83,7 @@ final class AppModel {
             messages = []
             localPreviews = [:]
             navigationPath = []
+            threadID = nil
             return
         }
         do {
@@ -98,9 +101,27 @@ final class AppModel {
     }
 
     func select(_ id: String, push: Bool) async {
+        await loadConversation(id, thread: nil, push: push)
+    }
+
+    func openJump(channelId: String, threadId: String) async {
+        channelUnread = false
+        await loadConversation(channelId, thread: threadId, push: true)
+    }
+
+    func closeThread() async {
+        guard let id = selectedAgentID else { return }
+        await loadConversation(id, thread: nil, push: false)
+    }
+
+    func loadConversation(_ id: String, thread: String?, push: Bool) async {
         selectedAgentID = id
+        threadID = thread
         if push, navigationPath.last != id {
             navigationPath = [id]
+        }
+        if visibleAgents.first(where: { $0.id == id })?.isChannel == true {
+            channelUnread = false
         }
         guard isConfigured, let client else {
             messages = []
@@ -108,7 +129,7 @@ final class AppModel {
             return
         }
         do {
-            messages = try await client.listMessages(agentId: id)
+            messages = try await client.listMessages(agentId: id, threadId: thread)
             prunePreviews()
         } catch {
             errorMessage = error.localizedDescription
@@ -198,15 +219,19 @@ final class AppModel {
                 agentId: agent.id,
                 content: content,
                 images: image.map { [$0.asInput] } ?? [],
-                mentions: mentionIDs
+                mentions: mentionIDs,
+                replyTo: agent.isChannel ? threadID : nil
             ) { [weak self] event in
                 Task { @MainActor in
                     self?.handle(event, agentId: agent.id)
                 }
             }
             if !Task.isCancelled, selectedAgentID == agent.id {
-                messages = try await client.listMessages(agentId: agent.id)
+                messages = try await client.listMessages(agentId: agent.id, threadId: threadID)
                 prunePreviews()
+                if !agent.isChannel, messages.contains(where: { $0.handoff != nil }) {
+                    channelUnread = true
+                }
             }
         } catch is CancellationError {
             await refreshMessages()
@@ -224,7 +249,7 @@ final class AppModel {
     func refreshMessages() async {
         guard let client, let id = selectedAgentID, isConfigured else { return }
         do {
-            messages = try await client.listMessages(agentId: id)
+            messages = try await client.listMessages(agentId: id, threadId: threadID)
             prunePreviews()
         } catch {
             errorMessage = error.localizedDescription
@@ -242,8 +267,10 @@ final class AppModel {
 
     private func handle(_ event: RuntimeClient.StreamEvent, agentId: String) {
         guard selectedAgentID == agentId else { return }
+        let onTimeline = selectedAgent?.isChannel == true && threadID == nil
         switch event {
         case .delta(let id, let text, let senderId, let senderName, let senderAvatar):
+            if onTimeline { return }
             if let index = messages.firstIndex(where: { $0.id == id }) {
                 messages[index].content += text
             } else {
@@ -258,6 +285,7 @@ final class AppModel {
                 ))
             }
         case .done(let message):
+            if onTimeline, message.replyTo != nil { return }
             if let index = messages.firstIndex(where: { $0.id == message.id }) {
                 messages[index] = message
             } else {

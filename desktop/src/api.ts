@@ -124,9 +124,13 @@ export async function deleteAgent(
 export async function listMessages(
   session: Session,
   agentId: string,
+  opts?: { threadId?: string },
 ): Promise<ChatMessage[]> {
+  const params = new URLSearchParams();
+  if (opts?.threadId) params.set("threadId", opts.threadId);
+  const query = params.toString();
   const response = await fetch(
-    `${session.baseUrl}/v1/agents/${encodeURIComponent(agentId)}/messages`,
+    `${session.baseUrl}/v1/agents/${encodeURIComponent(agentId)}/messages${query ? `?${query}` : ""}`,
     { headers: headers(session) },
   );
   return asList<ChatMessage>(await json<unknown>(response), "messages");
@@ -149,12 +153,19 @@ export async function sendMessage(
   images: ImageIn[],
   handlers: StreamHandlers,
   mentions: string[] = [],
+  replyTo?: string | null,
 ): Promise<void> {
-  const body: { content: string; images: ImageIn[]; mentions?: string[] } = {
+  const body: {
+    content: string;
+    images: ImageIn[];
+    mentions?: string[];
+    replyTo?: string;
+  } = {
     content,
     images,
   };
   if (mentions.length) body.mentions = mentions;
+  if (replyTo) body.replyTo = replyTo;
   const response = await fetch(
     `${session.baseUrl}/v1/agents/${encodeURIComponent(agentId)}/messages`,
     {

@@ -20,9 +20,10 @@ computer. Bots live on your LAN, talk through a thin local runtime, and (in
 later versions) browse, click, schedule, and call tools without sending tokens
 off-box.
 
-v0.1 is still small: **seeded teammate + group channel + create more teammates
-+ chat with @mentions**. 1:1s are user ↔ that agent only; agent–agent traffic
-lives in the seeded channel. No tools, no sandbox computer, no vision.
+v0.2 is still small: **seeded teammate + group channel threads + create more teammates
++ chat with @mentions**. 1:1s are user ↔ that agent only; a user `@chip` (or
+agent DM) opens a handoff thread in the seeded channel with a jump chip back
+from A's 1:1. No tools, no sandbox computer, no vision.
 That slice is meant to actually run on a laptop *or* a Spark, with a mocked
 model backend when a 70B-class checkpoint is not present.
 

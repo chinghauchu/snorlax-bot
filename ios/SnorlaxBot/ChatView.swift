@@ -20,7 +20,18 @@ struct ChatView: View {
         }
         .navigationTitle(agent.name)
         .navigationBarTitleDisplayMode(.inline)
+        .navigationBarBackButtonHidden(model.threadID != nil && agent.isChannel)
         .toolbar {
+            if model.threadID != nil, agent.isChannel {
+                ToolbarItem(placement: .topBarLeading) {
+                    Button {
+                        Task { await model.closeThread() }
+                    } label: {
+                        Image(systemName: "chevron.left")
+                    }
+                    .accessibilityLabel("Back to timeline")
+                }
+            }
             ToolbarItem(placement: .principal) {
                 Button {
                     model.showProfile = true
@@ -36,7 +47,9 @@ struct ChatView: View {
             ProfileSheet(agent: agent)
         }
         .task(id: agentID) {
-            await model.select(agentID, push: false)
+            if !(model.selectedAgentID == agentID && model.threadID != nil) {
+                await model.select(agentID, push: false)
+            }
             if model.canCompose {
                 composerFocused = true
                 model.wantsComposerFocus = false
@@ -63,13 +76,8 @@ struct ChatView: View {
                     } else {
                         let visible = model.visibleMessages(for: agent)
                         ForEach(Array(visible.enumerated()), id: \.element.id) { index, message in
-                            MessageBubble(
-                                message: message,
-                                agents: model.visibleAgents,
-                                localPreviews: model.localPreviews[message.id] ?? [],
-                                sameSender: sameSender(at: index, in: visible)
-                            )
-                            .padding(.top, turnSpacing(at: index, in: visible))
+                            transcriptItem(message, index: index, in: visible, agent: agent)
+                            .padding(.top, turnSpacing(at: index, in: visible, message: message))
                             .id(message.id)
                         }
                     }
@@ -86,6 +94,29 @@ struct ChatView: View {
         }
     }
 
+    @ViewBuilder
+    private func transcriptItem(_ message: Message, index: Int, in messages: [Message], agent: Agent) -> some View {
+        let onTimeline = agent.isChannel && model.threadID == nil
+        if onTimeline, message.isHandoffRoot {
+            Button {
+                Task { await model.openJump(channelId: agent.id, threadId: message.id) }
+            } label: {
+                HandoffTimelineRow(message: message, agents: model.visibleAgents)
+            }
+            .buttonStyle(.plain)
+        } else {
+            MessageBubble(
+                message: message,
+                agents: model.visibleAgents,
+                localPreviews: model.localPreviews[message.id] ?? [],
+                sameSender: !message.isHandoffRoot && sameSender(at: index, in: messages),
+                threadRoot: agent.isChannel && model.threadID != nil && message.isHandoffRoot
+            ) { jump in
+                Task { await model.openJump(channelId: jump.channelId, threadId: jump.threadId) }
+            }
+        }
+    }
+
     private func senderKey(_ message: Message) -> String {
         message.senderId.isEmpty ? (message.role == .user ? "user" : message.agentId) : message.senderId
     }
@@ -96,7 +127,8 @@ struct ChatView: View {
     }
 
     /// 4pt inside a streak (same sender), 16pt when the sender changes.
-    private func turnSpacing(at index: Int, in messages: [Message]) -> CGFloat {
+    private func turnSpacing(at index: Int, in messages: [Message], message: Message? = nil) -> CGFloat {
+        if message?.isHandoffRoot == true { return index == 0 ? 0 : 16 }
         guard index > 0 else { return 0 }
         return sameSender(at: index, in: messages) ? 4 : 16
     }
@@ -224,6 +256,8 @@ private struct MessageBubble: View {
     let agents: [Agent]
     var localPreviews: [Data] = []
     var sameSender = false
+    var threadRoot = false
+    var onJump: ((HandoffRef) -> Void)?
 
     private var isUser: Bool { message.isFromUser }
 
@@ -257,33 +291,71 @@ private struct MessageBubble: View {
             }
             HStack(alignment: .top, spacing: 0) {
                 if isUser { Spacer(minLength: 48) }
-                VStack(alignment: .leading, spacing: 6) {
-                    ForEach(Array(localPreviews.enumerated()), id: \.offset) { _, data in
-                        if let image = UIImage(data: data) {
-                            Image(uiImage: image)
-                                .resizable()
-                                .scaledToFit()
+                if threadRoot {
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text("from \(message.senderName)")
+                            .font(.system(size: 12))
+                            .foregroundStyle(.secondary)
+                        Text(message.userAsk ?? message.content)
+                            .font(.system(size: 14))
+                            .textSelection(.enabled)
+                        if let brief = message.brief, !brief.isEmpty {
+                            DisclosureGroup("Context") {
+                                Text(brief)
+                                    .font(.system(size: 12))
+                                    .foregroundStyle(.secondary)
+                            }
+                            .font(.system(size: 12))
+                            .foregroundStyle(.secondary)
+                        }
+                    }
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 8)
+                    .background(Color(uiColor: .secondarySystemFill), in: RoundedRectangle(cornerRadius: 16))
+                } else {
+                    VStack(alignment: .leading, spacing: 6) {
+                        ForEach(Array(localPreviews.enumerated()), id: \.offset) { _, data in
+                            if let image = UIImage(data: data) {
+                                Image(uiImage: image)
+                                    .resizable()
+                                    .scaledToFit()
+                                    .frame(maxWidth: 220, maxHeight: 220)
+                                    .clipShape(RoundedRectangle(cornerRadius: 12))
+                            }
+                        }
+                        ForEach(message.images) { image in
+                            RemoteImage(urlString: image.url, mime: image.mime)
                                 .frame(maxWidth: 220, maxHeight: 220)
                                 .clipShape(RoundedRectangle(cornerRadius: 12))
                         }
+                        if !message.content.isEmpty {
+                            MentionLabel(text: message.content, names: agents.filter { !$0.isChannel }.map(\.name))
+                                .font(.system(size: 14))
+                                .textSelection(.enabled)
+                        }
                     }
-                    ForEach(message.images) { image in
-                        RemoteImage(urlString: image.url, mime: image.mime)
-                            .frame(maxWidth: 220, maxHeight: 220)
-                            .clipShape(RoundedRectangle(cornerRadius: 12))
-                    }
-                    if !message.content.isEmpty {
-                        MentionLabel(text: message.content, names: agents.filter { !$0.isChannel }.map(\.name))
-                            .font(.system(size: 14))
-                            .textSelection(.enabled)
-                    }
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 8)
+                    .background(bubbleColor, in: RoundedRectangle(cornerRadius: 16))
                 }
-                .padding(.horizontal, 12)
-                .padding(.vertical, 8)
-                .background(bubbleColor, in: RoundedRectangle(cornerRadius: 16))
                 if !isUser { Spacer(minLength: 48) }
             }
             .padding(.horizontal, 12)
+            if isUser, let jump = message.jump {
+                Button {
+                    onJump?(jump)
+                } label: {
+                    HStack(spacing: 0) {
+                        Text("Also in ")
+                            .foregroundStyle(.secondary)
+                        Text("Snorlax-Bot")
+                            .foregroundStyle(Color.accentColor)
+                    }
+                    .font(.system(size: 12))
+                }
+                .buttonStyle(.plain)
+                .padding(.horizontal, 12)
+            }
         }
         .frame(maxWidth: .infinity, alignment: isUser ? .trailing : .leading)
         .accessibilityElement(children: .combine)
@@ -294,5 +366,55 @@ private struct MessageBubble: View {
         isUser
             ? Color.accentColor.opacity(0.22)
             : Color(uiColor: .secondarySystemFill)
+    }
+}
+
+private struct HandoffTimelineRow: View {
+    let message: Message
+    let agents: [Agent]
+
+    private var sender: Agent? {
+        agents.first(where: { $0.id == message.senderId })
+    }
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 8) {
+            AgentAvatar(
+                agent: sender ?? Agent(
+                    id: message.senderId,
+                    name: message.senderName,
+                    title: "",
+                    description: "",
+                    avatar: message.senderAvatar,
+                    kind: .agent,
+                    memberIds: [],
+                    createdAt: .distantPast,
+                    updatedAt: .distantPast
+                ),
+                size: 20
+            )
+            VStack(alignment: .leading, spacing: 2) {
+                Text(message.senderName)
+                    .font(.system(size: 13, weight: .medium))
+                Text("from \(message.senderName)")
+                    .font(.system(size: 12))
+                    .foregroundStyle(.secondary)
+                Text(message.userAsk ?? message.content)
+                    .font(.system(size: 13))
+                    .lineLimit(1)
+                Text(repliesLabel(message.replyCount ?? 0))
+                    .font(.system(size: 12))
+                    .foregroundStyle(.secondary)
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 8)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .contentShape(Rectangle())
+    }
+
+    private func repliesLabel(_ count: Int) -> String {
+        count == 1 ? "1 reply" : "\(count) replies"
     }
 }

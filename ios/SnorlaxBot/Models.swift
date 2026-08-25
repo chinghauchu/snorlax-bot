@@ -39,6 +39,9 @@ extension Agent {
 
 extension Message {
     var isFromUser: Bool { senderId == "user" || (senderId.isEmpty && role == .user) }
+    var isHandoffRoot: Bool { kind == .handoff && replyTo == nil }
+
+    var jump: HandoffRef? { handoff }
 
     static func optimisticUser(agentId: String, content: String) -> Message {
         Message(

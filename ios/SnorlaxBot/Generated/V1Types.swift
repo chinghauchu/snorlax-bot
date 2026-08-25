@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 //
-// Generated from protocol/openapi.yaml (Snorlax-Bot 0.1.0).
+// Generated from protocol/openapi.yaml (Snorlax-Bot 0.2.0).
 // Do not edit by hand. Regenerate with:
 //   python3 ios/scripts/generate_v1_types.py
 //
@@ -231,10 +231,38 @@ struct Mention: Codable, Hashable, Identifiable, Sendable {
     }
 }
 
+struct HandoffRef: Codable, Hashable, Sendable {
+    var channelId: String
+    var threadId: String
+
+    init(channelId: String, threadId: String) {
+        self.channelId = channelId
+        self.threadId = threadId
+    }
+
+    enum CodingKeys: String, CodingKey { case channelId, threadId }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        channelId = try container.decode(String.self, forKey: .channelId)
+        threadId = try container.decode(String.self, forKey: .threadId)
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(channelId, forKey: .channelId)
+        try container.encode(threadId, forKey: .threadId)
+    }
+}
+
 struct Message: Codable, Hashable, Identifiable, Sendable {
     enum Role: String, Codable, Hashable, Sendable {
         case user
         case assistant
+    }
+    enum Kind: String, Codable, Hashable, Sendable {
+        case message
+        case handoff
     }
 
     var id: String
@@ -248,8 +276,14 @@ struct Message: Codable, Hashable, Identifiable, Sendable {
     var senderAvatar: String?
     var hop: Int
     var mentions: [Mention]
+    var kind: Kind?
+    var replyTo: String?
+    var handoff: HandoffRef?
+    var userAsk: String?
+    var brief: String?
+    var replyCount: Int?
 
-    init(id: String, agentId: String, role: Role, content: String, images: [ImageOut], createdAt: Date, senderId: String, senderName: String, senderAvatar: String?, hop: Int, mentions: [Mention]) {
+    init(id: String, agentId: String, role: Role, content: String, images: [ImageOut], createdAt: Date, senderId: String, senderName: String, senderAvatar: String?, hop: Int, mentions: [Mention], kind: Kind? = nil, replyTo: String? = nil, handoff: HandoffRef? = nil, userAsk: String? = nil, brief: String? = nil, replyCount: Int? = nil) {
         self.id = id
         self.agentId = agentId
         self.role = role
@@ -261,9 +295,15 @@ struct Message: Codable, Hashable, Identifiable, Sendable {
         self.senderAvatar = senderAvatar
         self.hop = hop
         self.mentions = mentions
+        self.kind = kind
+        self.replyTo = replyTo
+        self.handoff = handoff
+        self.userAsk = userAsk
+        self.brief = brief
+        self.replyCount = replyCount
     }
 
-    enum CodingKeys: String, CodingKey { case id, agentId, role, content, images, createdAt, senderId, senderName, senderAvatar, hop, mentions }
+    enum CodingKeys: String, CodingKey { case id, agentId, role, content, images, createdAt, senderId, senderName, senderAvatar, hop, mentions, kind, replyTo, handoff, userAsk, brief, replyCount }
 
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
@@ -278,6 +318,12 @@ struct Message: Codable, Hashable, Identifiable, Sendable {
         senderAvatar = try container.decode(String?.self, forKey: .senderAvatar)
         hop = try container.decode(Int.self, forKey: .hop)
         mentions = try container.decode([Mention].self, forKey: .mentions)
+        kind = try container.decodeIfPresent(Kind.self, forKey: .kind)
+        replyTo = try container.decodeIfPresent(String.self, forKey: .replyTo)
+        handoff = try container.decodeIfPresent(HandoffRef.self, forKey: .handoff)
+        userAsk = try container.decodeIfPresent(String.self, forKey: .userAsk)
+        brief = try container.decodeIfPresent(String.self, forKey: .brief)
+        replyCount = try container.decodeIfPresent(Int.self, forKey: .replyCount)
     }
 
     func encode(to encoder: Encoder) throws {
@@ -293,6 +339,12 @@ struct Message: Codable, Hashable, Identifiable, Sendable {
         try container.encode(senderAvatar, forKey: .senderAvatar)
         try container.encode(hop, forKey: .hop)
         try container.encode(mentions, forKey: .mentions)
+        try container.encodeIfPresent(kind, forKey: .kind)
+        try container.encodeIfPresent(replyTo, forKey: .replyTo)
+        try container.encodeIfPresent(handoff, forKey: .handoff)
+        try container.encodeIfPresent(userAsk, forKey: .userAsk)
+        try container.encodeIfPresent(brief, forKey: .brief)
+        try container.encodeIfPresent(replyCount, forKey: .replyCount)
     }
 }
 
@@ -300,20 +352,23 @@ struct MessageCreate: Codable, Hashable, Sendable {
     var content: String
     var images: [ImageIn]?
     var mentions: [String]?
+    var replyTo: String?
 
-    init(content: String, images: [ImageIn]? = nil, mentions: [String]? = nil) {
+    init(content: String, images: [ImageIn]? = nil, mentions: [String]? = nil, replyTo: String? = nil) {
         self.content = content
         self.images = images
         self.mentions = mentions
+        self.replyTo = replyTo
     }
 
-    enum CodingKeys: String, CodingKey { case content, images, mentions }
+    enum CodingKeys: String, CodingKey { case content, images, mentions, replyTo }
 
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         content = try container.decode(String.self, forKey: .content)
         images = try container.decodeIfPresent([ImageIn].self, forKey: .images)
         mentions = try container.decodeIfPresent([String].self, forKey: .mentions)
+        replyTo = try container.decodeIfPresent(String.self, forKey: .replyTo)
     }
 
     func encode(to encoder: Encoder) throws {
@@ -321,6 +376,7 @@ struct MessageCreate: Codable, Hashable, Sendable {
         try container.encode(content, forKey: .content)
         try container.encodeIfPresent(images, forKey: .images)
         try container.encodeIfPresent(mentions, forKey: .mentions)
+        try container.encodeIfPresent(replyTo, forKey: .replyTo)
     }
 }
 

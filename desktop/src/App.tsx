@@ -22,6 +22,13 @@ import {
   sendMessage,
 } from "./api";
 import {
+  CHANNEL_DISPLAY_NAME,
+  fromLabel,
+  isHandoffRoot,
+  messageHandoff,
+  repliesLabel,
+} from "./handoff";
+import {
   USER_SENDER_ID,
   filterCandidates,
   insertMention,
@@ -190,6 +197,8 @@ export function App() {
 
   const [agents, setAgents] = useState<Agent[]>([PLACEHOLDER_CHANNEL, PLACEHOLDER_SEED]);
   const [activeId, setActiveId] = useState<string | null>(SEED_CHANNEL_ID);
+  const [threadId, setThreadId] = useState<string | null>(null);
+  const [channelUnread, setChannelUnread] = useState(false);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [draft, setDraft] = useState("");
   const [pendingImage, setPendingImage] = useState<PendingImage | null>(null);
@@ -344,6 +353,7 @@ export function App() {
           null;
         setActiveId(preferred);
         if (preferred) {
+          setThreadId(null);
           setMessages(await listMessages(next, preferred));
           focusComposer();
         } else {
@@ -370,21 +380,39 @@ export function App() {
     void loadRoster(session);
   }, [session, loadRoster]);
 
-  async function selectAgent(id: string) {
+  async function loadConversation(id: string, thread: string | null) {
     setActiveId(id);
+    setThreadId(thread);
     setComposerError(null);
     setProfileOpen(false);
+    const agent = agents.find((a) => a.id === id);
+    if (agent?.kind === "channel") setChannelUnread(false);
     if (!session) {
       setMessages([]);
       return;
     }
     try {
-      setMessages(await listMessages(session, id));
+      setMessages(
+        await listMessages(
+          session,
+          id,
+          thread ? { threadId: thread } : undefined,
+        ),
+      );
     } catch (err) {
       setMessages([]);
       setComposerError(describeError(err));
     }
     focusComposer();
+  }
+
+  async function selectAgent(id: string) {
+    await loadConversation(id, null);
+  }
+
+  async function openJump(channelId: string, nextThread: string) {
+    setChannelUnread(false);
+    await loadConversation(channelId, nextThread);
   }
 
   async function onCreate() {
@@ -393,6 +421,7 @@ export function App() {
       const agent = await createAgent(session, "New agent");
       setAgents((prev) => [...prev, agent]);
       setActiveId(agent.id);
+      setThreadId(null);
       setMessages([]);
       setComposerError(null);
       setProfileOpen(false);
@@ -446,6 +475,7 @@ export function App() {
           roster[0]?.id ??
           null;
         setActiveId(seed);
+        setThreadId(null);
         setMessages(seed ? await listMessages(session, seed) : []);
       }
     } catch (err) {
@@ -498,6 +528,7 @@ export function App() {
         images,
         {
         onDelta(messageId, delta, sender) {
+          if (active.kind === "channel" && !threadId) return;
           setMessages((prev) => {
             const existing = prev.find((m) => m.id === messageId);
             if (!existing) {
@@ -524,6 +555,14 @@ export function App() {
           });
         },
         onDone(message) {
+          if (
+            message &&
+            active.kind === "channel" &&
+            !threadId &&
+            message.replyTo
+          ) {
+            return;
+          }
           if (message) {
             setMessages((prev) => {
               const without = prev.filter((m) => m.id !== message.id);
@@ -536,8 +575,20 @@ export function App() {
         },
         },
         mentionIds,
+        active.kind === "channel" && threadId ? threadId : undefined,
       );
-      setMessages(await listMessages(session, active.id));
+      const listed = await listMessages(
+        session,
+        active.id,
+        active.kind === "channel" && threadId ? { threadId } : undefined,
+      );
+      setMessages(listed);
+      if (
+        active.kind !== "channel" &&
+        listed.some((message) => messageHandoff(message))
+      ) {
+        setChannelUnread(true);
+      }
       pickedMentions.current.clear();
     } catch (err) {
       if (err instanceof ApiError && err.status === 422) {
@@ -664,6 +715,9 @@ export function App() {
                     <span className="row-title">{rosterSubtitle(agent)}</span>
                   ) : null}
                 </span>
+                {agent.kind === "channel" && channelUnread ? (
+                  <span className="unread-dot" aria-label="Unread" />
+                ) : null}
               </button>
             </li>
           ))}
@@ -681,15 +735,27 @@ export function App() {
       <main className="chat">
         <header className="chat-head">
           {active ? (
-            <button type="button" className="chat-who" onClick={openProfile}>
-              <Avatar
-                src={active.avatar}
-                name={active.name}
-                size={24}
-                session={session}
-              />
-              <span>{active.name}</span>
-            </button>
+            <>
+              {active.kind === "channel" && threadId ? (
+                <button
+                  type="button"
+                  className="icon-btn"
+                  aria-label="Back to timeline"
+                  onClick={() => void loadConversation(active.id, null)}
+                >
+                  ←
+                </button>
+              ) : null}
+              <button type="button" className="chat-who" onClick={openProfile}>
+                <Avatar
+                  src={active.avatar}
+                  name={active.name}
+                  size={24}
+                  session={session}
+                />
+                <span>{active.name}</span>
+              </button>
+            </>
           ) : (
             <span className="chat-who muted">Snorlax-Bot</span>
           )}
@@ -713,10 +779,54 @@ export function App() {
                   ...agents.filter((a) => a.kind !== "channel").map((a) => a.name),
                   "everyone",
                 ];
+                const jump = messageHandoff(message);
+                const viewingChannel = active?.kind === "channel";
+                const timelineHandoff =
+                  viewingChannel && !threadId && isHandoffRoot(message);
+                const threadRoot =
+                  viewingChannel &&
+                  threadId &&
+                  isHandoffRoot(message) &&
+                  !message.replyTo;
+                if (timelineHandoff && active) {
+                  return (
+                    <button
+                      key={message.id}
+                      type="button"
+                      className="handoff-row"
+                      onClick={() => void openJump(active.id, message.id)}
+                    >
+                      <Avatar
+                        src={
+                          message.senderAvatar ??
+                          agents.find((a) => a.id === message.senderId)?.avatar ??
+                          null
+                        }
+                        name={message.senderName || "Agent"}
+                        size={20}
+                        session={session}
+                      />
+                      <span className="handoff-copy">
+                        <span className="handoff-name">
+                          {message.senderName || "Agent"}
+                        </span>
+                        <span className="handoff-from">
+                          {fromLabel(message.senderName || "Agent")}
+                        </span>
+                        <span className="handoff-ask">
+                          {message.userAsk || message.content}
+                        </span>
+                        <span className="handoff-replies">
+                          {repliesLabel(message.replyCount ?? 0)}
+                        </span>
+                      </span>
+                    </button>
+                  );
+                }
                 return (
                   <article
                     key={message.id}
-                    className={`turn ${mine ? "right" : "left"}${sameSender ? " same-sender" : " new-sender"}`}
+                    className={`turn ${mine ? "right" : "left"}${sameSender && !threadRoot ? " same-sender" : " new-sender"}`}
                   >
                     {!mine && !sameSender ? (
                       <div className="sender-row">
@@ -735,25 +845,52 @@ export function App() {
                         </span>
                       </div>
                     ) : null}
-                    <div className={`bubble ${mine ? "user" : "agent"}`}>
-                      {message.images.map((image) => (
-                        <AuthedImg
-                          key={image.id}
-                          className="bubble-image"
-                          src={resolveMediaUrl(session?.baseUrl ?? "", image.url)}
-                          session={session}
-                          alt=""
-                        />
-                      ))}
-                      {message.content ? (
-                        <pre>
-                          <MentionText
-                            text={message.content}
-                            knownNames={knownNames}
-                          />
+                    {threadRoot ? (
+                      <div className="handoff-card">
+                        <p className="handoff-from">
+                          {fromLabel(message.senderName || "Agent")}
+                        </p>
+                        <pre className="handoff-card-ask">
+                          {message.userAsk || message.content}
                         </pre>
-                      ) : null}
-                    </div>
+                        {message.brief ? (
+                          <details className="handoff-context">
+                            <summary>Context</summary>
+                            <pre>{message.brief}</pre>
+                          </details>
+                        ) : null}
+                      </div>
+                    ) : (
+                      <div className={`bubble ${mine ? "user" : "agent"}`}>
+                        {message.images.map((image) => (
+                          <AuthedImg
+                            key={image.id}
+                            className="bubble-image"
+                            src={resolveMediaUrl(session?.baseUrl ?? "", image.url)}
+                            session={session}
+                            alt=""
+                          />
+                        ))}
+                        {message.content ? (
+                          <pre>
+                            <MentionText
+                              text={message.content}
+                              knownNames={knownNames}
+                            />
+                          </pre>
+                        ) : null}
+                      </div>
+                    )}
+                    {mine && jump ? (
+                      <button
+                        type="button"
+                        className="jump-line"
+                        onClick={() => void openJump(jump.channelId, jump.threadId)}
+                      >
+                        Also in{" "}
+                        <span className="jump-name">{CHANNEL_DISPLAY_NAME}</span>
+                      </button>
+                    ) : null}
                   </article>
                 );
               })
