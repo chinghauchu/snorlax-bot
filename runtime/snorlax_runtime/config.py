@@ -19,15 +19,29 @@ class Settings(BaseSettings):
     port: int = 8787
     inference_backend: str = "mock"
     vllm_base_url: str = "http://127.0.0.1:8000/v1"
+    omlx_base_url: str = "http://127.0.0.1:8000/v1"
     model: str = "meta-llama/Llama-3.3-70B-Instruct-FP8"
+    inference_api_key: str | None = None
+    inference_send_auth: bool | None = None
 
     def resolved_backend(self) -> str:
         name = self.inference_backend.strip().lower()
-        if name not in {"mock", "vllm"}:
+        if name in {"openai", "openai-compat", "openai_compat"}:
+            name = "omlx"
+        if name not in {"mock", "omlx", "vllm"}:
             raise ValueError(
-                f"SNORLAX_INFERENCE_BACKEND must be 'mock' or 'vllm', got {name!r}"
+                "SNORLAX_INFERENCE_BACKEND must be 'mock', 'omlx', or 'vllm', "
+                f"got {self.inference_backend!r}"
             )
         return name
+
+    def inference_base_url(self) -> str | None:
+        name = self.resolved_backend()
+        if name == "omlx":
+            return self.omlx_base_url
+        if name == "vllm":
+            return self.vllm_base_url
+        return None
 
 
 def resolve_bind_host(*, token_exists: bool, override: str | None) -> str:

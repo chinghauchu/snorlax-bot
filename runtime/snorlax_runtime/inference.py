@@ -5,8 +5,24 @@ import json
 import re
 from collections.abc import AsyncIterator
 from typing import Protocol
+from urllib.parse import urlparse
 
 import httpx
+
+BACKEND_MOCK = "mock"
+BACKEND_VLLM = "vllm"
+BACKEND_OMLX = "omlx"
+
+# First-class local OpenAI-compat (oMLX on Mac). Aliases resolve to omlx.
+_OMLX_ALIASES = {"omlx", "openai", "openai-compat", "openai_compat"}
+KNOWN_BACKENDS = {BACKEND_MOCK, BACKEND_VLLM, BACKEND_OMLX}
+
+_LOOPBACK_HOSTS = {
+    "localhost",
+    "127.0.0.1",
+    "::1",
+    "0:0:0:0:0:0:0:1",
+}
 
 
 class InferenceBackend(Protocol):
@@ -19,6 +35,8 @@ FORWARD_RE = re.compile(r"FORWARD:@(\S+)")
 
 class MockBackend:
     """Local stand-in so the slice runs without a 70B checkpoint."""
+
+    name = BACKEND_MOCK
 
     async def stream(self, messages: list[dict[str, str]]) -> AsyncIterator[str]:
         last_user = ""
@@ -64,10 +82,75 @@ def _tokenize(text: str) -> list[str]:
     return tokens
 
 
-class VllmBackend:
-    def __init__(self, base_url: str, model: str) -> None:
+def is_loopback_url(url: str) -> bool:
+    """True for localhost / 127.0.0.0/8 / ::1 inference URLs."""
+    host = (urlparse(url).hostname or "").lower()
+    if not host:
+        return False
+    if host in _LOOPBACK_HOSTS:
+        return True
+    if host.startswith("127."):
+        return True
+    return False
+
+
+def inference_auth_headers(
+    *,
+    base_url: str,
+    api_key: str | None,
+    send_auth: bool | None = None,
+) -> dict[str, str]:
+    """Headers for the model server.
+
+    Local inference (oMLX / vLLM on loopback) does not get a Bearer token by
+    default. The LAN token between clients and snorlax-runtime is never the
+    model-server key. Set send_auth=True only if a remote OpenAI-compat host
+    actually needs one.
+    """
+    key = (api_key or "").strip()
+    if not key:
+        return {}
+    if send_auth is False:
+        return {}
+    if send_auth is None and is_loopback_url(base_url):
+        return {}
+    return {"Authorization": f"Bearer {key}"}
+
+
+class OpenAICompatBackend:
+    """OpenAI-compat streaming client. Clients never call this; FastAPI does."""
+
+    name = "openai-compat"
+
+    def __init__(
+        self,
+        base_url: str,
+        model: str,
+        *,
+        api_key: str | None = None,
+        send_auth: bool | None = None,
+        label: str = "inference",
+        transport: httpx.AsyncBaseTransport | httpx.BaseTransport | None = None,
+    ) -> None:
         self.base_url = base_url.rstrip("/")
         self.model = model
+        self.api_key = api_key
+        self.send_auth = send_auth
+        self.label = label
+        self._transport = transport
+
+    def request_headers(self) -> dict[str, str]:
+        return inference_auth_headers(
+            base_url=self.base_url,
+            api_key=self.api_key,
+            send_auth=self.send_auth,
+        )
+
+    def _client(self) -> httpx.AsyncClient:
+        kwargs: dict = {"timeout": None}
+        if self._transport is not None:
+            kwargs["transport"] = self._transport
+        return httpx.AsyncClient(**kwargs)
 
     async def stream(self, messages: list[dict[str, str]]) -> AsyncIterator[str]:
         url = f"{self.base_url}/chat/completions"
@@ -77,14 +160,17 @@ class VllmBackend:
             "stream": True,
             "temperature": 0.7,
         }
-        async with httpx.AsyncClient(timeout=None) as client:
+        headers = self.request_headers()
+        async with self._client() as client:
             try:
-                async with client.stream("POST", url, json=payload) as response:
+                async with client.stream(
+                    "POST", url, json=payload, headers=headers
+                ) as response:
                     if response.status_code >= 400:
                         body = (await response.aread()).decode("utf-8", "replace")
                         raise InferenceError(
                             "inference_unavailable",
-                            f"vLLM returned {response.status_code}: {body[:400]}",
+                            f"{self.label} returned {response.status_code}: {body[:400]}",
                         )
                     async for line in response.aiter_lines():
                         if not line.startswith("data:"):
@@ -103,11 +189,61 @@ class VllmBackend:
                         )
                         if delta:
                             yield delta
+            except InferenceError:
+                raise
             except httpx.HTTPError as exc:
                 raise InferenceError(
                     "inference_unavailable",
-                    f"vLLM is not reachable at {url}: {exc}",
+                    f"{self.label} is not reachable at {url}: {exc}",
                 ) from exc
+
+
+class VllmBackend(OpenAICompatBackend):
+    """Spark vLLM path. Distinct from Mac-local oMLX."""
+
+    name = BACKEND_VLLM
+
+    def __init__(
+        self,
+        base_url: str,
+        model: str,
+        *,
+        api_key: str | None = None,
+        send_auth: bool | None = None,
+        transport: httpx.AsyncBaseTransport | httpx.BaseTransport | None = None,
+    ) -> None:
+        super().__init__(
+            base_url,
+            model,
+            api_key=api_key,
+            send_auth=send_auth,
+            label="vLLM",
+            transport=transport,
+        )
+
+
+class OmlxBackend(OpenAICompatBackend):
+    """Mac-local oMLX (OpenAI-compat at :8000/v1). Distinct from Spark vLLM."""
+
+    name = BACKEND_OMLX
+
+    def __init__(
+        self,
+        base_url: str,
+        model: str,
+        *,
+        api_key: str | None = None,
+        send_auth: bool | None = None,
+        transport: httpx.AsyncBaseTransport | httpx.BaseTransport | None = None,
+    ) -> None:
+        super().__init__(
+            base_url,
+            model,
+            api_key=api_key,
+            send_auth=send_auth,
+            label="oMLX",
+            transport=transport,
+        )
 
 
 class InferenceError(Exception):
@@ -117,7 +253,43 @@ class InferenceError(Exception):
         self.message = message
 
 
-def build_backend(name: str, *, vllm_base_url: str, model: str) -> InferenceBackend:
-    if name == "vllm":
-        return VllmBackend(vllm_base_url, model)
-    return MockBackend()
+def normalize_backend_name(name: str) -> str:
+    resolved = name.strip().lower()
+    if resolved in _OMLX_ALIASES:
+        return BACKEND_OMLX
+    return resolved
+
+
+def build_backend(
+    name: str,
+    *,
+    vllm_base_url: str,
+    model: str,
+    omlx_base_url: str | None = None,
+    api_key: str | None = None,
+    send_auth: bool | None = None,
+    transport: httpx.AsyncBaseTransport | httpx.BaseTransport | None = None,
+) -> InferenceBackend:
+    resolved = normalize_backend_name(name)
+    if resolved == BACKEND_VLLM:
+        return VllmBackend(
+            vllm_base_url,
+            model,
+            api_key=api_key,
+            send_auth=send_auth,
+            transport=transport,
+        )
+    if resolved == BACKEND_OMLX:
+        return OmlxBackend(
+            omlx_base_url or vllm_base_url,
+            model,
+            api_key=api_key,
+            send_auth=send_auth,
+            transport=transport,
+        )
+    if resolved == BACKEND_MOCK:
+        return MockBackend()
+    raise ValueError(
+        "SNORLAX_INFERENCE_BACKEND must be 'mock', 'omlx', or 'vllm', "
+        f"got {name!r}"
+    )

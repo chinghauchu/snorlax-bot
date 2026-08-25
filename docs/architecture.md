@@ -57,25 +57,27 @@ Implications for us:
 │  Tauri webview  or  SwiftUI  (LAN)                    │
 │  Authorization: Bearer <token>                        │
 └──────────────────────────┬────────────────────────────┘
-                           │ HTTP /v1  (never /vllm)
+                           │ HTTP /v1  (never :8000)
                            ▼
 ┌──────────────────── snorlax-runtime ──────────────────┐
-│  FastAPI on the Spark                                  │
+│  FastAPI (Mac or Spark)                                │
 │  • agents, transcripts, images (SQLite)                │
 │  • LAN auth, bind policy                               │
-│  • inference interface (mock | vLLM)                   │
+│  • inference interface (mock | oMLX | vLLM)            │
 │  later: tools, MCP, sandbox, scheduler                 │
 └──────────────────────────┬────────────────────────────┘
                            │ OpenAI-compat streaming
                            ▼
-┌──────────────────── vLLM (or mock) ───────────────────┐
-│  70B-class FP8 by default, config-swappable            │
+┌────────────── oMLX (Mac) or vLLM (Spark) ─────────────┐
+│  Mac: oMLX on :8000/v1, no API key to localhost        │
+│  Spark: vLLM, 70B-class FP8 by default                 │
 │  TensorRT-LLM is a later drop-in behind the same iface │
 └────────────────────────────────────────────────────────┘
 ```
 
-Clients **must not** call vLLM. The runtime is the only process that holds
-the model URL, the system prompts, the tool list (later), and the token.
+Clients **must not** call oMLX or vLLM. The runtime is the only process that
+holds the model URL, the system prompts, the tool list (later), and the token.
+Mac-local recipe: [mac-local.md](mac-local.md).
 
 ## Bind and auth
 
@@ -120,7 +122,9 @@ stream(messages: list[{role, content}]) -> async iter[str]
 ```
 
 - `mock` — deterministic-ish streaming reply. Default off-Spark and in CI.
-- `vllm` — `POST {VLLM_BASE_URL}/chat/completions` with `stream: true`.
+- `omlx` — Mac-local OpenAI-compat (`POST {OMLX_BASE_URL}/chat/completions`
+  with `stream: true`). Distinct from vLLM. No Bearer to localhost by default.
+- `vllm` — Spark `POST {VLLM_BASE_URL}/chat/completions` with `stream: true`.
   Only text `role`/`content` pairs are sent. Images stay on disk.
 
 System prompt is assembled by the runtime from the agent’s `description`.

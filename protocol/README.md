@@ -3,7 +3,7 @@
 Canonical contract: [openapi.yaml](openapi.yaml).
 
 Clients (`SNORLAX_URL` + `SNORLAX_TOKEN`) talk only to the FastAPI runtime.
-They never call vLLM and never read `~/.snorlax-bot/` on the Spark.
+They never call oMLX or vLLM and never read `~/.snorlax-bot/` on the host.
 
 A copy is also kept at `runtime/openapi.yaml` so the runtime tree is
 self-contained. Do not let the two files diverge.

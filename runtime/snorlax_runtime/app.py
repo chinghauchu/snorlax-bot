@@ -37,18 +37,24 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             write_token_file(settings.data_dir, token)
         app.state.settings = settings
         app.state.store = store
+        backend_name = settings.resolved_backend()
         app.state.backend = build_backend(
-            settings.resolved_backend(),
+            backend_name,
             vllm_base_url=settings.vllm_base_url,
+            omlx_base_url=settings.omlx_base_url,
             model=settings.model,
+            api_key=settings.inference_api_key,
+            send_auth=settings.inference_send_auth,
         )
+        inference_url = settings.inference_base_url() or "(mock)"
         print(
             "Snorlax-Bot runtime ready\n"
             f"  data: {settings.data_dir}\n"
             f"  db: {settings.data_dir / 'snorlax.db'}\n"
             f"  token file: {settings.data_dir / 'token'}\n"
             f"  bind: {settings.bind or '(set by process)'}:{settings.port}\n"
-            f"  backend: {settings.resolved_backend()}\n"
+            f"  backend: {backend_name}\n"
+            f"  inference: {inference_url}\n"
             f"  model: {settings.model}\n"
             f"  token: {token}",
             flush=True,

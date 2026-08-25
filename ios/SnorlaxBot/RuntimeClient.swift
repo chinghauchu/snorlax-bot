@@ -19,6 +19,8 @@ struct RuntimeClient: Sendable {
         return encoder
     }
 
+    /// Accepts Spark LAN hosts and Mac-local loopback (`http://127.0.0.1:8787`,
+    /// `http://localhost:8787`). Loopback is first-class; do not reject it.
     static func normalizeBase(_ raw: String) -> URL? {
         var value = raw.trimmingCharacters(in: .whitespacesAndNewlines)
         while value.hasSuffix("/") { value.removeLast() }
