@@ -56,6 +56,11 @@ class Mention(BaseModel):
     name: str
 
 
+class HandoffRef(BaseModel):
+    channelId: str
+    threadId: str
+
+
 class Message(BaseModel):
     id: str
     agentId: str
@@ -68,12 +73,19 @@ class Message(BaseModel):
     senderAvatar: str | None
     hop: int
     mentions: list[Mention]
+    kind: str = "message"
+    replyTo: str | None = None
+    handoff: HandoffRef | None = None
+    userAsk: str | None = None
+    brief: str | None = None
+    replyCount: int = 0
 
 
 class MessageCreate(BaseModel):
     content: str = Field(min_length=1, max_length=32000)
     images: list[ImageIn] = Field(default_factory=list)
     mentions: list[str] = Field(default_factory=list)
+    replyTo: str | None = None
 
 
 class MessageDelta(BaseModel):

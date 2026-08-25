@@ -20,8 +20,15 @@ def _send(client, dest: str, content: str, mentions: list[str] | None = None):
         return response.status_code, body
 
 
-def _msgs(client, dest: str) -> list[dict]:
-    return client.get(f"/v1/agents/{dest}/messages", headers=AUTH).json()
+def _msgs(client, dest: str, thread_id: str | None = None) -> list[dict]:
+    params = {"threadId": thread_id} if thread_id else None
+    return client.get(
+        f"/v1/agents/{dest}/messages", headers=AUTH, params=params
+    ).json()
+
+
+def _thread(client, thread_id: str) -> list[dict]:
+    return _msgs(client, CHANNEL, thread_id)
 
 
 def _create(client, name: str, forward: str | None = None) -> dict:
@@ -62,13 +69,18 @@ def test_mention_routing_in_group(client) -> None:
     inbox = _create(client, "Inbox")
     status, _ = _send(client, CHANNEL, "Need a hand @Inbox")
     assert status == 200
-    channel_msgs = _msgs(client, CHANNEL)
-    senders = [m["senderId"] for m in channel_msgs]
-    assert senders[0] == "user"
-    assert inbox["id"] in senders
-    inbox_replies = [m for m in channel_msgs if m["senderId"] == inbox["id"]]
+    timeline = _msgs(client, CHANNEL)
+    senders = [m["senderId"] for m in timeline]
+    assert senders == ["user"]
+    assert inbox["id"] not in senders
+    thread = _thread(client, timeline[0]["id"])
+    thread_senders = [m["senderId"] for m in thread]
+    assert thread_senders[0] == "user"
+    assert inbox["id"] in thread_senders
+    inbox_replies = [m for m in thread if m["senderId"] == inbox["id"]]
     assert inbox_replies[0]["hop"] == 0
-    snorlax_spoke = [m for m in channel_msgs if m["senderId"] == "snorlax-bot"]
+    assert inbox_replies[0]["replyTo"] == timeline[0]["id"]
+    snorlax_spoke = [m for m in thread if m["senderId"] == "snorlax-bot"]
     assert snorlax_spoke == []
 
 
@@ -116,6 +128,8 @@ def test_ambiguous_prefix_is_plain_text(client) -> None:
     assert status == 200
     senders = [m["senderId"] for m in _msgs(client, CHANNEL)]
     assert senders == ["user"]
+    thread = _thread(client, _msgs(client, CHANNEL)[0]["id"])
+    assert [m["senderId"] for m in thread] == ["user"]
 
 
 def test_unique_prefix_without_chip_does_not_route(client) -> None:
@@ -130,7 +144,9 @@ def test_agent_unknown_mention_ignored(client) -> None:
     alice = _create(client, "Alice", forward="NotARealPerson")
     status, _ = _send(client, CHANNEL, "@Alice please take this")
     assert status == 200
-    msgs = _msgs(client, CHANNEL)
+    timeline = _msgs(client, CHANNEL)
+    assert [m["senderId"] for m in timeline] == ["user"]
+    msgs = _thread(client, timeline[0]["id"])
     assert [m["senderId"] for m in msgs] == ["user", alice["id"]]
     assert any("@NotARealPerson" in m["content"] for m in msgs if m["senderId"] == alice["id"])
 
@@ -167,13 +183,24 @@ def test_one_to_one_isolation_mention_goes_to_channel(client) -> None:
     group = _msgs(client, CHANNEL)
     group_senders = [m["senderId"] for m in group]
     assert "user" not in group_senders
-    assert bob["id"] in group_senders
-    assert alice["id"] in group_senders
-    involve = [m for m in group if m["senderId"] == alice["id"]]
-    assert involve
-    assert involve[0]["content"].startswith("from Alice:")
-    assert "Can you look at this @Bob?" in involve[0]["content"]
-    assert not any("mentioned you in" in m["content"] for m in group)
+    assert bob["id"] not in group_senders
+    handoff = next(m for m in group if m.get("kind") == "handoff")
+    assert handoff["senderId"] == alice["id"]
+    assert handoff["kind"] == "handoff"
+    assert handoff["userAsk"] == "Can you look at this @Bob?"
+    assert "from Alice:" not in (handoff["content"] or "")
+    assert handoff["brief"]
+    assert "Can you look at this @Bob?" in handoff["brief"]
+    thread = _thread(client, handoff["id"])
+    thread_senders = [m["senderId"] for m in thread]
+    assert bob["id"] in thread_senders
+    assert alice["id"] in thread_senders
+    assert not any(m["senderId"] == "user" for m in thread)
+    assert not any("mentioned you in" in m["content"] for m in thread)
+    assert alice_msgs[0]["handoff"] == {
+        "channelId": CHANNEL,
+        "threadId": handoff["id"],
+    }
 
 
 def test_seed_agent_transcript_is_not_the_channel(client) -> None:
@@ -200,15 +227,28 @@ def test_seed_agent_transcript_is_not_the_channel(client) -> None:
 
     group = _msgs(client, CHANNEL)
     assert all(m["agentId"] == CHANNEL for m in group)
-    assert any(m["senderId"] == "snorlax-bot" and m["content"].startswith("from Snorlax:") for m in group)
-    assert any(m["senderId"] == inbox["id"] for m in group)
-    assert not any(m["senderId"] == "user" for m in group)
+    handoff = next(m for m in group if m.get("kind") == "handoff")
+    assert handoff["senderId"] == "snorlax-bot"
+    assert handoff["userAsk"] == "Can you look at this @Inbox?"
+    assert "from Snorlax:" not in (handoff["content"] or "")
+    thread = _thread(client, handoff["id"])
+    assert any(m["senderId"] == inbox["id"] for m in thread)
+    assert not any(m["senderId"] == "user" for m in thread)
+    seed_user = seed_msgs[0]
+    assert seed_user["handoff"] == {
+        "channelId": CHANNEL,
+        "threadId": handoff["id"],
+    }
 
     status, _ = _send(client, CHANNEL, "Need a hand @Inbox")
     assert status == 200
     seed_after = _msgs(client, "snorlax-bot")
     assert {m["senderId"] for m in seed_after} <= {"user", "snorlax-bot"}
-    assert any(m["senderId"] == inbox["id"] for m in _msgs(client, CHANNEL))
+    timeline = _msgs(client, CHANNEL)
+    user_root = next(m for m in timeline if m["senderId"] == "user")
+    assert any(
+        m["senderId"] == inbox["id"] for m in _thread(client, user_root["id"])
+    )
 
 
 def test_hop_three_allowed_fourth_dropped(client) -> None:
@@ -219,12 +259,15 @@ def test_hop_three_allowed_fourth_dropped(client) -> None:
     _create(client, "Eve", forward="Zed")
     status, _ = _send(client, CHANNEL, "@Alice start the chain")
     assert status == 200
-    msgs = [m for m in _msgs(client, CHANNEL) if m["senderId"] != "user"]
+    timeline = _msgs(client, CHANNEL)
+    assert [m["senderId"] for m in timeline] == ["user"]
+    msgs = [m for m in _thread(client, timeline[0]["id"]) if m["senderId"] != "user"]
     names = [m["senderName"] for m in msgs]
     assert names == ["Alice", "Bob", "Carol", "Dave"]
     hops = [m["hop"] for m in msgs]
     assert hops == [0, 1, 2, 3]
     assert "Eve" not in names
+    assert all(m["replyTo"] == timeline[0]["id"] for m in msgs)
 
 
 def test_same_edge_cap(client) -> None:
@@ -232,7 +275,8 @@ def test_same_edge_cap(client) -> None:
     _create(client, "Bob", forward="Alice")
     status, _ = _send(client, CHANNEL, "@Alice ping-pong")
     assert status == 200
-    msgs = [m for m in _msgs(client, CHANNEL) if m["senderId"] != "user"]
+    timeline = _msgs(client, CHANNEL)
+    msgs = [m for m in _thread(client, timeline[0]["id"]) if m["senderId"] != "user"]
     names = [m["senderName"] for m in msgs]
     assert names == ["Alice", "Bob", "Alice"]
     assert [m["hop"] for m in msgs] == [0, 1, 2]
@@ -247,7 +291,11 @@ def test_chip_mention_ids_route(client) -> None:
         mentions=[inbox["id"]],
     )
     assert status == 200
-    assert any(m["senderId"] == inbox["id"] for m in _msgs(client, CHANNEL))
+    timeline = _msgs(client, CHANNEL)
+    assert any(
+        m["senderId"] == inbox["id"]
+        for m in _thread(client, timeline[0]["id"])
+    )
 
 
 def test_two_mentions_on_one_user_send(client) -> None:
@@ -260,7 +308,7 @@ def test_two_mentions_on_one_user_send(client) -> None:
         mentions=[alice["id"], bob["id"]],
     )
     assert status == 200
-    senders = {m["senderId"] for m in _msgs(client, CHANNEL)}
+    senders = {m["senderId"] for m in _thread(client, _msgs(client, CHANNEL)[0]["id"])}
     assert alice["id"] in senders
     assert bob["id"] in senders
 
@@ -274,6 +322,13 @@ def test_fyi_one_to_one_mention_is_channel_involve_only(client) -> None:
     assert {m["senderId"] for m in alice_msgs} <= {"user", alice["id"]}
     assert _msgs(client, bob["id"]) == []
     group = _msgs(client, CHANNEL)
-    assert any(m["senderId"] == alice["id"] and m["content"].startswith("from Alice:") for m in group)
-    assert not any(m["senderId"] == bob["id"] for m in group)
-    assert not any(m["senderId"] == "user" for m in group)
+    handoff = next(m for m in group if m.get("kind") == "handoff")
+    assert handoff["senderId"] == alice["id"]
+    assert handoff["userAsk"] == "FYI @Bob"
+    thread = _thread(client, handoff["id"])
+    assert not any(m["senderId"] == bob["id"] for m in thread)
+    assert not any(m["senderId"] == "user" for m in thread)
+    assert alice_msgs[0]["handoff"] == {
+        "channelId": CHANNEL,
+        "threadId": handoff["id"],
+    }

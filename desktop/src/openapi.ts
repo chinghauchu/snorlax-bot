@@ -95,8 +95,10 @@ export interface paths {
          * @description Oldest-first. `before` is a message id cursor for older pages.
          *     For kind=agent (including seed `snorlax-bot`), the list is only
          *     `senderId=user` and that agent. Peer/involve/DM/hop messages are
-         *     never in a 1:1. For kind=channel (`snorlax-bot-group`) the list is
-         *     the shared transcript.
+         *     never in a 1:1. For kind=channel (`snorlax-bot-group`) the default
+         *     list is the **timeline**: handoff roots (and other unreplied-to
+         *     roots). Thread replies are omitted. Pass `threadId` (or `replyTo`)
+         *     to load that thread (root + flat replies).
          */
         get: operations["listMessages"];
         put?: never;
@@ -106,9 +108,9 @@ export interface paths {
          *     forwarded to vLLM.
          *
          *     For a 1:1 agent, hop 0 is that agent. Mentioned peers and hops
-         *     reply in `snorlax-bot-group`, not in either 1:1. For the group
-         *     channel, unmentioned members stay silent; mentioned members reply
-         *     in this transcript.
+         *     reply in a `snorlax-bot-group` thread under a kind=handoff root,
+         *     not in either 1:1. A still answers in the 1:1. Optional `replyTo`
+         *     on the body posts into an existing channel thread.
          *
          *     422 only for an unknown mention chip id (and `@everyone` chip
          *     outside the group). Typed `@foo` with no chip is plain text.
@@ -213,6 +215,10 @@ export interface components {
             id: string;
             name: string;
         };
+        HandoffRef: {
+            channelId: string;
+            threadId: string;
+        };
         Message: {
             id: string;
             /**
@@ -233,6 +239,30 @@ export interface components {
             /** @description User→current agent is 0. Mentions increment. Max depth 3. */
             hop: number;
             mentions: components["schemas"]["Mention"][];
+            /**
+             * @description Channel handoff root is `handoff` (LEFT card authored as A).
+             *     Default `message`.
+             * @enum {string}
+             */
+            kind?: "message" | "handoff";
+            /** @description Channel thread id. Null on timeline roots and on 1:1s. */
+            replyTo?: string | null;
+            /**
+             * @description Set on the originating **user** message when the user caused a
+             *     handoff (an @chip in a 1:1). Absent/null if hop/cap dropped
+             *     the mention, or if an agent DM created the thread without a
+             *     user @chip. Not a fake speaker.
+             */
+            handoff?: components["schemas"]["HandoffRef"];
+            /** @description Handoff root. The ask B should answer. */
+            userAsk?: string | null;
+            /**
+             * @description Handoff root. Last 8 user+A messages of the originating 1:1,
+             *     cap 2k characters, oldest dropped.
+             */
+            brief?: string | null;
+            /** @description Count of thread replies under a timeline root. */
+            replyCount?: number;
         };
         MessageCreate: {
             content: string;
@@ -241,9 +271,12 @@ export interface components {
              * @description Agent ids from typeahead chips. Unresolved `@text` is omitted
              *     and is not a mention. Unknown chip ids 422. Runtime also
              *     parses exact `@DisplayName`. Peer deliveries from a 1:1 land
-             *     in the seeded channel, not in another agent's 1:1.
+             *     in the seeded channel as a handoff thread, not in another
+             *     agent's 1:1.
              */
             mentions?: string[];
+            /** @description Channel thread id when posting a reply in a thread. */
+            replyTo?: string | null;
         };
         MessageDelta: {
             id: string;
@@ -447,6 +480,10 @@ export interface operations {
             query?: {
                 limit?: number;
                 before?: string;
+                /** @description Channel thread id (the handoff root). Returns that thread. */
+                threadId?: string;
+                /** @description Alias of threadId. */
+                replyTo?: string;
             };
             header?: never;
             path: {

@@ -27,6 +27,7 @@ from snorlax_runtime import (
     USER_SENDER_ID,
     USER_SENDER_NAME,
 )
+from snorlax_runtime.handoff import format_brief
 
 ISO = "%Y-%m-%dT%H:%M:%S.%fZ"
 DB_FILENAME = "snorlax.db"
@@ -132,6 +133,13 @@ class Store:
             "sender_avatar": "TEXT",
             "hop": "INTEGER NOT NULL DEFAULT 0",
             "mentions": "TEXT NOT NULL DEFAULT '[]'",
+            "reply_to": "TEXT",
+            "kind": "TEXT NOT NULL DEFAULT 'message'",
+            "user_ask": "TEXT",
+            "brief": "TEXT",
+            "handoff_channel_id": "TEXT",
+            "handoff_thread_id": "TEXT",
+            "origin_conversation_id": "TEXT",
         }
         for name, spec in additions.items():
             if name not in msg_cols:
@@ -321,16 +329,31 @@ class Store:
         return cur.rowcount > 0
 
     async def list_messages(
-        self, agent_id: str, *, limit: int, before: str | None
+        self,
+        agent_id: str,
+        *,
+        limit: int,
+        before: str | None,
+        thread_id: str | None = None,
     ) -> list[dict[str, Any]]:
         conversation = await self.get_agent(agent_id)
         params: list[Any] = [agent_id]
         where = "WHERE agent_id = ?"
         # 1:1 transcripts are only the user and that agent. Peer traffic lives
         # in the seeded channel.
-        if conversation is not None and conversation.get("kind") != KIND_CHANNEL:
+        is_channel = (
+            conversation is not None and conversation.get("kind") == KIND_CHANNEL
+        )
+        if not is_channel:
             where += " AND (sender_id = ? OR sender_id = ?)"
             params.extend([USER_SENDER_ID, agent_id])
+        elif thread_id:
+            root_id = await self.resolve_thread_root(agent_id, thread_id)
+            where += " AND (id = ? OR reply_to = ?)"
+            params.extend([root_id, root_id])
+        else:
+            # Timeline = roots only. Thread replies stay behind ?threadId=.
+            where += " AND (reply_to IS NULL OR reply_to = '')"
         if before:
             cur = await self.conn.execute(
                 "SELECT created_at FROM messages WHERE id = ? AND agent_id = ?",
@@ -349,6 +372,71 @@ class Store:
         rows.reverse()
         return [await self._message_public(message) for message in rows]
 
+    async def resolve_thread_root(self, agent_id: str, thread_id: str) -> str:
+        cur = await self.conn.execute(
+            "SELECT id, reply_to FROM messages WHERE id = ? AND agent_id = ?",
+            (thread_id, agent_id),
+        )
+        row = await cur.fetchone()
+        if row is None:
+            return thread_id
+        reply_to = row["reply_to"]
+        if reply_to:
+            return str(reply_to)
+        return str(row["id"])
+
+    async def find_handoff_root(
+        self, origin_conversation_id: str
+    ) -> dict[str, Any] | None:
+        cur = await self.conn.execute(
+            "SELECT * FROM messages WHERE agent_id = ? AND kind = 'handoff' "
+            "AND origin_conversation_id = ? ORDER BY created_at ASC LIMIT 1",
+            (SEEDED_CHANNEL_ID, origin_conversation_id),
+        )
+        row = await cur.fetchone()
+        if row is None:
+            return None
+        return await self._message_public(dict(row))
+
+    async def set_message_handoff(
+        self, message_id: str, *, channel_id: str, thread_id: str
+    ) -> None:
+        await self.conn.execute(
+            "UPDATE messages SET handoff_channel_id = ?, handoff_thread_id = ? "
+            "WHERE id = ?",
+            (channel_id, thread_id, message_id),
+        )
+        await self.conn.commit()
+
+    async def one_to_one_brief(self, agent_id: str) -> str:
+        """Last 8 user+A turns of a 1:1, capped at 2k chars (drop oldest)."""
+        cur = await self.conn.execute(
+            "SELECT sender_id, sender_name, content FROM messages "
+            "WHERE agent_id = ? AND (sender_id = ? OR sender_id = ?) "
+            "ORDER BY created_at DESC LIMIT 8",
+            (agent_id, USER_SENDER_ID, agent_id),
+        )
+        rows = [dict(r) for r in await cur.fetchall()]
+        rows.reverse()
+        return format_brief(
+            [
+                {
+                    "senderId": row["sender_id"],
+                    "senderName": row["sender_name"],
+                    "content": row["content"],
+                }
+                for row in rows
+            ]
+        )
+
+    async def _reply_count(self, message_id: str) -> int:
+        cur = await self.conn.execute(
+            "SELECT COUNT(*) AS n FROM messages WHERE reply_to = ?",
+            (message_id,),
+        )
+        row = await cur.fetchone()
+        return int(row["n"]) if row is not None else 0
+
     async def _message_public(self, message: dict[str, Any]) -> dict[str, Any]:
         raw_mentions = message.get("mentions") or "[]"
         if isinstance(raw_mentions, list):
@@ -358,6 +446,16 @@ class Store:
                 mentions = json.loads(raw_mentions)
             except json.JSONDecodeError:
                 mentions = []
+        reply_to = message.get("reply_to") or None
+        handoff = None
+        channel_id = message.get("handoff_channel_id")
+        thread_id = message.get("handoff_thread_id")
+        if channel_id and thread_id:
+            handoff = {"channelId": channel_id, "threadId": thread_id}
+        kind = message.get("kind") or "message"
+        reply_count = 0
+        if not reply_to:
+            reply_count = await self._reply_count(message["id"])
         return {
             "id": message["id"],
             "agentId": message["agent_id"],
@@ -370,6 +468,12 @@ class Store:
             "senderAvatar": message.get("sender_avatar"),
             "hop": int(message.get("hop") or 0),
             "mentions": mentions,
+            "kind": kind,
+            "replyTo": reply_to,
+            "handoff": handoff,
+            "userAsk": message.get("user_ask"),
+            "brief": message.get("brief"),
+            "replyCount": reply_count,
         }
 
     async def list_images(self, message_id: str) -> list[dict[str, Any]]:
@@ -412,6 +516,13 @@ class Store:
         sender_avatar: str | None = None,
         hop: int = 0,
         mentions: list[dict[str, Any]] | None = None,
+        reply_to: str | None = None,
+        kind: str = "message",
+        user_ask: str | None = None,
+        brief: str | None = None,
+        handoff_channel_id: str | None = None,
+        handoff_thread_id: str | None = None,
+        origin_conversation_id: str | None = None,
     ) -> dict[str, Any]:
         message_id = message_id or new_id("msg")
         created = utcnow()
@@ -423,8 +534,9 @@ class Store:
         await self.conn.execute(
             "INSERT INTO messages "
             "(id, agent_id, role, content, created_at, sender_id, sender_name, "
-            "sender_avatar, hop, mentions) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            "sender_avatar, hop, mentions, reply_to, kind, user_ask, brief, "
+            "handoff_channel_id, handoff_thread_id, origin_conversation_id) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (
                 message_id,
                 agent_id,
@@ -436,25 +548,24 @@ class Store:
                 sender_avatar,
                 hop,
                 stored_mentions,
+                reply_to,
+                kind,
+                user_ask,
+                brief,
+                handoff_channel_id,
+                handoff_thread_id,
+                origin_conversation_id,
             ),
         )
-        stored: list[dict[str, Any]] = []
         for image in images or []:
-            stored.append(await self._add_image(message_id, image))
+            await self._add_image(message_id, image)
         await self.conn.commit()
-        return {
-            "id": message_id,
-            "agentId": agent_id,
-            "role": role,
-            "content": content,
-            "images": stored,
-            "createdAt": created,
-            "senderId": sender_id,
-            "senderName": sender_name,
-            "senderAvatar": sender_avatar,
-            "hop": hop,
-            "mentions": mentions or [],
-        }
+        cur = await self.conn.execute(
+            "SELECT * FROM messages WHERE id = ?", (message_id,)
+        )
+        row = await cur.fetchone()
+        assert row is not None
+        return await self._message_public(dict(row))
 
     async def _add_image(
         self, message_id: str, image: dict[str, Any]
@@ -477,7 +588,12 @@ class Store:
         }
 
     async def inference_transcript(
-        self, conversation_id: str, for_agent_id: str | None = None
+        self,
+        conversation_id: str,
+        for_agent_id: str | None = None,
+        *,
+        thread_id: str | None = None,
+        wake_pack: dict[str, Any] | None = None,
     ) -> list[dict[str, str]]:
         """Text-only history. Images are omitted on purpose (no VL)."""
         conversation = await self.get_agent(conversation_id)
@@ -488,6 +604,29 @@ class Store:
         assert speaker is not None
         is_group = conversation.get("kind") == KIND_CHANNEL
         who = speaker["id"] if for_agent_id else conversation_id
+        if wake_pack is not None:
+            from snorlax_runtime.handoff import pack_prompt
+
+            place = "a Snorlax-Bot channel thread after a handoff"
+            system = (
+                f"You are {speaker['name']}. You are in {place}. "
+                "The next JSON object is a handoff pack from a teammate, not a "
+                "quote. Answer userAsk. Use brief as 1:1 context (user + the "
+                "originating agent only). Mention another teammate with "
+                "@DisplayName to continue this thread. Do not invent cues "
+                "like [agent] or [Group chat:]. Stay silent on FYI notes that "
+                "do not ask you anything.\n\n"
+                f"{speaker['description'] or ''}"
+            ).strip()
+            messages: list[dict[str, str]] = [
+                {"role": "system", "content": system},
+                {"role": "user", "content": pack_prompt(wake_pack)},
+            ]
+            if thread_id:
+                await self._append_thread_turns(
+                    messages, conversation_id, thread_id, who
+                )
+            return messages
         place = (
             "a shared group channel with every teammate"
             if is_group
@@ -502,7 +641,12 @@ class Store:
             "not ask you anything.\n\n"
             f"{speaker['description'] or ''}"
         ).strip()
-        messages: list[dict[str, str]] = [{"role": "system", "content": system}]
+        messages = [{"role": "system", "content": system}]
+        if is_group and thread_id:
+            await self._append_thread_turns(
+                messages, conversation_id, thread_id, who
+            )
+            return messages
         cur = await self.conn.execute(
             "SELECT sender_id, sender_name, role, content FROM messages "
             "WHERE agent_id = ? ORDER BY created_at ASC",
@@ -512,19 +656,44 @@ class Store:
             sender = row["sender_id"]
             if not is_group and sender not in {USER_SENDER_ID, who}:
                 continue
-            body = row["content"]
-            if sender == who:
-                messages.append({"role": "assistant", "content": body})
-            elif sender == USER_SENDER_ID:
-                messages.append({"role": "user", "content": body})
-            else:
-                messages.append(
-                    {
-                        "role": "user",
-                        "content": f"{row['sender_name']}: {body}",
-                    }
-                )
+            self._append_turn(messages, row, who)
         return messages
+
+    async def _append_thread_turns(
+        self,
+        messages: list[dict[str, str]],
+        conversation_id: str,
+        thread_id: str,
+        who: str,
+    ) -> None:
+        root_id = await self.resolve_thread_root(conversation_id, thread_id)
+        cur = await self.conn.execute(
+            "SELECT sender_id, sender_name, role, content, kind FROM messages "
+            "WHERE agent_id = ? AND (id = ? OR reply_to = ?) "
+            "ORDER BY created_at ASC",
+            (conversation_id, root_id, root_id),
+        )
+        for row in await cur.fetchall():
+            if (row["kind"] or "message") == "handoff":
+                continue
+            self._append_turn(messages, row, who)
+
+    def _append_turn(
+        self, messages: list[dict[str, str]], row: Any, who: str
+    ) -> None:
+        sender = row["sender_id"]
+        body = row["content"]
+        if sender == who:
+            messages.append({"role": "assistant", "content": body})
+        elif sender == USER_SENDER_ID:
+            messages.append({"role": "user", "content": body})
+        else:
+            messages.append(
+                {
+                    "role": "user",
+                    "content": f"{row['sender_name']}: {body}",
+                }
+            )
 
 
 def dump_json(value: Any) -> str:

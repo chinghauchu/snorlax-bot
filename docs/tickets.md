@@ -23,7 +23,7 @@ Concrete follow-ups after v0. Filed on GitHub against
 - [B3 — MCP client: stdio and LAN, not public internet](https://github.com/chinghauchu/snorlax-bot/issues/15)
 - [B4 — Local sandbox computer on the Spark](https://github.com/chinghauchu/snorlax-bot/issues/7)
 - [B5 — Scheduler for routines while the laptop is closed](https://github.com/chinghauchu/snorlax-bot/issues/17)
-- [B6 — Agent-to-agent messages and group threads](https://github.com/chinghauchu/snorlax-bot/issues/18) — v0.1 seeded group + 1:1 DMs + @routing
+- [B6 — Agent-to-agent messages and group threads](https://github.com/chinghauchu/snorlax-bot/issues/18) — v0.1 isolation + v0.2 handoff threads / jump chip
 
 ## Frontend
 

@@ -17,6 +17,7 @@ from snorlax_runtime import (
     USER_SENDER_NAME,
 )
 from snorlax_runtime.db import Store, new_id
+from snorlax_runtime.handoff import wake_pack
 
 log = logging.getLogger("snorlax.routing")
 
@@ -216,6 +217,31 @@ class TurnState:
     def commit_peer(self) -> None:
         self.peer_sends += 1
 
+    def preview_runnable(
+        self, *, hop: int, edge_from: str, targets: list[str]
+    ) -> list[str]:
+        """Targets that would survive hop/edge/peer caps at this moment."""
+        if hop > MAX_HOP:
+            log.info("drop hop_limit hop=%s", hop)
+            return []
+        simulated = set(self.edges)
+        peer_left = MAX_PEER_SENDS - self.peer_sends
+        runnable: list[str] = []
+        for target in targets:
+            if edge_from == target:
+                continue
+            if edge_from != USER_SENDER_ID and (edge_from, target) in simulated:
+                log.info("drop same_edge %s→%s", edge_from, target)
+                continue
+            if peer_left <= 0:
+                log.info("drop peer_limit count=%s", self.peer_sends)
+                continue
+            if edge_from != USER_SENDER_ID:
+                simulated.add((edge_from, target))
+            peer_left -= 1
+            runnable.append(target)
+        return runnable
+
 
 @dataclass
 class _Job:
@@ -225,14 +251,9 @@ class _Job:
     peer: bool
     edge_from: str
     edge_to: str
-
-
-def involve_channel_text(from_name: str, quoted: str) -> str:
-    """Peer/involve chrome for the seeded channel only — never a 1:1."""
-    snippet = quoted.strip().replace("\n", " ")
-    if len(snippet) > 280:
-        snippet = snippet[:277] + "..."
-    return f"from {from_name}: {snippet}"
+    thread_id: str | None = None
+    wake_pack: dict[str, Any] | None = None
+    origin_conversation_id: str | None = None
 
 
 def looks_like_ask(content: str) -> bool:
@@ -268,6 +289,7 @@ async def run_user_turn(
     content: str,
     images: list[dict[str, Any]],
     mentions: list[dict[str, str]],
+    reply_to: str | None = None,
 ) -> AsyncIterator[tuple[str, dict[str, Any]]]:
     """Persist the user message, then route hop-0 and peer work.
 
@@ -276,7 +298,13 @@ async def run_user_turn(
     origin_id = conversation["id"]
     is_group = conversation.get("kind") == KIND_CHANNEL
     roster = await store.list_agents()
-    await store.add_message(
+    stored_reply_to = None
+    thread_id: str | None = None
+    if is_group:
+        if reply_to:
+            stored_reply_to = await store.resolve_thread_root(origin_id, reply_to)
+            thread_id = stored_reply_to
+    user_saved = await store.add_message(
         agent_id=origin_id,
         role="user",
         content=content,
@@ -286,7 +314,10 @@ async def run_user_turn(
         sender_avatar=None,
         hop=0,
         mentions=mentions,
+        reply_to=stored_reply_to,
     )
+    if is_group and thread_id is None:
+        thread_id = user_saved["id"]
     turn = TurnState()
     jobs: list[_Job] = []
 
@@ -307,14 +338,17 @@ async def run_user_turn(
         mentions,
         store=store,
         roster=roster,
+        turn=turn,
         source_id=origin_id,
         source_sender=USER_SENDER_ID,
         source_name=conversation["name"],
         quoted=content,
-        images=images,
         hop=0 if is_group else 1,
         is_group=is_group,
         peer=not is_group,
+        thread_id=thread_id,
+        origin_user_message_id=user_saved["id"] if not is_group else None,
+        origin_conversation_id=None if is_group else origin_id,
     )
 
     i = 0
@@ -344,6 +378,8 @@ async def run_user_turn(
             conversation_id=job.conversation_id,
             hop=job.hop,
             stream=in_origin,
+            thread_id=job.thread_id,
+            wake_pack=job.wake_pack,
         )
         if in_origin:
             for event, payload in events:
@@ -355,19 +391,29 @@ async def run_user_turn(
             (await store.get_agent(job.conversation_id) or {}).get("kind")
             == KIND_CHANNEL
         )
+        next_thread = job.thread_id or (
+            saved.get("replyTo") if source_is_group else None
+        )
         await _enqueue_mentions(
             jobs,
             saved.get("mentions") or [],
             store=store,
             roster=await store.list_agents(),
+            turn=turn,
             source_id=job.conversation_id,
             source_sender=agent["id"],
             source_name=agent["name"],
             quoted=saved["content"],
-            images=[],
             hop=job.hop + 1,
             is_group=source_is_group,
             peer=True,
+            thread_id=next_thread or (saved["id"] if source_is_group else None),
+            origin_user_message_id=None,
+            origin_conversation_id=(
+                job.origin_conversation_id
+                if source_is_group
+                else job.conversation_id
+            ),
         )
 
 
@@ -377,16 +423,18 @@ async def _enqueue_mentions(
     *,
     store: Store,
     roster: list[dict[str, Any]],
+    turn: TurnState,
     source_id: str,
     source_sender: str,
     source_name: str,
     quoted: str,
-    images: list[dict[str, Any]],
     hop: int,
     is_group: bool,
     peer: bool,
+    thread_id: str | None,
+    origin_user_message_id: str | None,
+    origin_conversation_id: str | None,
 ) -> None:
-    del images  # 1:1 isolation: involve clip is text-only in the channel
     exclude = source_sender if source_sender != USER_SENDER_ID else None
     targets = expand_mention_targets(mentions, roster, exclude=exclude)
     queued = {(j.agent_id, j.conversation_id, j.hop) for j in jobs}
@@ -404,12 +452,14 @@ async def _enqueue_mentions(
                     peer=peer,
                     edge_from=source_sender,
                     edge_to=target,
+                    thread_id=thread_id,
+                    origin_conversation_id=origin_conversation_id,
                 )
             )
         return
 
     # 1:1 isolation: never write peer/involve/DM into either 1:1.
-    # Address B in the seeded channel with "from A" + quoted clip, then B replies there.
+    # Handoff lives on snorlax-bot-group as a thread under a kind=handoff root.
     targets = [t for t in targets if t != source_id]
     if not targets:
         return
@@ -419,20 +469,42 @@ async def _enqueue_mentions(
     through = next((a for a in roster if a["id"] == through_id), None)
     if through is None:
         return
-    await store.add_message(
-        agent_id=SEEDED_CHANNEL_ID,
-        role="assistant",
-        content=involve_channel_text(source_name if source_sender != USER_SENDER_ID else through["name"], quoted),
-        sender_id=through["id"],
-        sender_name=through["name"],
-        sender_avatar=through.get("avatar"),
-        hop=max(hop - 1, 0),
-        mentions=mentions,
+    origin_id = origin_conversation_id or source_id
+    user_caused = source_sender == USER_SENDER_ID
+    cap_runnable = turn.preview_runnable(
+        hop=hop, edge_from=through["id"], targets=targets
     )
-    if source_sender == USER_SENDER_ID and not looks_like_ask(quoted):
+    if not cap_runnable:
         return
-    edge_from = through["id"]
-    for target in targets:
+
+    root = await _ensure_handoff(
+        store,
+        roster=roster,
+        through=through,
+        origin_id=origin_id,
+        user_ask=quoted,
+        mentions=mentions,
+        hop=max(hop - 1, 0),
+        reuse_followup=not user_caused or bool(await store.find_handoff_root(origin_id)),
+    )
+    if root is None:
+        return
+    if user_caused and origin_user_message_id:
+        await store.set_message_handoff(
+            origin_user_message_id,
+            channel_id=SEEDED_CHANNEL_ID,
+            thread_id=root["id"],
+        )
+    if user_caused and not looks_like_ask(quoted):
+        return
+
+    pack = wake_pack(
+        originating=through,
+        user_ask=quoted,
+        brief=root.get("brief") or await store.one_to_one_brief(origin_id),
+        mentioned_ids=cap_runnable,
+    )
+    for target in cap_runnable:
         key = (target, SEEDED_CHANNEL_ID, hop)
         if key in queued:
             continue
@@ -443,10 +515,64 @@ async def _enqueue_mentions(
                 conversation_id=SEEDED_CHANNEL_ID,
                 hop=hop,
                 peer=True,
-                edge_from=edge_from,
+                edge_from=through["id"],
                 edge_to=target,
+                thread_id=root["id"],
+                wake_pack=pack,
+                origin_conversation_id=origin_id,
             )
         )
+
+
+async def _ensure_handoff(
+    store: Store,
+    *,
+    roster: list[dict[str, Any]],
+    through: dict[str, Any],
+    origin_id: str,
+    user_ask: str,
+    mentions: list[dict[str, str]],
+    hop: int,
+    reuse_followup: bool,
+) -> dict[str, Any] | None:
+    del roster  # through is already resolved
+    existing = await store.find_handoff_root(origin_id)
+    brief = await store.one_to_one_brief(origin_id)
+    if existing is not None:
+        if reuse_followup:
+            await store.add_message(
+                agent_id=SEEDED_CHANNEL_ID,
+                role="assistant",
+                content=user_ask,
+                sender_id=through["id"],
+                sender_name=through["name"],
+                sender_avatar=through.get("avatar"),
+                hop=hop,
+                mentions=mentions,
+                reply_to=existing["id"],
+            )
+            # Refresh brief on the root so later wakes see the latest 1:1.
+            await store.conn.execute(
+                "UPDATE messages SET brief = ? WHERE id = ?",
+                (brief, existing["id"]),
+            )
+            await store.conn.commit()
+            existing = await store.find_handoff_root(origin_id)
+        return existing
+    return await store.add_message(
+        agent_id=SEEDED_CHANNEL_ID,
+        role="assistant",
+        content=user_ask,
+        sender_id=through["id"],
+        sender_name=through["name"],
+        sender_avatar=through.get("avatar"),
+        hop=hop,
+        mentions=mentions,
+        kind="handoff",
+        user_ask=user_ask,
+        brief=brief,
+        origin_conversation_id=origin_id,
+    )
 
 
 async def _generate(
@@ -457,6 +583,8 @@ async def _generate(
     conversation_id: str,
     hop: int,
     stream: bool,
+    thread_id: str | None = None,
+    wake_pack: dict[str, Any] | None = None,
 ) -> tuple[list[tuple[str, dict[str, Any]]], dict[str, Any] | None]:
     from snorlax_runtime.inference import InferenceError
 
@@ -465,7 +593,10 @@ async def _generate(
     conversation = await store.get_agent(conversation_id)
     is_group = bool(conversation and conversation.get("kind") == KIND_CHANNEL)
     transcript = await store.inference_transcript(
-        conversation_id, for_agent_id=agent["id"]
+        conversation_id,
+        for_agent_id=agent["id"],
+        thread_id=thread_id,
+        wake_pack=wake_pack,
     )
     pieces: list[str] = []
     events: list[tuple[str, dict[str, Any]]] = []
@@ -505,6 +636,7 @@ async def _generate(
         sender_avatar=agent["avatar"],
         hop=hop,
         mentions=mentions,
+        reply_to=thread_id if is_group else None,
     )
     if stream:
         events.append(("message.done", saved))

@@ -1,9 +1,9 @@
 openapi: 3.1.0
 info:
   title: Snorlax-Bot
-  version: 0.1.0
+  version: 0.2.0
   description: |
-    Locked v0.1 LAN contract. Clients use SNORLAX_URL + SNORLAX_TOKEN.
+    Locked v0.2 LAN contract. Clients use SNORLAX_URL + SNORLAX_TOKEN.
     They never call vLLM and never read the Spark filesystem.
 
     Seeded agent: id `snorlax-bot`, name Snorlax, title Assistant, kind
@@ -26,6 +26,15 @@ info:
     v0.1.1: a 1:1 transcript is only the user and that agent. Peer /
     involve / DM / hop traffic is addressed in `snorlax-bot-group` only.
     422 only for an unknown mention chip id. Typed `@foo` is plain text.
+
+    v0.2: a user @chip in A's 1:1 (or A DMing B) opens a channel *thread*
+    under a kind=handoff root authored as A. Pack B wakes with
+    `{ originating, userAsk, brief, mentionedIds }` (not a quote).
+    brief is the last 8 user+A messages of that 1:1, cap 2k chars.
+    GET channel messages returns handoff roots (timeline) only.
+    `?threadId=` (alias `?replyTo=`) returns that thread. Originating
+    user messages that caused a handoff include `handoff: { channelId,
+    threadId }`. Hop/cap drops omit that field.
   license:
     name: Apache-2.0
     identifier: Apache-2.0
@@ -171,8 +180,10 @@ paths:
         Oldest-first. `before` is a message id cursor for older pages.
         For kind=agent (including seed `snorlax-bot`), the list is only
         `senderId=user` and that agent. Peer/involve/DM/hop messages are
-        never in a 1:1. For kind=channel (`snorlax-bot-group`) the list is
-        the shared transcript.
+        never in a 1:1. For kind=channel (`snorlax-bot-group`) the default
+        list is the **timeline**: handoff roots (and other unreplied-to
+        roots). Thread replies are omitted. Pass `threadId` (or `replyTo`)
+        to load that thread (root + flat replies).
       operationId: listMessages
       parameters:
         - name: limit
@@ -186,6 +197,16 @@ paths:
           in: query
           schema:
             type: string
+        - name: threadId
+          in: query
+          schema:
+            type: string
+          description: Channel thread id (the handoff root). Returns that thread.
+        - name: replyTo
+          in: query
+          schema:
+            type: string
+          description: Alias of threadId.
       responses:
         "200":
           description: JSON array of Message (not wrapped)
@@ -206,9 +227,9 @@ paths:
         forwarded to vLLM.
 
         For a 1:1 agent, hop 0 is that agent. Mentioned peers and hops
-        reply in `snorlax-bot-group`, not in either 1:1. For the group
-        channel, unmentioned members stay silent; mentioned members reply
-        in this transcript.
+        reply in a `snorlax-bot-group` thread under a kind=handoff root,
+        not in either 1:1. A still answers in the 1:1. Optional `replyTo`
+        on the body posts into an existing channel thread.
 
         422 only for an unknown mention chip id (and `@everyone` chip
         outside the group). Typed `@foo` with no chip is plain text.
@@ -401,6 +422,15 @@ components:
         name:
           type: string
 
+    HandoffRef:
+      type: object
+      required: [channelId, threadId]
+      properties:
+        channelId:
+          type: string
+        threadId:
+          type: string
+
     Message:
       type: object
       required:
@@ -452,6 +482,34 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/Mention"
+        kind:
+          type: string
+          enum: [message, handoff]
+          description: |
+            Channel handoff root is `handoff` (LEFT card authored as A).
+            Default `message`.
+        replyTo:
+          type: [string, "null"]
+          description: Channel thread id. Null on timeline roots and on 1:1s.
+        handoff:
+          $ref: "#/components/schemas/HandoffRef"
+          description: |
+            Set on the originating **user** message when the user caused a
+            handoff (an @chip in a 1:1). Absent/null if hop/cap dropped
+            the mention, or if an agent DM created the thread without a
+            user @chip. Not a fake speaker.
+        userAsk:
+          type: [string, "null"]
+          description: Handoff root. The ask B should answer.
+        brief:
+          type: [string, "null"]
+          description: |
+            Handoff root. Last 8 user+A messages of the originating 1:1,
+            cap 2k characters, oldest dropped.
+        replyCount:
+          type: integer
+          minimum: 0
+          description: Count of thread replies under a timeline root.
 
     MessageCreate:
       type: object
@@ -473,7 +531,11 @@ components:
             Agent ids from typeahead chips. Unresolved `@text` is omitted
             and is not a mention. Unknown chip ids 422. Runtime also
             parses exact `@DisplayName`. Peer deliveries from a 1:1 land
-            in the seeded channel, not in another agent's 1:1.
+            in the seeded channel as a handoff thread, not in another
+            agent's 1:1.
+        replyTo:
+          type: [string, "null"]
+          description: Channel thread id when posting a reply in a thread.
 
     MessageDelta:
       type: object

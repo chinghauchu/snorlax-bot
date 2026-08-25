@@ -41,3 +41,9 @@ test("channel subtitle is 12px muted", () => {
   assert.match(title, /font-size:\s*12px/);
   assert.match(title, /color:\s*var\(--text-muted\)/);
 });
+
+test("jump line is 12px muted under the user bubble", () => {
+  const jump = block(".jump-line");
+  assert.match(jump, /font-size:\s*12px/);
+  assert.match(jump, /color:\s*var\(--text-muted\)/);
+});

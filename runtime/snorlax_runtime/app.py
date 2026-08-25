@@ -172,11 +172,16 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         _: str = Depends(require_bearer),
         limit: int = Query(default=100, ge=1, le=200),
         before: str | None = None,
+        threadId: str | None = Query(default=None),
+        replyTo: str | None = Query(default=None),
     ) -> list[Message]:
         store: Store = request.app.state.store
         if await store.get_agent(id) is None:
             raise _error(404, f"Agent {id!r} not found")
-        rows = await store.list_messages(id, limit=limit, before=before)
+        thread_id = threadId or replyTo
+        rows = await store.list_messages(
+            id, limit=limit, before=before, thread_id=thread_id
+        )
         return [Message.model_validate(r) for r in rows]
 
     @app.post("/v1/agents/{id}/messages")
@@ -212,6 +217,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 content=payload.content,
                 images=images,
                 mentions=mentions,
+                reply_to=payload.replyTo,
             ):
                 yield _sse(event, data)
 

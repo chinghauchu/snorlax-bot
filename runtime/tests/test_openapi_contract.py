@@ -25,3 +25,5 @@ def test_protocol_openapi_is_locked_v0_contract() -> None:
     assert "snorlax-bot-group" in text
     assert "Never reuse `snorlax-bot` as the channel transcript" in text
     assert "kind=channel" in text
+    assert "threadId" in text
+    assert "kind=handoff" in text
