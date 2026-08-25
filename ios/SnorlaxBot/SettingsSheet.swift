@@ -52,6 +52,9 @@ struct SettingsSheet: View {
                         .autocorrectionDisabled()
                         .keyboardType(.URL)
                         .textContentType(.URL)
+                    Text("Mac-local: http://127.0.0.1:8787 or http://localhost:8787. Spark: LAN hostname. Never the model port.")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
 
                     HStack {
                         Group {
