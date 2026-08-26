@@ -25,19 +25,25 @@ struct ThinkingLabel: View {
                 TimelineView(.animation(minimumInterval: 1.0 / 30.0, paused: false)) { context in
                     let cycle = context.date.timeIntervalSinceReferenceDate
                         .truncatingRemainder(dividingBy: 1.4) / 1.4
+                    // Secondary fill is the guaranteed paint; gradient is overlay-only.
                     Text(ThinkingChrome.label)
                         .font(.system(size: 12))
-                        .foregroundStyle(
-                            LinearGradient(
-                                colors: [
-                                    Color.secondary,
-                                    Color.primary.opacity(0.72),
-                                    Color.secondary,
-                                ],
-                                startPoint: UnitPoint(x: -0.45 + cycle * 1.9, y: 0.5),
-                                endPoint: UnitPoint(x: 0.15 + cycle * 1.9, y: 0.5)
-                            )
-                        )
+                        .foregroundStyle(.secondary)
+                        .overlay {
+                            Text(ThinkingChrome.label)
+                                .font(.system(size: 12))
+                                .foregroundStyle(
+                                    LinearGradient(
+                                        colors: [
+                                            Color.secondary,
+                                            Color.primary.opacity(0.72),
+                                            Color.secondary,
+                                        ],
+                                        startPoint: UnitPoint(x: -0.45 + cycle * 1.9, y: 0.5),
+                                        endPoint: UnitPoint(x: 0.15 + cycle * 1.9, y: 0.5)
+                                    )
+                                )
+                        }
                 }
             }
         }
