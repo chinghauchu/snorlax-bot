@@ -327,23 +327,22 @@ info:
     v0.15: Box takeover (desktop + runtime only). iOS is unchanged this
     slice — no tap-to-open, no session POST, no ios/ UI work. GET
     `/v1/agents/{id}/computer` and Bearer PNG screenshot stand (v0.14).
-    `POST /v1/agents/{id}/computer/session` → **201** `{ width: 1280,
-    height: 800 }` (takeover session). `DELETE .../computer/session` →
-    **204** (Done). While the session exists: `POST .../pointer`
-    `{ x, y, type }` and `POST .../key` `{ key, type }` in 1280x800
-    coords (204). `type` for pointer is `move` | `down` | `up` |
-    `click`; for key is `down` | `up` | `type`. Agent tools that drive
-    the sandbox (`computer_click`, `computer_key`) while a session
-    exists → **409** (`computer session is active`); POST messages to
-    that agent is also 409 (agent paused). Channel id → **409** on
-    these routes. Missing agent 404. No session + pointer/key → 409.
-    No sandbox + POST session → 404. Desktop chrome: Computer header
-    12px muted `Computer` + trailing 12px `Open` when hasSandbox; the
-    288x180 shot is pointer cursor and click also Opens. Empty `No
-    computer yet.` has no Open. Open is an overlay over chat + info
-    pane (sidebar stays). Scrim `--bg`. 1280x800 letterboxed to fit,
-    8px radius, 1px border. 52px bar: 24px avatar + name, 12px muted
-    `You're driving · agent paused`, trailing primary `Done` 36px.
+    GET may include `driving: user | agent | idle` when hasSandbox.
+    `POST /v1/agents/{id}/computer/session` → **201** `{ sessionId }`
+    (takeover session). `DELETE .../computer/session` or
+    `DELETE .../computer/session/{sessionId}` → **204** (Done). While
+    the session exists: `POST .../pointer` `{ x, y, type: move|down|up|click }`
+    and `POST .../key` `{ key, type: down|up|type, text? }` in 1280x800
+    coords (200). Agent tools that drive the sandbox (`computer_click`,
+    `computer_key`) while a session exists → **409** (`computer session is active`); POST messages to that agent is also 409 (agent paused).
+    Channel id → **409** on these routes. Missing agent 404. No session
+    + pointer/key → 409. No sandbox + POST session → 404. Desktop
+    chrome: Computer header 12px muted `Computer` + trailing 12px `Open`
+    when hasSandbox; the 288x180 shot is pointer cursor and click also
+    Opens. Empty `No computer yet.` has no Open. Open is an overlay over
+    chat + info pane (sidebar stays). Scrim `--bg`. 1280x800 letterboxed
+    to fit, 8px radius, 1px border. 52px bar: 24px avatar + name, 12px
+    muted `You're driving · agent paused`, trailing primary `Done` 36px.
     Esc = Done. Pointer and keys map to sandbox coords. Composer is
     inert so keystrokes do not leak into chat. Agent does not run
     tools / drive the sandbox while the session is up. Done returns
@@ -900,9 +899,12 @@ paths:
         GET `/v1/agents/{id}/computer/screenshot` (Bearer, image/png).
         No sandbox: hasSandbox false, omit imageUrl, no frame on clients
         (`No computer yet.`). Idle desktop still returns a 1280x800 shot
-        (always on). Takeover is POST `/v1/agents/{id}/computer/session`
-        (201) then pointer/key while the session exists. Workspace
-        file-tree GETs are unchanged.
+        (always on). When hasSandbox, GET may include `driving`: `user`
+        (takeover session), `agent` (agent last drove the sandbox), or
+        `idle`. Omitted when hasSandbox is false. Takeover is POST
+        `/v1/agents/{id}/computer/session` (201 `{ sessionId }`) then
+        pointer/key while the session exists. Workspace file-tree GETs
+        are unchanged.
       operationId: getComputer
       responses:
         "200":
@@ -951,11 +953,11 @@ paths:
     post:
       summary: Open a desktop takeover session
       description: |
-        201 `{ width: 1280, height: 800 }`. User is driving; agent is
-        paused and must not run tools that drive the sandbox (409).
-        kind=channel is 409. Unknown agent is 404. No sandbox is 404.
-        Idempotent if a session is already open. Desktop only this
-        slice; iOS does not POST this route.
+        201 `{ sessionId }`. User is driving; agent is paused and must
+        not run tools that drive the sandbox (409). kind=channel is 409.
+        Unknown agent is 404. No sandbox is 404. Idempotent if a session
+        is already open (same sessionId). Desktop only this slice; iOS
+        does not POST this route.
       operationId: openComputerSession
       responses:
         "201":
@@ -975,8 +977,34 @@ paths:
       description: |
         204. Returns to display-only; the next screenshot is the last
         frame. kind=channel is 409. Unknown agent is 404. Idempotent
-        if no session is open.
+        if no session is open. `DELETE .../computer/session/{sessionId}`
+        also 204 for that session; unknown sessionId is 404.
       operationId: closeComputerSession
+      responses:
+        "204":
+          description: Session closed
+        "401":
+          $ref: "#/components/responses/Error"
+        "404":
+          $ref: "#/components/responses/Error"
+        "409":
+          $ref: "#/components/responses/Error"
+
+  /v1/agents/{id}/computer/session/{sessionId}:
+    parameters:
+      - $ref: "#/components/parameters/Id"
+      - name: sessionId
+        in: path
+        required: true
+        schema:
+          type: string
+    delete:
+      summary: End a takeover session by id (Done)
+      description: |
+        204. Same as DELETE `/computer/session` for this sessionId.
+        Unknown sessionId is 404. kind=channel is 409. Unknown agent
+        is 404.
+      operationId: closeComputerSessionById
       responses:
         "204":
           description: Session closed
@@ -994,7 +1022,7 @@ paths:
       summary: Pointer event in sandbox coordinates
       description: |
         Body `{ x, y, type }` with x/y in 1280x800. `type` is `move`,
-        `down`, `up`, or `click`. 204. Requires an open session (409
+        `down`, `up`, or `click`. 200. Requires an open session (409
         without one). kind=channel is 409. Unknown agent is 404. No
         sandbox is 404.
       operationId: postComputerPointer
@@ -1005,7 +1033,7 @@ paths:
             schema:
               $ref: "#/components/schemas/PointerEvent"
       responses:
-        "204":
+        "200":
           description: Pointer applied
         "401":
           $ref: "#/components/responses/Error"
@@ -1022,8 +1050,9 @@ paths:
     post:
       summary: Key event in the sandbox
       description: |
-        Body `{ key, type }`. `type` is `down`, `up`, or `type`. 204.
-        Requires an open session (409 without one). kind=channel is
+        Body `{ key, type, text? }`. `type` is `down`, `up`, or `type`.
+        When `type` is `type`, `text` is preferred if present else `key`.
+        200. Requires an open session (409 without one). kind=channel is
         409. Unknown agent is 404. No sandbox is 404.
       operationId: postComputerKey
       requestBody:
@@ -1033,7 +1062,7 @@ paths:
             schema:
               $ref: "#/components/schemas/KeyEvent"
       responses:
-        "204":
+        "200":
           description: Key applied
         "401":
           $ref: "#/components/responses/Error"
@@ -1751,17 +1780,22 @@ components:
             Present only when hasSandbox is true. Path to the Bearer PNG
             (`/v1/agents/{id}/computer/screenshot`). Same SNORLAX_TOKEN
             as other GETs. Omitted when hasSandbox is false.
+        driving:
+          type: string
+          enum: [user, agent, idle]
+          description: |
+            Present when hasSandbox is true. `user` while a takeover
+            session exists; `agent` after the agent drove the sandbox
+            (`computer_click` / `computer_key`); `idle` otherwise.
+            Omitted when hasSandbox is false.
 
     ComputerSession:
       type: object
-      required: [width, height]
+      required: [sessionId]
       properties:
-        width:
-          type: integer
-          const: 1280
-        height:
-          type: integer
-          const: 800
+        sessionId:
+          type: string
+          description: Opaque takeover session id. Same id if POST while already open.
 
     PointerEvent:
       type: object
@@ -1787,6 +1821,11 @@ components:
         type:
           type: string
           enum: [down, up, type]
+        text:
+          type: string
+          description: |
+            Optional string to type. When type is `type`, preferred over
+            `key` if present.
 
     Routine:
       type: object

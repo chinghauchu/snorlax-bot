@@ -8,10 +8,11 @@ call tools, never call MCP, and never read `~/.snorlax-bot/` — they use `SNORL
 read of the sandbox); iOS does not browse files this slice.
 `GET /v1/agents/{id}/computer` is the identity-pane screenshot descriptor
 (`imageUrl` is Bearer PNG at `/v1/agents/{id}/computer/screenshot`).
-`POST /v1/agents/{id}/computer/session` opens a desktop takeover (201);
-`DELETE` is Done (204). While the session exists, `POST .../pointer` and
-`POST .../key` map into 1280×800. Agent-driven sandbox tools 409.
-Channel ids are 409. Missing agent 404.
+`POST /v1/agents/{id}/computer/session` opens a desktop takeover (201
+`{ sessionId }`); `DELETE` that session or `DELETE .../session` is Done
+(204). While the session exists, `POST .../pointer` and `POST .../key`
+map into 1280×800 (200). GET may include `driving: user|agent|idle`.
+Agent-driven sandbox tools 409. Channel ids are 409. Missing agent 404.
 
 Contract: [../protocol/openapi.yaml](../protocol/openapi.yaml) (copy:
 [openapi.yaml](openapi.yaml)).

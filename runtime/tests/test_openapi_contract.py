@@ -105,6 +105,7 @@ def test_protocol_openapi_is_locked_v0_contract() -> None:
     assert "/v1/agents/{id}/computer" in text
     assert "/v1/agents/{id}/computer/screenshot" in text
     assert "/v1/agents/{id}/computer/session" in text
+    assert "/v1/agents/{id}/computer/session/{sessionId}" in text
     assert "/v1/agents/{id}/computer/pointer" in text
     assert "/v1/agents/{id}/computer/key" in text
     assert "/v1/agents/{id}/computer/image" not in text
@@ -114,6 +115,7 @@ def test_protocol_openapi_is_locked_v0_contract() -> None:
     assert "ComputerSession" in text
     assert "PointerEvent" in text
     assert "KeyEvent" in text
+    assert "sessionId" in text
     assert "hasSandbox" in text
     assert "No computer yet." in text
     assert "288x180" in text or "288×180" in text

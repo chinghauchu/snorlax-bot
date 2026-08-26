@@ -30,8 +30,9 @@ NVIDIA DGX Spark.
   LEFT `kind=message`; `content` stays a plain string), a display-only
   Box computer preview (`GET /v1/agents/{id}/computer` JSON; Bearer PNG at
   `/computer/screenshot`; identity pane), and desktop Box takeover
-  (`POST/DELETE /computer/session`; `POST .../pointer` and `.../key` while
-  the session is up; Open / Done overlay; iOS stays preview-only). Full sandbox
+  (`POST /computer/session` → 201 `{ sessionId }`; `DELETE .../session` or
+  `DELETE .../session/{sessionId}` → 204; `POST .../pointer` and `.../key`
+  while the session is up, 200; Open / Done overlay; iOS stays preview-only). Full sandbox
   computer GUI (VNC), vision, marketplace UI, teach-a-task, and Slack/GitHub
   inbound listeners are later — see [ROADMAP.md](ROADMAP.md).
 

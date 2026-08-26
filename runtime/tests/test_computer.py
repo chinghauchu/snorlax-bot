@@ -20,7 +20,8 @@ def test_get_computer_200_with_png(client) -> None:
     assert body["width"] == 1280
     assert body["height"] == 800
     assert body["imageUrl"] == SCREENSHOT
-    assert set(body) == {"hasSandbox", "width", "height", "imageUrl"}
+    assert body["driving"] == "idle"
+    assert set(body) == {"hasSandbox", "width", "height", "imageUrl", "driving"}
     denied = client.get(SCREENSHOT)
     assert denied.status_code == 401
     png = client.get(SCREENSHOT, headers=AUTH)
@@ -77,6 +78,7 @@ def test_no_sandbox_omits_image_url(client) -> None:
     body = response.json()
     assert body == {"hasSandbox": False, "width": 1280, "height": 800}
     assert "imageUrl" not in body
+    assert "driving" not in body
     missing = client.get(SCREENSHOT, headers=AUTH)
     assert missing.status_code == 404
 
@@ -96,14 +98,35 @@ def test_session_201_and_done_204(client) -> None:
     opened = client.post(f"/v1/agents/{SEED}/computer/session", headers=AUTH)
     assert opened.status_code == 201
     body = opened.json()
-    assert body == {"width": 1280, "height": 800}
+    assert set(body) == {"sessionId"}
+    session_id = body["sessionId"]
+    assert session_id.startswith("sess_")
+    assert len(session_id) > 8
     again = client.post(f"/v1/agents/{SEED}/computer/session", headers=AUTH)
     assert again.status_code == 201
-    done = client.delete(f"/v1/agents/{SEED}/computer/session", headers=AUTH)
+    assert again.json() == {"sessionId": session_id}
+    preview = client.get(f"/v1/agents/{SEED}/computer", headers=AUTH).json()
+    assert preview["driving"] == "user"
+    unknown = client.delete(
+        f"/v1/agents/{SEED}/computer/session/sess_nope", headers=AUTH
+    )
+    assert unknown.status_code == 404
+    assert unknown.json() == {"error": "no computer session"}
+    still = client.get(f"/v1/agents/{SEED}/computer", headers=AUTH).json()
+    assert still["driving"] == "user"
+    done = client.delete(
+        f"/v1/agents/{SEED}/computer/session/{session_id}", headers=AUTH
+    )
     assert done.status_code == 204
     assert done.content == b""
+    missing = client.delete(
+        f"/v1/agents/{SEED}/computer/session/{session_id}", headers=AUTH
+    )
+    assert missing.status_code == 404
     idle = client.delete(f"/v1/agents/{SEED}/computer/session", headers=AUTH)
     assert idle.status_code == 204
+    after = client.get(f"/v1/agents/{SEED}/computer", headers=AUTH).json()
+    assert after["driving"] == "idle"
 
 
 def test_pointer_and_key_while_session_open(client) -> None:
@@ -114,25 +137,31 @@ def test_pointer_and_key_while_session_open(client) -> None:
         headers=AUTH,
         json={"x": 640, "y": 400, "type": "move"},
     )
-    assert moved.status_code == 204
+    assert moved.status_code == 200
     clicked = client.post(
         f"/v1/agents/{SEED}/computer/pointer",
         headers=AUTH,
         json={"x": 100, "y": 80, "type": "click"},
     )
-    assert clicked.status_code == 204
+    assert clicked.status_code == 200
     typed = client.post(
         f"/v1/agents/{SEED}/computer/key",
         headers=AUTH,
         json={"key": "a", "type": "type"},
     )
-    assert typed.status_code == 204
+    assert typed.status_code == 200
+    with_text = client.post(
+        f"/v1/agents/{SEED}/computer/key",
+        headers=AUTH,
+        json={"key": "x", "type": "type", "text": "hi"},
+    )
+    assert with_text.status_code == 200
     down = client.post(
         f"/v1/agents/{SEED}/computer/key",
         headers=AUTH,
         json={"key": "Enter", "type": "down"},
     )
-    assert down.status_code == 204
+    assert down.status_code == 200
     png = client.get(SCREENSHOT, headers=AUTH)
     assert png.status_code == 200
     assert png.content.startswith(PNG_SIG)
@@ -177,7 +206,12 @@ def test_agent_driven_tools_409_while_session(client) -> None:
         client.app.state.computer.pointer(SEED, 10, 20, "click", user=False)
     assert exc.value.status == 409
     assert exc.value.message == "computer session is active"
+    preview = client.get(f"/v1/agents/{SEED}/computer", headers=AUTH).json()
+    assert preview["driving"] == "user"
     client.delete(f"/v1/agents/{SEED}/computer/session", headers=AUTH)
+    client.app.state.computer.pointer(SEED, 10, 20, "click", user=False)
+    after = client.get(f"/v1/agents/{SEED}/computer", headers=AUTH).json()
+    assert after["driving"] == "agent"
     ok = client.post(
         f"/v1/agents/{SEED}/messages",
         headers=AUTH,
@@ -190,6 +224,7 @@ def test_channel_session_pointer_key_are_409(client) -> None:
     for method, path, body in (
         ("POST", f"/v1/agents/{CHANNEL}/computer/session", None),
         ("DELETE", f"/v1/agents/{CHANNEL}/computer/session", None),
+        ("DELETE", f"/v1/agents/{CHANNEL}/computer/session/sess_nope", None),
         (
             "POST",
             f"/v1/agents/{CHANNEL}/computer/pointer",
@@ -210,6 +245,7 @@ def test_missing_agent_session_pointer_key_are_404(client) -> None:
     for method, path, body in (
         ("POST", "/v1/agents/no-such/computer/session", None),
         ("DELETE", "/v1/agents/no-such/computer/session", None),
+        ("DELETE", "/v1/agents/no-such/computer/session/sess_nope", None),
         (
             "POST",
             "/v1/agents/no-such/computer/pointer",

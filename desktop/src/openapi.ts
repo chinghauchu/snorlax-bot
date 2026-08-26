@@ -408,9 +408,12 @@ export interface paths {
          *     GET `/v1/agents/{id}/computer/screenshot` (Bearer, image/png).
          *     No sandbox: hasSandbox false, omit imageUrl, no frame on clients
          *     (`No computer yet.`). Idle desktop still returns a 1280x800 shot
-         *     (always on). Takeover is POST `/v1/agents/{id}/computer/session`
-         *     (201) then pointer/key while the session exists. Workspace
-         *     file-tree GETs are unchanged.
+         *     (always on). When hasSandbox, GET may include `driving`: `user`
+         *     (takeover session), `agent` (agent last drove the sandbox), or
+         *     `idle`. Omitted when hasSandbox is false. Takeover is POST
+         *     `/v1/agents/{id}/computer/session` (201 `{ sessionId }`) then
+         *     pointer/key while the session exists. Workspace file-tree GETs
+         *     are unchanged.
          */
         get: operations["getComputer"];
         put?: never;
@@ -460,20 +463,46 @@ export interface paths {
         put?: never;
         /**
          * Open a desktop takeover session
-         * @description 201 `{ width: 1280, height: 800 }`. User is driving; agent is
-         *     paused and must not run tools that drive the sandbox (409).
-         *     kind=channel is 409. Unknown agent is 404. No sandbox is 404.
-         *     Idempotent if a session is already open. Desktop only this
-         *     slice; iOS does not POST this route.
+         * @description 201 `{ sessionId }`. User is driving; agent is paused and must
+         *     not run tools that drive the sandbox (409). kind=channel is 409.
+         *     Unknown agent is 404. No sandbox is 404. Idempotent if a session
+         *     is already open (same sessionId). Desktop only this slice; iOS
+         *     does not POST this route.
          */
         post: operations["openComputerSession"];
         /**
          * End the takeover session (Done)
          * @description 204. Returns to display-only; the next screenshot is the last
          *     frame. kind=channel is 409. Unknown agent is 404. Idempotent
-         *     if no session is open.
+         *     if no session is open. `DELETE .../computer/session/{sessionId}`
+         *     also 204 for that session; unknown sessionId is 404.
          */
         delete: operations["closeComputerSession"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/agents/{id}/computer/session/{sessionId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["Id"];
+                sessionId: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * End a takeover session by id (Done)
+         * @description 204. Same as DELETE `/computer/session` for this sessionId.
+         *     Unknown sessionId is 404. kind=channel is 409. Unknown agent
+         *     is 404.
+         */
+        delete: operations["closeComputerSessionById"];
         options?: never;
         head?: never;
         patch?: never;
@@ -493,7 +522,7 @@ export interface paths {
         /**
          * Pointer event in sandbox coordinates
          * @description Body `{ x, y, type }` with x/y in 1280x800. `type` is `move`,
-         *     `down`, `up`, or `click`. 204. Requires an open session (409
+         *     `down`, `up`, or `click`. 200. Requires an open session (409
          *     without one). kind=channel is 409. Unknown agent is 404. No
          *     sandbox is 404.
          */
@@ -517,8 +546,9 @@ export interface paths {
         put?: never;
         /**
          * Key event in the sandbox
-         * @description Body `{ key, type }`. `type` is `down`, `up`, or `type`. 204.
-         *     Requires an open session (409 without one). kind=channel is
+         * @description Body `{ key, type, text? }`. `type` is `down`, `up`, or `type`.
+         *     When `type` is `type`, `text` is preferred if present else `key`.
+         *     200. Requires an open session (409 without one). kind=channel is
          *     409. Unknown agent is 404. No sandbox is 404.
          */
         post: operations["postComputerKey"];
@@ -1031,12 +1061,18 @@ export interface components {
              *     as other GETs. Omitted when hasSandbox is false.
              */
             imageUrl?: string;
+            /**
+             * @description Present when hasSandbox is true. `user` while a takeover
+             *     session exists; `agent` after the agent drove the sandbox
+             *     (`computer_click` / `computer_key`); `idle` otherwise.
+             *     Omitted when hasSandbox is false.
+             * @enum {string}
+             */
+            driving?: "user" | "agent" | "idle";
         };
         ComputerSession: {
-            /** @constant */
-            width: 1280;
-            /** @constant */
-            height: 800;
+            /** @description Opaque takeover session id. Same id if POST while already open. */
+            sessionId: string;
         };
         PointerEvent: {
             /** @description Sandbox x in 0..1279 (1280x800). */
@@ -1051,6 +1087,11 @@ export interface components {
             key: string;
             /** @enum {string} */
             type: "down" | "up" | "type";
+            /**
+             * @description Optional string to type. When type is `type`, preferred over
+             *     `key` if present.
+             */
+            text?: string;
         };
         Routine: {
             id: string;
@@ -1663,6 +1704,30 @@ export interface operations {
             409: components["responses"]["Error"];
         };
     };
+    closeComputerSessionById: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["Id"];
+                sessionId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Session closed */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Error"];
+            404: components["responses"]["Error"];
+            409: components["responses"]["Error"];
+        };
+    };
     postComputerPointer: {
         parameters: {
             query?: never;
@@ -1679,7 +1744,7 @@ export interface operations {
         };
         responses: {
             /** @description Pointer applied */
-            204: {
+            200: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -1707,7 +1772,7 @@ export interface operations {
         };
         responses: {
             /** @description Key applied */
-            204: {
+            200: {
                 headers: {
                     [name: string]: unknown;
                 };

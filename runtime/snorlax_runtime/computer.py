@@ -11,6 +11,7 @@ The agent does not drive the sandbox while that session exists.
 
 from __future__ import annotations
 
+import secrets
 import struct
 import zlib
 from datetime import datetime
@@ -350,7 +351,8 @@ class ComputerHub:
         self._pixels: dict[str, bytearray] = {}
         self._cursor: dict[str, tuple[int, int]] = {}
         self._typed: dict[str, str] = {}
-        self._sessions: set[str] = set()
+        self._sessions: dict[str, str] = {}
+        self._driver: dict[str, str] = {}
         self._names: dict[str, str] = {}
 
     def detach(self, agent_id: str) -> None:
@@ -359,7 +361,8 @@ class ComputerHub:
         self._pixels.pop(agent_id, None)
         self._cursor.pop(agent_id, None)
         self._typed.pop(agent_id, None)
-        self._sessions.discard(agent_id)
+        self._sessions.pop(agent_id, None)
+        self._driver.pop(agent_id, None)
         self._names.pop(agent_id, None)
 
     def has_sandbox(self, agent_id: str) -> bool:
@@ -367,6 +370,13 @@ class ComputerHub:
 
     def has_session(self, agent_id: str) -> bool:
         return agent_id in self._sessions and self.has_sandbox(agent_id)
+
+    def driving(self, agent_id: str) -> str:
+        if self.has_session(agent_id):
+            return "user"
+        if self._driver.get(agent_id) == "agent":
+            return "agent"
+        return "idle"
 
     def preview(self, agent_id: str) -> dict[str, object]:
         if not self.has_sandbox(agent_id):
@@ -376,21 +386,30 @@ class ComputerHub:
             "width": WIDTH,
             "height": HEIGHT,
             "imageUrl": image_url(agent_id),
+            "driving": self.driving(agent_id),
         }
 
-    def open_session(self, agent_id: str, name: str = "") -> dict[str, int] | None:
+    def open_session(self, agent_id: str, name: str = "") -> dict[str, str] | None:
         if not self.has_sandbox(agent_id):
             return None
         if name:
             self._names[agent_id] = name
         self._ensure_pixels(agent_id)
-        self._sessions.add(agent_id)
-        return {"width": WIDTH, "height": HEIGHT}
+        existing = self._sessions.get(agent_id)
+        if existing:
+            return {"sessionId": existing}
+        session_id = f"sess_{secrets.token_hex(8)}"
+        self._sessions[agent_id] = session_id
+        return {"sessionId": session_id}
 
-    def close_session(self, agent_id: str) -> None:
+    def close_session(self, agent_id: str, session_id: str | None = None) -> None:
+        if session_id is not None:
+            current = self._sessions.get(agent_id)
+            if current != session_id:
+                raise ComputerError(404, "no computer session")
         if agent_id in self._sessions:
             self._snapshot(agent_id)
-        self._sessions.discard(agent_id)
+        self._sessions.pop(agent_id, None)
 
     def pointer(
         self,
@@ -408,6 +427,8 @@ class ComputerHub:
         self._cursor[agent_id] = (x, y)
         if kind in {"down", "click"}:
             _draw_click_mark(self._pixels[agent_id], x, y)
+        if not user:
+            self._driver[agent_id] = "agent"
         self._snapshot(agent_id)
 
     def key(
@@ -417,19 +438,26 @@ class ComputerHub:
         kind: str,
         *,
         user: bool,
+        text: str | None = None,
     ) -> None:
         self._require_drive(agent_id, user=user)
         self._ensure_pixels(agent_id)
-        text = self._typed.get(agent_id, "")
-        token = (key or "").strip()
-        if kind in {"down", "type"} and token:
-            if token in {"Backspace", "Delete"}:
-                text = text[:-1]
-            elif token in {"Enter", "Return"}:
-                text = (text + " ")[:80]
-            elif len(token) == 1:
-                text = (text + token)[:80]
-        self._typed[agent_id] = text
+        buf = self._typed.get(agent_id, "")
+        typed = (text or "").strip() if kind == "type" else ""
+        if kind == "type" and typed:
+            buf = (buf + typed)[:80]
+        else:
+            token = (key or "").strip()
+            if kind in {"down", "type"} and token:
+                if token in {"Backspace", "Delete"}:
+                    buf = buf[:-1]
+                elif token in {"Enter", "Return"}:
+                    buf = (buf + " ")[:80]
+                elif len(token) == 1:
+                    buf = (buf + token)[:80]
+        self._typed[agent_id] = buf
+        if not user:
+            self._driver[agent_id] = "agent"
         self._snapshot(agent_id)
 
     def screenshot_png(self, agent_id: str, name: str = "") -> bytes | None:

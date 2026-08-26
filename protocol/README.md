@@ -63,10 +63,12 @@ v0.14 Box computer preview: `GET /v1/agents/{id}/computer`
 hasSandbox false omits imageUrl. Channel 409. Missing agent 404.
 
 v0.15 Box takeover (desktop + runtime): `POST /v1/agents/{id}/computer/session`
-→ 201. `DELETE .../session` → 204. While the session exists,
-`POST .../pointer` `{ x, y, type }` and `POST .../key` `{ key, type }`
-in 1280×800 (204). Agent tools that drive the sandbox 409. Channel 409.
-iOS does not POST these routes.
+→ 201 `{ sessionId }`. `DELETE .../session` or
+`DELETE .../session/{sessionId}` → 204. While the session exists,
+`POST .../pointer` `{ x, y, type }` and `POST .../key` `{ key, type, text? }`
+in 1280×800 (200). GET may include `driving: user|agent|idle`. Agent
+tools that drive the sandbox 409. Channel 409. iOS does not POST these
+routes.
 
 A copy is also kept at `runtime/openapi.yaml` and `desktop/openapi.yaml`
 so those trees are self-contained. Do not let the files diverge.

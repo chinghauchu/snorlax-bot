@@ -338,6 +338,7 @@ export function App() {
   const [computerOpen, setComputerOpen] = useState(true);
   const [workspaceTick, setWorkspaceTick] = useState(0);
   const [takeoverId, setTakeoverId] = useState<string | null>(null);
+  const [takeoverSessionId, setTakeoverSessionId] = useState<string | null>(null);
 
   const scroller = useRef<HTMLDivElement>(null);
   const composerRef = useRef<HTMLTextAreaElement>(null);
@@ -1069,8 +1070,9 @@ export function App() {
   async function openTakeover() {
     if (!session || !active || active.kind === "channel") return;
     try {
-      await openComputerSession(session, active.id);
+      const opened = await openComputerSession(session, active.id);
       setTakeoverId(active.id);
+      setTakeoverSessionId(opened.sessionId);
     } catch (err) {
       setComposerError(describeError(err));
     }
@@ -1078,10 +1080,12 @@ export function App() {
 
   async function closeTakeover() {
     const id = takeoverId;
+    const sess = takeoverSessionId;
     setTakeoverId(null);
+    setTakeoverSessionId(null);
     if (session && id) {
       try {
-        await closeComputerSession(session, id);
+        await closeComputerSession(session, id, sess ?? undefined);
       } catch {
         /* already closed */
       }

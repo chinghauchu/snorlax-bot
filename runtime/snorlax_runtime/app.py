@@ -873,16 +873,39 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         )
         _computer(request).close_session(id)
 
+    @app.delete(
+        "/v1/agents/{id}/computer/session/{sessionId}",
+        status_code=status.HTTP_204_NO_CONTENT,
+    )
+    async def close_computer_session_by_id(
+        id: str,
+        sessionId: str,
+        request: Request,
+        _: str = Depends(require_bearer),
+    ) -> None:
+        store: Store = request.app.state.store
+        conversation = await store.get_agent(id)
+        _require_agent(
+            conversation,
+            id,
+            channel_status=409,
+            reason="computer session is agent-only",
+        )
+        try:
+            _computer(request).close_session(id, session_id=sessionId)
+        except ComputerError as exc:
+            raise _error(exc.status, exc.message) from exc
+
     @app.post(
         "/v1/agents/{id}/computer/pointer",
-        status_code=status.HTTP_204_NO_CONTENT,
+        status_code=status.HTTP_200_OK,
     )
     async def post_computer_pointer(
         id: str,
         payload: PointerEvent,
         request: Request,
         _: str = Depends(require_bearer),
-    ) -> None:
+    ) -> Response:
         store: Store = request.app.state.store
         conversation = await store.get_agent(id)
         _require_agent(
@@ -897,17 +920,18 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             )
         except ComputerError as exc:
             raise _error(exc.status, exc.message) from exc
+        return Response(status_code=status.HTTP_200_OK)
 
     @app.post(
         "/v1/agents/{id}/computer/key",
-        status_code=status.HTTP_204_NO_CONTENT,
+        status_code=status.HTTP_200_OK,
     )
     async def post_computer_key(
         id: str,
         payload: KeyEvent,
         request: Request,
         _: str = Depends(require_bearer),
-    ) -> None:
+    ) -> Response:
         store: Store = request.app.state.store
         conversation = await store.get_agent(id)
         _require_agent(
@@ -917,9 +941,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             reason="computer session is agent-only",
         )
         try:
-            _computer(request).key(id, payload.key, payload.type, user=True)
+            _computer(request).key(
+                id, payload.key, payload.type, user=True, text=payload.text
+            )
         except ComputerError as exc:
             raise _error(exc.status, exc.message) from exc
+        return Response(status_code=status.HTTP_200_OK)
 
     @app.get("/v1/plugins", response_model=list[Plugin])
     async def list_plugins(

@@ -420,6 +420,10 @@ TOOL_DEFINITIONS: list[dict[str, Any]] = [
                         "type": "string",
                         "description": "down, up, or type",
                     },
+                    "text": {
+                        "type": "string",
+                        "description": "Optional string to type when type=type",
+                    },
                 },
                 "required": ["key"],
             },
@@ -614,8 +618,10 @@ def _computer_key(workspace: Path, args: dict[str, Any]) -> str:
         return "Error: no computer"
     key = str(args.get("key") or "")
     kind = str(args.get("type") or "type")
+    typed = args.get("text")
+    text = str(typed) if typed is not None else None
     try:
-        hub.key(agent_id, key, kind, user=False)
+        hub.key(agent_id, key, kind, user=False, text=text)
     except ComputerError as exc:
         raise ComputerError(exc.status, exc.message) from exc
     return f"Typed {key}"
