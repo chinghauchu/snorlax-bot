@@ -691,11 +691,12 @@ export function App() {
         active.kind !== "channel" &&
         listed.some((message) => messageHandoff(message))
       ) {
-        const channelId =
-          listed
-            .map((message) => messageHandoff(message)?.channelId)
-            .find((id): id is string => Boolean(id)) ?? SEED_CHANNEL_ID;
-        setUnreadIds((prev) => new Set(prev).add(channelId));
+        const channelId = listed
+          .map((message) => messageHandoff(message)?.channelId)
+          .find((id): id is string => Boolean(id));
+        if (channelId) {
+          setUnreadIds((prev) => new Set(prev).add(channelId));
+        }
       }
       pickedMentions.current.clear();
     } catch (err) {

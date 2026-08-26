@@ -101,11 +101,13 @@ SQLite file `~/.snorlax-bot/snorlax.db` (override with `SNORLAX_DATA_DIR`):
 - `agents` — id, name, title, description, avatar, kind (`agent` | `channel`), timestamps.
   Seeded agent `snorlax-bot` (name Snorlax, title Assistant, kind agent).
   Seeded group channel `snorlax-bot-group` (name Snorlax-Bot, kind channel).
-  Every agent is a member of the seed; new agents auto-join it. Seed DELETE is 204 and is
-  not auto-reseeded (an empty agent roster is fine). Seeded channel DELETE is 409.
-  User-created channels (`POST /v1/agents` kind=channel) DELETE 204;
-  PATCH `{ name, memberIds }` 200. Seed channel PATCH/DELETE 409.
-  Channel is created if missing on an existing DB. Clients show a muted
+  Every agent is a member of the seed; new agents auto-join it. Seed agent DELETE is 204 and is
+  not auto-reseeded (an empty agent roster is fine). Seeded channel DELETE is 204
+  and is not auto-reseeded (an empty roster with no agents and/or no channels is
+  fine). User-created channels (`POST /v1/agents` kind=channel) DELETE 204;
+  PATCH `{ name, memberIds }` 200. Seed channel PATCH stays 409.
+  First empty DB seeds agent + channel; later reconnects do not recreate a
+  deleted seed. Clients show a muted
   “Channel” subtitle from `kind`, not by guessing id. Seed identity
   (name / title / description / avatar) may be PATCHed and persists.
 - `messages` — per-transcript (agent 1:1 or the group), `user` | `assistant`,
@@ -121,7 +123,8 @@ SQLite file `~/.snorlax-bot/snorlax.db` (override with `SNORLAX_DATA_DIR`):
 v0.1 keeps one transcript per agent (the 1:1) plus one seeded group channel
 and extra user-created channels (v0.4).
 GET `/v1/agents/snorlax-bot/messages` is only user + Snorlax. Peer / involve /
-DM / hop traffic writes to the seeded channel (`snorlax-bot-group`). Mentions are runtime-routed
+DM / hop traffic writes to a channel (default `snorlax-bot-group`; if that
+seed is gone, a remaining user-created channel, else skip the log). Mentions are runtime-routed
 with hop depth 3, 4 peer sends per user turn, and a same-edge cap.
 
 v0.2: a 1:1 `@chip` or agent DM opens a channel **thread** under a
@@ -136,11 +139,13 @@ read-only member list from `memberIds`. User-created channels PATCH
 `{ name, memberIds }`. Desktop is a 320px overlay on chat; iOS is a
 sheet. Delete stays on the sidebar, including the seed row.
 
-v0.4: 1:1 @involves log on seed `snorlax-bot-group` only. When B's thread
+v0.4: 1:1 @involves log on seed `snorlax-bot-group` when present (else a
+remaining user channel, else skip). When B's thread
 turn completes or B is hop/cap dropped, wake A with `{ from, result,
 threadId, userAsk }` (prompt only). A posts another assistant turn in
 A's 1:1 (as A, not a hop). Report as each peer lands. Isolation unchanged.
 Extra `kind=channel` rows via POST /v1/agents; members are editable.
+Seed channel DELETE is 204 with no auto-reseed.
 
 ## Inference interface
 

@@ -92,7 +92,14 @@ CREATE TABLE IF NOT EXISTS channel_members (
     FOREIGN KEY (channel_id) REFERENCES agents(id) ON DELETE CASCADE,
     FOREIGN KEY (agent_id) REFERENCES agents(id) ON DELETE CASCADE
 );
+
+CREATE TABLE IF NOT EXISTS meta (
+    key TEXT PRIMARY KEY,
+    value TEXT NOT NULL
+);
 """
+
+ROSTER_SEEDED_KEY = "roster_seeded"
 
 
 class Store:
@@ -172,34 +179,51 @@ class Store:
         )
         await self.conn.commit()
 
-    async def _seed(self) -> None:
-        """Insert snorlax-bot only when the agents table is empty. Never auto-reseed.
+    async def _roster_already_seeded(self) -> bool:
+        cur = await self.conn.execute(
+            "SELECT value FROM meta WHERE key = ?", (ROSTER_SEEDED_KEY,)
+        )
+        row = await cur.fetchone()
+        return row is not None and str(row["value"]) == "1"
 
-        DELETE of the seed is 204. The channel row stays, so a reconnect with
-        only `snorlax-bot-group` present must not recreate Snorlax. An empty
-        agent roster is fine. The group channel is still created if missing so
-        existing DBs pick up v0.1.
+    async def _mark_roster_seeded(self) -> None:
+        await self.conn.execute(
+            "INSERT OR REPLACE INTO meta (key, value) VALUES (?, ?)",
+            (ROSTER_SEEDED_KEY, "1"),
+        )
+
+    async def _seed(self) -> None:
+        """Insert seed agent + channel only on first empty DB. Never auto-reseed.
+
+        DELETE of seed `snorlax-bot` or seed channel `snorlax-bot-group` is 204.
+        An empty roster (no agents and/or no channels) is OK and is not filled
+        back in on reconnect. Existing DBs without the meta flag still pick up
+        the v0.1 channel once, then lock.
         """
+        already = await self._roster_already_seeded()
         cur = await self.conn.execute("SELECT COUNT(*) AS n FROM agents")
         row = await cur.fetchone()
-        if row is not None and int(row["n"]) == 0:
-            now = utcnow()
-            await self.conn.execute(
-                "INSERT INTO agents "
-                "(id, name, title, description, avatar, kind, created_at, updated_at) "
-                "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-                (
-                    SEEDED_AGENT_ID,
-                    SEEDED_AGENT_NAME,
-                    SEEDED_AGENT_TITLE,
-                    SEEDED_AGENT_DESCRIPTION,
-                    SEEDED_AGENT_AVATAR,
-                    KIND_AGENT,
-                    now,
-                    now,
-                ),
-            )
-        await self._ensure_channel()
+        empty = row is not None and int(row["n"]) == 0
+        if not already:
+            if empty:
+                now = utcnow()
+                await self.conn.execute(
+                    "INSERT INTO agents "
+                    "(id, name, title, description, avatar, kind, created_at, updated_at) "
+                    "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                    (
+                        SEEDED_AGENT_ID,
+                        SEEDED_AGENT_NAME,
+                        SEEDED_AGENT_TITLE,
+                        SEEDED_AGENT_DESCRIPTION,
+                        SEEDED_AGENT_AVATAR,
+                        KIND_AGENT,
+                        now,
+                        now,
+                    ),
+                )
+            await self._ensure_channel()
+            await self._mark_roster_seeded()
         await self._lock_channel_label()
         await self.conn.commit()
 
@@ -725,6 +749,8 @@ class Store:
 
             place = (
                 f"a {conversation['name']} channel thread after a handoff"
+                if is_group
+                else "a handoff after a teammate routed a user ask"
             )
             system = (
                 f"You are {speaker['name']}. You are in {place}. "

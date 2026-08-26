@@ -203,8 +203,6 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     async def delete_agent(
         id: str, request: Request, _: str = Depends(require_bearer)
     ) -> None:
-        if id == SEEDED_CHANNEL_ID:
-            raise _error(409, "seeded channel cannot be deleted")
         store: Store = request.app.state.store
         deleted = await store.delete_agent(id)
         if not deleted:

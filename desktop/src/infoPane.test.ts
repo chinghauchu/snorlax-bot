@@ -19,12 +19,12 @@ test("user-created channels are editable; seed channel is not", () => {
   assert.equal(canEditChannel({ kind: "agent", id: "snorlax-bot" }), false);
 });
 
-test("seed channel is not deletable; user channels and agents are", () => {
+test("seed channel, user channels, and agents are deletable", () => {
   assert.equal(canDeleteAgent({ kind: "agent" }), true);
   assert.equal(canDeleteAgent({ kind: "agent", id: "snorlax-bot" }), true);
   assert.equal(
     canDeleteAgent({ kind: "channel", id: "snorlax-bot-group" }),
-    false,
+    true,
   );
   assert.equal(canDeleteAgent({ kind: "channel", id: "ops" }), true);
 });
@@ -68,4 +68,13 @@ test("after seed delete, select the channel and do not fake a seed", () => {
     "snorlax-bot-group",
   );
   assert.equal(roster.some((row) => row.id === "snorlax-bot"), false);
+});
+
+test("after seed channel delete, select remaining agent and do not fake a channel", () => {
+  const roster = [{ id: "snorlax-bot", kind: "agent" }];
+  assert.equal(
+    nextRosterSelection(roster, "snorlax-bot-group", "snorlax-bot-group"),
+    "snorlax-bot",
+  );
+  assert.equal(roster.some((row) => row.id === "snorlax-bot-group"), false);
 });

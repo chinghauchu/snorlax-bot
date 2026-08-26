@@ -3,9 +3,9 @@
 export const SEED_AGENT_ID = "snorlax-bot";
 export const SEED_CHANNEL_ID = "snorlax-bot-group";
 
-/** Seed channel is not deletable. Agents (including seed) and user channels are. */
-export function canDeleteAgent(agent: { id?: string; kind: string }): boolean {
-  return agent.id !== SEED_CHANNEL_ID;
+/** Sidebar delete is allowed for every roster row, including the seed channel. */
+export function canDeleteAgent(_agent: { id?: string; kind: string }): boolean {
+  return true;
 }
 
 export function canEditChannel(agent: { id?: string; kind: string }): boolean {

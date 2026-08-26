@@ -79,8 +79,9 @@ export interface paths {
          * Delete an agent
          * @description kind=agent including seed `snorlax-bot` returns 204 and is gone
          *     from GET /v1/agents. No auto-reseed; an empty agent roster is OK.
-         *     User-created agent DELETE is still 204. Seeded channel cannot be
-         *     deleted (409 `{ error }`). User-created channel DELETE is 204.
+         *     kind=channel including seed `snorlax-bot-group` returns 204 and is
+         *     gone from GET /v1/agents. No auto-reseed. User-created agent and
+         *     channel DELETE is 204.
          */
         delete: operations["deleteAgent"];
         options?: never;
@@ -124,8 +125,9 @@ export interface paths {
          *     forwarded to vLLM.
          *
          *     For a 1:1 agent, hop 0 is that agent. Mentioned peers and hops
-         *     reply in a handoff thread on seed `snorlax-bot-group`, not in
-         *     either 1:1 and not on a user-picked extra channel. A still
+         *     reply in a handoff thread on seed `snorlax-bot-group` when present
+         *     (else a remaining user-created channel; if none, skip the log).
+         *     Not in either 1:1. A still
          *     answers in the 1:1. When the peer posts a material reply (or is
          *     hop/cap dropped), A is woken with a report-back pack and posts
          *     another assistant turn in that 1:1 (not a hop). Multiple
@@ -319,8 +321,9 @@ export interface components {
              * @description Agent ids from typeahead chips. Unresolved `@text` is omitted
              *     and is not a mention. Unknown chip ids 422. Runtime also
              *     parses exact `@DisplayName`. Peer deliveries from a 1:1 land
-             *     in the seeded channel as a handoff thread, not in another
-             *     agent's 1:1 and not on a user-picked extra channel.
+             *     in the seeded channel as a handoff thread when that channel
+             *     exists (else a remaining user-created channel, else no log),
+             *     never in another agent's 1:1.
              */
             mentions?: string[];
             /** @description Channel thread id when posting a reply in a thread. */
@@ -492,7 +495,6 @@ export interface operations {
             };
             401: components["responses"]["Error"];
             404: components["responses"]["Error"];
-            409: components["responses"]["Error"];
         };
     };
     patchAgent: {

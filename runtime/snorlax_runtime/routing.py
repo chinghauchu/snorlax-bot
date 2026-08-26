@@ -176,6 +176,16 @@ def resolve_agent_mentions(
     return found
 
 
+def a2a_log_channel_id(roster: list[dict[str, Any]]) -> str | None:
+    """Channel that should hold 1:1 @involve traffic, or None to skip the log."""
+    channels = [row for row in roster if row.get("kind") == KIND_CHANNEL]
+    if not channels:
+        return None
+    if any(row["id"] == SEEDED_CHANNEL_ID for row in channels):
+        return SEEDED_CHANNEL_ID
+    return channels[0]["id"]
+
+
 def expand_mention_targets(
     mentions: list[dict[str, str]],
     roster: list[dict[str, Any]],
@@ -261,6 +271,7 @@ class _Job:
     origin_conversation_id: str | None = None
     report_back: bool = False
     channel_id: str | None = None
+    persist: bool = True
 
 
 def looks_like_ask(content: str) -> bool:
@@ -309,8 +320,9 @@ async def run_user_turn(
 
     Yields SSE (event, payload) only for messages that land in `conversation`.
     Holds the originating POST open until every mentioned peer has done or
-    been dropped and A has reported for each. 1:1 @involves always log as
-    handoff threads on the seeded channel.
+    been dropped and A has reported for each. 1:1 @involves log as handoff
+    threads on the seed channel when it exists; otherwise a remaining
+    user-created channel; otherwise no channel log (B still wakes).
     """
     origin_id = conversation["id"]
     is_group = conversation.get("kind") == KIND_CHANNEL
@@ -393,6 +405,7 @@ async def run_user_turn(
                 thread_id=None,
                 wake_pack=job.wake_pack,
                 report_back=True,
+                persist=job.persist,
             )
             if in_origin:
                 for event, payload in events:
@@ -434,6 +447,7 @@ async def run_user_turn(
             stream=in_origin,
             thread_id=job.thread_id,
             wake_pack=job.wake_pack,
+            persist=job.persist,
         )
         if in_origin:
             for event, payload in events:
@@ -535,13 +549,10 @@ async def _enqueue_mentions(
         return
 
     # 1:1 isolation: never write peer/involve/DM into either 1:1.
-    # Handoff always lives on the seeded channel as a thread under a
-    # kind=handoff root. Extra channels are a separate create flow.
+    # A2A log prefers the seeded channel; if it is gone, a remaining
+    # user-created channel; if none, skip the log (no fake seed).
     targets = [t for t in targets if t != source_id]
     if not targets:
-        return
-    channel_id = SEEDED_CHANNEL_ID
-    if next((a for a in roster if a["id"] == channel_id), None) is None:
         return
     through_id = source_sender if source_sender != USER_SENDER_ID else source_id
     through = next((a for a in roster if a["id"] == through_id), None)
@@ -573,6 +584,39 @@ async def _enqueue_mentions(
     if not cap_runnable:
         return
 
+    channel_id = a2a_log_channel_id(roster)
+    brief = await store.one_to_one_brief(origin_id)
+    pack = wake_pack(
+        originating=through,
+        user_ask=quoted,
+        brief=brief,
+        mentioned_ids=cap_runnable,
+    )
+    if channel_id is None:
+        if user_caused and not looks_like_ask(quoted):
+            return
+        for target in cap_runnable:
+            key = (target, target, hop)
+            if key in queued:
+                continue
+            queued.add(key)
+            jobs.append(
+                _Job(
+                    agent_id=target,
+                    conversation_id=target,
+                    hop=hop,
+                    peer=True,
+                    edge_from=through["id"],
+                    edge_to=target,
+                    thread_id=None,
+                    wake_pack=pack,
+                    origin_conversation_id=origin_id,
+                    channel_id=None,
+                    persist=False,
+                )
+            )
+        return
+
     root = await _ensure_handoff(
         store,
         roster=roster,
@@ -595,12 +639,7 @@ async def _enqueue_mentions(
     if user_caused and not looks_like_ask(quoted):
         return
 
-    pack = wake_pack(
-        originating=through,
-        user_ask=quoted,
-        brief=root.get("brief") or await store.one_to_one_brief(origin_id),
-        mentioned_ids=cap_runnable,
-    )
+    pack["brief"] = root.get("brief") or brief
     for target in cap_runnable:
         key = (target, channel_id, hop)
         if key in queued:
@@ -744,6 +783,7 @@ async def _generate(
     thread_id: str | None = None,
     wake_pack: dict[str, Any] | None = None,
     report_back: bool = False,
+    persist: bool = True,
 ) -> tuple[list[tuple[str, dict[str, Any]]], dict[str, Any] | None]:
     from snorlax_runtime.inference import InferenceError
 
@@ -787,18 +827,26 @@ async def _generate(
         mentions = resolve_agent_mentions(
             content, roster, is_group=is_group, self_id=agent["id"]
         )
-    saved = await store.add_message(
-        agent_id=conversation_id,
-        role="assistant",
-        content=content,
-        message_id=assistant_id,
-        sender_id=agent["id"],
-        sender_name=agent["name"],
-        sender_avatar=agent["avatar"],
-        hop=hop,
-        mentions=mentions,
-        reply_to=thread_id if is_group else None,
-    )
+    if persist:
+        saved = await store.add_message(
+            agent_id=conversation_id,
+            role="assistant",
+            content=content,
+            message_id=assistant_id,
+            sender_id=agent["id"],
+            sender_name=agent["name"],
+            sender_avatar=agent["avatar"],
+            hop=hop,
+            mentions=mentions,
+            reply_to=thread_id if is_group else None,
+        )
+    else:
+        saved = {
+            "id": assistant_id,
+            "content": content,
+            "mentions": mentions,
+            "replyTo": None,
+        }
     if stream:
         events.append(("message.done", saved))
     return events, saved

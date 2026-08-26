@@ -20,8 +20,9 @@ info:
     `kind=channel` plus `name` and `memberIds` creates extra channels.
     Missing name, unknown member ids, and channel ids in memberIds are 422.
     Seeded channel identity PATCH is 409 `{ error }`. User-created channel
-    PATCH `{ name, memberIds }` is 200. Seeded channel cannot be deleted (409).
-    User-created channel DELETE is 204.
+    PATCH `{ name, memberIds }` is 200. DELETE of kind=channel including seed
+    `snorlax-bot-group` is 204, gone from GET, no auto-reseed. Empty roster
+    (no agents and/or no channels) is OK. User-created channel DELETE is 204.
     Members come from memberIds. New agents auto-join the seed only.
     User-created agent DELETE is still 204.
 
@@ -57,7 +58,9 @@ info:
     including the seed row. No computer preview, routines, or connectors.
 
     v0.4: collaboration report-back. 1:1 @involves log as handoff threads
-    on seed `snorlax-bot-group` only. When B's thread turn completes or B
+    on seed `snorlax-bot-group` when present. If the seed is gone, use a
+    remaining user-created channel; if none, skip the log (B still wakes;
+    jump chip only if a thread was created). When B's thread turn completes or B
     is hop/cap dropped, enqueue a non-hop assistant generation for A on
     A's 1:1. Prompt pack `{ from, result, threadId, userAsk }` is not a
     Message field. Persist role=assistant senderId=A, no from field, no
@@ -205,8 +208,9 @@ paths:
       description: |
         kind=agent including seed `snorlax-bot` returns 204 and is gone
         from GET /v1/agents. No auto-reseed; an empty agent roster is OK.
-        User-created agent DELETE is still 204. Seeded channel cannot be
-        deleted (409 `{ error }`). User-created channel DELETE is 204.
+        kind=channel including seed `snorlax-bot-group` returns 204 and is
+        gone from GET /v1/agents. No auto-reseed. User-created agent and
+        channel DELETE is 204.
       operationId: deleteAgent
       responses:
         "204":
@@ -214,8 +218,6 @@ paths:
         "401":
           $ref: "#/components/responses/Error"
         "404":
-          $ref: "#/components/responses/Error"
-        "409":
           $ref: "#/components/responses/Error"
 
   /v1/agents/{id}/messages:
@@ -274,8 +276,9 @@ paths:
         forwarded to vLLM.
 
         For a 1:1 agent, hop 0 is that agent. Mentioned peers and hops
-        reply in a handoff thread on seed `snorlax-bot-group`, not in
-        either 1:1 and not on a user-picked extra channel. A still
+        reply in a handoff thread on seed `snorlax-bot-group` when present
+        (else a remaining user-created channel; if none, skip the log).
+        Not in either 1:1. A still
         answers in the 1:1. When the peer posts a material reply (or is
         hop/cap dropped), A is woken with a report-back pack and posts
         another assistant turn in that 1:1 (not a hop). Multiple
@@ -612,8 +615,9 @@ components:
             Agent ids from typeahead chips. Unresolved `@text` is omitted
             and is not a mention. Unknown chip ids 422. Runtime also
             parses exact `@DisplayName`. Peer deliveries from a 1:1 land
-            in the seeded channel as a handoff thread, not in another
-            agent's 1:1 and not on a user-picked extra channel.
+            in the seeded channel as a handoff thread when that channel
+            exists (else a remaining user-created channel, else no log),
+            never in another agent's 1:1.
         replyTo:
           type: [string, "null"]
           description: Channel thread id when posting a reply in a thread.

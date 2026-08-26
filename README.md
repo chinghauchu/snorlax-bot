@@ -60,7 +60,7 @@ Clients never talk to the model server. A thin FastAPI runtime owns agents,
 transcripts, and LAN bearer-token auth. It sits in front of **oMLX**
 (Mac-local OpenAI-compat) or **vLLM** (Spark); TensorRT-LLM is a later swap
 behind the same interface. SQLite on disk holds agents and messages. The
-seeded agent id is `snorlax-bot` (PATCH-able; DELETE 204, no auto-reseed). Bind is `127.0.0.1` until a token
+seeded agent id is `snorlax-bot` (PATCH-able; DELETE 204, no auto-reseed). Seeded channel `snorlax-bot-group` DELETE is 204, no auto-reseed. Bind is `127.0.0.1` until a token
 exists, then `0.0.0.0` so a phone on the same LAN can reach the host. Details:
 [docs/architecture.md](docs/architecture.md). Mac-local recipe:
 [docs/mac-local.md](docs/mac-local.md). Locked HTTP contract:
@@ -91,7 +91,7 @@ On first start the process:
 2. Writes `~/.snorlax-bot/token` and `~/.snorlax-bot/snorlax.db`
 3. Seeds agent `snorlax-bot` (name Snorlax, title Assistant) and channel
    `snorlax-bot-group` (name Snorlax-Bot) on a first empty DB. Deleting the
-   seed does not reseed.
+   seed agent or the seed channel does not reseed.
 4. Listens on `127.0.0.1:8787` until that token file exists, then
    `0.0.0.0:8787` on later launches. `SNORLAX_TOKEN` overrides the file.
    Clients use `SNORLAX_URL` + `SNORLAX_TOKEN`; they never read the Spark disk.

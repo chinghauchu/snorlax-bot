@@ -60,10 +60,6 @@ def test_seed_channel_auto_join(client) -> None:
     assert inbox["kind"] == "agent"
     assert inbox["memberIds"] == []
 
-    blocked = client.delete(f"/v1/agents/{CHANNEL}", headers=AUTH)
-    assert blocked.status_code == 409
-    assert blocked.json() == {"error": "seeded channel cannot be deleted"}
-
 
 def test_mention_routing_in_group(client) -> None:
     inbox = _create(client, "Inbox")

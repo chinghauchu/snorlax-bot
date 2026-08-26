@@ -33,7 +33,10 @@ def test_protocol_openapi_is_locked_v0_contract() -> None:
     assert "seeded agent cannot be deleted" not in text
     assert "No new upload route" in text
     assert "identity PATCH is 409" in text
-    assert "Seeded channel cannot be deleted" in text
+    assert "Seeded channel cannot be deleted" not in text
+    assert "seeded channel cannot be deleted" not in text
+    assert "DELETE of kind=channel including seed" in text
+    assert "`snorlax-bot-group` is 204" in text
     assert "User-created channel DELETE is 204" in text
     assert "kind=channel" in text
     assert "report-back" in text

@@ -390,3 +390,63 @@ async def test_wake_and_one_to_one_prompts(tmp_path) -> None:
     assert '"result": "2"' in follow[1]["content"]
     assert '"userAsk": "@Bob answer 1+1"' in follow[1]["content"]
     await store.close()
+
+
+def test_report_back_with_zero_channels_wakes_b_no_jump(client) -> None:
+    alice = _create(client, "Alice")
+    bob = _create(client, "Bob")
+    deleted = client.delete(f"/v1/agents/{CHANNEL}", headers=AUTH)
+    assert deleted.status_code == 204
+    assert client.get(f"/v1/agents/{CHANNEL}", headers=AUTH).status_code == 404
+
+    status, _ = _send(client, alice["id"], "@Bob answer 1+1")
+    assert status == 200
+    alice_msgs = _msgs(client, alice["id"])
+    assert {m["senderId"] for m in alice_msgs} <= {"user", alice["id"]}
+    user = [m for m in alice_msgs if m["senderId"] == "user"][-1]
+    assert user.get("handoff") is None
+    assert any(
+        m["senderId"] == alice["id"] and m["content"].strip() == "2"
+        for m in alice_msgs
+    )
+    assert _msgs(client, bob["id"]) == []
+    roster = client.get("/v1/agents", headers=AUTH).json()
+    assert all(a["kind"] != "channel" for a in roster)
+    assert all(a["id"] != CHANNEL for a in roster)
+
+
+def test_a2a_log_uses_remaining_user_channel_when_seed_gone(client) -> None:
+    alice = _create(client, "Alice")
+    bob = _create(client, "Bob")
+    created = client.post(
+        "/v1/agents",
+        headers=AUTH,
+        json={
+            "name": "Ops",
+            "kind": "channel",
+            "memberIds": [alice["id"], bob["id"]],
+        },
+    )
+    assert created.status_code == 201
+    extra_id = created.json()["id"]
+    deleted = client.delete(f"/v1/agents/{CHANNEL}", headers=AUTH)
+    assert deleted.status_code == 204
+
+    status, _ = _send(client, alice["id"], "@Bob answer 1+1")
+    assert status == 200
+    alice_msgs = _msgs(client, alice["id"])
+    user = [m for m in alice_msgs if m["senderId"] == "user"][-1]
+    assert user["handoff"]["channelId"] == extra_id
+    thread_id = user["handoff"]["threadId"]
+    thread = client.get(
+        f"/v1/agents/{extra_id}/messages",
+        headers=AUTH,
+        params={"threadId": thread_id},
+    ).json()
+    assert any(m["senderId"] == bob["id"] and m["content"].strip() == "2" for m in thread)
+    assert client.get(f"/v1/agents/{CHANNEL}", headers=AUTH).status_code == 404
+    assert any(
+        m["senderId"] == alice["id"] and m["content"].strip() == "2"
+        for m in alice_msgs
+    )
+    assert _msgs(client, bob["id"]) == []

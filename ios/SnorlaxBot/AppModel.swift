@@ -68,7 +68,10 @@ final class AppModel {
     var canCompose: Bool { client != nil && !isSending }
 
     var visibleAgents: [Agent] {
-        agents.isEmpty ? [.placeholderChannel, .placeholder] : agents
+        if !isConfigured && agents.isEmpty {
+            return [.placeholderChannel, .placeholder]
+        }
+        return agents
     }
 
     var selectedAgent: Agent? {
@@ -173,7 +176,7 @@ final class AppModel {
     }
 
     func delete(_ agent: Agent) async {
-        guard !agent.isProtected, let client else { return }
+        guard let client else { return }
         do {
             try await client.deleteAgent(id: agent.id)
             agents.removeAll { $0.id == agent.id }
@@ -185,7 +188,7 @@ final class AppModel {
                 if let next {
                     await select(next.id, push: true)
                 } else {
-                    selectedAgentID = Agent.channelID
+                    selectedAgentID = nil
                     messages = []
                     navigationPath = []
                 }
