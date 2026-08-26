@@ -84,15 +84,6 @@ struct RuntimeClient: Sendable {
         try Self.throwIfNeeded(data: data, response: response, allowed: [204])
     }
 
-    func disconnectPlugin(id: String) async throws -> Plugin {
-        try await send(
-            "v1/plugins/\(Self.encode(id))/disconnect",
-            method: "POST",
-            body: [String: String](),
-            expected: 200
-        )
-    }
-
     func startPluginAuth(id: String) async throws -> PluginAuth {
         try await send(
             "v1/plugins/\(Self.encode(id))/auth",

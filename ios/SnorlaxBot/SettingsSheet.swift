@@ -6,7 +6,7 @@ struct SettingsSheet: View {
     @Environment(\.dismiss) private var dismiss
     @State private var showToken = false
     @State private var showAdd = false
-    @State private var pendingUninstall: Plugin?
+    @State private var pendingRemove: Plugin?
 
     var body: some View {
         @Bindable var model = model
@@ -95,21 +95,17 @@ struct SettingsSheet: View {
                                 Text(plugin.status == .connected ? "Connected" : "Needs sign-in")
                                     .font(.system(size: 12))
                                     .foregroundStyle(.secondary)
-                                if plugin.status == .connected {
-                                    Button("Disconnect") {
-                                        Task { await model.disconnectPlugin(id: plugin.id) }
-                                    }
-                                    .font(.system(size: 14))
-                                } else {
+                                if plugin.status == .needsAuth {
                                     Button("Connect") {
                                         Task { _ = await model.connectPlugin(id: plugin.id) }
                                     }
                                     .font(.system(size: 14))
                                 }
-                                Button("Uninstall", role: .destructive) {
-                                    pendingUninstall = plugin
+                                Button("Remove") {
+                                    pendingRemove = plugin
                                 }
-                                .font(.system(size: 14))
+                                .font(.system(size: 12))
+                                .foregroundStyle(.secondary)
                             }
                             .frame(minHeight: 44)
                         }
@@ -122,7 +118,7 @@ struct SettingsSheet: View {
                             .textCase(nil)
                         Spacer()
                         Button("Add") { showAdd = true }
-                            .font(.system(size: 14))
+                            .font(.system(size: 12))
                             .textCase(nil)
                             .disabled(!model.isConfigured)
                     }
@@ -140,20 +136,20 @@ struct SettingsSheet: View {
                 AddPluginSheet()
             }
             .confirmationDialog(
-                pendingUninstall.map { "Uninstall \($0.name)? This removes it from the runtime catalog." } ?? "",
+                pendingRemove.map { "Remove \($0.name)? This disconnects it." } ?? "",
                 isPresented: Binding(
-                    get: { pendingUninstall != nil },
-                    set: { if !$0 { pendingUninstall = nil } }
+                    get: { pendingRemove != nil },
+                    set: { if !$0 { pendingRemove = nil } }
                 ),
                 titleVisibility: .visible
             ) {
-                Button("Uninstall", role: .destructive) {
-                    if let plugin = pendingUninstall {
-                        Task { await model.uninstallPlugin(id: plugin.id) }
+                Button("Remove", role: .destructive) {
+                    if let plugin = pendingRemove {
+                        Task { await model.removePlugin(id: plugin.id) }
                     }
-                    pendingUninstall = nil
+                    pendingRemove = nil
                 }
-                Button("Cancel", role: .cancel) { pendingUninstall = nil }
+                Button("Cancel", role: .cancel) { pendingRemove = nil }
             }
         }
         .presentationDetents([.medium, .large])
@@ -177,9 +173,18 @@ private struct AddPluginSheet: View {
     @State private var saving = false
 
     private enum Transport: String, CaseIterable, Identifiable {
-        case stdio = "Command"
+        case stdio
         case url = "URL"
         var id: String { rawValue }
+    }
+
+    private var canAdd: Bool {
+        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return false }
+        if mode == .stdio {
+            return !command.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        }
+        return !url.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
     var body: some View {
@@ -194,39 +199,44 @@ private struct AddPluginSheet: View {
                 }
                 .pickerStyle(.segmented)
                 if mode == .stdio {
-                    TextField("Command", text: $command)
+                    TextField("Command", text: $command, prompt: Text("npx"))
                         .font(.system(size: 14))
                         .textInputAutocapitalization(.never)
                         .autocorrectionDisabled()
-                    TextField("Args", text: $args)
+                    TextField("Arguments", text: $args, prompt: Text("-y package"))
                         .font(.system(size: 14))
                         .textInputAutocapitalization(.never)
                         .autocorrectionDisabled()
                 } else {
-                    TextField("URL", text: $url, prompt: Text("http://127.0.0.1:8765/mcp"))
+                    TextField("Server URL", text: $url, prompt: Text("https://"))
                         .font(.system(size: 14))
                         .textInputAutocapitalization(.never)
                         .autocorrectionDisabled()
                         .keyboardType(.URL)
                 }
+                Button("Add") {
+                    Task { await save() }
+                }
+                .frame(maxWidth: .infinity, minHeight: 44)
+                .disabled(saving || !model.isConfigured || !canAdd)
             }
             .navigationTitle("Add plugin")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel") { dismiss() }
-                }
-                ToolbarItem(placement: .confirmationAction) {
-                    Button("Save") {
-                        Task { await save() }
+                    Button {
+                        dismiss()
+                    } label: {
+                        Image(systemName: "xmark")
                     }
-                    .disabled(saving || !model.isConfigured)
+                    .accessibilityLabel("Close")
                 }
             }
         }
     }
 
     private func save() async {
+        guard canAdd else { return }
         saving = true
         defer { saving = false }
         let ok: Bool

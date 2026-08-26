@@ -57,7 +57,8 @@ info:
     stream, no terminal GUI. Question widgets are v0.8. Skills and cron
     routines are v0.9. MCP connect chrome is v0.10 (GET /v1/plugins +
     POST /v1/plugins/{id}/auth + kind=connect). MCP Add custom is v0.12
-    (POST /v1/plugins + DELETE /v1/plugins/{id} + optional disconnect).
+    (POST /v1/plugins + DELETE /v1/plugins/{id}; DELETE is uninstall plus
+    disconnect). No separate disconnect endpoint.
     Hand-edited mcp.json still works. Plugins list is Settings only, not
     the agent pane. No marketplace catalog / public plugin store.
     Assistant markdown is v0.11 (clients render LEFT kind=message; content
@@ -251,8 +252,9 @@ info:
     uninstalls (drops the row and credentials); 204; unknown 404. Do not
     auto-open a connect card. GET /v1/plugins and
     POST /v1/plugins/{id}/auth stay as v0.10. kind=connect isolation
-    unchanged. POST /v1/plugins/{id}/disconnect may return a connected
-    row to needsAuth without dropping the catalog. No store, no search
+    unchanged. DELETE /v1/plugins/{id} is uninstall plus disconnect
+    (drops the row and credentials). No separate disconnect endpoint.
+    No store, no search
     catalog. Keep v0.8 widgets, v0.9 routines, seed DELETE 204, content
     string. Isolation, report-back, markdown, Mac oMLX, no Mac folder
     picker, and workspaceTree.ts (never reintroduce computerPane.ts)
@@ -759,9 +761,9 @@ paths:
         Runtime-global (not per-agent). Clients never speak MCP; this is
         Settings chrome only, not the agent pane. Hand-edited mcp.json
         under SNORLAX_DATA_DIR still loads stdio and LAN servers. Add
-        custom is POST this path. Uninstall is DELETE /v1/plugins/{id}.
-        Disconnect is POST /v1/plugins/{id}/disconnect. No store / search
-        / marketplace catalog.
+        custom is POST this path. DELETE /v1/plugins/{id} uninstalls
+        (disconnect + drop from catalog). No separate disconnect
+        endpoint. No store / search / marketplace catalog.
       operationId: listPlugins
       responses:
         "200":
@@ -809,34 +811,14 @@ paths:
     delete:
       summary: Uninstall a plugin
       description: |
-        Drops the plugin row and credentials from the runtime MCP catalog
-        and tears down the live session. 204. Unknown id is 404. Does not
-        auto-open a connect card. Clients never speak MCP.
+        Disconnects the live session and drops the plugin row and
+        credentials from the runtime MCP catalog. 204. Unknown id is 404.
+        Does not auto-open a connect card. No separate disconnect
+        endpoint. Clients never speak MCP.
       operationId: deletePlugin
       responses:
         "204":
           description: Uninstalled
-        "401":
-          $ref: "#/components/responses/Error"
-        "404":
-          $ref: "#/components/responses/Error"
-
-  /v1/plugins/{id}/disconnect:
-    parameters:
-      - $ref: "#/components/parameters/Id"
-    post:
-      summary: Disconnect a plugin without uninstalling
-      description: |
-        Tears down the live MCP session and returns the catalog row to
-        `needsAuth`. Does not drop the catalog entry. Unknown id is 404.
-      operationId: disconnectPlugin
-      responses:
-        "200":
-          description: Plugin now needsAuth
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Plugin"
         "401":
           $ref: "#/components/responses/Error"
         "404":

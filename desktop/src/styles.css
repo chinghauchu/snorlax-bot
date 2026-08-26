@@ -1184,7 +1184,7 @@ button:disabled {
   border: 0;
   background: transparent;
   color: var(--accent);
-  font-size: 13px;
+  font-size: 12px;
   font-weight: 500;
   padding: 4px 6px;
   cursor: pointer;
@@ -1224,21 +1224,13 @@ button:disabled {
   cursor: pointer;
 }
 
-.plugin-disconnect,
-.plugin-uninstall {
+.plugin-remove {
   border: 0;
   background: transparent;
   font-size: 12px;
   padding: 4px 6px;
   cursor: pointer;
-}
-
-.plugin-disconnect {
   color: var(--text-muted);
-}
-
-.plugin-uninstall {
-  color: var(--danger);
 }
 
 .plugins-empty {
@@ -1252,11 +1244,20 @@ button:disabled {
 }
 
 .modal.plugin-add-sheet {
-  width: min(360px, calc(100% - 32px));
+  width: 320px;
 }
 
 .modal.plugin-add-sheet .profile-form {
   padding: 0 14px 16px;
+}
+
+.plugin-add-name {
+  font-size: 14px;
+}
+
+.plugin-add-primary {
+  min-height: 36px;
+  padding: 0 14px;
 }
 
 label {

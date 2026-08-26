@@ -359,9 +359,9 @@ export interface paths {
          *     Runtime-global (not per-agent). Clients never speak MCP; this is
          *     Settings chrome only, not the agent pane. Hand-edited mcp.json
          *     under SNORLAX_DATA_DIR still loads stdio and LAN servers. Add
-         *     custom is POST this path. Uninstall is DELETE /v1/plugins/{id}.
-         *     Disconnect is POST /v1/plugins/{id}/disconnect. No store / search
-         *     / marketplace catalog.
+         *     custom is POST this path. DELETE /v1/plugins/{id} uninstalls
+         *     (disconnect + drop from catalog). No separate disconnect
+         *     endpoint. No store / search / marketplace catalog.
          */
         get: operations["listPlugins"];
         put?: never;
@@ -396,34 +396,12 @@ export interface paths {
         post?: never;
         /**
          * Uninstall a plugin
-         * @description Drops the plugin row and credentials from the runtime MCP catalog
-         *     and tears down the live session. 204. Unknown id is 404. Does not
-         *     auto-open a connect card. Clients never speak MCP.
+         * @description Disconnects the live session and drops the plugin row and
+         *     credentials from the runtime MCP catalog. 204. Unknown id is 404.
+         *     Does not auto-open a connect card. No separate disconnect
+         *     endpoint. Clients never speak MCP.
          */
         delete: operations["deletePlugin"];
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/v1/plugins/{id}/disconnect": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                id: components["parameters"]["Id"];
-            };
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Disconnect a plugin without uninstalling
-         * @description Tears down the live MCP session and returns the catalog row to
-         *     `needsAuth`. Does not drop the catalog entry. Unknown id is 404.
-         */
-        post: operations["disconnectPlugin"];
-        delete?: never;
         options?: never;
         head?: never;
         patch?: never;
@@ -1385,30 +1363,6 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
-            };
-            401: components["responses"]["Error"];
-            404: components["responses"]["Error"];
-        };
-    };
-    disconnectPlugin: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                id: components["parameters"]["Id"];
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Plugin now needsAuth */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Plugin"];
-                };
             };
             401: components["responses"]["Error"];
             404: components["responses"]["Error"];

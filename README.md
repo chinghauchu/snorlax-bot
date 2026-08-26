@@ -25,7 +25,7 @@ v0.12 is still small: **named teammates + identity pane + group channel threads
 thin desktop Computer pane + a runtime MCP client + question widgets +
 skills and cron routines (list + enable/pause) + MCP connect chrome
 (Settings plugins list + `kind=connect` card) + assistant markdown +
-MCP Add custom (Settings POST / DELETE / disconnect)**. Header click opens agent identity (PATCH) or
+MCP Add custom (Settings POST / DELETE; no separate disconnect)**. Header click opens agent identity (PATCH) or
 the channel member list. Agent identity lists cron routines with a live
 enable/pause switch. 1:1s are user ↔ that agent only; a user `@chip`
 (or agent DM) opens a handoff thread in a channel (seed `snorlax-bot-group`

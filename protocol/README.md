@@ -41,9 +41,10 @@ tool / routine fields stay. No MCP mix-in.
 
 v0.12 MCP Add custom: `POST /v1/plugins` `{ name, transport: "stdio" |
 "url", command?, args?: string[], url? }` → 201 Plugin. `DELETE
-/v1/plugins/{id}` uninstalls (204; drops row and credentials). Do not
-auto-open a connect card. GET and `POST .../auth` stay v0.10. No store /
-search catalog. Plugins list is Settings only.
+/v1/plugins/{id}` uninstalls (204; disconnect + drop from catalog). No
+separate disconnect endpoint. Do not auto-open a connect card. GET and
+`POST .../auth` stay v0.10. No store / search catalog. Plugins list is
+Settings only.
 
 A copy is also kept at `runtime/openapi.yaml` and `desktop/openapi.yaml`
 so those trees are self-contained. Do not let the files diverge.

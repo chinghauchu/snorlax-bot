@@ -411,6 +411,12 @@ def test_post_plugin_missing_fields_422(client) -> None:
         },
     )
     assert blocked.status_code == 422
+    bad_transport = client.post(
+        "/v1/plugins",
+        headers=AUTH,
+        json={"name": "Sse", "transport": "sse", "command": "echo"},
+    )
+    assert bad_transport.status_code == 422
 
 
 def test_auth_still_works_on_needs_auth_row(tmp_path) -> None:
@@ -435,43 +441,11 @@ def test_auth_still_works_on_needs_auth_row(tmp_path) -> None:
         assert done.status_code == 200
 
 
-def test_unknown_plugin_delete_and_disconnect_404(client) -> None:
+def test_unknown_plugin_delete_404(client) -> None:
     deleted = client.delete("/v1/plugins/missing", headers=AUTH)
     assert deleted.status_code == 404
     disconnected = client.post("/v1/plugins/missing/disconnect", headers=AUTH)
     assert disconnected.status_code == 404
-
-
-def test_disconnect_keeps_catalog_needs_auth(tmp_path) -> None:
-    with TestClient(create_app(_settings(tmp_path))) as client:
-        created = client.post(
-            "/v1/plugins",
-            headers=AUTH,
-            json={
-                "name": "Example",
-                "transport": "stdio",
-                "command": sys.executable,
-                "args": [str(FAKE_STDIO)],
-            },
-        )
-        assert created.status_code == 201
-        row = created.json()
-        if row["status"] != "connected":
-            auth = client.post(f"/v1/plugins/{row['id']}/auth", headers=AUTH).json()
-            client.get(auth["authorizationUrl"], follow_redirects=True)
-            row = client.get("/v1/plugins", headers=AUTH).json()[0]
-        assert row["status"] == "connected"
-        disconnected = client.post(
-            f"/v1/plugins/{row['id']}/disconnect", headers=AUTH
-        )
-        assert disconnected.status_code == 200
-        body = disconnected.json()
-        assert body["id"] == row["id"]
-        assert body["status"] == "needsAuth"
-        listed = client.get("/v1/plugins", headers=AUTH).json()
-        assert listed == [body]
-        catalog = json.loads((tmp_path / "mcp.json").read_text(encoding="utf-8"))
-        assert row["id"] in catalog.get("mcpServers", {})
 
 
 def test_clients_never_call_mcp() -> None:
@@ -482,6 +456,7 @@ def test_clients_never_call_mcp() -> None:
     )
     for source in (desktop_api, ios_client):
         assert "v1/plugins" in source
+        assert "/disconnect" not in source
         assert "modelcontextprotocol" not in source
         assert "stdio_client" not in source
         assert "streamable_http" not in source

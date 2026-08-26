@@ -224,9 +224,9 @@ accent 18%.
 
 v0.12: MCP Add custom. `POST /v1/plugins` `{ name, transport: "stdio"|"url",
 command?, args?, url? }` → 201. `DELETE /v1/plugins/{id}` uninstalls
-(204; drops the row and credentials). Do not auto-open a connect card.
-GET and `POST .../auth` stay v0.10. Settings-only; no store. Clients
-never speak MCP.
+(204; disconnect + drop from catalog). No separate disconnect endpoint.
+Do not auto-open a connect card. GET and `POST .../auth` stay v0.10.
+Settings-only; no store. Clients never speak MCP.
 
 ## Inference interface
 

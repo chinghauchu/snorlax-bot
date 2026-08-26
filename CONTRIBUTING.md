@@ -21,7 +21,8 @@ NVIDIA DGX Spark.
   Computer pane over that sandbox, a runtime MCP client (`mcp.json`
   stdio + LAN; desktop/iOS never speak MCP), connect chrome
   (`GET /v1/plugins` + `kind=connect`; Settings list only), MCP Add custom
-  (`POST /v1/plugins`, `DELETE /v1/plugins/{id}`, disconnect; no store),
+  (`POST /v1/plugins`, `DELETE /v1/plugins/{id}`; DELETE is uninstall plus
+  disconnect; no store),
   question widgets (`kind=widget`; not tool approval), cron routines (list +
   enable/pause on the agent info pane; SKILL.md from the workspace and/or
   `SNORLAX_DATA_DIR/skills`), and assistant markdown (clients render

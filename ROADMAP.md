@@ -22,7 +22,7 @@ Meant to *run*, including without a GPU.
 | Swift/SwiftUI iOS companion (chat + muted tool traces; no computer pane this slice) | Extra channel types |
 | Seeded group channel + extra user-created channels + agent DMs + @mentions + v0.2 handoff threads + v0.3 identity pane + v0.4 report-back + v0.8 question widgets + v0.9 routines list + v0.10 connect chrome + v0.11 assistant markdown + v0.12 MCP Add custom | Event listeners (Slack/GitHub); create/edit/delete routine UI |
 | Runtime-owned tools: list_dir, read_file, write_file, delete_file, shell (no extra network), web_search (configured provider), web_fetch; auto-run; sandbox under `~/.snorlax-bot`; GET workspace list/read for the desktop pane | Host Docker/SSH secrets in the tool env; Mac folder picker; approval widgets |
-| Runtime MCP client: stdio subprocess + LAN HTTP/SSE from `mcp.json` under `SNORLAX_DATA_DIR`; namespaced `server__tool`; built-ins win; `GET /v1/plugins` + `POST .../auth` + `kind=connect` + Settings Add custom (`POST /v1/plugins`, `DELETE .../{id}`, disconnect) | Public-cloud MCP requirement; clients speaking MCP; marketplace catalog / public plugin store |
+| Runtime MCP client: stdio subprocess + LAN HTTP/SSE from `mcp.json` under `SNORLAX_DATA_DIR`; namespaced `server__tool`; built-ins win; `GET /v1/plugins` + `POST .../auth` + `kind=connect` + Settings Add custom (`POST /v1/plugins`, `DELETE .../{id}`; no separate disconnect) | Public-cloud MCP requirement; clients speaking MCP; marketplace catalog / public plugin store |
 | Skills (`SKILL.md` in workspace and/or `SNORLAX_DATA_DIR/skills`) + cron routines (Asia/Taipei; GET list + PATCH enabled; fire LEFT 1:1 with `routineName`) | Teach-a-task; marketplace / skill picker |
 | OpenAPI for `/v1` | |
 

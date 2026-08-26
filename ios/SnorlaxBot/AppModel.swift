@@ -430,17 +430,7 @@ final class AppModel {
         }
     }
 
-    func disconnectPlugin(id: String) async {
-        guard let client else { return }
-        do {
-            _ = try await client.disconnectPlugin(id: id)
-            await refreshPlugins()
-        } catch {
-            composerError = error.localizedDescription
-        }
-    }
-
-    func uninstallPlugin(id: String) async {
+    func removePlugin(id: String) async {
         guard let client else { return }
         do {
             try await client.deletePlugin(id: id)

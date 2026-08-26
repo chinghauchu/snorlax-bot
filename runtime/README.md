@@ -101,9 +101,8 @@ still boots and logs the failure.
 `POST /v1/plugins` `{ name, transport: "stdio" | "url", command?,
 args?: string[], url? }` adds a custom server into `mcp.json` (201;
 422 missing/invalid). `DELETE /v1/plugins/{id}` uninstalls (204; unknown
-404; drops the row and credentials; does not auto-open a connect card).
-`POST /v1/plugins/{id}/disconnect` returns a connected row to
-`needsAuth` without dropping the catalog. `POST /v1/plugins/{id}/auth`
+404; disconnect + drop from catalog; does not auto-open a connect card).
+No separate disconnect endpoint. `POST /v1/plugins/{id}/auth`
 returns `{ authorizationUrl }` for the OS browser; the OAuth callback
 hits this process (GET, or POST complete with code+state).
 Unauthenticated MCP servers can persist a `kind=connect` card.

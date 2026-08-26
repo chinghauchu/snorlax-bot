@@ -393,17 +393,6 @@ export async function deletePlugin(
   await json<void>(response);
 }
 
-export async function disconnectPlugin(
-  session: Session,
-  pluginId: string,
-): Promise<Plugin> {
-  const response = await fetch(
-    `${session.baseUrl}/v1/plugins/${encodeURIComponent(pluginId)}/disconnect`,
-    { method: "POST", headers: headers(session) },
-  );
-  return json<Plugin>(response);
-}
-
 export async function startPluginAuth(
   session: Session,
   pluginId: string,

@@ -673,19 +673,6 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         except McpConfigError as exc:
             raise _error(exc.status, exc.message) from exc
 
-    @app.post("/v1/plugins/{id}/disconnect", response_model=Plugin)
-    async def disconnect_plugin(
-        id: str, request: Request, _: str = Depends(require_bearer)
-    ) -> Plugin:
-        manager = getattr(request.app.state, "mcp", None)
-        if manager is None:
-            raise _error(500, "MCP is not running")
-        try:
-            row = await manager.disconnect_server(id)
-        except McpConfigError as exc:
-            raise _error(exc.status, exc.message) from exc
-        return Plugin.model_validate(row)
-
     @app.post("/v1/plugins/{id}/auth", response_model=PluginAuth)
     async def start_plugin_auth(
         id: str, request: Request, _: str = Depends(require_bearer)
