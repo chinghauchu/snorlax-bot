@@ -47,10 +47,11 @@ struct Agent: Codable, Hashable, Identifiable, Sendable {
     var avatar: String?
     var kind: Kind
     var memberIds: [String]
+    var sharedProject: Bool
     var createdAt: Date
     var updatedAt: Date
 
-    init(id: String, name: String, title: String, description: String, avatar: String?, kind: Kind, memberIds: [String], createdAt: Date, updatedAt: Date) {
+    init(id: String, name: String, title: String, description: String, avatar: String?, kind: Kind, memberIds: [String], sharedProject: Bool, createdAt: Date, updatedAt: Date) {
         self.id = id
         self.name = name
         self.title = title
@@ -58,11 +59,12 @@ struct Agent: Codable, Hashable, Identifiable, Sendable {
         self.avatar = avatar
         self.kind = kind
         self.memberIds = memberIds
+        self.sharedProject = sharedProject
         self.createdAt = createdAt
         self.updatedAt = updatedAt
     }
 
-    enum CodingKeys: String, CodingKey { case id, name, title, description, avatar, kind, memberIds, createdAt, updatedAt }
+    enum CodingKeys: String, CodingKey { case id, name, title, description, avatar, kind, memberIds, sharedProject, createdAt, updatedAt }
 
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
@@ -73,6 +75,7 @@ struct Agent: Codable, Hashable, Identifiable, Sendable {
         avatar = try container.decode(String?.self, forKey: .avatar)
         kind = try container.decode(Kind.self, forKey: .kind)
         memberIds = try container.decode([String].self, forKey: .memberIds)
+        sharedProject = try container.decode(Bool.self, forKey: .sharedProject)
         createdAt = try container.decode(Date.self, forKey: .createdAt)
         updatedAt = try container.decode(Date.self, forKey: .updatedAt)
     }
@@ -86,6 +89,7 @@ struct Agent: Codable, Hashable, Identifiable, Sendable {
         try container.encode(avatar, forKey: .avatar)
         try container.encode(kind, forKey: .kind)
         try container.encode(memberIds, forKey: .memberIds)
+        try container.encode(sharedProject, forKey: .sharedProject)
         try container.encode(createdAt, forKey: .createdAt)
         try container.encode(updatedAt, forKey: .updatedAt)
     }
@@ -142,16 +146,18 @@ struct AgentPatch: Codable, Hashable, Sendable {
     var description: String?
     var avatar: String?
     var memberIds: [String]?
+    var sharedProject: Bool?
 
-    init(name: String? = nil, title: String? = nil, description: String? = nil, avatar: String? = nil, memberIds: [String]? = nil) {
+    init(name: String? = nil, title: String? = nil, description: String? = nil, avatar: String? = nil, memberIds: [String]? = nil, sharedProject: Bool? = nil) {
         self.name = name
         self.title = title
         self.description = description
         self.avatar = avatar
         self.memberIds = memberIds
+        self.sharedProject = sharedProject
     }
 
-    enum CodingKeys: String, CodingKey { case name, title, description, avatar, memberIds }
+    enum CodingKeys: String, CodingKey { case name, title, description, avatar, memberIds, sharedProject }
 
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
@@ -160,6 +166,7 @@ struct AgentPatch: Codable, Hashable, Sendable {
         description = try container.decodeIfPresent(String.self, forKey: .description)
         avatar = try container.decodeIfPresent(String.self, forKey: .avatar)
         memberIds = try container.decodeIfPresent([String].self, forKey: .memberIds)
+        sharedProject = try container.decodeIfPresent(Bool.self, forKey: .sharedProject)
     }
 
     func encode(to encoder: Encoder) throws {
@@ -169,6 +176,7 @@ struct AgentPatch: Codable, Hashable, Sendable {
         try container.encodeIfPresent(description, forKey: .description)
         try container.encode(avatar, forKey: .avatar)
         try container.encodeIfPresent(memberIds, forKey: .memberIds)
+        try container.encodeIfPresent(sharedProject, forKey: .sharedProject)
     }
 }
 

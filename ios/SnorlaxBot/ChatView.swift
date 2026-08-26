@@ -91,19 +91,27 @@ struct ChatView: View {
                             .padding(.top, 12)
                     } else {
                         let visible = model.visibleMessages(for: agent)
+                        let lastUserIdx = visible.lastIndex(where: \.isFromUser)
+                        let liveAssistantIdx = visible.indices.first { index in
+                            guard let lastUserIdx else { return false }
+                            let message = visible[index]
+                            return index > lastUserIdx
+                                && message.role == .assistant
+                                && !message.isHandoffRoot
+                        }
                         ForEach(Array(visible.enumerated()), id: \.element.id) { index, message in
-                            transcriptItem(message, index: index, in: visible, agent: agent)
+                            transcriptItem(
+                                message,
+                                index: index,
+                                in: visible,
+                                agent: agent,
+                                toolTraces: index == liveAssistantIdx ? model.toolTraces : []
+                            )
                             .padding(.top, turnSpacing(at: index, in: visible, message: message))
                             .id(message.id)
                         }
-                        ForEach(model.toolTraces) { trace in
-                            Text(trace.summary)
-                                .font(.system(size: 12))
-                                .foregroundStyle(.secondary)
-                                .frame(maxWidth: .infinity, alignment: .leading)
-                                .padding(.horizontal, 16)
-                                .padding(.top, 4)
-                                .id(trace.id)
+                        if liveAssistantIdx == nil, !model.toolTraces.isEmpty {
+                            liveToolStreak(agent: agent)
                         }
                     }
                     Color.clear.frame(height: 1).id("bottom")
@@ -123,7 +131,32 @@ struct ChatView: View {
     }
 
     @ViewBuilder
-    private func transcriptItem(_ message: Message, index: Int, in messages: [Message], agent: Agent) -> some View {
+    private func liveToolStreak(agent: Agent) -> some View {
+        let speaker = agent.isChannel
+            ? (model.visibleAgents.first(where: { !$0.isChannel }) ?? .placeholder)
+            : agent
+        VStack(alignment: .leading, spacing: 4) {
+            HStack(spacing: 6) {
+                AgentAvatar(agent: speaker, size: 20)
+                Text(speaker.name)
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundStyle(.secondary)
+            }
+            .padding(.horizontal, 12)
+            ForEach(model.toolTraces) { trace in
+                Text(trace.summary)
+                    .font(.system(size: 12))
+                    .foregroundStyle(.secondary)
+                    .padding(.horizontal, 12)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.top, 16)
+        .id("live-tools")
+    }
+
+    @ViewBuilder
+    private func transcriptItem(_ message: Message, index: Int, in messages: [Message], agent: Agent, toolTraces: [LiveToolTrace] = []) -> some View {
         let onTimeline = agent.isChannel && model.threadID == nil
         if onTimeline, message.isHandoffRoot {
             Button {
@@ -138,7 +171,8 @@ struct ChatView: View {
                 agents: model.visibleAgents,
                 localPreviews: model.localPreviews[message.id] ?? [],
                 sameSender: !message.isHandoffRoot && sameSender(at: index, in: messages),
-                threadRoot: agent.isChannel && model.threadID != nil && message.isHandoffRoot
+                threadRoot: agent.isChannel && model.threadID != nil && message.isHandoffRoot,
+                toolTraces: toolTraces
             ) { jump in
                 Task { await model.openJump(channelId: jump.channelId, threadId: jump.threadId) }
             }
@@ -285,6 +319,7 @@ private struct MessageBubble: View {
     var localPreviews: [Data] = []
     var sameSender = false
     var threadRoot = false
+    var toolTraces: [LiveToolTrace] = []
     var onJump: ((HandoffRef) -> Void)?
 
     private var isUser: Bool { message.isFromUser }
@@ -306,6 +341,7 @@ private struct MessageBubble: View {
                             avatar: message.senderAvatar,
                             kind: .agent,
                             memberIds: [],
+                            sharedProject: false,
                             createdAt: .distantPast,
                             updatedAt: .distantPast
                         ),
@@ -316,6 +352,12 @@ private struct MessageBubble: View {
                         .foregroundStyle(.secondary)
                 }
                 .padding(.horizontal, 12)
+            }
+            ForEach(toolTraces) { trace in
+                Text(trace.summary)
+                    .font(.system(size: 12))
+                    .foregroundStyle(.secondary)
+                    .padding(.horizontal, 12)
             }
             HStack(alignment: .top, spacing: 0) {
                 if isUser { Spacer(minLength: 48) }
@@ -416,6 +458,7 @@ private struct HandoffTimelineRow: View {
                     avatar: message.senderAvatar,
                     kind: .agent,
                     memberIds: [],
+                    sharedProject: false,
                     createdAt: .distantPast,
                     updatedAt: .distantPast
                 ),

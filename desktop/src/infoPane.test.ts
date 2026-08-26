@@ -4,6 +4,7 @@ import test from "node:test";
 import {
   canDeleteAgent,
   canEditChannel,
+  canToggleSharedProject,
   channelMembers,
   displayInitials,
   infoPaneKind,
@@ -18,6 +19,14 @@ test("user-created channels are editable; seed channel is not", () => {
     false,
   );
   assert.equal(canEditChannel({ kind: "agent", id: "snorlax-bot" }), false);
+});
+
+test("shared project toggle is on every channel pane, including seed", () => {
+  assert.equal(
+    canToggleSharedProject({ kind: "channel" }),
+    true,
+  );
+  assert.equal(canToggleSharedProject({ kind: "agent" }), false);
 });
 
 test("seed channel, user channels, and agents are deletable", () => {

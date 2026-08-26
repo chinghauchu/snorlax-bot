@@ -46,10 +46,12 @@ Loopback inference (`127.0.0.1` / `localhost`) gets **no** `Authorization`
 header by default. Do not send the LAN `SNORLAX_TOKEN` to oMLX or vLLM.
 Mac recipe: [docs/mac-local.md](../docs/mac-local.md).
 
-Workspaces live under `$SNORLAX_DATA_DIR/workspaces/` (agents/{id} for 1:1,
-channels/{id} for channel / handoff). That channel dir is the project
-sandbox — not a picker for a folder on the host Mac. Tools auto-run.
-Shell has no extra network; HTTP is `web_search` / `web_fetch` only.
+Workspaces live under `$SNORLAX_DATA_DIR/workspaces/` (agents/{id} for 1:1).
+A channel shared-project toggle (default off) opts that channel into
+`channels/{id}/`. That dir is a sandbox — not a picker for a folder on the
+host Mac. Tools auto-run. Shell has no extra network; HTTP is `web_search`
+/ `web_fetch` only. DELETE of an agent or user-created channel drops its
+workspace dir.
 
 ## Tests
 

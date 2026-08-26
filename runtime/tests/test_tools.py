@@ -138,7 +138,29 @@ def test_web_fetch_and_search_mocked(client, monkeypatch) -> None:
     assert "Hello from fetch" in done["content"]
 
 
-def test_channel_turn_uses_channel_project(client, tmp_path) -> None:
+def test_channel_turn_uses_agent_workspace_when_project_off(client, tmp_path) -> None:
+    status, _body, events = _send(
+        client,
+        CHANNEL,
+        'Write a file named shared.py containing print("chan")',
+        mentions=[SEED],
+    )
+    assert status == 200
+    channel_file = tmp_path / "workspaces" / "channels" / CHANNEL / "shared.py"
+    agent_file = tmp_path / "workspaces" / "agents" / SEED / "shared.py"
+    assert agent_file.read_text() == 'print("chan")'
+    assert not channel_file.exists()
+    assert any(n == "tool.done" for n, _ in events)
+
+
+def test_channel_shared_project_uses_channel_sandbox(client, tmp_path) -> None:
+    patched = client.patch(
+        f"/v1/agents/{CHANNEL}",
+        headers=AUTH,
+        json={"sharedProject": True},
+    )
+    assert patched.status_code == 200
+    assert patched.json()["sharedProject"] is True
     status, _body, events = _send(
         client,
         CHANNEL,
@@ -160,6 +182,7 @@ def test_channel_project_ignores_host_folder_picker(tmp_path) -> None:
         "id": "snorlax-bot-group",
         "kind": "channel",
         "projectPath": "/Users/chinghau/Projects/shared",
+        "sharedProject": True,
     }
     path = workspace_for(tmp_path, channel, "snorlax-bot")
     assert path == (
@@ -271,6 +294,52 @@ def test_agent_workspaces_are_isolated(client, tmp_path) -> None:
     assert other_file.read_text() == "inbox-only"
 
 
+def test_delete_agent_drops_workspace_dir(client, tmp_path) -> None:
+    created = client.post(
+        "/v1/agents", headers=AUTH, json={"name": "Temp"}
+    ).json()
+    _send(
+        client,
+        created["id"],
+        "Write a file named gone.txt containing bye",
+    )
+    root = tmp_path / "workspaces" / "agents" / created["id"]
+    assert (root / "gone.txt").exists()
+    deleted = client.delete(f"/v1/agents/{created['id']}", headers=AUTH)
+    assert deleted.status_code == 204
+    assert not root.exists()
+
+
+def test_delete_channel_drops_workspace_dir(client, tmp_path) -> None:
+    created = client.post(
+        "/v1/agents",
+        headers=AUTH,
+        json={"name": "Room", "kind": "channel", "memberIds": [SEED]},
+    ).json()
+    patched = client.patch(
+        f"/v1/agents/{created['id']}",
+        headers=AUTH,
+        json={"sharedProject": True},
+    )
+    assert patched.status_code == 200
+    _send(
+        client,
+        created["id"],
+        "Write a file named shared.txt containing room",
+        mentions=[SEED],
+    )
+    root = tmp_path / "workspaces" / "channels" / created["id"]
+    assert (root / "shared.txt").exists()
+    deleted = client.delete(f"/v1/agents/{created['id']}", headers=AUTH)
+    assert deleted.status_code == 204
+    assert not root.exists()
+    seed_deleted = client.delete(f"/v1/agents/{CHANNEL}", headers=AUTH)
+    assert seed_deleted.status_code == 204
+    assert client.get(f"/v1/agents/{CHANNEL}", headers=AUTH).status_code == 404
+    seed_root = tmp_path / "workspaces" / "channels" / CHANNEL
+    assert not seed_root.exists()
+
+
 @pytest.mark.asyncio
 async def test_tool_round_cap(tmp_path) -> None:
     class AlwaysTool:
@@ -304,12 +373,16 @@ async def test_tool_round_cap(tmp_path) -> None:
 def test_workspace_for_channel_vs_agent(tmp_path) -> None:
     channel = {"id": "snorlax-bot-group", "kind": "channel"}
     agent = {"id": "snorlax-bot", "kind": "agent"}
-    assert workspace_for(tmp_path, agent, "snorlax-bot") == (
+    agent_root = (
         tmp_path / "workspaces" / "agents" / "snorlax-bot"
     ).resolve()
-    assert workspace_for(tmp_path, channel, "snorlax-bot") == (
+    channel_root = (
         tmp_path / "workspaces" / "channels" / "snorlax-bot-group"
     ).resolve()
+    assert workspace_for(tmp_path, agent, "snorlax-bot") == agent_root
+    assert workspace_for(tmp_path, channel, "snorlax-bot") == agent_root
+    on = {**channel, "sharedProject": True}
+    assert workspace_for(tmp_path, on, "snorlax-bot") == channel_root
 
 
 @pytest.mark.asyncio

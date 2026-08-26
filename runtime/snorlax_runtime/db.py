@@ -40,9 +40,10 @@ TOOLS_PREAMBLE = (
     "workspace; do not dump a whole app in the chat bubble. Do not "
     "acknowledge that you can help — do the task. HTTP is web_search / "
     "web_fetch only; do not curl from shell. 1:1 files are private to you. "
-    "Channel and handoff turns share the channel sandbox under the runtime "
-    "data dir (not a folder on the host Mac); if another teammate needs your "
-    "files, they must already be in that project (or you must put them there)."
+    "Channel and handoff turns use your private workspace unless that "
+    "channel's shared project is on — then they share the channel sandbox "
+    "under the runtime data dir (not a folder on the host Mac). If another "
+    "teammate needs your files, turn shared project on or put them there."
 )
 
 
@@ -71,6 +72,7 @@ CREATE TABLE IF NOT EXISTS agents (
     description TEXT NOT NULL DEFAULT '',
     avatar TEXT,
     kind TEXT NOT NULL DEFAULT 'agent',
+    shared_project INTEGER NOT NULL DEFAULT 0,
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL
 );
@@ -153,6 +155,11 @@ class Store:
         if "kind" not in agent_cols:
             await self.conn.execute(
                 "ALTER TABLE agents ADD COLUMN kind TEXT NOT NULL DEFAULT 'agent'"
+            )
+        if "shared_project" not in agent_cols:
+            await self.conn.execute(
+                "ALTER TABLE agents ADD COLUMN shared_project "
+                "INTEGER NOT NULL DEFAULT 0"
             )
         msg_cols = await self._columns("messages")
         additions = {
@@ -295,6 +302,11 @@ class Store:
             "avatar": row["avatar"],
             "kind": kind,
             "memberIds": list(member_ids) if kind == KIND_CHANNEL else [],
+            "sharedProject": (
+                bool(row["shared_project"])
+                if kind == KIND_CHANNEL and "shared_project" in row.keys()
+                else False
+            ),
             "createdAt": row["created_at"],
             "updatedAt": row["updated_at"],
         }
@@ -402,6 +414,7 @@ class Store:
         title: str | None,
         description: str | None,
         avatar: str | None | object = ...,
+        shared_project: bool | object = ...,
     ) -> dict[str, Any] | None:
         cur = await self.conn.execute(
             "SELECT * FROM agents WHERE id = ?", (agent_id,)
@@ -415,11 +428,22 @@ class Store:
             description if description is not None else row["description"]
         )
         new_avatar = row["avatar"] if avatar is ... else avatar
+        new_shared = row["shared_project"] if "shared_project" in row.keys() else 0
+        if shared_project is not ...:
+            new_shared = 1 if shared_project else 0
         updated = utcnow()
         await self.conn.execute(
             "UPDATE agents SET name = ?, title = ?, description = ?, avatar = ?, "
-            "updated_at = ? WHERE id = ?",
-            (new_name, new_title, new_description, new_avatar, updated, agent_id),
+            "shared_project = ?, updated_at = ? WHERE id = ?",
+            (
+                new_name,
+                new_title,
+                new_description,
+                new_avatar,
+                new_shared,
+                updated,
+                agent_id,
+            ),
         )
         await self.conn.commit()
         return await self.get_agent(agent_id)

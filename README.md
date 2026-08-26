@@ -29,8 +29,9 @@ reports back in A's 1:1 as A. Seed `snorlax-bot` can be deleted (no auto-reseed)
 Users can create more channels. Agents can list/read/write files, run a
 workspace shell (no extra network), and search or fetch the web — the runtime
 owns that loop and auto-runs tools; clients never call the model or the tools.
-Channel work lives in a sandbox under `~/.snorlax-bot`, not a folder picker on
-the Mac. No MCP, no sandbox GUI / screenshot pane, no vision. That slice is
+Channel work lives in a sandbox under `~/.snorlax-bot` when the channel’s
+shared-project toggle is on (default off); otherwise each agent uses its own
+workspace. No MCP, no sandbox GUI / screenshot pane, no vision. That slice is
 meant to actually run on a laptop *or* a Spark, with a mocked model backend
 when a 70B-class checkpoint is not present.
 

@@ -81,7 +81,8 @@ export interface paths {
          *     from GET /v1/agents. No auto-reseed; an empty agent roster is OK.
          *     kind=channel including seed `snorlax-bot-group` returns 204 and is
          *     gone from GET /v1/agents. No auto-reseed. User-created agent and
-         *     channel DELETE is 204.
+         *     channel DELETE is 204. DELETE of an agent or channel (including
+         *     seed) drops that workspace dir.
          */
         delete: operations["deleteAgent"];
         options?: never;
@@ -91,9 +92,9 @@ export interface paths {
          * @description kind=agent including seed `snorlax-bot`: `{ name, title,
          *     description, avatar }`. Avatar is string|null (data URL or
          *     existing image id). No new upload route. Id is not editable.
-         *     User-created kind=channel: `{ name, memberIds }` returns 200.
-         *     Seeded channel (`snorlax-bot-group`) identity PATCH returns 409
-         *     `{ error }`.
+         *     User-created kind=channel: `{ name, memberIds, sharedProject }`
+         *     returns 200. Seeded channel (`snorlax-bot-group`) identity PATCH
+         *     returns 409 `{ error }`. Seed may PATCH `{ sharedProject }` only.
          */
         patch: operations["patchAgent"];
         trace?: never;
@@ -216,6 +217,13 @@ export interface components {
             kind: "agent" | "channel";
             /** @description Agent ids in a channel. Empty for kind=agent. Channel members come from memberIds. */
             memberIds: string[];
+            /**
+             * @description Channel shared-project toggle, default false. When true, channel
+             *     / handoff turns use workspaces/channels/{id}/. When false, the
+             *     speaking agent's workspace. Ignored (always false) on kind=agent.
+             *     Not a picker for a folder on the host Mac.
+             */
+            sharedProject: boolean;
             /** Format: date-time */
             createdAt: string;
             /** Format: date-time */
@@ -253,9 +261,14 @@ export interface components {
             avatar?: string | null;
             /**
              * @description User-created channel members. Agent ids only. Seed channel
-             *     PATCH is 409. Unknown ids and channel ids 422.
+             *     identity PATCH is 409. Unknown ids and channel ids 422.
              */
             memberIds?: string[];
+            /**
+             * @description Channel shared-project toggle. Seed channel may PATCH this
+             *     field only. kind=agent returns 422.
+             */
+            sharedProject?: boolean;
         };
         ImageOut: {
             id: string;

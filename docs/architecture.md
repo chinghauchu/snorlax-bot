@@ -125,13 +125,15 @@ SQLite file `~/.snorlax-bot/snorlax.db` (override with `SNORLAX_DATA_DIR`):
   to the model.**
 - Token is a sibling file `~/.snorlax-bot/token`, not a SQLite setting.
 - Workspaces (v0.5) — not in SQLite. Created lazily on first tool use:
-  `workspaces/agents/{agentId}/` for 1:1 turns; `workspaces/channels/{channelId}/`
-  for channel / handoff-thread turns. The channel project is that sandbox
-  under `SNORLAX_DATA_DIR` / `~/.snorlax-bot`, not a picker for a folder on
-  the host Mac. Tools cannot escape that root. Isolated from the host home
-  directory. Shell has no extra network; HTTP is `web_search` / `web_fetch`.
-  Tools auto-run (no approval widgets). Search provider is
-  `SNORLAX_SEARCH_PROVIDER` / `SNORLAX_SEARCH_URL`.
+  `workspaces/agents/{agentId}/` for 1:1 turns (and channel turns when
+  shared project is off). `workspaces/channels/{channelId}/` when the
+  channel pane **sharedProject** toggle is on (default off). That sandbox
+  is under `SNORLAX_DATA_DIR` / `~/.snorlax-bot`, not a picker for a folder
+  on the host Mac. Tools cannot escape that root. Isolated from the host
+  home directory. Shell has no extra network; HTTP is `web_search` /
+  `web_fetch`. Tools auto-run (no approval widgets). Search provider is
+  `SNORLAX_SEARCH_PROVIDER` / `SNORLAX_SEARCH_URL`. DELETE of an agent or
+  user-created channel drops that workspace dir.
 
 v0.1 keeps one transcript per agent (the 1:1) plus one seeded group channel
 and extra user-created channels (v0.4).
@@ -167,8 +169,9 @@ seed only while that row exists.
 v0.5: the runtime owns a function-calling loop against oMLX/vLLM (cap 8
 rounds). Built-in tools are list_dir, read_file, write_file, delete_file,
 shell, web_search, web_fetch. 1:1 tools use the speaking agent's workspace;
-channel / handoff tools use the channel sandbox (lazily created). Additive
-SSE `tool.start` / `tool.done`. Tools auto-run. No MCP, no computer pane,
+channel / handoff tools use the channel sandbox only when `sharedProject`
+is on (default off). Additive SSE `tool.start` / `tool.done` as 12px muted
+status under the LEFT streak. Tools auto-run. No MCP, no computer pane,
 no extra shell network, no host-folder picker.
 
 ## Inference interface

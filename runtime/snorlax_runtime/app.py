@@ -18,7 +18,7 @@ from snorlax_runtime.inference import build_backend
 from snorlax_runtime.routing import MentionError, resolve_user_mentions, run_user_turn
 from snorlax_runtime.schemas import Agent, AgentCreate, AgentPatch, Health, Message, MessageCreate
 from snorlax_runtime.token import resolve_token, write_token_file
-from snorlax_runtime.tools import configure_tools
+from snorlax_runtime.tools import configure_tools, drop_workspace
 
 
 def _error(status_code: int, message: str) -> HTTPException:
@@ -170,17 +170,37 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         existing = await store.get_agent(id)
         if existing is None:
             raise _error(404, f"Agent {id!r} not found")
+        fields = payload.model_dump(exclude_unset=True)
+        identity = {"name", "title", "description", "avatar", "memberIds"}
+        if existing.get("kind") != KIND_CHANNEL and "sharedProject" in fields:
+            raise _error(422, "sharedProject is a channel field")
         if id == SEEDED_CHANNEL_ID:
-            raise _error(409, "seeded channel cannot be patched")
+            if identity & fields.keys() or "sharedProject" not in fields:
+                raise _error(409, "seeded channel cannot be patched")
+            row = await store.patch_agent(
+                id,
+                name=None,
+                title=None,
+                description=None,
+                avatar=...,
+                shared_project=bool(fields["sharedProject"]),
+            )
+            if row is None:
+                raise _error(404, f"Agent {id!r} not found")
+            return Agent.model_validate(row)
         if existing.get("kind") == KIND_CHANNEL:
-            fields = payload.model_dump(exclude_unset=True)
-            if "name" in fields:
+            if "name" in fields or "sharedProject" in fields:
                 row = await store.patch_agent(
                     id,
                     name=fields.get("name"),
                     title=None,
                     description=None,
                     avatar=...,
+                    shared_project=(
+                        bool(fields["sharedProject"])
+                        if "sharedProject" in fields
+                        else ...
+                    ),
                 )
                 if row is None:
                     raise _error(404, f"Agent {id!r} not found")
@@ -194,7 +214,6 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             if row is None:
                 raise _error(404, f"Agent {id!r} not found")
             return Agent.model_validate(row)
-        fields = payload.model_dump(exclude_unset=True)
         row = await store.patch_agent(
             id,
             name=fields.get("name"),
@@ -211,9 +230,17 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         id: str, request: Request, _: str = Depends(require_bearer)
     ) -> None:
         store: Store = request.app.state.store
+        existing = await store.get_agent(id)
+        if existing is None:
+            raise _error(404, f"Agent {id!r} not found")
         deleted = await store.delete_agent(id)
         if not deleted:
             raise _error(404, f"Agent {id!r} not found")
+        drop_workspace(
+            store.data_dir,
+            "channels" if existing.get("kind") == KIND_CHANNEL else "agents",
+            id,
+        )
 
     @app.get("/v1/agents/{id}/messages", response_model=list[Message])
     async def list_messages(

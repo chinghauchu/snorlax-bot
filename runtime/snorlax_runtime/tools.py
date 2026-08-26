@@ -94,17 +94,39 @@ def workspace_for(data_dir: Path, conversation: dict[str, Any], agent_id: str) -
     folder on the host Mac. Extra fields such as ``projectPath`` are ignored.
 
     1:1 → ``workspaces/agents/{agentId}/``.
-    Channel / handoff → ``workspaces/channels/{channelId}/`` (created lazily).
+    Channel / handoff → ``workspaces/channels/{channelId}/`` only when that
+    channel's ``sharedProject`` toggle is on (default off → speaking agent's
+    workspace).
     """
-    if conversation.get("kind") == KIND_CHANNEL:
+    if conversation.get("kind") == KIND_CHANNEL and _shared_project_on(
+        conversation
+    ):
         return _workspace_dir(data_dir, "channels", conversation["id"])
     return _workspace_dir(data_dir, "agents", agent_id)
+
+
+def _shared_project_on(conversation: dict[str, Any]) -> bool:
+    value = conversation.get("sharedProject")
+    if value is None:
+        value = conversation.get("shared_project")
+    return bool(value)
 
 
 def _workspace_dir(data_dir: Path, kind: str, raw_id: str) -> Path:
     if not _SAFE_ID.match(raw_id or ""):
         raise PathJailError("invalid workspace id")
     return (data_dir / "workspaces" / kind / raw_id).resolve()
+
+
+def drop_workspace(data_dir: Path, kind: str, raw_id: str) -> None:
+    """Remove a workspace dir. Missing dirs are fine. Never recreates."""
+    import shutil
+
+    if kind not in {"agents", "channels"}:
+        return
+    if not _SAFE_ID.match(raw_id or ""):
+        return
+    shutil.rmtree(data_dir / "workspaces" / kind / raw_id, ignore_errors=True)
 
 
 def ensure_workspace(root: Path) -> Path:
@@ -277,17 +299,22 @@ def start_summary(name: str, args: dict[str, Any]) -> str:
     return f"Using {name}…"
 
 
+def _tool_path(args: dict[str, Any]) -> str:
+    raw = str(args.get("path") or "").strip() or "."
+    return raw.replace("\\", "/")
+
+
 def done_summary(name: str, args: dict[str, Any], ok: bool) -> str:
     if not ok:
         return f"{name} failed"
     if name == "write_file":
-        return f"Wrote {Path(str(args.get('path') or 'file')).name}"
+        return f"Wrote {_tool_path(args)}"
     if name == "read_file":
-        return f"Read {Path(str(args.get('path') or 'file')).name}"
+        return f"Read {_tool_path(args)}"
     if name == "list_dir":
-        return "Listed files"
+        return f"Listed {_tool_path(args)}"
     if name == "delete_file":
-        return f"Deleted {Path(str(args.get('path') or 'file')).name}"
+        return f"Deleted {_tool_path(args)}"
     if name == "shell":
         cmd = str(args.get("command") or "").strip().split()[:1]
         label = cmd[0] if cmd else "command"

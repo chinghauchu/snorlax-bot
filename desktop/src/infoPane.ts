@@ -12,6 +12,11 @@ export function canEditChannel(agent: { id?: string; kind: string }): boolean {
   return agent.kind === "channel" && agent.id !== SEED_CHANNEL_ID;
 }
 
+/** Seed + user-created channel panes both expose the shared-project toggle. */
+export function canToggleSharedProject(agent: { kind: string }): boolean {
+  return agent.kind === "channel";
+}
+
 export function infoPaneKind(agent: { kind: string }): "agent" | "channel" {
   return agent.kind === "channel" ? "channel" : "agent";
 }

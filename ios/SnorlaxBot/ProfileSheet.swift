@@ -98,6 +98,24 @@ struct ProfileSheet: View {
             .padding(.horizontal, 16)
             .padding(.top, 16)
 
+            Toggle(isOn: Binding(
+                get: { live.sharedProject },
+                set: { on in
+                    Task { await model.setSharedProject(id: live.id, on: on) }
+                }
+            )) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Shared project")
+                        .font(.system(size: 14, weight: .medium))
+                    Text("On: channel threads share a sandbox. Off: each agent’s workspace. Not a folder on this Mac.")
+                        .font(.system(size: 12))
+                        .foregroundStyle(.secondary)
+                }
+            }
+            .padding(.horizontal, 16)
+            .padding(.top, 8)
+            .disabled(!model.isConfigured)
+
             VStack(spacing: 0) {
                 ForEach(members) { member in
                     HStack(spacing: 10) {
@@ -161,6 +179,16 @@ struct ProfileSheet: View {
                         .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
+                }
+            }
+            Section {
+                Toggle(isOn: $draft.sharedProject) {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Shared project")
+                        Text("On: channel threads share a sandbox. Off: each agent’s workspace.")
+                            .font(.system(size: 12))
+                            .foregroundStyle(.secondary)
+                    }
                 }
             }
             Section {

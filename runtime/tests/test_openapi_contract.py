@@ -52,4 +52,6 @@ def test_protocol_openapi_is_locked_v0_contract() -> None:
     assert "web_search / web_fetch only" in text
     assert "Tools auto-run" in text
     assert "SNORLAX_SEARCH_PROVIDER" in text
+    assert "sharedProject" in text
+    assert "not a picker for a folder on the host Mac" in text
     assert "SSE, chat-only (no tools)" not in text

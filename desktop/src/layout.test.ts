@@ -54,6 +54,12 @@ test("tool traces are 12px muted system lines", () => {
   assert.match(trace, /color:\s*var\(--text-muted\)/);
 });
 
+test("shared project hint is 12px muted", () => {
+  const hint = block(".shared-project-hint");
+  assert.match(hint, /font-size:\s*12px/);
+  assert.match(hint, /color:\s*var\(--text-muted\)/);
+});
+
 test("info pane is a 320px overlay, not a third column", () => {
   const app = block(".app");
   const profile = block(".profile");

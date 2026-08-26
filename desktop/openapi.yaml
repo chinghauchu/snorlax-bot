@@ -32,13 +32,18 @@ info:
     shell, web_search, web_fetch. The FastAPI runtime runs a function-calling
     loop against the local OpenAI-compat server (cap 8 rounds). Clients never
     construct tool calls. Tools auto-run (no approval or question widgets).
-    Workspaces live under ~/.snorlax-bot/workspaces/ (agents/{id} for 1:1,
-    channels/{id} for channel / handoff turns). The channel project is that
-    sandbox dir, not a picker for a folder on the host Mac. Path jail: tools
-    cannot leave the active workspace root. Shell has no extra network; HTTP
-    is web_search / web_fetch only. Search provider is configuration
-    (SNORLAX_SEARCH_PROVIDER / SNORLAX_SEARCH_URL), not a hardcoded vendor.
-    No MCP, no browser-use GUI, no computer screenshot pane, no widgets.
+    Workspaces live under ~/.snorlax-bot/workspaces/ (agents/{id} for 1:1).
+    Channel shared project is a pane toggle (user-created + seed), default
+    off (`sharedProject`). When on, channel / handoff turns use
+    channels/{id}/; when off, the speaking agent's workspace. The channel
+    project is that sandbox dir, not a picker for a folder on the host Mac.
+    Path jail: tools cannot leave the active workspace root. Shell has no extra network; HTTP is web_search / web_fetch only. Search provider is
+    configuration (SNORLAX_SEARCH_PROVIDER / SNORLAX_SEARCH_URL), not a
+    hardcoded vendor. DELETE of an agent or channel (including seed) drops that
+    workspace dir (no dir reseed). Compact 12px muted tool status sits under
+    the speaking agent's LEFT streak; the final answer is a normal LEFT
+    bubble. iOS sees chat/status lines only (no file browser). No MCP, no
+    browser-use GUI, no computer screenshot pane, no widgets.
 
     Images persist and are returned; they are never sent to the model. No mDNS.
 
@@ -88,7 +93,7 @@ info:
     (`{ id, name, summary, ok?, senderId, senderName }`). Existing
     `message.delta` / `message.done` / `error` are unchanged. Desktop may
     show muted traces; unknown events must be ignored. Seeded channel DELETE
-    stays 409 (not this slice).
+    is 204, gone from GET, no auto-reseed.
   license:
     name: Apache-2.0
     identifier: Apache-2.0
@@ -199,9 +204,9 @@ paths:
         kind=agent including seed `snorlax-bot`: `{ name, title,
         description, avatar }`. Avatar is string|null (data URL or
         existing image id). No new upload route. Id is not editable.
-        User-created kind=channel: `{ name, memberIds }` returns 200.
-        Seeded channel (`snorlax-bot-group`) identity PATCH returns 409
-        `{ error }`.
+        User-created kind=channel: `{ name, memberIds, sharedProject }`
+        returns 200. Seeded channel (`snorlax-bot-group`) identity PATCH
+        returns 409 `{ error }`. Seed may PATCH `{ sharedProject }` only.
       operationId: patchAgent
       requestBody:
         required: true
@@ -230,7 +235,8 @@ paths:
         from GET /v1/agents. No auto-reseed; an empty agent roster is OK.
         kind=channel including seed `snorlax-bot-group` returns 204 and is
         gone from GET /v1/agents. No auto-reseed. User-created agent and
-        channel DELETE is 204.
+        channel DELETE is 204. DELETE of an agent or channel (including
+        seed) drops that workspace dir.
       operationId: deleteAgent
       responses:
         "204":
@@ -406,7 +412,7 @@ components:
 
     Agent:
       type: object
-      required: [id, name, title, description, avatar, kind, memberIds, createdAt, updatedAt]
+      required: [id, name, title, description, avatar, kind, memberIds, sharedProject, createdAt, updatedAt]
       properties:
         id:
           type: string
@@ -436,6 +442,13 @@ components:
           items:
             type: string
           description: Agent ids in a channel. Empty for kind=agent. Channel members come from memberIds.
+        sharedProject:
+          type: boolean
+          description: |
+            Channel shared-project toggle, default false. When true, channel
+            / handoff turns use workspaces/channels/{id}/. When false, the
+            speaking agent's workspace. Ignored (always false) on kind=agent.
+            Not a picker for a folder on the host Mac.
         createdAt:
           type: string
           format: date-time
@@ -500,7 +513,12 @@ components:
             type: string
           description: |
             User-created channel members. Agent ids only. Seed channel
-            PATCH is 409. Unknown ids and channel ids 422.
+            identity PATCH is 409. Unknown ids and channel ids 422.
+        sharedProject:
+          type: boolean
+          description: |
+            Channel shared-project toggle. Seed channel may PATCH this
+            field only. kind=agent returns 422.
 
     ImageOut:
       type: object

@@ -62,6 +62,7 @@ extension Agent {
         avatar: nil,
         kind: .channel,
         memberIds: [seedID],
+        sharedProject: false,
         createdAt: .distantPast,
         updatedAt: .distantPast
     )
@@ -74,6 +75,7 @@ extension Agent {
         avatar: nil,
         kind: .agent,
         memberIds: [],
+        sharedProject: false,
         createdAt: .distantPast,
         updatedAt: .distantPast
     )
