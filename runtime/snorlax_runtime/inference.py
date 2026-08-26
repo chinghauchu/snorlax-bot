@@ -4,7 +4,7 @@ from __future__ import annotations
 import json
 import re
 from collections.abc import AsyncIterator
-from typing import Protocol
+from typing import Any, Protocol
 from urllib.parse import urlparse
 
 import httpx
@@ -31,6 +31,65 @@ class InferenceBackend(Protocol):
 
 
 FORWARD_RE = re.compile(r"FORWARD:@(\S+)")
+MATH_RE = re.compile(r"(\d+)\s*\+\s*(\d+)")
+
+
+def _parse_json_object(text: str) -> dict[str, Any] | None:
+    stripped = text.strip()
+    if not stripped.startswith("{"):
+        return None
+    try:
+        value = json.loads(stripped)
+    except json.JSONDecodeError:
+        return None
+    return value if isinstance(value, dict) else None
+
+
+def _neutralize_ats(text: str) -> str:
+    return re.sub(r"(?<![A-Za-z0-9_])@", "(at)", text)
+
+
+def _mock_reply(messages: list[dict[str, str]]) -> str:
+    last_user = ""
+    system = ""
+    for item in messages:
+        if item.get("role") == "system" and not system:
+            system = item.get("content", "")
+    for item in reversed(messages):
+        if item.get("role") == "user":
+            last_user = item.get("content", "")
+            break
+    pack = _parse_json_object(last_user)
+    forwarded = " ".join(f"@{name}" for name in FORWARD_RE.findall(system))
+    extra = f"\n\n{forwarded}" if forwarded else ""
+
+    if pack and pack.get("result") is not None and pack.get("from"):
+        result = str(pack.get("result") or "").strip() or "(empty)"
+        return result
+
+    if pack and pack.get("userAsk") is not None:
+        ask = str(pack.get("userAsk") or "")
+        math = MATH_RE.search(ask)
+        if math:
+            return str(int(math.group(1)) + int(math.group(2)))
+        snippet = _neutralize_ats(ask.strip().replace("\n", " "))
+        if len(snippet) > 280:
+            snippet = snippet[:277] + "..."
+        return (snippet or "(empty)") + extra
+
+    snippet = last_user.strip().replace("\n", " ")
+    if len(snippet) > 280:
+        snippet = snippet[:277] + "..."
+    snippet = _neutralize_ats(snippet)
+    return (
+        "Heard. I'm Snorlax, running locally — mock backend, no cloud LLM, "
+        "no tools in v0.\n\n"
+        f"You said: {snippet or '(empty)'}\n\n"
+        "When this Spark is wired to vLLM I'll keep the same SSE contract. "
+        "Until then I can still take the brief, remember this transcript, "
+        "and wait for the computer, skills, and MCP work."
+        f"{extra}"
+    )
 
 
 class MockBackend:
@@ -39,32 +98,7 @@ class MockBackend:
     name = BACKEND_MOCK
 
     async def stream(self, messages: list[dict[str, str]]) -> AsyncIterator[str]:
-        last_user = ""
-        system = ""
-        for item in messages:
-            if item.get("role") == "system" and not system:
-                system = item.get("content", "")
-        for item in reversed(messages):
-            if item.get("role") == "user":
-                last_user = item.get("content", "")
-                break
-        snippet = last_user.strip().replace("\n", " ")
-        if len(snippet) > 280:
-            snippet = snippet[:277] + "..."
-        # Neutralize @ in the echo so quoting a prior turn does not re-fire
-        # mentions. FORWARD:@Name in the system prompt still appends real ones.
-        snippet = re.sub(r"(?<![A-Za-z0-9_])@", "(at)", snippet)
-        forwarded = " ".join(f"@{name}" for name in FORWARD_RE.findall(system))
-        extra = f"\n\n{forwarded}" if forwarded else ""
-        reply = (
-            "Heard. I'm Snorlax, running locally — mock backend, no cloud LLM, "
-            "no tools in v0.\n\n"
-            f"You said: {snippet or '(empty)'}\n\n"
-            "When this Spark is wired to vLLM I'll keep the same SSE contract. "
-            "Until then I can still take the brief, remember this transcript, "
-            "and wait for the computer, skills, and MCP work."
-            f"{extra}"
-        )
+        reply = _mock_reply(messages)
         for token in _tokenize(reply):
             yield token
 

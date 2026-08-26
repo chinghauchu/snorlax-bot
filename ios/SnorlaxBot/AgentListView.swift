@@ -4,19 +4,28 @@ import SwiftUI
 struct AgentListView: View {
     @Environment(AppModel.self) private var model
     @State private var pendingDelete: Agent?
+    @State private var showCreateChannel = false
 
     var body: some View {
         styledList
             .toolbar {
                 ToolbarItem(placement: .primaryAction) {
-                    Button {
-                        Task { await model.createAgent() }
+                    Menu {
+                        Button("New agent") {
+                            Task { await model.createAgent() }
+                        }
+                        Button("New channel") {
+                            showCreateChannel = true
+                        }
                     } label: {
                         Image(systemName: "plus")
                     }
                     .disabled(!model.isConfigured)
-                    .accessibilityLabel("New agent")
+                    .accessibilityLabel("Create")
                 }
+            }
+            .sheet(isPresented: $showCreateChannel) {
+                CreateChannelSheet()
             }
             .safeAreaInset(edge: .bottom, spacing: 0) {
                 AccountChip {
@@ -24,7 +33,10 @@ struct AgentListView: View {
                 }
             }
             .confirmationDialog(
-                pendingDelete.map { "Delete \($0.name)? This removes the agent and its chat." } ?? "",
+                pendingDelete.map {
+                    let kind = $0.isChannel ? "channel" : "agent"
+                    return "Delete \($0.name)? This removes the \(kind) and its chat."
+                } ?? "",
                 isPresented: deletePresented,
                 titleVisibility: .visible
             ) {
@@ -112,7 +124,7 @@ private struct AgentRow: View {
                 }
             }
             Spacer(minLength: 0)
-            if agent.isChannel, model.channelUnread {
+            if agent.isChannel, model.unreadChannelIDs.contains(agent.id) {
                 Circle()
                     .fill(Color.accentColor)
                     .frame(width: 6, height: 6)
@@ -160,5 +172,81 @@ private struct UserAgentDeleteMenu: ViewModifier {
         } else {
             content
         }
+    }
+}
+
+private struct CreateChannelSheet: View {
+    @Environment(AppModel.self) private var model
+    @Environment(\.dismiss) private var dismiss
+    @State private var name = "New channel"
+    @State private var memberIds: Set<String> = []
+
+    private var people: [Agent] {
+        model.visibleAgents.filter { !$0.isChannel }
+    }
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section {
+                    TextField("Name", text: $name)
+                }
+                Section("Members") {
+                    ForEach(people) { agent in
+                        Button {
+                            if memberIds.contains(agent.id) {
+                                memberIds.remove(agent.id)
+                            } else {
+                                memberIds.insert(agent.id)
+                            }
+                        } label: {
+                            HStack(spacing: 10) {
+                                AgentAvatar(agent: agent, size: 28)
+                                VStack(alignment: .leading, spacing: 1) {
+                                    Text(agent.name)
+                                        .font(.system(size: 14, weight: .medium))
+                                        .foregroundStyle(.primary)
+                                    if !agent.title.isEmpty {
+                                        Text(agent.title)
+                                            .font(.system(size: 13))
+                                            .foregroundStyle(.secondary)
+                                    }
+                                }
+                                Spacer(minLength: 0)
+                                Image(systemName: memberIds.contains(agent.id) ? "checkmark.square.fill" : "square")
+                                    .foregroundStyle(memberIds.contains(agent.id) ? Color.accentColor : .secondary)
+                            }
+                            .frame(height: 44)
+                            .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+            }
+            .navigationTitle("New channel")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") { dismiss() }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Create") {
+                        let ids = people.map(\.id).filter { memberIds.contains($0) }
+                        Task {
+                            await model.createChannel(name: name, memberIds: ids)
+                            dismiss()
+                        }
+                    }
+                    .disabled(
+                        name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                            || memberIds.isEmpty
+                    )
+                }
+            }
+            .onAppear {
+                memberIds = Set(people.map(\.id))
+            }
+        }
+        .presentationDetents([.medium, .large])
     }
 }

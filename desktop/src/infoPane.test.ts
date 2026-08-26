@@ -3,15 +3,30 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   canDeleteAgent,
+  canEditChannel,
   channelMembers,
   displayInitials,
   infoPaneKind,
   nextRosterSelection,
 } from "./infoPane.ts";
 
-test("seed and user-created agents are deletable; the channel is not", () => {
+test("user-created channels are editable; seed channel is not", () => {
+  assert.equal(canEditChannel({ kind: "channel", id: "ops" }), true);
+  assert.equal(
+    canEditChannel({ kind: "channel", id: "snorlax-bot-group" }),
+    false,
+  );
+  assert.equal(canEditChannel({ kind: "agent", id: "snorlax-bot" }), false);
+});
+
+test("seed channel is not deletable; user channels and agents are", () => {
   assert.equal(canDeleteAgent({ kind: "agent" }), true);
-  assert.equal(canDeleteAgent({ kind: "channel" }), false);
+  assert.equal(canDeleteAgent({ kind: "agent", id: "snorlax-bot" }), true);
+  assert.equal(
+    canDeleteAgent({ kind: "channel", id: "snorlax-bot-group" }),
+    false,
+  );
+  assert.equal(canDeleteAgent({ kind: "channel", id: "ops" }), true);
 });
 
 test("info pane kind follows Agent.kind, never guesses snorlax-bot-group", () => {

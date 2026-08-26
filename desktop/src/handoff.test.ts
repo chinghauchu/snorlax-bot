@@ -6,8 +6,10 @@ import { fileURLToPath } from "node:url";
 import test from "node:test";
 import {
   CHANNEL_DISPLAY_NAME,
+  displayBody,
   fromLabel,
   isHandoffRoot,
+  jumpChannelName,
   messageHandoff,
   repliesLabel,
 } from "./handoff.ts";
@@ -54,4 +56,14 @@ test("handoff helpers", () => {
     { channelId: "snorlax-bot-group", threadId: "msg_1" },
   );
   assert.equal(messageHandoff({} as never), null);
+  assert.equal(
+    jumpChannelName("ops", [
+      { id: "snorlax-bot-group", name: "Snorlax-Bot" },
+      { id: "ops", name: "Ops" },
+    ]),
+    "Ops",
+  );
+  assert.equal(jumpChannelName("missing", []), "Snorlax-Bot");
+  assert.equal(displayBody("from Mary: 2", "Mary"), "2");
+  assert.equal(displayBody("The answer is 2", "Mary"), "The answer is 2");
 });

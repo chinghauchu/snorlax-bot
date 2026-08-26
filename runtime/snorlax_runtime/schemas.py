@@ -31,6 +31,8 @@ class AgentCreate(BaseModel):
     title: str = Field(default="", max_length=80)
     description: str = Field(default="", max_length=8000)
     avatar: str | None = None
+    kind: str = Field(default="agent")
+    memberIds: list[str] = Field(default_factory=list)
 
 
 class AgentPatch(BaseModel):
@@ -42,6 +44,13 @@ class AgentPatch(BaseModel):
         description=(
             "Data URL, existing image id, or null. Empty/null shows initials "
             "from name. No new upload route."
+        ),
+    )
+    memberIds: list[str] | None = Field(
+        default=None,
+        description=(
+            "Agent ids for a user-created channel. Seed channel PATCH is 409. "
+            "Unknown ids and channel ids 422."
         ),
     )
 

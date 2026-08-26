@@ -1,9 +1,9 @@
 openapi: 3.1.0
 info:
   title: Snorlax-Bot
-  version: 0.3.0
+  version: 0.4.0
   description: |
-    Locked v0.3 LAN contract. Clients use SNORLAX_URL + SNORLAX_TOKEN.
+    Locked v0.4 LAN contract. Clients use SNORLAX_URL + SNORLAX_TOKEN.
     They never call vLLM and never read the Spark filesystem.
 
     Seeded agent: id `snorlax-bot`, name Snorlax, title Assistant, kind
@@ -16,9 +16,14 @@ info:
     GET /v1/agents, and is not auto-reseeded. An empty agent roster is OK.
     Seeded group channel: id `snorlax-bot-group`, name Snorlax-Bot, kind
     `channel`. Listed by GET /v1/agents like an agent. Every agent is a
-    member; new agents auto-join. Extra user-created channels wait.
-    Channel identity PATCH is 409 `{ error }`. Channel DELETE stays 409.
-    Members come from memberIds. User-created agent DELETE is still 204.
+    member; new agents auto-join the seed. POST /v1/agents with
+    `kind=channel` plus `name` and `memberIds` creates extra channels.
+    Missing name, unknown member ids, and channel ids in memberIds are 422.
+    Seeded channel identity PATCH is 409 `{ error }`. User-created channel
+    PATCH `{ name, memberIds }` is 200. Seeded channel cannot be deleted (409).
+    User-created channel DELETE is 204.
+    Members come from memberIds. New agents auto-join the seed only.
+    User-created agent DELETE is still 204.
 
     Chat-only. No tools, no VL, no MCP, no skills, no box, no computer-use,
     no routines, no widgets. Images persist and are returned; they are
@@ -27,9 +32,12 @@ info:
     Mentions are runtime-routed. Hop 0 is the user→current-agent turn.
     Max depth 3 (A→B→C→D ok; D→E dropped). Max 4 peer sends per user turn.
     Same-edge A→B once per turn. Drops are silent in the UI.
+    Report-back into A's 1:1 is not a peer send and does not spend hop
+    budget. If B is hop/cap dropped, A still reports that B was not reached.
 
     v0.1.1: a 1:1 transcript is only the user and that agent. Peer /
-    involve / DM / hop traffic is addressed in `snorlax-bot-group` only.
+    involve / DM / hop traffic is addressed in a channel (default
+    `snorlax-bot-group`) only.
     422 only for an unknown mention chip id. Typed `@foo` is plain text.
 
     v0.2: a user @chip in A's 1:1 (or A DMing B) opens a channel *thread*
@@ -42,10 +50,22 @@ info:
     threadId }`. Hop/cap drops omit that field.
 
     v0.3: header click opens an info pane (desktop 320px overlay on chat,
-    iOS sheet). kind=agent is identity. kind=channel is a read-only member
-    list from memberIds. Never treat snorlax-bot-group as an agent profile.
-    Delete stays on the sidebar (right-click / iOS swipe), including the
-    seed row. No computer preview, routines, connectors, or extra channels.
+    iOS sheet). kind=agent is identity. Seed channel pane is a read-only
+    member list from memberIds. User-created channel pane has a gear
+    (PATCH name + memberIds). Never treat snorlax-bot-group as an agent
+    profile. Delete stays on the sidebar (right-click / iOS swipe),
+    including the seed row. No computer preview, routines, or connectors.
+
+    v0.4: collaboration report-back. 1:1 @involves log as handoff threads
+    on seed `snorlax-bot-group` only. When B's thread turn completes or B
+    is hop/cap dropped, enqueue a non-hop assistant generation for A on
+    A's 1:1. Prompt pack `{ from, result, threadId, userAsk }` is not a
+    Message field. Persist role=assistant senderId=A, no from field, no
+    mentions of B. Fire A's report as each peer lands; hold the originating
+    1:1 POST SSE until every mentioned B has done or been dropped and A
+    has reported for each. Extra `message.done` on the same stream. B is
+    prompted to do the work; no ACK classifier. Extra-channel @stays in
+    that channel. Extra user-created channels are kind=channel rows.
   license:
     name: Apache-2.0
     identifier: Apache-2.0
@@ -109,7 +129,12 @@ paths:
         "401":
           $ref: "#/components/responses/Error"
     post:
-      summary: Create an agent
+      summary: Create an agent or a channel
+      description: |
+        Default kind=agent. Pass `kind=channel` with `name` and `memberIds`
+        to create an extra channel (listed on GET /v1/agents). Missing
+        name, unknown member ids, and channel ids in the list 422.
+        Omitted memberIds snapshot every current agent.
       operationId: createAgent
       requestBody:
         required: false
@@ -148,11 +173,12 @@ paths:
     patch:
       summary: Patch profile fields
       description: |
-        PATCH body stays `{ name, title, description, avatar }`. Avatar is
-        string|null (data URL or existing image id). No new upload route.
-        kind=agent including seed `snorlax-bot` returns 200. Id is not
-        editable. kind=channel (`snorlax-bot-group`) identity PATCH
-        returns 409 `{ error }`.
+        kind=agent including seed `snorlax-bot`: `{ name, title,
+        description, avatar }`. Avatar is string|null (data URL or
+        existing image id). No new upload route. Id is not editable.
+        User-created kind=channel: `{ name, memberIds }` returns 200.
+        Seeded channel (`snorlax-bot-group`) identity PATCH returns 409
+        `{ error }`.
       operationId: patchAgent
       requestBody:
         required: true
@@ -179,8 +205,8 @@ paths:
       description: |
         kind=agent including seed `snorlax-bot` returns 204 and is gone
         from GET /v1/agents. No auto-reseed; an empty agent roster is OK.
-        User-created DELETE is still 204. Seeded channel
-        `snorlax-bot-group` DELETE stays 409 `{ error }`.
+        User-created agent DELETE is still 204. Seeded channel cannot be
+        deleted (409 `{ error }`). User-created channel DELETE is 204.
       operationId: deleteAgent
       responses:
         "204":
@@ -248,9 +274,16 @@ paths:
         forwarded to vLLM.
 
         For a 1:1 agent, hop 0 is that agent. Mentioned peers and hops
-        reply in a `snorlax-bot-group` thread under a kind=handoff root,
-        not in either 1:1. A still answers in the 1:1. Optional `replyTo`
-        on the body posts into an existing channel thread.
+        reply in a handoff thread on seed `snorlax-bot-group`, not in
+        either 1:1 and not on a user-picked extra channel. A still
+        answers in the 1:1. When the peer posts a material reply (or is
+        hop/cap dropped), A is woken with a report-back pack and posts
+        another assistant turn in that 1:1 (not a hop). Multiple
+        `message.done` events on the same stream; the POST stays open
+        until every mentioned peer has finished or been dropped and A
+        has reported for each. Optional `replyTo` on the body posts into
+        an existing channel thread. @mention inside an extra channel
+        stays in that channel's thread.
 
         422 only for an unknown mention chip id (and `@everyone` chip
         outside the group). Typed `@foo` with no chip is plain text.
@@ -398,6 +431,20 @@ components:
           maxLength: 8000
         avatar:
           type: [string, "null"]
+        kind:
+          type: string
+          enum: [agent, channel]
+          default: agent
+          description: |
+            `channel` creates an extra channel listed on GET /v1/agents.
+        memberIds:
+          type: array
+          items:
+            type: string
+          description: |
+            Channel members when kind=channel. Empty/omitted snapshots
+            every current agent. Unknown ids and channel ids 422.
+            Ignored for kind=agent.
 
     AgentPatch:
       type: object
@@ -417,6 +464,13 @@ components:
           description: |
             Data URL, existing image id, or null. Empty/null shows initials
             from name. PATCH only; no new upload route.
+        memberIds:
+          type: array
+          items:
+            type: string
+          description: |
+            User-created channel members. Agent ids only. Seed channel
+            PATCH is 409. Unknown ids and channel ids 422.
 
     ImageOut:
       type: object
@@ -559,7 +613,7 @@ components:
             and is not a mention. Unknown chip ids 422. Runtime also
             parses exact `@DisplayName`. Peer deliveries from a 1:1 land
             in the seeded channel as a handoff thread, not in another
-            agent's 1:1.
+            agent's 1:1 and not on a user-picked extra channel.
         replyTo:
           type: [string, "null"]
           description: Channel thread id when posting a reply in a thread.

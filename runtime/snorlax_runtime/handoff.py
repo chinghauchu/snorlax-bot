@@ -1,13 +1,19 @@
 # SPDX-License-Identifier: Apache-2.0
-"""v0.2 handoff pack + 1:1 brief. Prompt-only; never stored as a quote bubble."""
+"""v0.2 handoff pack + v0.4 report-back pack + 1:1 brief.
+
+Prompt-only; never stored as a quote bubble.
+"""
 
 from __future__ import annotations
 
 import json
+import re
 from typing import Any
 
 BRIEF_MAX_MESSAGES = 8
 BRIEF_MAX_CHARS = 2000
+# Involve kicker leaking into bubble body ("from Mary: …").
+FROM_KICKER_RE = re.compile(r"^from\s+[^:\n]+:\s*", re.IGNORECASE)
 
 
 def format_brief(messages: list[dict[str, Any]]) -> str:
@@ -48,6 +54,37 @@ def wake_pack(
         "brief": brief,
         "mentionedIds": list(mentioned_ids),
     }
+
+
+REPORT_MISS = "was not reached"
+
+
+def report_pack(
+    *,
+    from_agent: dict[str, Any],
+    result: str,
+    thread_id: str,
+    user_ask: str = "",
+) -> dict[str, Any]:
+    return {
+        "from": {
+            "id": from_agent["id"],
+            "name": from_agent["name"],
+            "title": from_agent.get("title") or "",
+        },
+        "result": strip_involve_kicker(result),
+        "threadId": thread_id,
+        "userAsk": user_ask,
+    }
+
+
+def is_report_pack(pack: dict[str, Any] | None) -> bool:
+    return bool(pack) and "result" in pack and "from" in pack
+
+
+def strip_involve_kicker(content: str) -> str:
+    """Drop a leading `from {Name}:` kicker so it is not shown as message text."""
+    return FROM_KICKER_RE.sub("", content, count=1).lstrip()
 
 
 def pack_prompt(pack: dict[str, Any]) -> str:

@@ -57,6 +57,15 @@ test("info pane is a 320px overlay, not a third column", () => {
   assert.match(profile, /width:\s*320px/);
 });
 
+test("create menu is 160px; new channel overlay is 320px; member rows 44px", () => {
+  const menu = block(".create-menu");
+  const overlay = block(".modal.channel-create");
+  const row = block(".member-pick-row");
+  assert.match(menu, /width:\s*160px/);
+  assert.match(overlay, /width:\s*320px/);
+  assert.match(row, /height:\s*44px/);
+});
+
 test("agent identity type sizes and channel member rows", () => {
   const name = block(".info-name");
   const muted = block(".info-muted");

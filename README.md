@@ -20,12 +20,13 @@ computer. Bots live on your LAN, talk through a thin local runtime, and (in
 later versions) browse, click, schedule, and call tools without sending tokens
 off-box.
 
-v0.3 is still small: **named teammates + identity pane + group channel threads
-+ chat with @mentions**. Header click opens agent identity (PATCH) or the
-channel member list. 1:1s are user ↔ that agent only; a user `@chip` (or
-agent DM) opens a handoff thread in the seeded channel with a jump chip back
-from A's 1:1. Seed `snorlax-bot` can be deleted (no auto-reseed). No tools,
-no sandbox computer, no vision.
+v0.4 is still small: **named teammates + identity pane + group channel threads
++ chat with @mentions + report-back + extra channels**. Header click opens
+agent identity (PATCH) or the channel member list. 1:1s are user ↔ that agent
+only; a user `@chip` (or agent DM) opens a handoff thread in a channel (seed
+`snorlax-bot-group` by default). B answers in the thread; A reports back in
+A's 1:1 as A. Seed `snorlax-bot` can be deleted (no auto-reseed). Users can
+create more channels. No tools, no sandbox computer, no vision.
 That slice is meant to actually run on a laptop *or* a Spark, with a mocked
 model backend when a 70B-class checkpoint is not present.
 

@@ -18,12 +18,12 @@ Chat-only named agents. Meant to *run*, including without a GPU.
 | Mock inference, **oMLX**, or **vLLM** OpenAI-compat | TensorRT-LLM |
 | Tauri + TypeScript chat UI | Computer pane / tools |
 | Swift/SwiftUI iOS companion | Skills, “teach a task”, routines |
-| Seeded group channel + agent DMs + @mentions + v0.2 handoff threads + v0.3 identity pane | Extra user-created channels |
+| Seeded group channel + extra user-created channels + agent DMs + @mentions + v0.2 handoff threads + v0.3 identity pane + v0.4 report-back | Extra channel types / widgets |
 | OpenAPI for `/v1` | Question widgets |
 
 Default model on Spark: **70B-class FP8**, swapped via config.
 
-Locked v0.1 / v0.2 / v0.3 (chat layout + agent messaging + collaboration handoff + identity pane): [docs/specs/v0.1-chat-and-agents.md](docs/specs/v0.1-chat-and-agents.md).
+Locked v0.1 / v0.2 / v0.3 / v0.4 (chat layout + agent messaging + collaboration handoff + identity pane + report-back + extra channels): [docs/specs/v0.1-chat-and-agents.md](docs/specs/v0.1-chat-and-agents.md).
 
 ## v1 — computer and tools
 

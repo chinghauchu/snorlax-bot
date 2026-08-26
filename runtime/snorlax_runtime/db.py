@@ -84,6 +84,14 @@ CREATE TABLE IF NOT EXISTS images (
     created_at TEXT NOT NULL,
     FOREIGN KEY (message_id) REFERENCES messages(id) ON DELETE CASCADE
 );
+
+CREATE TABLE IF NOT EXISTS channel_members (
+    channel_id TEXT NOT NULL,
+    agent_id TEXT NOT NULL,
+    PRIMARY KEY (channel_id, agent_id),
+    FOREIGN KEY (channel_id) REFERENCES agents(id) ON DELETE CASCADE,
+    FOREIGN KEY (agent_id) REFERENCES agents(id) ON DELETE CASCADE
+);
 """
 
 
@@ -223,12 +231,22 @@ class Store:
             (SEEDED_CHANNEL_NAME, SEEDED_CHANNEL_TITLE, SEEDED_CHANNEL_ID),
         )
 
-    async def _member_ids(self) -> list[str]:
+    async def _all_agent_ids(self) -> list[str]:
         cur = await self.conn.execute(
             "SELECT id FROM agents WHERE kind = ? ORDER BY created_at ASC",
             (KIND_AGENT,),
         )
         return [str(row["id"]) for row in await cur.fetchall()]
+
+    async def _member_ids(self, channel_id: str | None = None) -> list[str]:
+        if channel_id is None or channel_id == SEEDED_CHANNEL_ID:
+            return await self._all_agent_ids()
+        cur = await self.conn.execute(
+            "SELECT agent_id FROM channel_members WHERE channel_id = ? "
+            "ORDER BY rowid ASC",
+            (channel_id,),
+        )
+        return [str(row["agent_id"]) for row in await cur.fetchall()]
 
     def _agent_public(self, row: Any, member_ids: list[str]) -> dict[str, Any]:
         kind = row["kind"] if "kind" in row.keys() else KIND_AGENT
@@ -250,8 +268,14 @@ class Store:
             "CASE kind WHEN 'channel' THEN 0 ELSE 1 END, created_at ASC"
         )
         rows = await cur.fetchall()
-        members = [str(r["id"]) for r in rows if r["kind"] != KIND_CHANNEL]
-        return [self._agent_public(r, members) for r in rows]
+        out: list[dict[str, Any]] = []
+        for row in rows:
+            if row["kind"] == KIND_CHANNEL:
+                members = await self._member_ids(row["id"])
+            else:
+                members = []
+            out.append(self._agent_public(row, members))
+        return out
 
     async def get_agent(self, agent_id: str) -> dict[str, Any] | None:
         cur = await self.conn.execute(
@@ -260,7 +284,11 @@ class Store:
         row = await cur.fetchone()
         if row is None:
             return None
-        members = await self._member_ids() if row["kind"] == KIND_CHANNEL else []
+        members = (
+            await self._member_ids(agent_id)
+            if row["kind"] == KIND_CHANNEL
+            else []
+        )
         return self._agent_public(row, members)
 
     async def create_agent(
@@ -287,6 +315,47 @@ class Store:
         agent = await self.get_agent(agent_id)
         assert agent is not None
         return agent
+
+    async def create_channel(
+        self,
+        name: str,
+        title: str,
+        description: str,
+        avatar: str | None,
+        member_ids: list[str],
+    ) -> dict[str, Any]:
+        base = slugify(name)
+        channel_id = base
+        n = 2
+        while await self.get_agent(channel_id):
+            channel_id = f"{base}-{n}"
+            n += 1
+        now = utcnow()
+        await self.conn.execute(
+            "INSERT INTO agents "
+            "(id, name, title, description, avatar, kind, created_at, updated_at) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            (
+                channel_id,
+                name,
+                title,
+                description,
+                avatar,
+                KIND_CHANNEL,
+                now,
+                now,
+            ),
+        )
+        for member_id in member_ids:
+            await self.conn.execute(
+                "INSERT OR IGNORE INTO channel_members (channel_id, agent_id) "
+                "VALUES (?, ?)",
+                (channel_id, member_id),
+            )
+        await self.conn.commit()
+        channel = await self.get_agent(channel_id)
+        assert channel is not None
+        return channel
 
     async def patch_agent(
         self,
@@ -317,6 +386,25 @@ class Store:
         )
         await self.conn.commit()
         return await self.get_agent(agent_id)
+
+    async def set_channel_members(
+        self, channel_id: str, member_ids: list[str]
+    ) -> None:
+        await self.conn.execute(
+            "DELETE FROM channel_members WHERE channel_id = ?",
+            (channel_id,),
+        )
+        for member_id in member_ids:
+            await self.conn.execute(
+                "INSERT OR IGNORE INTO channel_members (channel_id, agent_id) "
+                "VALUES (?, ?)",
+                (channel_id, member_id),
+            )
+        await self.conn.execute(
+            "UPDATE agents SET updated_at = ? WHERE id = ?",
+            (utcnow(), channel_id),
+        )
+        await self.conn.commit()
 
     async def delete_agent(self, agent_id: str) -> bool:
         cur = await self.conn.execute(
@@ -383,14 +471,28 @@ class Store:
         return str(row["id"])
 
     async def find_handoff_root(
-        self, origin_conversation_id: str
+        self,
+        origin_conversation_id: str,
+        channel_id: str | None = None,
     ) -> dict[str, Any] | None:
-        cur = await self.conn.execute(
-            "SELECT * FROM messages WHERE agent_id = ? AND kind = 'handoff' "
-            "AND origin_conversation_id = ? ORDER BY created_at ASC LIMIT 1",
-            (SEEDED_CHANNEL_ID, origin_conversation_id),
+        params: list[Any] = [origin_conversation_id]
+        where = (
+            "SELECT * FROM messages WHERE kind = 'handoff' "
+            "AND origin_conversation_id = ?"
         )
+        if channel_id:
+            where += " AND agent_id = ?"
+            params.append(channel_id)
+        where += " ORDER BY created_at ASC LIMIT 1"
+        cur = await self.conn.execute(where, params)
         row = await cur.fetchone()
+        if row is None and channel_id:
+            cur = await self.conn.execute(
+                "SELECT * FROM messages WHERE kind = 'handoff' "
+                "AND origin_conversation_id = ? ORDER BY created_at ASC LIMIT 1",
+                (origin_conversation_id,),
+            )
+            row = await cur.fetchone()
         if row is None:
             return None
         return await self._message_public(dict(row))
@@ -602,13 +704,34 @@ class Store:
         is_group = conversation.get("kind") == KIND_CHANNEL
         who = speaker["id"] if for_agent_id else conversation_id
         if wake_pack is not None:
-            from snorlax_runtime.handoff import pack_prompt
+            from snorlax_runtime.handoff import is_report_pack, pack_prompt
 
-            place = "a Snorlax-Bot channel thread after a handoff"
+            if is_report_pack(wake_pack):
+                system = (
+                    f"You are {speaker['name']}. You are in a 1:1 with the user. "
+                    "A teammate finished work that was routed for this user. The "
+                    "next JSON object is a report-back pack: { from, result, "
+                    "threadId, userAsk }. Answer the user in this 1:1 with that "
+                    "result. If result says the teammate was not reached, tell "
+                    "the user that. Speak as yourself, not as the other agent. "
+                    "Mentions are runtime-routed. Do not dump ACK chatter. Do "
+                    "not prefix the bubble with 'from {name}:'.\n\n"
+                    f"{speaker['description'] or ''}"
+                ).strip()
+                return [
+                    {"role": "system", "content": system},
+                    {"role": "user", "content": pack_prompt(wake_pack)},
+                ]
+
+            place = (
+                f"a {conversation['name']} channel thread after a handoff"
+            )
             system = (
                 f"You are {speaker['name']}. You are in {place}. "
-                "The next JSON object is a handoff pack from a teammate, not a "
-                "quote. Answer userAsk. Use brief as 1:1 context (user + the "
+                "A JSON handoff pack is the last user message, not a "
+                "quote. You were asked to DO the task in userAsk. Do not "
+                "acknowledge that you can. Do not ping-pong. If you have the "
+                "answer, state it. Use brief as 1:1 context (user + the "
                 "originating agent only). Mention another teammate with "
                 "@DisplayName to continue this thread. Do not invent cues "
                 "like [agent] or [Group chat:]. Stay silent on FYI notes that "
@@ -617,25 +740,35 @@ class Store:
             ).strip()
             messages: list[dict[str, str]] = [
                 {"role": "system", "content": system},
-                {"role": "user", "content": pack_prompt(wake_pack)},
             ]
             if thread_id:
                 await self._append_thread_turns(
                     messages, conversation_id, thread_id, who
                 )
+            messages.append({"role": "user", "content": pack_prompt(wake_pack)})
             return messages
         place = (
             "a shared group channel with every teammate"
             if is_group
             else "a 1:1 with the user"
         )
+        routed = (
+            ""
+            if is_group
+            else (
+                " If the user @mentions a teammate, the runtime already routes "
+                "that mention; do not claim they cannot be reached or that you "
+                "cannot talk to them. You may acknowledge you asked them. A "
+                "later turn may carry their result."
+            )
+        )
         system = (
             f"You are {speaker['name']}. You are in {place}. "
             "Mention another teammate with @DisplayName to address them in "
             "the group channel; the runtime routes that mention. 1:1 "
             "transcripts stay between you and the user. Do not invent cues "
-            "like [agent] or [Group chat:]. Stay silent on FYI notes that do "
-            "not ask you anything.\n\n"
+            f"like [agent] or [Group chat:]. Stay silent on FYI notes that do "
+            f"not ask you anything.{routed}\n\n"
             f"{speaker['description'] or ''}"
         ).strip()
         messages = [{"role": "system", "content": system}]

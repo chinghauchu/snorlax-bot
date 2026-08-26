@@ -28,3 +28,21 @@ export function repliesLabel(count: number): string {
 export function fromLabel(name: string): string {
   return `from ${name}`;
 }
+
+export function jumpChannelName(
+  channelId: string,
+  roster: { id: string; name: string }[],
+): string {
+  return roster.find((row) => row.id === channelId)?.name || CHANNEL_DISPLAY_NAME;
+}
+
+/** Drop a leaked involve kicker so "from Mary:" is not message text. */
+export function displayBody(content: string, speakerName?: string): string {
+  const raw = content ?? "";
+  const name = (speakerName || "").replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  if (name) {
+    const named = new RegExp(`^from\\s+${name}:\\s*`, "i");
+    if (named.test(raw)) return raw.replace(named, "");
+  }
+  return raw.replace(/^from\s+[^:\n]+:\s*/i, "");
+}

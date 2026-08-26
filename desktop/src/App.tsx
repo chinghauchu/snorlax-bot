@@ -14,6 +14,7 @@ import {
   SEED_AGENT_ID,
   SEED_CHANNEL_ID,
   createAgent,
+  createChannel,
   deleteAgent,
   listAgents,
   listMessages,
@@ -22,14 +23,16 @@ import {
   sendMessage,
 } from "./api";
 import {
-  CHANNEL_DISPLAY_NAME,
+  displayBody,
   fromLabel,
   isHandoffRoot,
+  jumpChannelName,
   messageHandoff,
   repliesLabel,
 } from "./handoff";
 import {
   canDeleteAgent,
+  canEditChannel,
   channelMembers,
   displayInitials,
   infoPaneKind,
@@ -199,7 +202,11 @@ export function App() {
   const [agents, setAgents] = useState<Agent[]>([PLACEHOLDER_CHANNEL, PLACEHOLDER_SEED]);
   const [activeId, setActiveId] = useState<string | null>(SEED_CHANNEL_ID);
   const [threadId, setThreadId] = useState<string | null>(null);
-  const [channelUnread, setChannelUnread] = useState(false);
+  const [unreadIds, setUnreadIds] = useState<Set<string>>(() => new Set());
+  const [createMenuOpen, setCreateMenuOpen] = useState(false);
+  const [createChannelOpen, setCreateChannelOpen] = useState(false);
+  const [channelNameDraft, setChannelNameDraft] = useState("New channel");
+  const [channelMemberDraft, setChannelMemberDraft] = useState<string[]>([]);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [draft, setDraft] = useState("");
   const [pendingImage, setPendingImage] = useState<PendingImage | null>(null);
@@ -217,6 +224,7 @@ export function App() {
   const [profileTitle, setProfileTitle] = useState("");
   const [profileDescription, setProfileDescription] = useState("");
   const [profileAvatar, setProfileAvatar] = useState<string | null>(null);
+  const [profileMemberIds, setProfileMemberIds] = useState<string[]>([]);
   const [profileSaving, setProfileSaving] = useState(false);
 
   const scroller = useRef<HTMLDivElement>(null);
@@ -319,8 +327,14 @@ export function App() {
     const onPointerDown = (event: PointerEvent) => {
       if (event.button !== 0) return;
       const target = event.target;
-      if (target instanceof Element && target.closest(".menu")) return;
+      if (
+        target instanceof Element &&
+        (target.closest(".menu") || target.closest(".create-wrap"))
+      ) {
+        return;
+      }
       setContextMenu(null);
+      setCreateMenuOpen(false);
     };
     const onKey = (event: globalThis.KeyboardEvent) => {
       if (event.key !== "Escape") return;
@@ -328,6 +342,8 @@ export function App() {
       setPendingDelete(null);
       setProfileOpen(false);
       setProfileEditing(false);
+      setCreateMenuOpen(false);
+      setCreateChannelOpen(false);
       if (settingsOpen) closeSettings();
     };
     window.addEventListener("pointerdown", onPointerDown);
@@ -389,7 +405,14 @@ export function App() {
     setProfileOpen(false);
     setProfileEditing(false);
     const agent = agents.find((a) => a.id === id);
-    if (agent?.kind === "channel") setChannelUnread(false);
+    if (agent?.kind === "channel") {
+      setUnreadIds((prev) => {
+        if (!prev.has(id)) return prev;
+        const next = new Set(prev);
+        next.delete(id);
+        return next;
+      });
+    }
     if (!session) {
       setMessages([]);
       return;
@@ -414,7 +437,12 @@ export function App() {
   }
 
   async function openJump(channelId: string, nextThread: string) {
-    setChannelUnread(false);
+    setUnreadIds((prev) => {
+      if (!prev.has(channelId)) return prev;
+      const next = new Set(prev);
+      next.delete(channelId);
+      return next;
+    });
     await loadConversation(channelId, nextThread);
   }
 
@@ -435,12 +463,43 @@ export function App() {
     }
   }
 
+  async function onCreateChannel() {
+    if (!session) return;
+    const name = channelNameDraft.trim();
+    if (!name || channelMemberDraft.length === 0) return;
+    try {
+      const channel = await createChannel(session, name, channelMemberDraft);
+      setAgents((prev) => {
+        const without = prev.filter((a) => a.id !== channel.id);
+        const channels = without.filter((a) => a.kind === "channel");
+        const people = without.filter((a) => a.kind !== "channel");
+        return [...channels, channel, ...people].filter(
+          (row, index, all) => all.findIndex((a) => a.id === row.id) === index,
+        );
+      });
+      setCreateChannelOpen(false);
+      setCreateMenuOpen(false);
+      setChannelNameDraft("New channel");
+      setChannelMemberDraft([]);
+      setActiveId(channel.id);
+      setThreadId(null);
+      setMessages([]);
+      setComposerError(null);
+      setProfileOpen(false);
+      setProfileEditing(false);
+      focusComposer();
+    } catch (err) {
+      setLoadError(describeError(err));
+    }
+  }
+
   function openInfo() {
     if (!active) return;
     setProfileName(active.name);
     setProfileTitle(active.title);
     setProfileDescription(active.description);
     setProfileAvatar(active.avatar);
+    setProfileMemberIds([...active.memberIds]);
     setProfileEditing(false);
     setProfileOpen(true);
   }
@@ -458,6 +517,7 @@ export function App() {
         setProfileTitle(active.title);
         setProfileDescription(active.description);
         setProfileAvatar(active.avatar);
+        setProfileMemberIds([...active.memberIds]);
         setProfileEditing(false);
         setProfileOpen(true);
       }
@@ -471,17 +531,24 @@ export function App() {
     if (!session || !active) return;
     setProfileSaving(true);
     try {
-      const updated = await patchAgent(session, active.id, {
-        name: profileName.trim() || active.name,
-        title: profileTitle,
-        description: profileDescription,
-        avatar: profileAvatar,
-      });
+      const updated =
+        infoPaneKind(active) === "channel"
+          ? await patchAgent(session, active.id, {
+              name: profileName.trim() || active.name,
+              memberIds: profileMemberIds,
+            })
+          : await patchAgent(session, active.id, {
+              name: profileName.trim() || active.name,
+              title: profileTitle,
+              description: profileDescription,
+              avatar: profileAvatar,
+            });
       setAgents((prev) => prev.map((a) => (a.id === updated.id ? updated : a)));
       setProfileName(updated.name);
       setProfileTitle(updated.title);
       setProfileDescription(updated.description);
       setProfileAvatar(updated.avatar);
+      setProfileMemberIds([...updated.memberIds]);
       setProfileEditing(false);
     } catch (err) {
       setComposerError(describeError(err));
@@ -624,7 +691,11 @@ export function App() {
         active.kind !== "channel" &&
         listed.some((message) => messageHandoff(message))
       ) {
-        setChannelUnread(true);
+        const channelId =
+          listed
+            .map((message) => messageHandoff(message)?.channelId)
+            .find((id): id is string => Boolean(id)) ?? SEED_CHANNEL_ID;
+        setUnreadIds((prev) => new Set(prev).add(channelId));
       }
       pickedMentions.current.clear();
     } catch (err) {
@@ -721,15 +792,47 @@ export function App() {
       <aside className="sidebar">
         <header className="sidebar-head">
           <span className="wordmark">Snorlax-Bot</span>
-          <button
-            type="button"
-            className="icon-btn"
-            aria-label="New agent"
-            disabled={!credsReady}
-            onClick={() => void onCreate()}
-          >
-            +
-          </button>
+          <div className="create-wrap">
+            <button
+              type="button"
+              className="icon-btn"
+              aria-label="Create"
+              disabled={!credsReady}
+              onClick={() => setCreateMenuOpen((open) => !open)}
+            >
+              +
+            </button>
+            {createMenuOpen ? (
+              <div className="menu create-menu" role="menu">
+                <button
+                  type="button"
+                  role="menuitem"
+                  onClick={() => {
+                    setCreateMenuOpen(false);
+                    void onCreate();
+                  }}
+                >
+                  New agent
+                </button>
+                <button
+                  type="button"
+                  role="menuitem"
+                  onClick={() => {
+                    setCreateMenuOpen(false);
+                    setChannelNameDraft("New channel");
+                    setChannelMemberDraft(
+                      agents
+                        .filter((a) => a.kind !== "channel")
+                        .map((a) => a.id),
+                    );
+                    setCreateChannelOpen(true);
+                  }}
+                >
+                  New channel
+                </button>
+              </div>
+            ) : null}
+          </div>
         </header>
         <ul className="roster">
           {agents.map((agent) => (
@@ -752,7 +855,7 @@ export function App() {
                     <span className="row-title">{rosterSubtitle(agent)}</span>
                   ) : null}
                 </span>
-                {agent.kind === "channel" && channelUnread ? (
+                {agent.kind === "channel" && unreadIds.has(agent.id) ? (
                   <span className="unread-dot" aria-label="Unread" />
                 ) : null}
               </button>
@@ -911,7 +1014,10 @@ export function App() {
                         {message.content ? (
                           <pre>
                             <MentionText
-                              text={message.content}
+                              text={displayBody(
+                                message.content,
+                                message.senderName,
+                              )}
                               knownNames={knownNames}
                             />
                           </pre>
@@ -925,7 +1031,9 @@ export function App() {
                         onClick={() => void openJump(jump.channelId, jump.threadId)}
                       >
                         Also in{" "}
-                        <span className="jump-name">{CHANNEL_DISPLAY_NAME}</span>
+                        <span className="jump-name">
+                          {jumpChannelName(jump.channelId, agents)}
+                        </span>
                       </button>
                     ) : null}
                   </article>
@@ -1055,7 +1163,8 @@ export function App() {
               {infoPaneKind(active) === "channel" ? "Channel" : "Agent"}
             </h2>
             <div className="profile-actions">
-              {infoPaneKind(active) === "agent" && !profileEditing ? (
+              {(infoPaneKind(active) === "agent" || canEditChannel(active)) &&
+              !profileEditing ? (
                 <button
                   type="button"
                   className="icon-btn"
@@ -1079,6 +1188,32 @@ export function App() {
             </div>
           </header>
           {infoPaneKind(active) === "channel" ? (
+            profileEditing && canEditChannel(active) ? (
+              <form className="profile-form" onSubmit={saveProfile}>
+                <label>
+                  Name
+                  <input
+                    value={profileName}
+                    onChange={(e) => setProfileName(e.target.value)}
+                  />
+                </label>
+                <MemberPicker
+                  agents={agents}
+                  selectedIds={profileMemberIds}
+                  session={session}
+                  onToggle={(id) =>
+                    setProfileMemberIds((prev) =>
+                      prev.includes(id)
+                        ? prev.filter((item) => item !== id)
+                        : [...prev, id],
+                    )
+                  }
+                />
+                <button type="submit" className="primary" disabled={profileSaving}>
+                  Save
+                </button>
+              </form>
+            ) : (
             <div>
               <div className="info-identity">
                 <p className="info-name">{active.name}</p>
@@ -1101,6 +1236,7 @@ export function App() {
                 ))}
               </div>
             </div>
+            )
           ) : profileEditing ? (
             <form className="profile-form" onSubmit={saveProfile}>
               <button
@@ -1116,6 +1252,15 @@ export function App() {
                 />
                 <span>Change</span>
               </button>
+              {profileAvatar ? (
+                <button
+                  type="button"
+                  className="text-btn"
+                  onClick={() => setProfileAvatar(null)}
+                >
+                  Remove avatar
+                </button>
+              ) : null}
               <input
                 ref={avatarFileRef}
                 type="file"
@@ -1301,7 +1446,9 @@ export function App() {
             onClick={(e) => e.stopPropagation()}
           >
             <p>
-              Delete {pendingDelete.name}? This removes the agent and its chat.
+              Delete {pendingDelete.name}? This removes the{" "}
+              {pendingDelete.kind === "channel" ? "channel" : "agent"} and its
+              chat.
             </p>
             <div className="confirm-actions">
               <button type="button" onClick={() => setPendingDelete(null)}>
@@ -1318,6 +1465,116 @@ export function App() {
           </div>
         </div>
       ) : null}
+
+      {createChannelOpen ? (
+        <div
+          className="modal-backdrop"
+          onClick={() => setCreateChannelOpen(false)}
+        >
+          <div
+            className="modal channel-create"
+            role="dialog"
+            aria-label="New channel"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <header>
+              <h2>New channel</h2>
+              <button
+                type="button"
+                className="icon-btn"
+                aria-label="Close"
+                onClick={() => setCreateChannelOpen(false)}
+              >
+                ×
+              </button>
+            </header>
+            <div className="profile-form">
+              <label>
+                Name
+                <input
+                  value={channelNameDraft}
+                  autoFocus
+                  onChange={(e) => setChannelNameDraft(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      e.preventDefault();
+                      void onCreateChannel();
+                    }
+                  }}
+                />
+              </label>
+              <MemberPicker
+                agents={agents}
+                selectedIds={channelMemberDraft}
+                session={session}
+                onToggle={(id) =>
+                  setChannelMemberDraft((prev) =>
+                    prev.includes(id)
+                      ? prev.filter((item) => item !== id)
+                      : [...prev, id],
+                  )
+                }
+              />
+              <div className="confirm-actions">
+                <button
+                  type="button"
+                  onClick={() => setCreateChannelOpen(false)}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  className="primary"
+                  disabled={!channelNameDraft.trim() || channelMemberDraft.length === 0}
+                  onClick={() => void onCreateChannel()}
+                >
+                  Create
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function MemberPicker({
+  agents,
+  selectedIds,
+  session,
+  onToggle,
+}: {
+  agents: Agent[];
+  selectedIds: string[];
+  session: Session | null;
+  onToggle: (id: string) => void;
+}) {
+  const people = agents.filter((row) => row.kind !== "channel");
+  return (
+    <div className="member-pick" role="group" aria-label="Members">
+      {people.map((agent) => {
+        const checked = selectedIds.includes(agent.id);
+        return (
+          <label className="member-pick-row" key={agent.id}>
+            <input
+              type="checkbox"
+              checked={checked}
+              onChange={() => onToggle(agent.id)}
+            />
+            <Avatar
+              src={agent.avatar}
+              name={agent.name}
+              size={28}
+              session={session}
+            />
+            <span className="info-member-copy">
+              <strong>{agent.name}</strong>
+              {agent.title ? <span>{agent.title}</span> : null}
+            </span>
+          </label>
+        );
+      })}
     </div>
   );
 }

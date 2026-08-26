@@ -1,10 +1,15 @@
 // SPDX-License-Identifier: Apache-2.0
 
 export const SEED_AGENT_ID = "snorlax-bot";
+export const SEED_CHANNEL_ID = "snorlax-bot-group";
 
-/** Channel rows are not agent profiles. Seed agents are deletable. */
-export function canDeleteAgent(agent: { kind: string }): boolean {
-  return agent.kind !== "channel";
+/** Seed channel is not deletable. Agents (including seed) and user channels are. */
+export function canDeleteAgent(agent: { id?: string; kind: string }): boolean {
+  return agent.id !== SEED_CHANNEL_ID;
+}
+
+export function canEditChannel(agent: { id?: string; kind: string }): boolean {
+  return agent.kind === "channel" && agent.id !== SEED_CHANNEL_ID;
 }
 
 export function infoPaneKind(agent: { kind: string }): "agent" | "channel" {

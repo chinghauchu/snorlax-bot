@@ -48,7 +48,13 @@ export interface paths {
         /** List agents */
         get: operations["listAgents"];
         put?: never;
-        /** Create an agent */
+        /**
+         * Create an agent or a channel
+         * @description Default kind=agent. Pass `kind=channel` with `name` and `memberIds`
+         *     to create an extra channel (listed on GET /v1/agents). Missing
+         *     name, unknown member ids, and channel ids in the list 422.
+         *     Omitted memberIds snapshot every current agent.
+         */
         post: operations["createAgent"];
         delete?: never;
         options?: never;
@@ -73,19 +79,20 @@ export interface paths {
          * Delete an agent
          * @description kind=agent including seed `snorlax-bot` returns 204 and is gone
          *     from GET /v1/agents. No auto-reseed; an empty agent roster is OK.
-         *     User-created DELETE is still 204. Seeded channel
-         *     `snorlax-bot-group` DELETE stays 409 `{ error }`.
+         *     User-created agent DELETE is still 204. Seeded channel cannot be
+         *     deleted (409 `{ error }`). User-created channel DELETE is 204.
          */
         delete: operations["deleteAgent"];
         options?: never;
         head?: never;
         /**
          * Patch profile fields
-         * @description PATCH body stays `{ name, title, description, avatar }`. Avatar is
-         *     string|null (data URL or existing image id). No new upload route.
-         *     kind=agent including seed `snorlax-bot` returns 200. Id is not
-         *     editable. kind=channel (`snorlax-bot-group`) identity PATCH
-         *     returns 409 `{ error }`.
+         * @description kind=agent including seed `snorlax-bot`: `{ name, title,
+         *     description, avatar }`. Avatar is string|null (data URL or
+         *     existing image id). No new upload route. Id is not editable.
+         *     User-created kind=channel: `{ name, memberIds }` returns 200.
+         *     Seeded channel (`snorlax-bot-group`) identity PATCH returns 409
+         *     `{ error }`.
          */
         patch: operations["patchAgent"];
         trace?: never;
@@ -117,9 +124,16 @@ export interface paths {
          *     forwarded to vLLM.
          *
          *     For a 1:1 agent, hop 0 is that agent. Mentioned peers and hops
-         *     reply in a `snorlax-bot-group` thread under a kind=handoff root,
-         *     not in either 1:1. A still answers in the 1:1. Optional `replyTo`
-         *     on the body posts into an existing channel thread.
+         *     reply in a handoff thread on seed `snorlax-bot-group`, not in
+         *     either 1:1 and not on a user-picked extra channel. A still
+         *     answers in the 1:1. When the peer posts a material reply (or is
+         *     hop/cap dropped), A is woken with a report-back pack and posts
+         *     another assistant turn in that 1:1 (not a hop). Multiple
+         *     `message.done` events on the same stream; the POST stays open
+         *     until every mentioned peer has finished or been dropped and A
+         *     has reported for each. Optional `replyTo` on the body posts into
+         *     an existing channel thread. @mention inside an extra channel
+         *     stays in that channel's thread.
          *
          *     422 only for an unknown mention chip id (and `@everyone` chip
          *     outside the group). Typed `@foo` with no chip is plain text.
@@ -206,6 +220,18 @@ export interface components {
             /** @default  */
             description: string;
             avatar?: string | null;
+            /**
+             * @description `channel` creates an extra channel listed on GET /v1/agents.
+             * @default agent
+             * @enum {string}
+             */
+            kind: "agent" | "channel";
+            /**
+             * @description Channel members when kind=channel. Empty/omitted snapshots
+             *     every current agent. Unknown ids and channel ids 422.
+             *     Ignored for kind=agent.
+             */
+            memberIds?: string[];
         };
         AgentPatch: {
             name?: string;
@@ -216,6 +242,11 @@ export interface components {
              *     from name. PATCH only; no new upload route.
              */
             avatar?: string | null;
+            /**
+             * @description User-created channel members. Agent ids only. Seed channel
+             *     PATCH is 409. Unknown ids and channel ids 422.
+             */
+            memberIds?: string[];
         };
         ImageOut: {
             id: string;
@@ -289,7 +320,7 @@ export interface components {
              *     and is not a mention. Unknown chip ids 422. Runtime also
              *     parses exact `@DisplayName`. Peer deliveries from a 1:1 land
              *     in the seeded channel as a handoff thread, not in another
-             *     agent's 1:1.
+             *     agent's 1:1 and not on a user-picked extra channel.
              */
             mentions?: string[];
             /** @description Channel thread id when posting a reply in a thread. */
