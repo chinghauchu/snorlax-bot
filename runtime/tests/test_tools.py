@@ -656,7 +656,7 @@ async def test_tool_round_cap(tmp_path) -> None:
 
     workspace = tmp_path / "ws"
     workspace.mkdir()
-    events, content = await run_tool_loop(
+    events, content, _widget = await run_tool_loop(
         AlwaysTool(),
         [{"role": "user", "content": "loop"}],
         workspace=workspace,
@@ -690,7 +690,7 @@ async def test_run_tool_loop_empty_after_failed_fetch_synthesizes_followup(
 
     workspace = tmp_path / "ws"
     workspace.mkdir()
-    events, content = await run_tool_loop(
+    events, content, _widget = await run_tool_loop(
         _FetchThenEmpty(),
         [{"role": "user", "content": "fetch it"}],
         workspace=workspace,
@@ -715,7 +715,7 @@ async def test_run_tool_loop_inference_error_after_tool_returns_followup(
 ) -> None:
     workspace = tmp_path / "ws"
     workspace.mkdir()
-    events, content = await run_tool_loop(
+    events, content, _widget = await run_tool_loop(
         _ToolThenBoom(),
         [{"role": "user", "content": "list files"}],
         workspace=workspace,

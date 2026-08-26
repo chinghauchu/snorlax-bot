@@ -18,6 +18,11 @@ import httpx
 from snorlax_runtime import KIND_CHANNEL
 from snorlax_runtime.db import new_id
 from snorlax_runtime.inference import InferenceError, StreamPart, ToolCall
+from snorlax_runtime.widgets import (
+    ASK_USER_QUESTION,
+    ASK_USER_QUESTION_DEFINITION,
+    parse_widget_args,
+)
 
 MAX_TOOL_ROUNDS = 8
 MAX_FILE_BYTES = 256_000
@@ -30,7 +35,7 @@ SEARCH_RESULT_CAP = 8
 
 _SAFE_ID = re.compile(r"^[A-Za-z0-9._-]+$")
 _USER_AGENT = (
-    "Snorlax-Bot/0.7 (+https://github.com/chinghauchu/snorlax-bot)"
+    "Snorlax-Bot/0.8 (+https://github.com/chinghauchu/snorlax-bot)"
 )
 BINARY_POLICY = "binary / too large"
 DEFAULT_SEARCH_PROVIDER = "duckduckgo"
@@ -459,11 +464,22 @@ def followup_after_tools(
     return f"I used {used} but had nothing more to add."
 
 
-def offered_tool_definitions() -> list[dict[str, Any]]:
-    """Built-ins first, then namespaced MCP tools. Built-in names win."""
+def offered_tool_definitions(*, use_tools: bool = True, use_widget: bool = True) -> list[dict[str, Any]]:
+    """Built-ins first, then the question card, then namespaced MCP tools.
+
+    Built-in names and ask_user_question win on collision. Widgets are not
+    an approval gate for the other tools.
+    """
     from snorlax_runtime.mcp import mcp_openai_tools
 
-    return [*TOOL_DEFINITIONS, *mcp_openai_tools()]
+    tools: list[dict[str, Any]] = []
+    if use_tools:
+        tools.extend(TOOL_DEFINITIONS)
+    if use_widget:
+        tools.append(ASK_USER_QUESTION_DEFINITION)
+    if use_tools:
+        tools.extend(mcp_openai_tools())
+    return tools
 
 
 async def execute_named_tool(name: str, arguments: str, workspace: Path) -> str:
@@ -881,17 +897,20 @@ async def run_tool_loop(
     max_rounds: int = MAX_TOOL_ROUNDS,
     persist_tool: PersistTool | None = None,
     use_tools: bool = True,
-) -> tuple[list[tuple[str, dict[str, Any]]], str]:
+    use_widget: bool = True,
+) -> tuple[list[tuple[str, dict[str, Any]]], str, dict[str, Any] | None]:
     """Execute OpenAI-compat tool rounds. Yields SSE-shaped (event, payload) list.
 
     Clients never see the raw tools payload. Final assistant text is returned
-    for persistence as a normal Message.
+    for persistence as a normal Message. A valid ask_user_question ends the
+    turn immediately (no more tokens/tools) and returns the widget payload.
 
     A failed tool does not end the turn: results go back as role=tool and
     the model may call tools again until max_rounds. After any tool round,
     this always returns non-empty final text so the caller can persist a
     normal assistant bubble (empty model text and InferenceError after
-    tools included). InferenceError before any tool still propagates.
+    tools included), unless a question card ended the turn. InferenceError
+    before any tool still propagates.
     """
     events: list[tuple[str, dict[str, Any]]] = []
     history: list[dict[str, Any]] = [dict(m) for m in messages]
@@ -905,17 +924,19 @@ async def run_tool_loop(
     rounds = 0
     final_parts: list[str] = []
     tool_outcomes: list[tuple[str, bool, str]] = []
+    widget: dict[str, Any] | None = None
+    offered = offered_tool_definitions(use_tools=use_tools, use_widget=use_widget)
 
     while True:
         text_parts: list[str] = []
         tool_calls: list[ToolCall] = []
         try:
             async for part in _generate_parts(
-                backend, history, tools=offered_tool_definitions() if use_tools else None
+                backend, history, tools=offered if offered else None
             ):
                 if part.text:
                     text_parts.append(part.text)
-                if use_tools and part.tool_calls:
+                if offered and part.tool_calls:
                     tool_calls.extend(part.tool_calls)
         except InferenceError as exc:
             if rounds == 0:
@@ -925,16 +946,28 @@ async def run_tool_loop(
             ]
             break
 
-        if tool_calls and rounds < max_rounds:
+        widget_calls = [c for c in tool_calls if c.name == ASK_USER_QUESTION]
+        other_calls = [c for c in tool_calls if c.name != ASK_USER_QUESTION]
+        if not use_tools:
+            other_calls = []
+        if not use_widget:
+            widget_calls = []
+
+        runnable = other_calls if other_calls and rounds < max_rounds else []
+        pending_widget = None
+        if widget_calls:
+            pending_widget = parse_widget_args(widget_calls[0].arguments)
+
+        if runnable:
             rounds += 1
             ensure_workspace(workspace)
             assistant_msg: dict[str, Any] = {
                 "role": "assistant",
                 "content": "".join(text_parts) or None,
-                "tool_calls": [_tool_call_payload(c) for c in tool_calls],
+                "tool_calls": [_tool_call_payload(c) for c in runnable],
             }
             history.append(assistant_msg)
-            for call in tool_calls:
+            for call in runnable:
                 args = _parse_args(call.arguments)
                 tool_id = new_id("msg") if persist_tool is not None else call.id
                 if stream:
@@ -988,9 +1021,45 @@ async def run_tool_loop(
                         "content": result,
                     }
                 )
+            if pending_widget is not None:
+                widget = pending_widget
+                final_parts = text_parts
+                break
             continue
 
-        if tool_calls and rounds >= max_rounds:
+        if pending_widget is not None:
+            widget = pending_widget
+            final_parts = text_parts
+            break
+
+        if widget_calls and pending_widget is None:
+            rounds += 1
+            history.append(
+                {
+                    "role": "assistant",
+                    "content": "".join(text_parts) or None,
+                    "tool_calls": [_tool_call_payload(c) for c in widget_calls],
+                }
+            )
+            history.append(
+                {
+                    "role": "tool",
+                    "tool_call_id": widget_calls[0].id,
+                    "name": ASK_USER_QUESTION,
+                    "content": (
+                        "Error: ask_user_question needs a natural-language "
+                        "prompt and 1-6 options (label, optional value)."
+                    ),
+                }
+            )
+            if rounds >= max_rounds:
+                final_parts = text_parts or [
+                    "Stopped after the tool-round cap. Summarize with what you have."
+                ]
+                break
+            continue
+
+        if other_calls and rounds >= max_rounds:
             final_parts = text_parts or [
                 "Stopped after the tool-round cap. Summarize with what you have."
             ]
@@ -1001,9 +1070,16 @@ async def run_tool_loop(
         break
 
     content = "".join(final_parts)
+    if widget is not None:
+        # The card is not a fake-token stream. Preamble text (if any) still
+        # streams as a normal LEFT bubble before the card.
+        if stream and content:
+            from snorlax_runtime.inference import _tokenize
+
+            for token in _tokenize(content):
+                events.append(("message.delta", {**sender, "delta": token}))
+        return events, content, widget
     if stream and content:
-        # Tokenize the same way mock replies do so existing SSE tests stay happy
-        # when this path is a normal (no-tool) turn.
         from snorlax_runtime.inference import _tokenize
 
         for token in _tokenize(content):
@@ -1017,9 +1093,8 @@ async def run_tool_loop(
                 )
             )
     elif stream:
-        # Empty content still allowed on a no-tool turn; caller persists it.
         pass
-    return events, content
+    return events, content, None
 
 
 def _parse_args(raw: str) -> dict[str, Any]:

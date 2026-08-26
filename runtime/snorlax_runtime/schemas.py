@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0
 from __future__ import annotations
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 
 class ErrorBody(BaseModel):
@@ -84,6 +84,28 @@ class HandoffRef(BaseModel):
     threadId: str
 
 
+class WidgetOption(BaseModel):
+    label: str
+    value: str | None = None
+    description: str | None = None
+    style: str = "default"
+
+
+class Widget(BaseModel):
+    prompt: str
+    options: list[WidgetOption]
+    helpText: str | None = None
+    allowCustom: bool = False
+    multiSelect: bool = False
+    dismissOnMoveOn: bool = False
+
+
+class WidgetReply(BaseModel):
+    id: str
+    values: list[str] | None = None
+    dismissed: bool = False
+
+
 class Message(BaseModel):
     id: str
     agentId: str
@@ -102,10 +124,13 @@ class Message(BaseModel):
     userAsk: str | None = None
     brief: str | None = None
     replyCount: int = 0
+    widget: Widget | None = None
+    widgetStatus: str | None = None
+    widgetValues: list[str] = Field(default_factory=list)
 
 
 class MessageCreate(BaseModel):
-    content: str = Field(min_length=1, max_length=32000)
+    content: str = Field(default="", max_length=32000)
     images: list[ImageIn] = Field(default_factory=list)
     mentions: list[str] = Field(default_factory=list)
     replyTo: str | None = None
@@ -119,6 +144,15 @@ class MessageCreate(BaseModel):
             "do not recreate seed)."
         ),
     )
+    widgetReply: WidgetReply | None = None
+
+    @model_validator(mode="after")
+    def content_or_widget_answer(self) -> MessageCreate:
+        if self.widgetReply is not None:
+            return self
+        if not (self.content or "").strip():
+            raise ValueError("content must not be empty")
+        return self
 
 
 class MessageDelta(BaseModel):

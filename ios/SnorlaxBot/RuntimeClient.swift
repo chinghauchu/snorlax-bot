@@ -84,6 +84,7 @@ struct RuntimeClient: Sendable {
         mentions: [String] = [],
         replyTo: String? = nil,
         channelId: String? = nil,
+        widgetReply: WidgetReply? = nil,
         onEvent: @escaping @Sendable (StreamEvent) -> Void
     ) async throws {
         var request = try makeRequest(
@@ -94,7 +95,8 @@ struct RuntimeClient: Sendable {
                 images: images.isEmpty ? nil : images,
                 mentions: mentions.isEmpty ? nil : mentions,
                 replyTo: replyTo,
-                channelId: channelId
+                channelId: channelId,
+                widgetReply: widgetReply
             )
         )
         request.setValue("text/event-stream", forHTTPHeaderField: "Accept")

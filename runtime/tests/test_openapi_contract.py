@@ -54,7 +54,14 @@ def test_protocol_openapi_is_locked_v0_contract() -> None:
     assert "SNORLAX_SEARCH_PROVIDER" in text
     assert "sharedProject" in text
     assert "kind=tool" in text
-    assert "enum: [message, handoff, tool]" in text
+    assert "enum: [message, handoff, tool, widget]" in text
+    assert "kind=widget" in text
+    assert "widgetStatus" in text
+    assert "widgetValues" in text
+    assert "ask_user_question" in text
+    assert "dismissOnMoveOn" in text
+    assert "allowCustom" in text
+    assert "multiSelect" in text
     assert "always finishes with a normal assistant" in text
     assert "projectPath" not in text
     assert "folderPath" not in text

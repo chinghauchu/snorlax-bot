@@ -18,7 +18,7 @@ From public Grok Bot docs and the Aug 2026 launch:
 | One user-scoped computer shared by all bots | Later: one sandbox on the Spark, shared files/logins, per-bot screen |
 | Skills (how) and routines (when) | Later: stored on the runtime, executed locally |
 | MCP + computer-use for sites without an API | v0.7: local/LAN MCP client; later: sandbox browser |
-| Question / approval moments | Later: widgets in the transcript |
+| Question / approval moments | v0.8: question widgets (`kind=widget`); tools stay auto-run (no approval card) |
 | Desktop + iOS, same bots | Tauri desktop now; Swift iOS companion on the LAN |
 | Cloud LLM | vLLM on GB10 (70B FP8 default; 200B-class in-range) |
 
@@ -138,6 +138,10 @@ SQLite file `~/.snorlax-bot/snorlax.db` (override with `SNORLAX_DATA_DIR`):
 - `mcp.json` (v0.7) — not in SQLite. Optional file under `SNORLAX_DATA_DIR`
   listing stdio and LAN MCP servers. Desktop/iOS never read it. Empty or
   missing = no MCP; built-ins still work.
+- Question widgets (v0.8) — `messages.widget` JSON on `kind=widget` rows.
+  Answer is POST `widgetReply: { id, values?, dismissed? }` on the same
+  transcript; not a new user row. Clients render the card; they never invent
+  fields.
 
 v0.1 keeps one transcript per agent (the 1:1) plus one seeded group channel
 and extra user-created channels (v0.4).

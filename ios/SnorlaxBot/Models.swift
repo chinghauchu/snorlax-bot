@@ -86,6 +86,7 @@ extension Message {
     var isFromUser: Bool { senderId == "user" || (senderId.isEmpty && role == .user) }
     var isHandoffRoot: Bool { kind == .handoff && replyTo == nil }
     var isToolLine: Bool { kind == .tool }
+    var isWidget: Bool { kind == .widget || widget != nil }
 
     var jump: HandoffRef? { handoff }
 

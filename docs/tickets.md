@@ -6,7 +6,7 @@ Concrete follow-ups after v0. Filed on GitHub against
 ## Product
 
 - [P1 — First-run roster roles without a workflow builder](https://github.com/chinghauchu/snorlax-bot/issues/2)
-- [P2 — Question widgets: approve, pick, short answer](https://github.com/chinghauchu/snorlax-bot/issues/3)
+- [P2 — Question widgets: approve, pick, short answer](https://github.com/chinghauchu/snorlax-bot/issues/3) — **v0.8:** runtime-owned `kind=widget` LEFT card; POST `widgetReply: { id, values?, dismissed? }` (not a user bubble); dismiss does not wake; 409 unless `dismissOnMoveOn`; thread-only in channels. Not a tool-approval card.
 - [P3 — Skills vs routines object model](https://github.com/chinghauchu/snorlax-bot/issues/4)
 - [P4 — Shared sandbox computer threat model](https://github.com/chinghauchu/snorlax-bot/issues/5)
 
@@ -14,7 +14,7 @@ Concrete follow-ups after v0. Filed on GitHub against
 
 - [D1 — Desktop visual system: roster, status, empty states](https://github.com/chinghauchu/snorlax-bot/issues/11)
 - [D2 — Computer pane next to chat](https://github.com/chinghauchu/snorlax-bot/issues/12) — v0.6 first slice: 320px right file tree + text preview over the existing `~/.snorlax-bot` workspace (collapsible, default open). Not VNC / take-over / screenshot stream. iOS: no pane this slice.
-- [D3 — In-stream widgets and attachment chips](https://github.com/chinghauchu/snorlax-bot/issues/8)
+- [D3 — In-stream widgets and attachment chips](https://github.com/chinghauchu/snorlax-bot/issues/8) — **v0.8 first slice:** LEFT question card chrome (desktop + iOS, no extra sheet). Attachment-chip VL treatment stays later.
 
 ## Backend
 

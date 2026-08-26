@@ -308,13 +308,57 @@ final class AppModel {
         } catch is CancellationError {
             await refreshMessages()
         } catch {
-            if let runtime = error as? RuntimeError, case .http(let status, let message) = runtime, status == 422 {
+            if let runtime = error as? RuntimeError, case .http(let status, let message) = runtime, status == 422 || status == 409 {
                 composerError = message
                 messages.removeAll { $0.id == user.id }
                 draft = content
             } else {
                 errorMessage = error.localizedDescription
             }
+        }
+    }
+
+    func answerWidget(id: String, values: [String]) async {
+        await streamAnswer(widgetReply: WidgetReply(id: id, values: values))
+    }
+
+    func dismissWidget(id: String) async {
+        await streamAnswer(widgetReply: WidgetReply(id: id, dismissed: true))
+    }
+
+    private func streamAnswer(widgetReply: WidgetReply) async {
+        guard let client, let agent = selectedAgent, !isSending else { return }
+        composerError = nil
+        toolTraces = []
+        isSending = true
+        defer { isSending = false }
+        do {
+            try await client.sendMessage(
+                agentId: agent.id,
+                content: "",
+                images: [],
+                replyTo: agent.isChannel ? threadID : nil,
+                channelId: agent.isChannel ? nil : lastExtraChannelID,
+                widgetReply: widgetReply
+            ) { [weak self] event in
+                Task { @MainActor in
+                    self?.handle(event, agentId: agent.id)
+                }
+            }
+            if !Task.isCancelled, selectedAgentID == agent.id {
+                messages = try await client.listMessages(agentId: agent.id, threadId: threadID)
+                toolTraces = []
+                prunePreviews()
+            }
+        } catch is CancellationError {
+            await refreshMessages()
+        } catch {
+            if let runtime = error as? RuntimeError, case .http(_, let message) = runtime {
+                composerError = message
+            } else {
+                errorMessage = error.localizedDescription
+            }
+            await refreshMessages()
         }
     }
 

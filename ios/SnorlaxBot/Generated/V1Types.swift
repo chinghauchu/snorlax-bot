@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 //
-// Generated from protocol/openapi.yaml (Snorlax-Bot 0.7.0).
+// Generated from protocol/openapi.yaml (Snorlax-Bot 0.8.0).
 // Do not edit by hand. Regenerate with:
 //   python3 ios/scripts/generate_v1_types.py
 //
@@ -289,6 +289,12 @@ struct Message: Codable, Hashable, Identifiable, Sendable {
         case message
         case handoff
         case tool
+        case widget
+    }
+    enum WidgetStatus: String, Codable, Hashable, Sendable {
+        case pending
+        case resolved
+        case dismissed
     }
 
     var id: String
@@ -308,8 +314,11 @@ struct Message: Codable, Hashable, Identifiable, Sendable {
     var userAsk: String?
     var brief: String?
     var replyCount: Int?
+    var widget: Widget?
+    var widgetStatus: WidgetStatus?
+    var widgetValues: [String]?
 
-    init(id: String, agentId: String, role: Role, content: String, images: [ImageOut], createdAt: Date, senderId: String, senderName: String, senderAvatar: String?, hop: Int, mentions: [Mention], kind: Kind? = nil, replyTo: String? = nil, handoff: HandoffRef? = nil, userAsk: String? = nil, brief: String? = nil, replyCount: Int? = nil) {
+    init(id: String, agentId: String, role: Role, content: String, images: [ImageOut], createdAt: Date, senderId: String, senderName: String, senderAvatar: String?, hop: Int, mentions: [Mention], kind: Kind? = nil, replyTo: String? = nil, handoff: HandoffRef? = nil, userAsk: String? = nil, brief: String? = nil, replyCount: Int? = nil, widget: Widget? = nil, widgetStatus: WidgetStatus? = nil, widgetValues: [String]? = nil) {
         self.id = id
         self.agentId = agentId
         self.role = role
@@ -327,9 +336,12 @@ struct Message: Codable, Hashable, Identifiable, Sendable {
         self.userAsk = userAsk
         self.brief = brief
         self.replyCount = replyCount
+        self.widget = widget
+        self.widgetStatus = widgetStatus
+        self.widgetValues = widgetValues
     }
 
-    enum CodingKeys: String, CodingKey { case id, agentId, role, content, images, createdAt, senderId, senderName, senderAvatar, hop, mentions, kind, replyTo, handoff, userAsk, brief, replyCount }
+    enum CodingKeys: String, CodingKey { case id, agentId, role, content, images, createdAt, senderId, senderName, senderAvatar, hop, mentions, kind, replyTo, handoff, userAsk, brief, replyCount, widget, widgetStatus, widgetValues }
 
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
@@ -350,6 +362,9 @@ struct Message: Codable, Hashable, Identifiable, Sendable {
         userAsk = try container.decodeIfPresent(String.self, forKey: .userAsk)
         brief = try container.decodeIfPresent(String.self, forKey: .brief)
         replyCount = try container.decodeIfPresent(Int.self, forKey: .replyCount)
+        widget = try container.decodeIfPresent(Widget.self, forKey: .widget)
+        widgetStatus = try container.decodeIfPresent(WidgetStatus.self, forKey: .widgetStatus)
+        widgetValues = try container.decodeIfPresent([String].self, forKey: .widgetValues)
     }
 
     func encode(to encoder: Encoder) throws {
@@ -371,42 +386,155 @@ struct Message: Codable, Hashable, Identifiable, Sendable {
         try container.encode(userAsk, forKey: .userAsk)
         try container.encode(brief, forKey: .brief)
         try container.encodeIfPresent(replyCount, forKey: .replyCount)
+        try container.encodeIfPresent(widget, forKey: .widget)
+        try container.encodeIfPresent(widgetStatus, forKey: .widgetStatus)
+        try container.encodeIfPresent(widgetValues, forKey: .widgetValues)
+    }
+}
+
+struct WidgetOption: Codable, Hashable, Sendable {
+    enum Style: String, Codable, Hashable, Sendable {
+        case `default`
+        case primary
+        case danger
+    }
+
+    var label: String
+    var value: String?
+    var description: String?
+    var style: Style?
+
+    init(label: String, value: String? = nil, description: String? = nil, style: Style? = nil) {
+        self.label = label
+        self.value = value
+        self.description = description
+        self.style = style
+    }
+
+    enum CodingKeys: String, CodingKey { case label, value, description, style }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        label = try container.decode(String.self, forKey: .label)
+        value = try container.decodeIfPresent(String.self, forKey: .value)
+        description = try container.decodeIfPresent(String.self, forKey: .description)
+        style = try container.decodeIfPresent(Style.self, forKey: .style)
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(label, forKey: .label)
+        try container.encodeIfPresent(value, forKey: .value)
+        try container.encodeIfPresent(description, forKey: .description)
+        try container.encodeIfPresent(style, forKey: .style)
+    }
+}
+
+struct Widget: Codable, Hashable, Sendable {
+    var prompt: String
+    var helpText: String?
+    var options: [WidgetOption]
+    var allowCustom: Bool?
+    var multiSelect: Bool?
+    var dismissOnMoveOn: Bool?
+
+    init(prompt: String, helpText: String? = nil, options: [WidgetOption], allowCustom: Bool? = nil, multiSelect: Bool? = nil, dismissOnMoveOn: Bool? = nil) {
+        self.prompt = prompt
+        self.helpText = helpText
+        self.options = options
+        self.allowCustom = allowCustom
+        self.multiSelect = multiSelect
+        self.dismissOnMoveOn = dismissOnMoveOn
+    }
+
+    enum CodingKeys: String, CodingKey { case prompt, helpText, options, allowCustom, multiSelect, dismissOnMoveOn }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        prompt = try container.decode(String.self, forKey: .prompt)
+        helpText = try container.decodeIfPresent(String.self, forKey: .helpText)
+        options = try container.decode([WidgetOption].self, forKey: .options)
+        allowCustom = try container.decodeIfPresent(Bool.self, forKey: .allowCustom)
+        multiSelect = try container.decodeIfPresent(Bool.self, forKey: .multiSelect)
+        dismissOnMoveOn = try container.decodeIfPresent(Bool.self, forKey: .dismissOnMoveOn)
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(prompt, forKey: .prompt)
+        try container.encode(helpText, forKey: .helpText)
+        try container.encode(options, forKey: .options)
+        try container.encodeIfPresent(allowCustom, forKey: .allowCustom)
+        try container.encodeIfPresent(multiSelect, forKey: .multiSelect)
+        try container.encodeIfPresent(dismissOnMoveOn, forKey: .dismissOnMoveOn)
+    }
+}
+
+struct WidgetReply: Codable, Hashable, Identifiable, Sendable {
+    var id: String
+    var values: [String]?
+    var dismissed: Bool?
+
+    init(id: String, values: [String]? = nil, dismissed: Bool? = nil) {
+        self.id = id
+        self.values = values
+        self.dismissed = dismissed
+    }
+
+    enum CodingKeys: String, CodingKey { case id, values, dismissed }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(String.self, forKey: .id)
+        values = try container.decodeIfPresent([String].self, forKey: .values)
+        dismissed = try container.decodeIfPresent(Bool.self, forKey: .dismissed)
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(id, forKey: .id)
+        try container.encodeIfPresent(values, forKey: .values)
+        try container.encodeIfPresent(dismissed, forKey: .dismissed)
     }
 }
 
 struct MessageCreate: Codable, Hashable, Sendable {
-    var content: String
+    var content: String?
     var images: [ImageIn]?
     var mentions: [String]?
     var replyTo: String?
     var channelId: String?
+    var widgetReply: WidgetReply?
 
-    init(content: String, images: [ImageIn]? = nil, mentions: [String]? = nil, replyTo: String? = nil, channelId: String? = nil) {
+    init(content: String? = nil, images: [ImageIn]? = nil, mentions: [String]? = nil, replyTo: String? = nil, channelId: String? = nil, widgetReply: WidgetReply? = nil) {
         self.content = content
         self.images = images
         self.mentions = mentions
         self.replyTo = replyTo
         self.channelId = channelId
+        self.widgetReply = widgetReply
     }
 
-    enum CodingKeys: String, CodingKey { case content, images, mentions, replyTo, channelId }
+    enum CodingKeys: String, CodingKey { case content, images, mentions, replyTo, channelId, widgetReply }
 
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
-        content = try container.decode(String.self, forKey: .content)
+        content = try container.decodeIfPresent(String.self, forKey: .content)
         images = try container.decodeIfPresent([ImageIn].self, forKey: .images)
         mentions = try container.decodeIfPresent([String].self, forKey: .mentions)
         replyTo = try container.decodeIfPresent(String.self, forKey: .replyTo)
         channelId = try container.decodeIfPresent(String.self, forKey: .channelId)
+        widgetReply = try container.decodeIfPresent(WidgetReply.self, forKey: .widgetReply)
     }
 
     func encode(to encoder: Encoder) throws {
         var container = encoder.container(keyedBy: CodingKeys.self)
-        try container.encode(content, forKey: .content)
+        try container.encodeIfPresent(content, forKey: .content)
         try container.encodeIfPresent(images, forKey: .images)
         try container.encodeIfPresent(mentions, forKey: .mentions)
         try container.encode(replyTo, forKey: .replyTo)
         try container.encode(channelId, forKey: .channelId)
+        try container.encodeIfPresent(widgetReply, forKey: .widgetReply)
     }
 }
 
