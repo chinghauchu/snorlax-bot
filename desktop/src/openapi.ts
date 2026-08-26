@@ -203,19 +203,21 @@ export interface paths {
         /**
          * List cron routines assigned to this agent
          * @description JSON array of Routine (not wrapped): `{ id, name, skill, schedule,
-         *     enabled }`. kind=channel is 422. Used by the agent info pane
-         *     (list + enable/pause only). schedule is 5-field cron in
-         *     Asia/Taipei. Optional scheduleLabel is a display string.
-         *     Humanized `{skill} · {Weekdays 9:00}` is a client concern.
+         *     enabled }`. Missing agent is 404. kind=channel is 409 (routines
+         *     are agent-only). Used by the agent info pane (list + enable/pause
+         *     only). schedule is 5-field cron in Asia/Taipei. Optional
+         *     scheduleLabel is a display string. Humanized
+         *     `{skill} · {Weekdays 9:00}` is a client concern.
          */
         get: operations["listRoutines"];
         put?: never;
         /**
          * Seed a cron routine for this agent
          * @description Test/runtime seed. Body `{ name, skill, schedule }`. One routine
-         *     = one agent + one SKILL.md name. schedule is 5-field cron or a
-         *     named hour (weekdays at 9am). Clients have no create UI this
-         *     slice. kind=channel is 422.
+         *     = one agent + one SKILL.md slug. schedule is 5-field cron or a
+         *     named hour (weekdays at 9am), Asia/Taipei. Clients have no create
+         *     UI this slice. 422 unknown skill / bad cron / channel id.
+         *     Missing agent is 404. No DELETE this slice.
          */
         post: operations["createRoutine"];
         delete?: never;
@@ -243,7 +245,8 @@ export interface paths {
         /**
          * Enable or pause a routine
          * @description `{ enabled: false }` pauses. `{ enabled: true }` resumes. This
-         *     thin. No name/skill/schedule patch this slice. No delete UI.
+         *     thin. No name/skill/schedule patch this slice. No DELETE.
+         *     Unknown routine is 404. kind=channel is 409.
          */
         patch: operations["patchRoutine"];
         trace?: never;
@@ -259,9 +262,10 @@ export interface paths {
         };
         /**
          * List discovered skills for this agent
-         * @description Thin discovery. Runtime reads SKILL.md from the speaking agent's
-         *     workspace and from SNORLAX_DATA_DIR/skills/. Not a marketplace
-         *     catalog. kind=channel is 422. Clients never read the host disk.
+         * @description Thin discovery. Runtime reads SKILL.md from
+         *     SNORLAX_DATA_DIR/skills/<slug>/SKILL.md (and may also see a
+         *     workspace SKILL.md). Not a marketplace catalog. kind=channel is
+         *     422. Clients never read the host disk.
          */
         get: operations["listSkills"];
         put?: never;
@@ -653,7 +657,7 @@ export interface components {
         Routine: {
             id: string;
             name: string;
-            /** @description SKILL.md name this routine fires. */
+            /** @description SKILL.md slug this routine fires. */
             skill: string;
             /** @description 5-field cron. Interpreted in Asia/Taipei. */
             schedule: string;
@@ -951,7 +955,7 @@ export interface operations {
             };
             401: components["responses"]["Error"];
             404: components["responses"]["Error"];
-            422: components["responses"]["Error"];
+            409: components["responses"]["Error"];
         };
     };
     createRoutine: {
@@ -1010,6 +1014,7 @@ export interface operations {
             };
             401: components["responses"]["Error"];
             404: components["responses"]["Error"];
+            409: components["responses"]["Error"];
             422: components["responses"]["Error"];
         };
     };

@@ -30,6 +30,10 @@ def is_routine_pack(pack: dict[str, Any] | None) -> bool:
 
 
 def is_due(routine: dict[str, Any], when: datetime) -> bool:
+    """True only if enabled and the cron matches this Asia/Taipei minute.
+
+    Missed ticks while the runtime was down are skipped (no catch-up storm).
+    """
     if not routine.get("enabled"):
         return False
     if not cron_matches(str(routine.get("schedule") or ""), when):
@@ -58,8 +62,10 @@ async def fire_due_routines(
 ) -> list[dict[str, Any]]:
     """Run every enabled routine whose cron matches ``now`` in Asia/Taipei.
 
-    Result lands in that agent's 1:1 as role=assistant senderId=A with
-    optional routineName. Isolation: never write into a peer 1:1.
+    Only the current Taipei minute is considered. Missed ticks while the
+    runtime was down are skipped (no catch-up storm). Result lands in that
+    agent's 1:1 as role=assistant senderId=A with optional routineName.
+    Isolation: never write into a peer 1:1. Paused routines do not fire.
     """
     from snorlax_runtime.routing import run_routine_turn
 

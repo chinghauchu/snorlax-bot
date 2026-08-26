@@ -156,32 +156,36 @@ info:
     stay auto-run (no approval widget).
 
     v0.9: skills and cron routines. Skills are SKILL.md files the runtime
-    loads from the speaking agent's workspace and/or
-    SNORLAX_DATA_DIR/skills/ (default ~/.snorlax-bot/skills/). YAML
-    frontmatter name + description, then markdown body. A skill is a
-    reusable recipe; it has no trigger of its own. One routine = one
-    agent + one SKILL.md. Cron only, Asia/Taipei. No Slack/GitHub/Origin
-    or other event listeners. No teach-a-task. No marketplace / skill
-    picker. GET /v1/agents/{id}/routines lists
-    `{ id, name, skill, schedule, enabled }` (schedule is 5-field cron;
-    optional scheduleLabel is a display string). Pause/enable is PATCH
-    `/v1/agents/{id}/routines/{rid}` `{ enabled }` (resume = enable).
-    Chrome is list + enable/pause only — no create / edit / delete UI,
-    no extra sheet. POST may seed a routine for tests; clients do not
-    create or delete this slice. A due cron wakes that agent in the
-    FastAPI process. Persist a normal assistant Message in that agent's
-    1:1: senderId=A, kind=message, optional `routineName` for the kicker.
-    Not a channel post. Isolation + report-back stand: never paint B in
-    A's 1:1. Tools still auto-run. Widgets OK if that run needs a
-    decision (reuse v0.8 kind=widget; no second protocol). Agent info
-    pane: Routines list under the 72px identity (desktop 320px overlay,
-    iOS sheet). Channel pane unchanged. No extra computer preview.
-    Clients never speak MCP or the model. No Mac folder picker. Seed
-    DELETE 204, no auto-reseed. Unknown SSE events still ignorable.
-    Existing message.delta / message.done / tool.* / kind=widget stand.
-    Out of scope: box/VNC, teach-a-task, MCP marketplace UI, event
-    listeners, computer pane changes, Mac folder picker. Do not
-    reintroduce computerPane.ts (helpers stay workspaceTree.ts).
+    loads from SNORLAX_DATA_DIR/skills/<slug>/SKILL.md (default
+    ~/.snorlax-bot/skills/<slug>/SKILL.md). YAML frontmatter name +
+    description, then markdown body. A skill is a reusable recipe; it has
+    no trigger of its own. No marketplace / skill picker. One routine =
+    one agent + one SKILL.md slug. Cron is 5-field, Asia/Taipei (fixed
+    zone, not the Mac TZ). No Slack/GitHub/Origin or other event
+    listeners. No teach-a-task. GET /v1/agents/{id}/routines lists
+    `{ id, name, skill, schedule, enabled }` (bare array). Missing agent
+    is 404. kind=channel is 409 (routines are agent-only). Pause/enable
+    is PATCH `/v1/agents/{id}/routines/{rid}` `{ enabled }` (resume =
+    enable); unknown routine 404; channel 409. Chrome is list +
+    enable/pause only — no create / edit / delete UI, no extra sheet.
+    POST may seed a routine for tests `{ name, skill, schedule }` (201);
+    422 unknown skill / bad cron / channel id. No DELETE. A due cron
+    wakes that agent in the FastAPI process if enabled. Persist a normal
+    assistant Message in that agent's 1:1: senderId=A, kind=message,
+    optional `routineName` for the kicker. Not a hop, not a widget, not
+    a channel post. Isolation + report-back stand: never paint B in A's
+    1:1. Do not run while paused. Missed ticks while the runtime was
+    down are skipped (no catch-up storm). Tools still auto-run. Widgets
+    OK if that run needs a decision (reuse v0.8 kind=widget; no second
+    protocol). Agent info pane: Routines list under the 72px identity
+    (desktop 320px overlay, iOS sheet). Channel pane unchanged. No extra
+    computer preview. Clients never speak MCP or the model. No Mac
+    folder picker. Seed DELETE 204, no auto-reseed. Unknown SSE events
+    still ignorable. Existing message.delta / message.done / tool.* /
+    kind=widget stand. Out of scope: box/VNC, teach-a-task, MCP
+    marketplace UI, event listeners, computer pane changes, Mac folder
+    picker. Do not reintroduce computerPane.ts (helpers stay
+    workspaceTree.ts).
   license:
     name: Apache-2.0
     identifier: Apache-2.0
@@ -477,10 +481,11 @@ paths:
       summary: List cron routines assigned to this agent
       description: |
         JSON array of Routine (not wrapped): `{ id, name, skill, schedule,
-        enabled }`. kind=channel is 422. Used by the agent info pane
-        (list + enable/pause only). schedule is 5-field cron in
-        Asia/Taipei. Optional scheduleLabel is a display string.
-        Humanized `{skill} · {Weekdays 9:00}` is a client concern.
+        enabled }`. Missing agent is 404. kind=channel is 409 (routines
+        are agent-only). Used by the agent info pane (list + enable/pause
+        only). schedule is 5-field cron in Asia/Taipei. Optional
+        scheduleLabel is a display string. Humanized
+        `{skill} · {Weekdays 9:00}` is a client concern.
       operationId: listRoutines
       responses:
         "200":
@@ -495,15 +500,16 @@ paths:
           $ref: "#/components/responses/Error"
         "404":
           $ref: "#/components/responses/Error"
-        "422":
+        "409":
           $ref: "#/components/responses/Error"
     post:
       summary: Seed a cron routine for this agent
       description: |
         Test/runtime seed. Body `{ name, skill, schedule }`. One routine
-        = one agent + one SKILL.md name. schedule is 5-field cron or a
-        named hour (weekdays at 9am). Clients have no create UI this
-        slice. kind=channel is 422.
+        = one agent + one SKILL.md slug. schedule is 5-field cron or a
+        named hour (weekdays at 9am), Asia/Taipei. Clients have no create
+        UI this slice. 422 unknown skill / bad cron / channel id.
+        Missing agent is 404. No DELETE this slice.
       operationId: createRoutine
       requestBody:
         required: true
@@ -537,7 +543,8 @@ paths:
       summary: Enable or pause a routine
       description: |
         `{ enabled: false }` pauses. `{ enabled: true }` resumes. This
-        thin. No name/skill/schedule patch this slice. No delete UI.
+        thin. No name/skill/schedule patch this slice. No DELETE.
+        Unknown routine is 404. kind=channel is 409.
       operationId: patchRoutine
       requestBody:
         required: true
@@ -556,6 +563,8 @@ paths:
           $ref: "#/components/responses/Error"
         "404":
           $ref: "#/components/responses/Error"
+        "409":
+          $ref: "#/components/responses/Error"
         "422":
           $ref: "#/components/responses/Error"
 
@@ -565,9 +574,10 @@ paths:
     get:
       summary: List discovered skills for this agent
       description: |
-        Thin discovery. Runtime reads SKILL.md from the speaking agent's
-        workspace and from SNORLAX_DATA_DIR/skills/. Not a marketplace
-        catalog. kind=channel is 422. Clients never read the host disk.
+        Thin discovery. Runtime reads SKILL.md from
+        SNORLAX_DATA_DIR/skills/<slug>/SKILL.md (and may also see a
+        workspace SKILL.md). Not a marketplace catalog. kind=channel is
+        422. Clients never read the host disk.
       operationId: listSkills
       responses:
         "200":
@@ -1177,7 +1187,7 @@ components:
           type: string
         skill:
           type: string
-          description: SKILL.md name this routine fires.
+          description: SKILL.md slug this routine fires.
         schedule:
           type: string
           description: 5-field cron. Interpreted in Asia/Taipei.

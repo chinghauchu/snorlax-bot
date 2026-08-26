@@ -58,9 +58,9 @@ workspace dir.
 
 ## Skills and routines
 
-`SKILL.md` files live in `$SNORLAX_DATA_DIR/skills/` and/or an agent's
-workspace. YAML frontmatter `name` + `description`, then markdown body.
-A skill has no trigger of its own.
+`SKILL.md` files live in `$SNORLAX_DATA_DIR/skills/<slug>/SKILL.md`.
+YAML frontmatter `name` + `description`, then markdown body.
+A skill has no trigger of its own. No marketplace / client picker.
 
 Routines are cron jobs on an agent (`GET /v1/agents/{id}/routines`,
 `PATCH .../routines/{id}` `{ enabled }`). The scheduler runs in this

@@ -142,11 +142,12 @@ SQLite file `~/.snorlax-bot/snorlax.db` (override with `SNORLAX_DATA_DIR`):
   Answer is POST `widgetReply: { id, values?, dismissed? }` on the same
   transcript; not a new user row. Clients render the card; they never invent
   fields.
-- Skills and routines (v0.9) — `SKILL.md` under the speaking agent's
-  workspace and/or `SNORLAX_DATA_DIR/skills/`. Table `routines` (agent,
-  skill name, 5-field cron, enabled). Scheduler ticks inside the FastAPI
+- Skills and routines (v0.9) — `SKILL.md` under
+  `SNORLAX_DATA_DIR/skills/<slug>/SKILL.md`. Table `routines` (agent,
+  skill slug, 5-field cron, enabled). Scheduler ticks inside the FastAPI
   process (Asia/Taipei). A due run persists a normal assistant Message in
-  that agent's 1:1 with optional `routineName`.
+  that agent's 1:1 with optional `routineName`. Channel GET/PATCH routines
+  are 409. Missed ticks are skipped.
 
 v0.1 keeps one transcript per agent (the 1:1) plus one seeded group channel
 and extra user-created channels (v0.4).

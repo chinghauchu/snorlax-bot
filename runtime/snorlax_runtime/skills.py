@@ -112,14 +112,23 @@ def find_skill(skills: list[Skill], name: str) -> Skill | None:
     wanted = (name or "").strip()
     if not wanted:
         return None
-    for skill in skills:
-        if skill.name == wanted:
-            return skill
     lowered = wanted.casefold()
     for skill in skills:
-        if skill.name.casefold() == lowered:
+        if skill.name == wanted or skill_slug(skill) == wanted:
+            return skill
+    for skill in skills:
+        if skill.name.casefold() == lowered or skill_slug(skill).casefold() == lowered:
             return skill
     return None
+
+
+def skill_slug(skill: Skill) -> str:
+    """Directory name under skills/<slug>/SKILL.md, else frontmatter name."""
+    rel = (skill.path or "").replace("\\", "/").strip("/")
+    parts = [p for p in rel.split("/") if p]
+    if len(parts) >= 2 and parts[-1] == SKILL_FILENAME:
+        return parts[-2]
+    return skill.name
 
 
 def load_skills(data_dir: Path, workspace: Path | None = None) -> list[Skill]:

@@ -14,10 +14,13 @@ v0.8 question widgets: Message `kind=widget` plus `widget`,
 `{ widgetReply: { id, values?, dismissed? } }`. No `widget.*` SSE event.
 Clients render only.
 
-v0.9 skills and cron routines: `GET /v1/agents/{id}/routines` lists
-`{ id, name, skill, schedule, enabled }`. Pause/enable is
-`PATCH .../routines/{rid}` `{ enabled }`. A due cron writes a normal
-assistant Message in that agent's 1:1 with optional `routineName`.
+v0.9 skills and cron routines: SKILL.md from
+`SNORLAX_DATA_DIR/skills/<slug>/SKILL.md`. `GET /v1/agents/{id}/routines`
+lists `{ id, name, skill, schedule, enabled }` (404 missing; 409 channel).
+Pause/enable is `PATCH .../routines/{rid}` `{ enabled }` (404 unknown;
+409 channel). POST seeds for tests; 422 unknown skill / bad cron /
+channel. No DELETE. A due cron writes a normal assistant Message in that
+agent's 1:1 with optional `routineName`. Missed ticks are skipped.
 Chrome is list + enable/pause only.
 
 A copy is also kept at `runtime/openapi.yaml` and `desktop/openapi.yaml`

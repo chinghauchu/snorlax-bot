@@ -1,10 +1,10 @@
 # SPDX-License-Identifier: Apache-2.0
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 
-from snorlax_runtime.cron import TAIPEI, parse_schedule, schedule_words
+from snorlax_runtime.cron import TAIPEI, cron_matches, parse_schedule, schedule_words
 from snorlax_runtime.scheduler import fire_due_routines
 from snorlax_runtime.skills import load_skills, parse_skill_markdown
 from tests.conftest import AUTH
@@ -200,12 +200,128 @@ def test_b_routine_never_appears_in_a_one_to_one(client, tmp_path: Path) -> None
     assert all(m["senderId"] != SEED for m in b_msgs)
 
 
-def test_routine_on_channel_is_422(client) -> None:
+def test_channel_get_and_patch_routines_are_409(client) -> None:
+    listed = client.get(f"/v1/agents/{CHANNEL}/routines", headers=AUTH)
+    assert listed.status_code == 409
+    patched = client.patch(
+        f"/v1/agents/{CHANNEL}/routines/rtn_missing",
+        headers=AUTH,
+        json={"enabled": False},
+    )
+    assert patched.status_code == 409
+
+
+def test_channel_post_routine_is_422(client, tmp_path: Path) -> None:
+    _write_status_skill(tmp_path)
     response = client.post(
         f"/v1/agents/{CHANNEL}/routines",
         headers=AUTH,
         json={"name": "Nope", "skill": "status", "schedule": "0 9 * * 1-5"},
     )
     assert response.status_code == 422
-    listed = client.get(f"/v1/agents/{CHANNEL}/routines", headers=AUTH)
-    assert listed.status_code == 422
+
+
+def test_post_unknown_skill_and_bad_cron_are_422(client, tmp_path: Path) -> None:
+    _write_status_skill(tmp_path)
+    unknown = client.post(
+        f"/v1/agents/{SEED}/routines",
+        headers=AUTH,
+        json={
+            "name": "Ghost",
+            "skill": "not-a-skill",
+            "schedule": "0 9 * * 1-5",
+        },
+    )
+    assert unknown.status_code == 422
+    bad = client.post(
+        f"/v1/agents/{SEED}/routines",
+        headers=AUTH,
+        json={"name": "Bad cron", "skill": "status", "schedule": "not-cron"},
+    )
+    assert bad.status_code == 422
+
+
+def test_missing_agent_routines_are_404(client) -> None:
+    listed = client.get("/v1/agents/no-such-agent/routines", headers=AUTH)
+    assert listed.status_code == 404
+    created = client.post(
+        "/v1/agents/no-such-agent/routines",
+        headers=AUTH,
+        json={"name": "X", "skill": "status", "schedule": "0 9 * * 1-5"},
+    )
+    assert created.status_code == 404
+    patched = client.patch(
+        "/v1/agents/no-such-agent/routines/rtn_x",
+        headers=AUTH,
+        json={"enabled": False},
+    )
+    assert patched.status_code == 404
+
+
+def test_patch_unknown_routine_is_404(client, tmp_path: Path) -> None:
+    _write_status_skill(tmp_path)
+    patched = client.patch(
+        f"/v1/agents/{SEED}/routines/rtn_missing",
+        headers=AUTH,
+        json={"enabled": False},
+    )
+    assert patched.status_code == 404
+
+
+def test_no_delete_routine_route(client, tmp_path: Path) -> None:
+    _write_status_skill(tmp_path)
+    created = client.post(
+        f"/v1/agents/{SEED}/routines",
+        headers=AUTH,
+        json={
+            "name": "Morning status",
+            "skill": "status",
+            "schedule": "0 9 * * 1-5",
+        },
+    )
+    rid = created.json()["id"]
+    deleted = client.delete(f"/v1/agents/{SEED}/routines/{rid}", headers=AUTH)
+    assert deleted.status_code == 405
+
+
+def test_cron_zone_is_taipei_not_utc(client, tmp_path: Path) -> None:
+    _write_status_skill(tmp_path)
+    client.post(
+        f"/v1/agents/{SEED}/routines",
+        headers=AUTH,
+        json={
+            "name": "Morning status",
+            "skill": "status",
+            "schedule": "0 9 * * 1-5",
+        },
+    )
+    utc_nine = datetime(2026, 8, 26, 9, 0, tzinfo=timezone.utc)
+    assert not cron_matches("0 9 * * 1-5", utc_nine)
+    before = client.get(f"/v1/agents/{SEED}/messages", headers=AUTH).json()
+    _fire(client, utc_nine)
+    after = client.get(f"/v1/agents/{SEED}/messages", headers=AUTH).json()
+    assert [m["id"] for m in after] == [m["id"] for m in before]
+
+    utc_as_taipei_nine = datetime(2026, 8, 26, 1, 0, tzinfo=timezone.utc)
+    assert cron_matches("0 9 * * 1-5", utc_as_taipei_nine)
+    _fire(client, utc_as_taipei_nine)
+    landed = client.get(f"/v1/agents/{SEED}/messages", headers=AUTH).json()
+    new = [m for m in landed if m["id"] not in {row["id"] for row in after}]
+    assert any(m.get("routineName") == "Morning status" for m in new)
+
+
+def test_missed_tick_is_skipped(client, tmp_path: Path) -> None:
+    _write_status_skill(tmp_path)
+    client.post(
+        f"/v1/agents/{SEED}/routines",
+        headers=AUTH,
+        json={
+            "name": "Morning status",
+            "skill": "status",
+            "schedule": "0 9 * * 1-5",
+        },
+    )
+    before = client.get(f"/v1/agents/{SEED}/messages", headers=AUTH).json()
+    _fire(client, datetime(2026, 8, 26, 10, 0, tzinfo=TAIPEI))
+    after = client.get(f"/v1/agents/{SEED}/messages", headers=AUTH).json()
+    assert [m["id"] for m in after] == [m["id"] for m in before]

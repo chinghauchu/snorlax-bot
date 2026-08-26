@@ -392,11 +392,16 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             },
         )
 
-    def _require_agent(conversation: dict | None, agent_id: str) -> dict:
+    def _require_agent(
+        conversation: dict | None,
+        agent_id: str,
+        *,
+        channel_status: int,
+    ) -> dict:
         if conversation is None:
             raise _error(404, f"Agent {agent_id!r} not found")
         if conversation.get("kind") == KIND_CHANNEL:
-            raise _error(422, "routines are assigned to an agent")
+            raise _error(channel_status, "routines are assigned to an agent")
         return conversation
 
     @app.get("/v1/agents/{id}/routines", response_model=list[Routine])
@@ -405,7 +410,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     ) -> list[Routine]:
         store: Store = request.app.state.store
         conversation = await store.get_agent(id)
-        _require_agent(conversation, id)
+        _require_agent(conversation, id, channel_status=409)
         return [Routine.model_validate(r) for r in await store.list_routines(id)]
 
     @app.post(
@@ -420,18 +425,23 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         _: str = Depends(require_bearer),
     ) -> Routine:
         from snorlax_runtime.cron import CronError, parse_schedule
+        from snorlax_runtime.skills import find_skill, load_skills, skill_slug
 
         store: Store = request.app.state.store
         conversation = await store.get_agent(id)
-        _require_agent(conversation, id)
+        _require_agent(conversation, id, channel_status=422)
         try:
             cron, label = parse_schedule(payload.schedule)
         except CronError as exc:
             raise _error(422, exc.message) from exc
+        skill_name = payload.skill.strip()
+        matched = find_skill(load_skills(store.data_dir), skill_name)
+        if matched is None:
+            raise _error(422, "unknown skill")
         row = await store.create_routine(
             agent_id=id,
             name=payload.name.strip(),
-            skill=payload.skill.strip(),
+            skill=skill_slug(matched),
             cron=cron,
             schedule_label=label,
         )
@@ -447,7 +457,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     ) -> Routine:
         store: Store = request.app.state.store
         conversation = await store.get_agent(id)
-        _require_agent(conversation, id)
+        _require_agent(conversation, id, channel_status=409)
         row = await store.patch_routine(
             routineId,
             agent_id=id,
@@ -466,7 +476,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
         store: Store = request.app.state.store
         conversation = await store.get_agent(id)
-        _require_agent(conversation, id)
+        _require_agent(conversation, id, channel_status=422)
         workspace = workspace_for(store.data_dir, conversation, id)
         skills = load_skills(store.data_dir, workspace)
         return [SkillInfo.model_validate(s.public()) for s in skills]

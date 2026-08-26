@@ -89,6 +89,10 @@ def test_protocol_openapi_is_locked_v0_contract() -> None:
     assert "{ id, name, skill, schedule, enabled }" in text or "skill, schedule, enabled" in text
     assert "later: skills, routines" not in text.lower()
     assert "No computer preview, routines, or connectors" not in text
+    assert "kind=channel is 409" in text
+    assert "unknown skill" in text
+    assert "no catch-up" in text
+    assert "skills/<slug>/SKILL.md" in text
     assert "No New / create / edit / delete UI" in text or "list + enable/pause" in text or "enable/pause only" in text
 
 
