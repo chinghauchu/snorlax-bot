@@ -437,12 +437,16 @@ info:
     mono, min-height 200pt, 44pt Save). No extra sheet beyond Edit.
     HTTP: List stays `GET /v1/agents/{id}/skills` `{ id, name }`
     (v0.17). `GET /v1/agents/{id}/skills/{sid}` → `{ id, name, body }`
-    (the SKILL.md **source**). `PATCH /v1/agents/{id}/skills/{sid}
-    { name, body }` → **200** `{ id, name, body }`. `DELETE
-    /v1/agents/{id}/skills/{sid}` → **204**. **No blank POST** for a
-    new empty skill. Unknown sid 404. Channel 409. Empty name/body on
-    PATCH 422. Out of scope: marketplace catalog, iOS Open/Record/
-    takeover, `/` autocomplete, blank New skill. Isolation,
+    (`body` is the full SKILL.md **source** including YAML frontmatter
+    plus recipe). `PATCH /v1/agents/{id}/skills/{sid} { name, body }`
+    → **200** `{ id, name, body }`. Write the file in place; keep the
+    slug / `id` unless a name change truly requires a new slug —
+    prefer keep `id` stable. `DELETE /v1/agents/{id}/skills/{sid}` →
+    **204**. Does not cascade-delete routines that still name the
+    skill. **No blank POST** for a new empty skill. Unknown sid 404.
+    Channel 409. Empty name/body on PATCH 422. Out of scope:
+    marketplace catalog, iOS Open/Record/takeover, `/` autocomplete,
+    blank New skill. Isolation,
     report-back, widgets, markdown, MCP, computer preview/takeover/
     record, routines Add/Remove, seed DELETE 204, Mac oMLX, no Mac
     folder picker, workspaceTree.ts stand. OpenAPI **0.18.0**.
@@ -987,10 +991,10 @@ paths:
     get:
       summary: Get a skill's SKILL.md source
       description: |
-        `{ id, name, body }`. `body` is the SKILL.md **source** (markdown
-        after YAML frontmatter), not a rendered preview. kind=channel is
-        409. Missing agent is 404. Unknown sid is 404. List stays
-        GET `/skills` `{ id, name }`.
+        `{ id, name, body }`. `body` is the full SKILL.md **source**
+        (YAML frontmatter plus recipe), not a rendered preview.
+        kind=channel is 409. Missing agent is 404. Unknown sid is 404.
+        List stays GET `/skills` `{ id, name }` (no `body` field).
       operationId: getSkill
       responses:
         "200":
@@ -1008,10 +1012,12 @@ paths:
     patch:
       summary: Edit a skill name and SKILL.md source
       description: |
-        `{ name, body }` → **200** `{ id, name, body }`. Rewrites that
-        SKILL.md in place (id/slug stays). Empty name or body is **422**.
-        kind=channel is 409. Missing agent is 404. Unknown sid is 404.
-        Not a blank create — POST `/skills { name }` stays teach-a-task.
+        `{ name, body }` → **200** `{ id, name, body }`. Writes that
+        SKILL.md in place. Keep the slug / skill `id` unless a name
+        change truly requires a new slug — prefer keep `id` stable.
+        Empty name or body is **422**. kind=channel is 409. Missing
+        agent is 404. Unknown sid is 404. Not a blank create — POST
+        `/skills { name }` stays teach-a-task.
       operationId: patchSkill
       requestBody:
         required: true
@@ -1039,7 +1045,9 @@ paths:
       description: |
         `DELETE /v1/agents/{id}/skills/{sid}` → **204**, gone from GET.
         Unknown sid is 404. kind=channel is 409. Missing agent is 404.
-        Confirm chrome is `Remove {name}?`. No blank Add.
+        Confirm chrome is `Remove {name}?`. No blank Add. Does not
+        cascade-delete routines that still name the skill; those stay
+        until a later 422 on use.
       operationId: deleteSkill
       responses:
         "204":
@@ -2266,8 +2274,8 @@ components:
         body:
           type: string
           description: |
-            SKILL.md **source** (markdown after YAML frontmatter). Not a
-            rendered preview. Empty on PATCH is 422.
+            Full SKILL.md **source** including YAML frontmatter and
+            recipe (not rendered HTML). Empty on PATCH is 422.
 
     SkillPatch:
       type: object
@@ -2280,7 +2288,8 @@ components:
         body:
           type: string
           minLength: 1
-          description: SKILL.md markdown source. Empty is 422.
+          description: |
+            Full SKILL.md source (YAML frontmatter plus recipe). Empty is 422.
 
     Plugin:
       type: object

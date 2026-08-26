@@ -140,6 +140,9 @@ def test_protocol_openapi_is_locked_v0_contract() -> None:
     assert "getSkill" in text
     assert "patchSkill" in text
     assert "deleteSkill" in text
+    assert "after YAML frontmatter" not in text
+    assert "YAML frontmatter plus recipe" in text
+    assert "prefer keep" in text
     assert "No computer yet." in text
     assert "288x180" in text or "288×180" in text
     assert "You're driving" in text

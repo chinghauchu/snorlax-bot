@@ -43,10 +43,6 @@ class Skill:
     def listed(self) -> dict[str, str]:
         return {"id": skill_slug(self), "name": self.name}
 
-    def sourced(self) -> dict[str, str]:
-        """GET/PATCH shape: SKILL.md markdown source, not a rendered preview."""
-        return {"id": skill_slug(self), "name": self.name, "body": self.body}
-
 
 def skills_dir(data_dir: Path) -> Path:
     return data_dir / SKILLS_DIRNAME
@@ -328,6 +324,37 @@ def skill_disk_path(
     return root / skill.path
 
 
+def skill_wire(
+    data_dir: Path, workspace: Path | None, skill: Skill
+) -> dict[str, str]:
+    """GET/PATCH shape: full SKILL.md source (frontmatter + recipe)."""
+    path = skill_disk_path(data_dir, workspace, skill)
+    try:
+        raw = path.read_text(encoding="utf-8")
+    except OSError:
+        raw = render_skill_markdown(skill.name, skill.description, skill.body)
+    return {"id": skill_slug(skill), "name": skill.name, "body": raw}
+
+
+def _compose_patched_markdown(skill: Skill, name: str, body: str) -> str:
+    """Write-ready SKILL.md. Body may be full source or recipe-only."""
+    title = (name or "").strip()
+    text = (body or "").replace("\r\n", "\n")
+    if not title or not text.strip():
+        raise ValueError("name and body are required")
+    match = _FRONTMATTER.match(text if text.endswith("\n") else text + "\n")
+    if match is not None:
+        meta = _parse_frontmatter(match.group("meta"))
+        description = (
+            str(meta.get("description") or "").strip()
+            or skill.description
+            or title
+        )
+        recipe = match.group("body")
+        return render_skill_markdown(title, description, recipe)
+    return render_skill_markdown(title, skill.description or title, text)
+
+
 def patch_skill(
     data_dir: Path,
     workspace: Path | None,
@@ -336,16 +363,12 @@ def patch_skill(
     name: str,
     body: str,
 ) -> Skill | None:
-    """Rewrite SKILL.md in place. Id (slug path) stays. Empty name/body is the caller's 422."""
+    """Rewrite SKILL.md in place. Keep slug/id stable. Empty name/body is 422."""
     skill = find_skill(load_skills(data_dir, workspace), sid)
     if skill is None:
         return None
-    title = (name or "").strip()
-    text = (body or "").replace("\r\n", "\n").strip()
-    if not title or not text:
-        raise ValueError("name and body are required")
+    markdown = _compose_patched_markdown(skill, name, body)
     path = skill_disk_path(data_dir, workspace, skill)
-    markdown = render_skill_markdown(title, skill.description, text)
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(markdown, encoding="utf-8")
     updated = parse_skill_markdown(

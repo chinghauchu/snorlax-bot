@@ -86,9 +86,11 @@ SKILL.md picker + Schedule/Webhook), muted 12px `Remove` +
 kinds remain list-only.
 
 v0.18 skill markdown editor: `GET /v1/agents/{id}/skills/{sid}` →
-`{ id, name, body }` (SKILL.md source). `PATCH .../skills/{sid}
-{ name, body }` → 200 `{ id, name, body }`. `DELETE .../skills/{sid}`
-→ 204. List stays `{ id, name }`. Unknown sid 404. Channel 409.
+`{ id, name, body }` (full SKILL.md source including YAML frontmatter
+plus recipe). `PATCH .../skills/{sid} { name, body }` → 200
+`{ id, name, body }` (write in place; prefer keep `id` stable).
+`DELETE .../skills/{sid}` → 204 (do not cascade-delete routines).
+List stays `{ id, name }` (no `body`). Unknown sid 404. Channel 409.
 Empty name/body 422. No blank POST — create stays teach-a-task
 `POST /skills { name }`. Chrome: Skills below Routines; 320px
 `Edit skill` source textarea; no blank Add.

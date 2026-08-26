@@ -296,9 +296,11 @@ rows with name 14px and trailing 12px muted Edit then Remove;
 `Edit skill` sheet: Name 14px; body textarea 12px/1.45 mono,
 min-height 200px (SKILL.md source, not a rendered preview); Save
 36px / iOS 44pt disabled until name and body; × discards. GET
-`/skills/{sid}` `{ id, name, body }`; PATCH `{ name, body }` 200;
-DELETE 204. List stays `{ id, name }`. Channel 409. Unknown sid 404.
-Empty name/body 422. Out: marketplace, iOS Open/Record/takeover, `/`
+`/skills/{sid}` `{ id, name, body }` (`body` is full SKILL.md source
+including frontmatter plus recipe); PATCH `{ name, body }` 200 (write
+in place; prefer keep `id` stable); DELETE 204 (no routine cascade).
+List stays `{ id, name }`. Channel 409. Unknown sid 404. Empty
+name/body 422. Out: marketplace, iOS Open/Record/takeover, `/`
 autocomplete, blank New skill.
 
 ## Inference interface

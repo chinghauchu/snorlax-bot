@@ -790,7 +790,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     async def get_skill(
         id: str, sid: str, request: Request, _: str = Depends(require_bearer)
     ) -> SkillBody:
-        from snorlax_runtime.skills import find_skill, load_skills
+        from snorlax_runtime.skills import find_skill, load_skills, skill_wire
         from snorlax_runtime.tools import workspace_for
 
         store: Store = request.app.state.store
@@ -805,7 +805,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         skill = find_skill(load_skills(store.data_dir, workspace), sid)
         if skill is None:
             raise _error(404, f"Skill {sid!r} not found")
-        return SkillBody.model_validate(skill.sourced())
+        return SkillBody.model_validate(skill_wire(store.data_dir, workspace, skill))
 
     @app.patch("/v1/agents/{id}/skills/{sid}", response_model=SkillBody)
     async def patch_skill(
@@ -815,7 +815,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         request: Request,
         _: str = Depends(require_bearer),
     ) -> SkillBody:
-        from snorlax_runtime.skills import patch_skill as write_skill
+        from snorlax_runtime.skills import patch_skill as write_skill, skill_wire
         from snorlax_runtime.tools import workspace_for
 
         store: Store = request.app.state.store
@@ -839,7 +839,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             raise _error(422, str(exc)) from exc
         if skill is None:
             raise _error(404, f"Skill {sid!r} not found")
-        return SkillBody.model_validate(skill.sourced())
+        return SkillBody.model_validate(skill_wire(store.data_dir, workspace, skill))
 
     @app.delete(
         "/v1/agents/{id}/skills/{sid}",

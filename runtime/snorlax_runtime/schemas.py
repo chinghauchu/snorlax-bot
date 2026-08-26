@@ -384,7 +384,10 @@ class SkillCreate(BaseModel):
 
 
 class SkillBody(BaseModel):
-    """One skill with SKILL.md source. List stays Skill `{ id, name }`."""
+    """One skill with full SKILL.md source (frontmatter plus recipe).
+
+    List stays Skill `{ id, name }` (no body).
+    """
 
     id: str
     name: str

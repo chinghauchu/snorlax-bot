@@ -381,10 +381,10 @@ export interface paths {
         };
         /**
          * Get a skill's SKILL.md source
-         * @description `{ id, name, body }`. `body` is the SKILL.md **source** (markdown
-         *     after YAML frontmatter), not a rendered preview. kind=channel is
-         *     409. Missing agent is 404. Unknown sid is 404. List stays
-         *     GET `/skills` `{ id, name }`.
+         * @description `{ id, name, body }`. `body` is the full SKILL.md **source**
+         *     (YAML frontmatter plus recipe), not a rendered preview.
+         *     kind=channel is 409. Missing agent is 404. Unknown sid is 404.
+         *     List stays GET `/skills` `{ id, name }` (no `body` field).
          */
         get: operations["getSkill"];
         put?: never;
@@ -393,17 +393,21 @@ export interface paths {
          * Remove a skill
          * @description `DELETE /v1/agents/{id}/skills/{sid}` → **204**, gone from GET.
          *     Unknown sid is 404. kind=channel is 409. Missing agent is 404.
-         *     Confirm chrome is `Remove {name}?`. No blank Add.
+         *     Confirm chrome is `Remove {name}?`. No blank Add. Does not
+         *     cascade-delete routines that still name the skill; those stay
+         *     until a later 422 on use.
          */
         delete: operations["deleteSkill"];
         options?: never;
         head?: never;
         /**
          * Edit a skill name and SKILL.md source
-         * @description `{ name, body }` → **200** `{ id, name, body }`. Rewrites that
-         *     SKILL.md in place (id/slug stays). Empty name or body is **422**.
-         *     kind=channel is 409. Missing agent is 404. Unknown sid is 404.
-         *     Not a blank create — POST `/skills { name }` stays teach-a-task.
+         * @description `{ name, body }` → **200** `{ id, name, body }`. Writes that
+         *     SKILL.md in place. Keep the slug / skill `id` unless a name
+         *     change truly requires a new slug — prefer keep `id` stable.
+         *     Empty name or body is **422**. kind=channel is 409. Missing
+         *     agent is 404. Unknown sid is 404. Not a blank create — POST
+         *     `/skills { name }` stays teach-a-task.
          */
         patch: operations["patchSkill"];
         trace?: never;
@@ -1288,14 +1292,14 @@ export interface components {
             /** @description Frontmatter name. */
             name: string;
             /**
-             * @description SKILL.md **source** (markdown after YAML frontmatter). Not a
-             *     rendered preview. Empty on PATCH is 422.
+             * @description Full SKILL.md **source** including YAML frontmatter and
+             *     recipe (not rendered HTML). Empty on PATCH is 422.
              */
             body: string;
         };
         SkillPatch: {
             name: string;
-            /** @description SKILL.md markdown source. Empty is 422. */
+            /** @description Full SKILL.md source (YAML frontmatter plus recipe). Empty is 422. */
             body: string;
         };
         Plugin: {
