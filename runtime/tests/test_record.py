@@ -128,6 +128,11 @@ def test_save_writes_skill_md_v09_can_list_and_run(
     assert routine.status_code == 201
     stored_skill = routine.json()["skill"]
     assert find_skill(loaded, stored_skill) is not None
+    # Takeover pauses the agent; Done (close session) before a v0.9 fire.
+    assert (
+        client.delete(f"/v1/agents/{SEED}/computer/session", headers=AUTH).status_code
+        == 204
+    )
 
     async def _run():
         return await fire_due_routines(
@@ -139,6 +144,7 @@ def test_save_writes_skill_md_v09_can_list_and_run(
     assert client.portal is not None
     fired = client.portal.call(_run)
     assert len(fired) >= 1
+    assert fired[0]["message"] is not None
     messages = client.get(f"/v1/agents/{SEED}/messages", headers=AUTH)
     assert messages.status_code == 200
     assert any(
