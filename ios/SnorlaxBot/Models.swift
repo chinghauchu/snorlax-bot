@@ -13,6 +13,33 @@ extension Agent {
 
     var rosterSubtitle: String { isChannel ? "Channel" : title }
 
+    /// Seed channel present → prefer a channel. Seed gone → agent first,
+    /// else a remaining channel. Never invent `snorlax-bot-group`.
+    static func fallbackRosterSelection(in roster: [Agent]) -> Agent? {
+        if roster.contains(where: { $0.id == channelID }) {
+            return roster.first(where: \.isChannel)
+                ?? roster.first(where: \.isSeed)
+                ?? roster.first
+        }
+        return roster.first(where: { $0.kind == .agent })
+            ?? roster.first(where: \.isChannel)
+            ?? roster.first
+    }
+
+    static func nextRosterSelection(
+        in roster: [Agent],
+        removedId: String?,
+        currentId: String?
+    ) -> Agent? {
+        if let currentId,
+           currentId != removedId,
+           let row = roster.first(where: { $0.id == currentId })
+        {
+            return row
+        }
+        return fallbackRosterSelection(in: roster)
+    }
+
     static let placeholderChannel = Agent(
         id: channelID,
         name: "Snorlax-Bot",

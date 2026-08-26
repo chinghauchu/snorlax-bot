@@ -35,6 +35,7 @@ import {
   canEditChannel,
   channelMembers,
   displayInitials,
+  fallbackRosterSelection,
   infoPaneKind,
   nextRosterSelection,
 } from "./infoPane";
@@ -365,11 +366,7 @@ export function App() {
       try {
         const roster = await listAgents(next);
         setAgents(roster);
-        const preferred =
-          roster.find((a) => a.kind === "channel")?.id ??
-          roster.find((a) => a.id === SEED_AGENT_ID)?.id ??
-          roster[0]?.id ??
-          null;
+        const preferred = fallbackRosterSelection(roster);
         setActiveId(preferred);
         if (preferred) {
           setThreadId(null);

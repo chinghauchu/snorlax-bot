@@ -93,11 +93,14 @@ final class AppModel {
         do {
             let roster = try await client.listAgents()
             agents = roster
-            let channel = roster.first(where: \.isChannel)
-            let seed = channel ?? roster.first(where: \.isSeed) ?? roster.first
-            if let seed {
-                await select(seed.id, push: true)
+            if let next = Agent.fallbackRosterSelection(in: roster) {
+                await select(next.id, push: true)
                 wantsComposerFocus = true
+            } else {
+                selectedAgentID = nil
+                messages = []
+                navigationPath = []
+                threadID = nil
             }
         } catch {
             errorMessage = error.localizedDescription
@@ -191,8 +194,11 @@ final class AppModel {
                 agents[index].memberIds.removeAll { $0 == agent.id }
             }
             if selectedAgentID == agent.id {
-                let next = agents.first(where: \.isChannel) ?? agents.first(where: \.isSeed) ?? agents.first
-                if let next {
+                if let next = Agent.nextRosterSelection(
+                    in: agents,
+                    removedId: agent.id,
+                    currentId: selectedAgentID
+                ) {
                     await select(next.id, push: true)
                 } else {
                     selectedAgentID = nil

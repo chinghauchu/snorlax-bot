@@ -7,6 +7,7 @@ import {
   channelMembers,
   displayInitials,
   infoPaneKind,
+  fallbackRosterSelection,
   nextRosterSelection,
 } from "./infoPane.ts";
 
@@ -77,4 +78,34 @@ test("after seed channel delete, select remaining agent and do not fake a channe
     "snorlax-bot",
   );
   assert.equal(roster.some((row) => row.id === "snorlax-bot-group"), false);
+});
+
+test("after seed channel delete, prefer an agent over remaining extra channels", () => {
+  const roster = [
+    { id: "ops", kind: "channel" },
+    { id: "snorlax-bot", kind: "agent" },
+    { id: "chip", kind: "agent" },
+  ];
+  assert.equal(
+    nextRosterSelection(roster, "snorlax-bot-group", "snorlax-bot-group"),
+    "snorlax-bot",
+  );
+  assert.equal(fallbackRosterSelection(roster), "snorlax-bot");
+  assert.equal(roster.some((row) => row.id === "snorlax-bot-group"), false);
+});
+
+test("after seed channel delete, select a remaining channel if no agents left", () => {
+  const roster = [{ id: "ops", kind: "channel" }];
+  assert.equal(
+    nextRosterSelection(roster, "snorlax-bot-group", "snorlax-bot-group"),
+    "ops",
+  );
+});
+
+test("after seed channel delete, empty roster selects nothing and does not invent the seed", () => {
+  assert.equal(
+    nextRosterSelection([], "snorlax-bot-group", "snorlax-bot-group"),
+    null,
+  );
+  assert.equal(fallbackRosterSelection([]), null);
 });

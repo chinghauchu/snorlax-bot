@@ -107,7 +107,9 @@ SQLite file `~/.snorlax-bot/snorlax.db` (override with `SNORLAX_DATA_DIR`):
   fine). User-created channels (`POST /v1/agents` kind=channel) DELETE 204;
   PATCH `{ name, memberIds }` 200. Seed channel PATCH stays 409.
   First empty DB seeds agent + channel; later reconnects do not recreate a
-  deleted seed. Clients show a muted
+  deleted seed (never recreate `snorlax-bot-group`). After seed channel
+  delete, clients select an agent first if any remain, else a remaining
+  channel. Clients show a muted
   “Channel” subtitle from `kind`, not by guessing id. Seed identity
   (name / title / description / avatar) may be PATCHed and persists.
 - `messages` — per-transcript (agent 1:1 or the group), `user` | `assistant`,
@@ -137,7 +139,9 @@ v0.3: clicking the chat header opens an info pane. `kind=agent` is identity
 (PATCH `{ name, title, description, avatar }`). Seed `kind=channel` is a
 read-only member list from `memberIds`. User-created channels PATCH
 `{ name, memberIds }`. Desktop is a 320px overlay on chat; iOS is a
-sheet. Delete stays on the sidebar, including the seed row.
+sheet. Delete stays on the sidebar row (including the seed channel), not
+in the info pane. After seed channel delete, select an agent first if any
+remain, else a remaining channel; never recreate `snorlax-bot-group`.
 
 v0.4: 1:1 @involves log on seed `snorlax-bot-group` when present (else the
 last-selected extra channel, else skip). When B's thread
