@@ -58,6 +58,7 @@ import {
   loadInitialRuntimeUrl,
   normalizeRuntimeUrl,
 } from "./runtimeUrl";
+import { ComputerPane } from "./ComputerPane";
 import type {
   Agent,
   ChatMessage,
@@ -237,6 +238,8 @@ export function App() {
   const [profileMemberIds, setProfileMemberIds] = useState<string[]>([]);
   const [profileSharedProject, setProfileSharedProject] = useState(false);
   const [profileSaving, setProfileSaving] = useState(false);
+  const [computerOpen, setComputerOpen] = useState(true);
+  const [workspaceTick, setWorkspaceTick] = useState(0);
 
   const scroller = useRef<HTMLDivElement>(null);
   const composerRef = useRef<HTMLTextAreaElement>(null);
@@ -717,6 +720,7 @@ export function App() {
               const without = prev.filter((m) => m.id !== message.id);
               return [...without, message];
             });
+            setWorkspaceTick((n) => n + 1);
           }
         },
         onError(code, message) {
@@ -728,6 +732,9 @@ export function App() {
             const without = prev.filter((item) => item.id !== trace.id);
             return [...without, { id: trace.id, summary: trace.summary, senderId: trace.senderId, senderName: trace.senderName }];
           });
+          if (typeof trace.ok === "boolean") {
+            setWorkspaceTick((n) => n + 1);
+          }
         },
         },
         mentionIds,
@@ -860,7 +867,7 @@ export function App() {
     liveTraces.length > 0 && liveAssistantIdx < 0;
 
   return (
-    <div className="app">
+    <div className={computerOpen ? "app computer-open" : "app computer-collapsed"}>
       <aside className="sidebar">
         <header className="sidebar-head">
           <span className="wordmark">Snorlax-Bot</span>
@@ -971,6 +978,15 @@ export function App() {
           ) : (
             <span className="chat-who muted">Snorlax-Bot</span>
           )}
+          <button
+            type="button"
+            className={computerOpen ? "icon-btn computer-toggle on" : "icon-btn computer-toggle"}
+            aria-label={computerOpen ? "Hide computer" : "Show computer"}
+            aria-pressed={computerOpen}
+            onClick={() => setComputerOpen((open) => !open)}
+          >
+            <ComputerIcon />
+          </button>
         </header>
 
         <div className="transcript" ref={scroller}>
@@ -1259,9 +1275,8 @@ export function App() {
           </div>
           {composerError ? <p className="error under">{composerError}</p> : null}
         </footer>
-      </main>
 
-      {profileOpen && active ? (
+        {profileOpen && active ? (
         <aside
           className="profile"
           role="dialog"
@@ -1452,6 +1467,14 @@ export function App() {
           )}
         </aside>
       ) : null}
+      </main>
+
+      <ComputerPane
+        key={active?.id ?? "none"}
+        session={session}
+        conversation={active}
+        refreshKey={workspaceTick}
+      />
 
       {settingsOpen ? (
         <div className="modal-backdrop" onClick={closeSettings}>
@@ -1839,6 +1862,28 @@ function GearIcon() {
         stroke="currentColor"
         strokeWidth="1.8"
         strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+function ComputerIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden>
+      <rect
+        x="3"
+        y="4"
+        width="18"
+        height="12"
+        rx="2"
+        stroke="currentColor"
+        strokeWidth="1.8"
+      />
+      <path
+        d="M8 20h8M12 16v4"
+        stroke="currentColor"
+        strokeWidth="1.8"
+        strokeLinecap="round"
       />
     </svg>
   );

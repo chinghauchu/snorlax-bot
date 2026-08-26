@@ -14,11 +14,12 @@ NVIDIA DGX Spark.
   in CI and on machines without a 70B checkpoint. `omlx` is the Mac-local
   OpenAI-compat path. `vllm` is the Spark path. Neither is a development
   dependency.
-- **Keep v0.5 small.** Named teammates, identity pane, seeded group plus extra
+- **Keep v0.6 small.** Named teammates, identity pane, seeded group plus extra
   channels, @mentions, 1:1 isolation, channel handoff threads, report-back,
-  and runtime-owned file/shell/web tools in a `~/.snorlax-bot` sandbox (auto-run,
-  no extra shell network, configured search provider). MCP, sandbox
-  computer GUI, vision, and routines are later — see [ROADMAP.md](ROADMAP.md).
+  runtime-owned file/shell/web tools in a `~/.snorlax-bot` sandbox (auto-run,
+  no extra shell network, configured search provider), and a thin desktop
+  Computer pane over that sandbox. MCP, full sandbox computer GUI, vision,
+  and routines are later — see [ROADMAP.md](ROADMAP.md).
 
 ## Locked v0 decisions (do not reopen in drive-by PRs)
 

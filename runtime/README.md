@@ -4,7 +4,8 @@ Thin FastAPI process that owns agents, transcripts, LAN auth, and the
 built-in tool loop. oMLX (Mac-local OpenAI-compat), vLLM (Spark), or the
 mock backend sits behind it. Clients never call the model server, never
 call tools, and never read `~/.snorlax-bot/` — they use `SNORLAX_URL` +
-`SNORLAX_TOKEN`.
+`SNORLAX_TOKEN`. Desktop may `GET /v1/agents/{id}/workspace` (a runtime
+read of the sandbox); iOS does not browse files this slice.
 
 Contract: [../protocol/openapi.yaml](../protocol/openapi.yaml) (copy:
 [openapi.yaml](openapi.yaml)).

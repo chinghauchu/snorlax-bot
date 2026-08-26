@@ -1,10 +1,12 @@
 openapi: 3.1.0
 info:
   title: Snorlax-Bot
-  version: 0.5.0
+  version: 0.6.0
   description: |
-    Locked v0.5 LAN contract. Clients use SNORLAX_URL + SNORLAX_TOKEN.
-    They never call vLLM, never call tools, and never read the Spark filesystem.
+    Locked v0.6 LAN contract. Clients use SNORLAX_URL + SNORLAX_TOKEN.
+    They never call vLLM, never call tools, and never read the Spark
+    filesystem. Additive workspace GETs are runtime reads of the existing
+    sandbox (same roots as the tool loop), not a second tool loop.
 
     Seeded agent: id `snorlax-bot`, name Snorlax, title Assistant, kind
     `agent`. GET/POST /v1/agents/snorlax-bot/messages is the user–Snorlax
@@ -44,9 +46,11 @@ info:
     `kind=tool` (short content, same senderId) so GET matches live SSE.
     Compact 12px muted status sits under the speaking agent's LEFT streak;
     the final answer is a normal LEFT bubble. Report-back does not copy a
-    peer's tool lines. iOS sees chat/status lines only (no file browser).
-    No folder or path field; sharedProject is a boolean toggle. No MCP, no
-    browser-use GUI, no computer screenshot pane, no widgets.
+    peer's tool lines. Desktop may show a 320px computer pane (file tree +
+    text preview) over those same sandbox roots. iOS sees chat/status lines
+    only (no file browser this slice). No folder or path field;
+    sharedProject is a boolean toggle. No MCP, no browser-use GUI, no
+    screenshot stream, no terminal GUI, no widgets.
 
     Images persist and are returned; they are never sent to the model. No mDNS.
 
@@ -99,6 +103,16 @@ info:
     `message.delta` / `message.done` / `error` are unchanged. Desktop may
     show muted traces; unknown events must be ignored. Seeded channel DELETE
     is 204, gone from GET, no auto-reseed.
+
+    v0.6: computer pane GETs. `GET /v1/agents/{id}/workspace` lists the
+    active conversation's sandbox (1:1 → workspaces/agents/{id}/; channel
+    with sharedProject true → workspaces/channels/{id}/; channel with
+    sharedProject false → first member agent's workspace). `GET .../file`
+    returns UTF-8 text (256k cap, truncated?). 404 conversation or missing
+    path. 422 path escape or binary / too large. Path default `.`. No
+    host-folder picker fields. No new SSE required; unknown events ignored.
+    Seed channel DELETE stays 204. Seed identity PATCH stays 409 except
+    sharedProject.
   license:
     name: Apache-2.0
     identifier: Apache-2.0
@@ -360,6 +374,75 @@ paths:
             text/event-stream:
               schema:
                 type: string
+        "401":
+          $ref: "#/components/responses/Error"
+        "404":
+          $ref: "#/components/responses/Error"
+        "422":
+          $ref: "#/components/responses/Error"
+
+  /v1/agents/{id}/workspace:
+    parameters:
+      - $ref: "#/components/parameters/Id"
+    get:
+      summary: List the conversation workspace
+      description: |
+        Runtime read of the existing sandbox (same roots as workspace_for).
+        Clients never call tools or the model. Path default `.`. Empty
+        workspace is `{ entries: [] }` and does not create the dir.
+        `root` is sandbox-relative (`workspaces/agents/{id}` or
+        `workspaces/channels/{id}`), never a Mac folder path.
+        1:1 → that agent's workspace. Channel + sharedProject true →
+        channel sandbox. Channel + sharedProject false → first member
+        agent's workspace. Isolation: a 1:1 listing never includes
+        another 1:1's files or a channel sandbox.
+      operationId: listWorkspace
+      parameters:
+        - name: path
+          in: query
+          schema:
+            type: string
+            default: "."
+          description: Directory relative to the workspace root.
+      responses:
+        "200":
+          description: Directory listing
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkspaceListing"
+        "401":
+          $ref: "#/components/responses/Error"
+        "404":
+          $ref: "#/components/responses/Error"
+        "422":
+          $ref: "#/components/responses/Error"
+
+  /v1/agents/{id}/workspace/file:
+    parameters:
+      - $ref: "#/components/parameters/Id"
+    get:
+      summary: Read a text file from the conversation workspace
+      description: |
+        UTF-8 text only. Size cap matches read_file (256k); larger text
+        sets `truncated: true`. Binary (NUL in the first 4k) is 422
+        `{ error: "binary / too large" }` — not a hex dump. Path escape
+        is 422. Missing file is 404. Path default `.`.
+      operationId: getWorkspaceFile
+      parameters:
+        - name: path
+          in: query
+          schema:
+            type: string
+            default: "."
+          description: File path relative to the workspace root.
+      responses:
+        "200":
+          description: File contents
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkspaceFile"
         "401":
           $ref: "#/components/responses/Error"
         "404":
@@ -730,6 +813,49 @@ components:
           type: string
         senderName:
           type: string
+
+    WorkspaceEntry:
+      type: object
+      required: [name, kind]
+      properties:
+        name:
+          type: string
+        kind:
+          type: string
+          enum: [file, dir]
+        size:
+          type: integer
+          minimum: 0
+          description: Byte size for files. Omitted for directories.
+
+    WorkspaceListing:
+      type: object
+      required: [root, path, entries]
+      properties:
+        root:
+          type: string
+          description: |
+            Sandbox-relative root (`workspaces/agents/{id}` or
+            `workspaces/channels/{id}`). Never a host Mac path.
+        path:
+          type: string
+          description: Requested path relative to root. Default `.`.
+        entries:
+          type: array
+          items:
+            $ref: "#/components/schemas/WorkspaceEntry"
+
+    WorkspaceFile:
+      type: object
+      required: [path, content]
+      properties:
+        path:
+          type: string
+        content:
+          type: string
+        truncated:
+          type: boolean
+          description: True when the file was larger than the 256k cap.
 
     ErrorBody:
       type: object
