@@ -16,12 +16,15 @@ import {
   createAgent,
   createChannel,
   createPlugin,
+  createRoutine,
   deleteAgent,
   deletePlugin,
+  deleteRoutine,
   listAgents,
   listMessages,
   listPlugins,
   listRoutines,
+  listSkills,
   patchAgent,
   patchRoutine,
   resolveMediaUrl,
@@ -49,10 +52,14 @@ import {
   displayInitials,
   EMPTY_ROUTINES,
   WEBHOOK_COPY_FEEDBACK_MS,
+  ADD_ROUTINE_TITLE,
+  CRON_PLACEHOLDER,
+  canSubmitRoutine,
   fallbackRosterSelection,
   infoPaneKind,
   nextRosterSelection,
   routineMutedLine,
+  routineRemoveConfirm,
   SHARED_PROJECT_HINT,
   showsWebhookCopy,
   visiblePaneRoutines,
@@ -93,6 +100,7 @@ import type {
   Plugin,
   Routine,
   Session,
+  SkillInfo,
   ThemePref,
 } from "./types";
 
@@ -217,9 +225,11 @@ function fileToDataUrl(file: File): Promise<string> {
 function AgentRoutineRow({
   routine,
   onToggle,
+  onRemove,
 }: {
   routine: Routine;
   onToggle: (routine: Routine, enabled: boolean) => void;
+  onRemove: (routine: Routine) => void;
 }) {
   const [copied, setCopied] = useState(false);
   const timer = useRef<number | null>(null);
@@ -245,6 +255,14 @@ function AgentRoutineRow({
         <p className="info-routine-name">{routine.name}</p>
         <p className="info-routine-meta">{routineMutedLine(routine)}</p>
       </div>
+      <button
+        type="button"
+        className="info-routine-remove"
+        aria-label={`Remove ${routine.name}`}
+        onClick={() => onRemove(routine)}
+      >
+        Remove
+      </button>
       {showsWebhookCopy(routine) ? (
         <button
           type="button"
@@ -326,6 +344,17 @@ export function App() {
   const [profileSharedProject, setProfileSharedProject] = useState(false);
   const [profileSaving, setProfileSaving] = useState(false);
   const [routines, setRoutines] = useState<Routine[]>([]);
+  const [routineSkills, setRoutineSkills] = useState<SkillInfo[]>([]);
+  const [routineAddOpen, setRoutineAddOpen] = useState(false);
+  const [routineAddName, setRoutineAddName] = useState("");
+  const [routineAddSkill, setRoutineAddSkill] = useState("");
+  const [routineAddMode, setRoutineAddMode] = useState<"schedule" | "webhook">(
+    "schedule",
+  );
+  const [routineAddCron, setRoutineAddCron] = useState("");
+  const [routineAddSaving, setRoutineAddSaving] = useState(false);
+  const [pendingRoutineRemove, setPendingRoutineRemove] =
+    useState<Routine | null>(null);
   const [plugins, setPlugins] = useState<Plugin[]>([]);
   const [pluginAddOpen, setPluginAddOpen] = useState(false);
   const [pluginAddName, setPluginAddName] = useState("");
@@ -352,6 +381,12 @@ export function App() {
     (pluginAddMode === "stdio"
       ? pluginAddCommand.trim() !== ""
       : pluginAddUrl.trim() !== "");
+  const routineAddReady = canSubmitRoutine({
+    name: routineAddName,
+    skill: routineAddSkill,
+    mode: routineAddMode,
+    schedule: routineAddCron,
+  });
 
   function commitSession(url = urlInput, token = tokenInput) {
     const baseUrl = normalizeRuntimeUrl(url);
@@ -672,6 +707,68 @@ export function App() {
       setRoutines((prev) =>
         prev.map((row) => (row.id === updated.id ? updated : row)),
       );
+    } catch (err) {
+      setComposerError(describeError(err));
+    }
+  }
+
+  async function loadSkills(agentId: string) {
+    if (!session) {
+      setRoutineSkills([]);
+      return;
+    }
+    try {
+      setRoutineSkills(await listSkills(session, agentId));
+    } catch {
+      setRoutineSkills([]);
+    }
+  }
+
+  function openRoutineAdd() {
+    if (!active || active.kind === "channel") return;
+    setRoutineAddName("");
+    setRoutineAddSkill("");
+    setRoutineAddMode("schedule");
+    setRoutineAddCron("");
+    setRoutineAddOpen(true);
+    void loadSkills(active.id);
+  }
+
+  async function saveRoutineAdd() {
+    if (!session || !active || routineAddSaving || !routineAddReady) return;
+    setRoutineAddSaving(true);
+    try {
+      const created = await createRoutine(
+        session,
+        active.id,
+        routineAddMode === "webhook"
+          ? {
+              name: routineAddName.trim(),
+              skill: routineAddSkill,
+              trigger: { type: "webhook" },
+            }
+          : {
+              name: routineAddName.trim(),
+              skill: routineAddSkill,
+              schedule: routineAddCron.trim(),
+            },
+      );
+      setRoutines((prev) => [...prev, created]);
+      setRoutineAddOpen(false);
+    } catch (err) {
+      setComposerError(describeError(err));
+    } finally {
+      setRoutineAddSaving(false);
+    }
+  }
+
+  async function confirmRoutineRemove() {
+    if (!session || !active || !pendingRoutineRemove) return;
+    const id = pendingRoutineRemove.id;
+    setPendingRoutineRemove(null);
+    try {
+      await deleteRoutine(session, active.id, id);
+      setRoutines((prev) => prev.filter((row) => row.id !== id));
     } catch (err) {
       setComposerError(describeError(err));
     }
@@ -1886,7 +1983,17 @@ export function App() {
               onOpen={() => void openTakeover()}
             />
             <section className="info-routines" aria-label="Routines">
-              <p className="info-routines-header">Routines</p>
+              <div className="info-routines-head">
+                <p className="info-routines-header">Routines</p>
+                <button
+                  type="button"
+                  className="info-routine-add"
+                  onClick={openRoutineAdd}
+                  disabled={!session}
+                >
+                  Add
+                </button>
+              </div>
               {visiblePaneRoutines(routines, plugins).length === 0 ? (
                 <p className="info-routine-empty">{EMPTY_ROUTINES}</p>
               ) : (
@@ -1895,6 +2002,7 @@ export function App() {
                     key={routine.id}
                     routine={routine}
                     onToggle={(row, enabled) => void toggleRoutine(row, enabled)}
+                    onRemove={(row) => setPendingRoutineRemove(row)}
                   />
                 ))
               )}
@@ -2248,6 +2356,143 @@ export function App() {
                   className="primary plugin-add-primary"
                   disabled={pluginAddSaving || !session || !pluginAddReady}
                   onClick={() => void savePluginAdd()}
+                >
+                  Add
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {pendingRoutineRemove ? (
+        <div
+          className="modal-backdrop plugin-sheet"
+          onClick={() => setPendingRoutineRemove(null)}
+        >
+          <div
+            className="modal confirm"
+            role="dialog"
+            aria-label="Confirm remove routine"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <p>{routineRemoveConfirm(pendingRoutineRemove.name)}</p>
+            <div className="confirm-actions">
+              <button
+                type="button"
+                onClick={() => setPendingRoutineRemove(null)}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="danger-fill"
+                onClick={() => void confirmRoutineRemove()}
+              >
+                Remove
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {routineAddOpen ? (
+        <div
+          className="modal-backdrop plugin-sheet"
+          onClick={() => setRoutineAddOpen(false)}
+        >
+          <div
+            className="modal plugin-add-sheet routine-add-sheet"
+            role="dialog"
+            aria-label={ADD_ROUTINE_TITLE}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <header>
+              <h2>{ADD_ROUTINE_TITLE}</h2>
+              <button
+                type="button"
+                className="icon-btn"
+                aria-label="Close"
+                onClick={() => setRoutineAddOpen(false)}
+              >
+                ×
+              </button>
+            </header>
+            <div className="profile-form">
+              <label>
+                Name
+                <input
+                  className="routine-add-name"
+                  value={routineAddName}
+                  autoFocus
+                  onChange={(e) => setRoutineAddName(e.target.value)}
+                />
+              </label>
+              <label>
+                Skill
+                <select
+                  className="routine-add-skill"
+                  value={routineAddSkill}
+                  onChange={(e) => setRoutineAddSkill(e.target.value)}
+                >
+                  <option value="">
+                    {routineSkills.length === 0
+                      ? "No skills yet."
+                      : "Choose a skill"}
+                  </option>
+                  {routineSkills.map((skill) => (
+                    <option key={`${skill.source}:${skill.path}`} value={skill.name}>
+                      {skill.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <fieldset>
+                <legend>When</legend>
+                <div
+                  className="segmented"
+                  role="radiogroup"
+                  aria-label="Routine trigger"
+                >
+                  <button
+                    type="button"
+                    role="radio"
+                    aria-checked={routineAddMode === "schedule"}
+                    className={routineAddMode === "schedule" ? "on" : ""}
+                    onClick={() => setRoutineAddMode("schedule")}
+                  >
+                    Schedule
+                  </button>
+                  <button
+                    type="button"
+                    role="radio"
+                    aria-checked={routineAddMode === "webhook"}
+                    className={routineAddMode === "webhook" ? "on" : ""}
+                    onClick={() => setRoutineAddMode("webhook")}
+                  >
+                    Webhook
+                  </button>
+                </div>
+              </fieldset>
+              {routineAddMode === "schedule" ? (
+                <label>
+                  Cron
+                  <input
+                    className="routine-add-cron"
+                    value={routineAddCron}
+                    spellCheck={false}
+                    autoComplete="off"
+                    placeholder={CRON_PLACEHOLDER}
+                    onChange={(e) => setRoutineAddCron(e.target.value)}
+                  />
+                </label>
+              ) : null}
+              <div className="confirm-actions">
+                <button
+                  type="button"
+                  className="primary routine-add-primary"
+                  disabled={routineAddSaving || !session || !routineAddReady}
+                  onClick={() => void saveRoutineAdd()}
                 >
                   Add
                 </button>

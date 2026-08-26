@@ -200,6 +200,7 @@ test("computer preview in the identity pane is 288x180 16:10 with 8px radius", (
 
 test("routines list is 44px rows with switch on the agent read pane", () => {
   const header = block(".info-routines-header");
+  const add = block(".info-routine-add");
   const row = block(".info-routine");
   const name = block(".info-routine-name");
   const meta = block(".info-routine-meta");
@@ -207,8 +208,13 @@ test("routines list is 44px rows with switch on the agent read pane", () => {
   const toggle = block(".info-routine-switch");
   const paused = block(".info-routine.paused .info-routine-name");
   const kicker = block(".routine-kicker");
+  const remove = block(".info-routine-remove");
+  const sheet = block(".modal.routine-add-sheet");
+  const addName = block(".routine-add-name");
+  const primary = block(".routine-add-primary");
   assert.match(header, /font-size:\s*12px/);
   assert.match(header, /color:\s*var\(--text-muted\)/);
+  assert.match(add, /font-size:\s*12px/);
   assert.match(row, /height:\s*44px/);
   assert.match(name, /font-size:\s*14px/);
   assert.match(name, /font-weight:\s*500/);
@@ -221,9 +227,18 @@ test("routines list is 44px rows with switch on the agent read pane", () => {
   assert.match(paused, /opacity:\s*0\.5/);
   assert.match(kicker, /font-size:\s*12px/);
   assert.match(kicker, /color:\s*var\(--text-muted\)/);
+  assert.match(remove, /font-size:\s*12px/);
+  assert.match(remove, /color:\s*var\(--text-muted\)/);
+  assert.match(sheet, /width:\s*320px/);
+  assert.match(addName, /font-size:\s*14px/);
+  assert.match(primary, /min-height:\s*36px/);
 
   const app = readFileSync(
     join(dirname(fileURLToPath(import.meta.url)), "App.tsx"),
+    "utf8",
+  );
+  const infoPane = readFileSync(
+    join(dirname(fileURLToPath(import.meta.url)), "infoPane.ts"),
     "utf8",
   );
   assert.match(app, /EMPTY_ROUTINES/);
@@ -237,10 +252,25 @@ test("routines list is 44px rows with switch on the agent read pane", () => {
   assert.match(app, /showsWebhookCopy/);
   assert.doesNotMatch(app, /\{routine\.webhookUrl\}/);
   assert.match(app, /profileEditing \?/);
-  assert.doesNotMatch(app, /createRoutine/);
-  assert.doesNotMatch(app, /deleteRoutine/);
+  assert.match(app, /createRoutine/);
+  assert.match(app, /deleteRoutine/);
+  assert.match(app, /listSkills/);
+  assert.match(app, /ADD_ROUTINE_TITLE/);
+  assert.match(infoPane, /Add routine/);
+  assert.match(infoPane, /Remove \$\{name\}\?/);
+  assert.match(app, /info-routine-add/);
+  assert.match(app, /info-routine-remove/);
+  assert.match(app, /routineRemoveConfirm/);
+  assert.match(app, /CRON_PLACEHOLDER/);
+  assert.match(infoPane, /0 9 \* \* 1-5/);
+  assert.match(app, />\s*Schedule\s*</);
+  assert.match(app, />\s*Webhook\s*</);
+  assert.match(app, /canSubmitRoutine/);
+  assert.match(app, /routine-add-primary/);
+  assert.match(app, /type: "webhook"/);
   assert.doesNotMatch(app, /Teach a task/);
   assert.doesNotMatch(app, /marketplace/);
+  assert.doesNotMatch(app, /editRoutine/);
   assert.doesNotMatch(css, /info-routine-new/);
   const pane = app.slice(
     app.indexOf("info-routines"),
@@ -255,7 +285,12 @@ test("routines list is 44px rows with switch on the agent read pane", () => {
   );
   assert.match(rowSrc, /info-routine-hook-copy/);
   assert.match(rowSrc, /info-routine-switch/);
+  assert.match(rowSrc, /info-routine-remove/);
   assert.match(rowSrc, /Copied/);
+  assert.ok(
+    rowSrc.indexOf("info-routine-remove") <
+      rowSrc.indexOf("info-routine-hook-copy"),
+  );
   assert.ok(
     rowSrc.indexOf("info-routine-hook-copy") <
       rowSrc.indexOf("info-routine-switch"),

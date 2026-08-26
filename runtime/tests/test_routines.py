@@ -275,7 +275,7 @@ def test_patch_unknown_routine_is_404(client, tmp_path: Path) -> None:
     assert patched.status_code == 404
 
 
-def test_no_delete_routine_route(client, tmp_path: Path) -> None:
+def test_delete_routine_is_204_and_gone_from_list(client, tmp_path: Path) -> None:
     _write_status_skill(tmp_path)
     created = client.post(
         f"/v1/agents/{SEED}/routines",
@@ -286,9 +286,81 @@ def test_no_delete_routine_route(client, tmp_path: Path) -> None:
             "schedule": "0 9 * * 1-5",
         },
     )
+    assert created.status_code == 201
     rid = created.json()["id"]
     deleted = client.delete(f"/v1/agents/{SEED}/routines/{rid}", headers=AUTH)
-    assert deleted.status_code == 405
+    assert deleted.status_code == 204
+    assert deleted.content == b""
+    listed = client.get(f"/v1/agents/{SEED}/routines", headers=AUTH)
+    assert listed.status_code == 200
+    assert listed.json() == []
+    again = client.delete(f"/v1/agents/{SEED}/routines/{rid}", headers=AUTH)
+    assert again.status_code == 404
+
+
+def test_delete_webhook_routine_is_204_and_hook_is_404(
+    client, tmp_path: Path
+) -> None:
+    _write_status_skill(tmp_path)
+    created = client.post(
+        f"/v1/agents/{SEED}/routines",
+        headers=AUTH,
+        json={
+            "name": "Inbox ping",
+            "skill": "status",
+            "trigger": {"type": "webhook"},
+        },
+    )
+    assert created.status_code == 201
+    routine = created.json()
+    assert routine["kind"] == "webhook"
+    path = _hook_path(routine["webhookUrl"])
+    deleted = client.delete(
+        f"/v1/agents/{SEED}/routines/{routine['id']}", headers=AUTH
+    )
+    assert deleted.status_code == 204
+    fired = client.post(path)
+    assert fired.status_code == 404
+
+
+def test_delete_unknown_routine_is_404(client, tmp_path: Path) -> None:
+    _write_status_skill(tmp_path)
+    missing = client.delete(
+        f"/v1/agents/{SEED}/routines/rtn_missing", headers=AUTH
+    )
+    assert missing.status_code == 404
+
+
+def test_channel_delete_routine_is_409(client) -> None:
+    deleted = client.delete(
+        f"/v1/agents/{CHANNEL}/routines/rtn_missing", headers=AUTH
+    )
+    assert deleted.status_code == 409
+
+
+def test_missing_agent_delete_routine_is_404(client) -> None:
+    deleted = client.delete(
+        "/v1/agents/no-such-agent/routines/rtn_x", headers=AUTH
+    )
+    assert deleted.status_code == 404
+
+
+def test_post_workspace_skill_is_201(client, tmp_path: Path) -> None:
+    workspace = tmp_path / "workspaces" / "agents" / SEED
+    workspace.mkdir(parents=True)
+    (workspace / "SKILL.md").write_text(WORKSPACE_SKILL, encoding="utf-8")
+    created = client.post(
+        f"/v1/agents/{SEED}/routines",
+        headers=AUTH,
+        json={
+            "name": "Workspace note",
+            "skill": "workspace-note",
+            "schedule": "0 9 * * 1-5",
+        },
+    )
+    assert created.status_code == 201
+    assert created.json()["skill"] == "workspace-note"
+    assert created.json()["kind"] == "cron"
 
 
 def test_cron_zone_is_taipei_not_utc(client, tmp_path: Path) -> None:

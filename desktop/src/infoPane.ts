@@ -89,6 +89,27 @@ export function nextRosterSelection<T extends { id: string; kind: string }>(
 
 export const EMPTY_ROUTINES = "No routines yet.";
 export const WEBHOOK_COPY_FEEDBACK_MS = 1500;
+export const ADD_ROUTINE_TITLE = "Add routine";
+export const CRON_PLACEHOLDER = "0 9 * * 1-5";
+
+export type RoutineAddMode = "schedule" | "webhook";
+
+export function routineRemoveConfirm(name: string): string {
+  return `Remove ${name}?`;
+}
+
+export function canSubmitRoutine(draft: {
+  name: string;
+  skill: string;
+  mode: RoutineAddMode;
+  schedule?: string;
+}): boolean {
+  if (!draft.name.trim() || !draft.skill.trim()) return false;
+  if (draft.mode === "schedule") {
+    return Boolean((draft.schedule || "").trim());
+  }
+  return true;
+}
 
 export type RoutineTriggerLine = {
   kind?: string | null;

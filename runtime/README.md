@@ -74,15 +74,16 @@ workspace dir.
 
 `SKILL.md` files live in `$SNORLAX_DATA_DIR/skills/<slug>/SKILL.md`.
 YAML frontmatter `name` + `description`, then markdown body.
-A skill has no trigger of its own. No marketplace / client picker.
+A skill has no trigger of its own. No marketplace catalog.
 
 Routines are cron XOR webhook on an agent (`GET /v1/agents/{id}/routines`,
-`PATCH .../routines/{id}` `{ enabled }`). Cron scheduler runs in this
+`POST .../routines`, `PATCH .../routines/{id}` `{ enabled }`,
+`DELETE .../routines/{id}` 204). Cron scheduler runs in this
 process (Asia/Taipei). Webhook fire is `POST` the minted `webhookUrl`
 (`/v1/hooks/{token}` in the path, no Bearer). Enabled → 204 and a
 normal assistant Message in that agent's 1:1 with optional
 `routineName`. Paused or unknown token → 404, do not run.
-Clients list, enable/pause, and Copy the webhook URL this slice.
+Clients list, create, enable/pause, Remove, and Copy the webhook URL.
 
 ## MCP (`mcp.json`)
 

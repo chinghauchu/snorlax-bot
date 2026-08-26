@@ -1,9 +1,9 @@
 openapi: 3.1.0
 info:
   title: Snorlax-Bot
-  version: 0.16.0
+  version: 0.17.0
   description: |
-    Locked v0.16 LAN contract. Clients use SNORLAX_URL + SNORLAX_TOKEN.
+    Locked v0.17 LAN contract. Clients use SNORLAX_URL + SNORLAX_TOKEN.
     They never call vLLM, never call tools, never call MCP, and never read
     the Spark filesystem. Additive workspace GETs are runtime reads of the
     existing sandbox (same roots as the tool loop), not a second tool loop.
@@ -388,6 +388,35 @@ info:
     Out of scope: blank New skill UI, edit generated markdown,
     marketplace, iOS record, VNC, a separate OS window. OpenAPI
     **0.16.0**.
+
+    v0.17: create/delete routine chrome. One impl PR covering runtime
+    + desktop + iOS. Spec rides this PR. OpenAPI **0.17.0**. **No
+    second PR.** Agent identity pane Routines header gets trailing
+    12px `Add` (same family as Plugins `Add`; iOS 12pt). Add sheet
+    (same family as Add plugin / Save as skill, 320px): title
+    `Add routine`; Name field; skill picker is that agent's SKILL.md
+    list via existing GET `/v1/agents/{id}/skills` (v0.9 path; not a
+    markdown editor); segmented `Schedule` / `Webhook` (same control
+    as Theme / Add plugin stdio-URL). Schedule: cron field, placeholder
+    `0 9 * * 1-5` (Asia/Taipei, existing v0.9 cron). Webhook: no extra
+    fields; after save the row is kind=webhook with existing Copy
+    (never paint the URL). Primary Add/Save disabled until name +
+    skill + (cron if Schedule). Header × cancels. Rows stay 44px:
+    name 14px, trailing enable/pause. Muted 12px line is `Webhook` /
+    Taipei cron (`Weekdays 9:00`) as v0.13. Webhook rows keep Copy
+    left of the switch. Every row gets muted 12px `Remove` + confirm
+    copy `Remove {name}?` then danger Remove / Cancel. Pause stays.
+    No edit-in-place this slice. HTTP: existing GET/POST/PATCH
+    routines; POST creates cron XOR webhook (v0.13).
+    `DELETE /v1/agents/{id}/routines/{routineId}` → 204. Unknown 404.
+    Channel 409. Skill list for the picker reuses GET skills
+    (`{ name, … }` from that agent's SKILL.md files). Out of scope:
+    marketplace catalog, iOS Open/Record/takeover, skill markdown
+    editor, Slack/GitHub trigger builder (those kinds remain
+    list-only if the plugin is connected). Isolation, report-back,
+    widgets, markdown, MCP, computer preview/takeover/record, seed
+    DELETE 204, Mac oMLX, no Mac folder picker, workspaceTree.ts
+    stand. OpenAPI **0.17.0**.
   license:
     name: Apache-2.0
     identifier: Apache-2.0
@@ -708,11 +737,14 @@ paths:
         omitted (`webhookUrl` is absent on cron rows). Missing agent
         is 404. kind=channel is 409 (routines are agent-only). Used by
         the agent info pane (list + enable/pause + Copy for webhook
-        URL). No New / create / edit / delete UI. Humanized trigger
+        URL). v0.17: trailing 12px `Add` opens a 320px Add routine
+        sheet (name + SKILL.md picker + segmented Schedule/Webhook).
+        Every row has muted 12px `Remove` (`Remove {name}?`). Pause
+        stays. No edit-in-place. Humanized trigger
         line (`Webhook` / `Weekdays 9:00`) is a client concern. Webhook
         rows show 12px muted Copy left of the switch (`Copied` for 1.5s);
-        do not paint webhookUrl. Slack/GitHub rows have no Copy. Do not
-        emit Connect cards from the pane.
+        do not paint webhookUrl. Slack/GitHub rows have no Copy and no
+        builder UI. Do not emit Connect cards from the pane.
       operationId: listRoutines
       responses:
         "200":
@@ -730,9 +762,9 @@ paths:
         "409":
           $ref: "#/components/responses/Error"
     post:
-      summary: Seed a routine for this agent
+      summary: Create a routine for this agent
       description: |
-        Test/runtime seed. Body is cron XOR trigger. Cron:
+        Body is cron XOR trigger. Cron:
         `{ name, skill, schedule }` (5-field or named hour, Asia/Taipei).
         Webhook: `{ name, skill, trigger: { type: webhook } }` — 201
         with `webhookUrl` (token in the path). POST of an event routine
@@ -776,7 +808,7 @@ paths:
       summary: Enable or pause a routine
       description: |
         `{ enabled: false }` pauses. `{ enabled: true }` resumes. This
-        thin. No name/skill/schedule patch this slice. No DELETE.
+        thin. No name/skill/schedule patch this slice.
         Unknown routine is 404. kind=channel is 409.
       operationId: patchRoutine
       requestBody:
@@ -799,6 +831,22 @@ paths:
         "409":
           $ref: "#/components/responses/Error"
         "422":
+          $ref: "#/components/responses/Error"
+    delete:
+      summary: Remove a routine
+      description: |
+        `DELETE /v1/agents/{id}/routines/{routineId}` → 204, gone from
+        GET. Unknown routine is 404. kind=channel is 409. Missing agent
+        is 404. Pause stays a PATCH; this is Remove, not pause.
+      operationId: deleteRoutine
+      responses:
+        "204":
+          description: Deleted; no body
+        "401":
+          $ref: "#/components/responses/Error"
+        "404":
+          $ref: "#/components/responses/Error"
+        "409":
           $ref: "#/components/responses/Error"
 
   /v1/hooks/{token}:
@@ -836,7 +884,8 @@ paths:
         Thin discovery. Runtime reads SKILL.md from
         SNORLAX_DATA_DIR/skills/<slug>/SKILL.md (and may also see a
         workspace SKILL.md). Not a marketplace catalog. kind=channel is
-        422. Clients never read the host disk.
+        422. Clients never read the host disk. v0.17 Add-routine picker
+        reuses this list (`name` is the POST skill). No markdown editor.
       operationId: listSkills
       responses:
         "200":

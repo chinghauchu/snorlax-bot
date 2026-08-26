@@ -16,7 +16,7 @@ From public Grok Bot docs and the Aug 2026 launch:
 | Message a bot like a coworker | `POST /v1/agents/{id}/messages` (SSE) |
 | Files, shell, web on a computer | v0.5: runtime tools in a workspace jail; v0.6: thin file-tree pane |
 | One user-scoped computer shared by all bots | Later: one sandbox on the Spark, shared files/logins, per-bot screen |
-| Skills (how) and routines (when) | v0.9: SKILL.md + cron (Asia/Taipei); v0.13: cron XOR webhook; list + enable/pause + Copy; fire LEFT 1:1 |
+| Skills (how) and routines (when) | v0.9: SKILL.md + cron (Asia/Taipei); v0.13: cron XOR webhook; v0.17: Add / Remove on the identity pane; fire LEFT 1:1 |
 | MCP + computer-use for sites without an API | v0.7: local/LAN MCP client; v0.10: connect chrome (`GET /v1/plugins` + `kind=connect`); v0.12: Settings Add custom; later: sandbox browser |
 | Question / approval moments | v0.8: question widgets (`kind=widget`); tools stay auto-run (no approval card) |
 | Desktop + iOS, same bots | Tauri desktop now; Swift iOS companion on the LAN |
@@ -276,6 +276,16 @@ Record left of Done; recording is 12px `--danger` Stop + 6px danger
 dot (static if Reduce Motion); Done disabled while recording; Esc
 while recording = Stop. Stop opens 320px Save as skill. Out: blank New
 skill UI, marketplace, iOS record, VNC, a separate OS window.
+
+v0.17: create/delete routine chrome. Runtime + desktop + iOS. Routines
+header trailing 12px `Add` (Plugins family). 320px `Add routine` sheet:
+name + that agent's SKILL.md picker (GET skills) + segmented
+Schedule/Webhook. Cron placeholder `0 9 * * 1-5`. Webhook: no extra
+fields; Copy stays webhook-only. `DELETE .../routines/{id}` 204
+(unknown 404; channel 409). Every row muted 12px `Remove` +
+`Remove {name}?`. Pause stays. Slack/GitHub remain list-only. Out:
+marketplace, iOS Open/Record/takeover, skill markdown editor,
+Slack/GitHub trigger builder.
 
 ## Inference interface
 

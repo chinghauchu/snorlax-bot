@@ -11,6 +11,8 @@ struct ProfileSheet: View {
     @State private var draft: Agent
     @State private var pickerItem: PhotosPickerItem?
     @State private var copiedRoutineId: String?
+    @State private var showAddRoutine = false
+    @State private var pendingRemove: Routine?
 
     init(agent: Agent) {
         self.agent = agent
@@ -96,6 +98,27 @@ struct ProfileSheet: View {
                 await model.loadComputer(for: live.id)
             }
         }
+        .sheet(isPresented: $showAddRoutine) {
+            AddRoutineSheet(agentId: live.id)
+        }
+        .confirmationDialog(
+            pendingRemove.map { "Remove \($0.name)?" } ?? "",
+            isPresented: Binding(
+                get: { pendingRemove != nil },
+                set: { if !$0 { pendingRemove = nil } }
+            ),
+            titleVisibility: .visible
+        ) {
+            Button("Remove", role: .destructive) {
+                if let routine = pendingRemove {
+                    Task {
+                        await model.removeRoutine(agentId: live.id, id: routine.id)
+                    }
+                }
+                pendingRemove = nil
+            }
+            Button("Cancel", role: .cancel) { pendingRemove = nil }
+        }
     }
 
     private var computerBlock: some View {
@@ -134,11 +157,17 @@ struct ProfileSheet: View {
 
     private var routinesList: some View {
         VStack(alignment: .leading, spacing: 0) {
-            Text("Routines")
-                .font(.system(size: 12))
-                .foregroundStyle(.secondary)
-                .padding(.top, 12)
-                .padding(.bottom, 8)
+            HStack {
+                Text("Routines")
+                    .font(.system(size: 12))
+                    .foregroundStyle(.secondary)
+                Spacer(minLength: 0)
+                Button("Add") { showAddRoutine = true }
+                    .font(.system(size: 12))
+                    .disabled(!model.isConfigured)
+            }
+            .padding(.top, 12)
+            .padding(.bottom, 8)
             if paneRoutines.isEmpty {
                 Text("No routines yet.")
                     .font(.system(size: 12))
@@ -156,6 +185,13 @@ struct ProfileSheet: View {
                                 .lineLimit(1)
                         }
                         Spacer(minLength: 0)
+                        Button("Remove") {
+                            pendingRemove = routine
+                        }
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundStyle(.secondary)
+                        .buttonStyle(.plain)
+                        .accessibilityLabel("Remove \(routine.name)")
                         if routine.showsWebhookCopy {
                             Button(copiedRoutineId == routine.id ? "Copied" : "Copy") {
                                 UIPasteboard.general.string = routine.copyPayload
@@ -359,5 +395,95 @@ struct ProfileSheet: View {
             draft.avatar = "data:\(mime);base64,\(encoded)"
             pickerItem = nil
         }
+    }
+}
+
+private struct AddRoutineSheet: View {
+    @Environment(AppModel.self) private var model
+    @Environment(\.dismiss) private var dismiss
+    let agentId: String
+    @State private var name = ""
+    @State private var skill = ""
+    @State private var mode = Mode.schedule
+    @State private var cron = ""
+    @State private var skills: [SkillInfo] = []
+    @State private var saving = false
+
+    private enum Mode: String, CaseIterable, Identifiable {
+        case schedule = "Schedule"
+        case webhook = "Webhook"
+        var id: String { rawValue }
+    }
+
+    private var canAdd: Bool {
+        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty, !skill.isEmpty else { return false }
+        if mode == .schedule {
+            return !cron.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        }
+        return true
+    }
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                TextField("Name", text: $name)
+                    .font(.system(size: 14))
+                Picker("Skill", selection: $skill) {
+                    Text(skills.isEmpty ? "No skills yet." : "Choose a skill")
+                        .tag("")
+                    ForEach(skills, id: \.name) { row in
+                        Text(row.name).tag(row.name)
+                    }
+                }
+                .font(.system(size: 14))
+                Picker("When", selection: $mode) {
+                    ForEach(Mode.allCases) { item in
+                        Text(item.rawValue).tag(item)
+                    }
+                }
+                .pickerStyle(.segmented)
+                if mode == .schedule {
+                    TextField("Cron", text: $cron, prompt: Text("0 9 * * 1-5"))
+                        .font(.system(size: 14))
+                        .textInputAutocapitalization(.never)
+                        .autocorrectionDisabled()
+                }
+                Button("Add") {
+                    Task { await save() }
+                }
+                .frame(maxWidth: .infinity, minHeight: 44)
+                .disabled(saving || !model.isConfigured || !canAdd)
+            }
+            .navigationTitle("Add routine")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button {
+                        dismiss()
+                    } label: {
+                        Image(systemName: "xmark")
+                    }
+                    .accessibilityLabel("Close")
+                }
+            }
+            .task {
+                skills = await model.loadSkills(for: agentId)
+            }
+        }
+    }
+
+    private func save() async {
+        guard canAdd else { return }
+        saving = true
+        defer { saving = false }
+        let ok = await model.addRoutine(
+            agentId: agentId,
+            name: name,
+            skill: skill,
+            schedule: mode == .schedule ? cron : nil,
+            webhook: mode == .webhook
+        )
+        if ok { dismiss() }
     }
 }

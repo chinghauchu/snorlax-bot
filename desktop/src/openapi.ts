@@ -228,17 +228,20 @@ export interface paths {
          *     omitted (`webhookUrl` is absent on cron rows). Missing agent
          *     is 404. kind=channel is 409 (routines are agent-only). Used by
          *     the agent info pane (list + enable/pause + Copy for webhook
-         *     URL). No New / create / edit / delete UI. Humanized trigger
+         *     URL). v0.17: trailing 12px `Add` opens a 320px Add routine
+         *     sheet (name + SKILL.md picker + segmented Schedule/Webhook).
+         *     Every row has muted 12px `Remove` (`Remove {name}?`). Pause
+         *     stays. No edit-in-place. Humanized trigger
          *     line (`Webhook` / `Weekdays 9:00`) is a client concern. Webhook
          *     rows show 12px muted Copy left of the switch (`Copied` for 1.5s);
-         *     do not paint webhookUrl. Slack/GitHub rows have no Copy. Do not
-         *     emit Connect cards from the pane.
+         *     do not paint webhookUrl. Slack/GitHub rows have no Copy and no
+         *     builder UI. Do not emit Connect cards from the pane.
          */
         get: operations["listRoutines"];
         put?: never;
         /**
-         * Seed a routine for this agent
-         * @description Test/runtime seed. Body is cron XOR trigger. Cron:
+         * Create a routine for this agent
+         * @description Body is cron XOR trigger. Cron:
          *     `{ name, skill, schedule }` (5-field or named hour, Asia/Taipei).
          *     Webhook: `{ name, skill, trigger: { type: webhook } }` — 201
          *     with `webhookUrl` (token in the path). POST of an event routine
@@ -270,13 +273,19 @@ export interface paths {
         get?: never;
         put?: never;
         post?: never;
-        delete?: never;
+        /**
+         * Remove a routine
+         * @description `DELETE /v1/agents/{id}/routines/{routineId}` → 204, gone from
+         *     GET. Unknown routine is 404. kind=channel is 409. Missing agent
+         *     is 404. Pause stays a PATCH; this is Remove, not pause.
+         */
+        delete: operations["deleteRoutine"];
         options?: never;
         head?: never;
         /**
          * Enable or pause a routine
          * @description `{ enabled: false }` pauses. `{ enabled: true }` resumes. This
-         *     thin. No name/skill/schedule patch this slice. No DELETE.
+         *     thin. No name/skill/schedule patch this slice.
          *     Unknown routine is 404. kind=channel is 409.
          */
         patch: operations["patchRoutine"];
@@ -325,7 +334,8 @@ export interface paths {
          * @description Thin discovery. Runtime reads SKILL.md from
          *     SNORLAX_DATA_DIR/skills/<slug>/SKILL.md (and may also see a
          *     workspace SKILL.md). Not a marketplace catalog. kind=channel is
-         *     422. Clients never read the host disk.
+         *     422. Clients never read the host disk. v0.17 Add-routine picker
+         *     reuses this list (`name` is the POST skill). No markdown editor.
          */
         get: operations["listSkills"];
         put?: never;
@@ -1553,6 +1563,30 @@ export interface operations {
             401: components["responses"]["Error"];
             404: components["responses"]["Error"];
             422: components["responses"]["Error"];
+        };
+    };
+    deleteRoutine: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["Id"];
+                routineId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Deleted; no body */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Error"];
+            404: components["responses"]["Error"];
+            409: components["responses"]["Error"];
         };
     };
     patchRoutine: {

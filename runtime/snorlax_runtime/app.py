@@ -626,12 +626,14 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     ) -> Routine:
         from snorlax_runtime.cron import CronError, parse_schedule
         from snorlax_runtime.skills import find_skill, load_skills, skill_slug
+        from snorlax_runtime.tools import workspace_for
 
         store: Store = request.app.state.store
         conversation = await store.get_agent(id)
         _require_agent(conversation, id, channel_status=422)
         skill_name = payload.skill.strip()
-        matched = find_skill(load_skills(store.data_dir), skill_name)
+        workspace = workspace_for(store.data_dir, conversation, id)
+        matched = find_skill(load_skills(store.data_dir, workspace), skill_name)
         if matched is None:
             raise _error(422, "unknown skill")
         trigger = payload.trigger
@@ -703,6 +705,24 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         if row is None:
             raise _error(404, f"Routine {routineId!r} not found")
         return _routine_out(row, _base_url(request))
+
+    @app.delete(
+        "/v1/agents/{id}/routines/{routineId}",
+        status_code=status.HTTP_204_NO_CONTENT,
+    )
+    async def delete_routine(
+        id: str,
+        routineId: str,
+        request: Request,
+        _: str = Depends(require_bearer),
+    ) -> Response:
+        store: Store = request.app.state.store
+        conversation = await store.get_agent(id)
+        _require_agent(conversation, id, channel_status=409)
+        deleted = await store.delete_routine(routineId, agent_id=id)
+        if not deleted:
+            raise _error(404, f"Routine {routineId!r} not found")
+        return Response(status_code=status.HTTP_204_NO_CONTENT)
 
     @app.post("/v1/hooks/{token}", status_code=status.HTTP_204_NO_CONTENT)
     async def fire_webhook(token: str, request: Request) -> Response:

@@ -161,4 +161,23 @@ test("iOS agent sheet matches: 16:10, 8pt, 12pt labels, no tap-to-open", () => {
   assert.doesNotMatch(chat, /Save as skill/);
   assert.doesNotMatch(content, /computer\/record/);
   assert.doesNotMatch(content, /Save as skill/);
+  assert.match(sheet, /Add routine/);
+  assert.match(sheet, /Remove \\\(\$0\.name\)\?/);
+  assert.match(sheet, /Button\("Add"\)/);
+  assert.match(sheet, /Button\("Remove"\)/);
+  assert.match(sheet, /0 9 \* \* 1-5/);
+  assert.match(sheet, /Schedule/);
+  assert.match(sheet, /Webhook/);
+  assert.match(sheet, /showsWebhookCopy/);
+  assert.match(client, /listSkills/);
+  assert.match(client, /createRoutine/);
+  assert.match(client, /deleteRoutine/);
+  assert.match(model, /addRoutine/);
+  assert.match(model, /removeRoutine/);
+  const channelPane = sheet.slice(
+    sheet.indexOf("channelPane"),
+    sheet.indexOf("channelEditForm"),
+  );
+  assert.doesNotMatch(channelPane, /AddRoutineSheet/);
+  assert.doesNotMatch(channelPane, /listSkills/);
 });

@@ -1244,10 +1244,28 @@ button:disabled {
 }
 
 .info-routines-header {
-  margin: 0 14px 8px;
+  margin: 0;
+  flex: 1;
   font-size: 12px;
   color: var(--text-muted);
   font-weight: 500;
+}
+
+.info-routines-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 14px 8px;
+}
+
+.info-routine-add {
+  border: 0;
+  background: transparent;
+  color: var(--accent);
+  font-size: 12px;
+  font-weight: 500;
+  padding: 4px 6px;
+  cursor: pointer;
 }
 
 .info-routine {
@@ -1308,6 +1326,17 @@ button:disabled {
 
 .info-routine-hook-copy:hover {
   color: var(--accent);
+}
+
+.info-routine-remove {
+  flex-shrink: 0;
+  border: 0;
+  background: transparent;
+  font-size: 12px;
+  font-weight: 500;
+  padding: 4px 6px;
+  cursor: pointer;
+  color: var(--text-muted);
 }
 
 .info-routine-switch {
@@ -1459,6 +1488,41 @@ button:disabled {
 .plugin-add-primary {
   min-height: 36px;
   padding: 0 14px;
+}
+
+.modal.routine-add-sheet {
+  width: 320px;
+}
+
+.routine-add-name {
+  font-size: 14px;
+}
+
+.routine-add-skill {
+  font-size: 14px;
+}
+
+.routine-add-cron {
+  font-size: 14px;
+}
+
+.routine-add-primary {
+  min-height: 36px;
+  padding: 0 14px;
+}
+
+select {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 8px 10px;
+  outline: none;
+  color: inherit;
+  font: inherit;
+}
+
+select:focus {
+  border-color: color-mix(in srgb, var(--accent) 55%, var(--border));
 }
 
 label {

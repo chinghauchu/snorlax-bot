@@ -330,6 +330,56 @@ final class AppModel {
         }
     }
 
+    func addRoutine(
+        agentId: String,
+        name: String,
+        skill: String,
+        schedule: String?,
+        webhook: Bool
+    ) async -> Bool {
+        guard let client else { return false }
+        do {
+            let body: RoutineCreate
+            if webhook {
+                body = RoutineCreate(
+                    name: name,
+                    skill: skill,
+                    trigger: RoutineTrigger(type: "webhook")
+                )
+            } else {
+                body = RoutineCreate(name: name, skill: skill, schedule: schedule)
+            }
+            let created = try await client.createRoutine(agentId: agentId, body: body)
+            if !routines.contains(where: { $0.id == created.id }) {
+                routines.append(created)
+            }
+            return true
+        } catch {
+            errorMessage = error.localizedDescription
+            return false
+        }
+    }
+
+    func removeRoutine(agentId: String, id: String) async {
+        guard let client else { return }
+        do {
+            try await client.deleteRoutine(agentId: agentId, routineId: id)
+            routines.removeAll { $0.id == id }
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    func loadSkills(for agentId: String) async -> [SkillInfo] {
+        guard let client else { return [] }
+        do {
+            return try await client.listSkills(agentId: agentId)
+        } catch {
+            errorMessage = error.localizedDescription
+            return []
+        }
+    }
+
     func send() async {
         guard let client, let agent = selectedAgent else { return }
         let content = draft.trimmingCharacters(in: .whitespacesAndNewlines)
