@@ -331,6 +331,32 @@ def done_summary(name: str, args: dict[str, Any], ok: bool) -> str:
     return f"Used {name}"
 
 
+def followup_after_tools(
+    outcomes: list[tuple[str, bool, str]],
+    *,
+    error: str | None = None,
+) -> str:
+    """Normal assistant text when the model did not finish after tools.
+
+    Failed tool results stay in the muted kind=tool line; this is the LEFT
+    bubble so the turn does not end on that line alone.
+    """
+    failed = [(name, result) for name, ok, result in outcomes if not ok]
+    names = list(dict.fromkeys(name for name, _, _ in outcomes))
+    used = ", ".join(names) if names else "tools"
+    parts: list[str] = []
+    for name, result in failed:
+        snippet = (result or "").strip().splitlines()[0][:240]
+        if snippet.lower().startswith("error:"):
+            snippet = snippet.split(":", 1)[1].strip()
+        parts.append(f"{name} failed" + (f": {snippet}" if snippet else ""))
+    if error:
+        parts.append(f"Inference failed after {used}: {error}")
+    if parts:
+        return "\n".join(parts)
+    return f"I used {used} but had nothing more to add."
+
+
 def execute_tool(name: str, arguments: str, workspace: Path) -> str:
     try:
         args = json.loads(arguments) if arguments.strip() else {}
@@ -742,6 +768,12 @@ async def run_tool_loop(
 
     Clients never see the raw tools payload. Final assistant text is returned
     for persistence as a normal Message.
+
+    A failed tool does not end the turn: results go back as role=tool and
+    the model may call tools again until max_rounds. After any tool round,
+    this always returns non-empty final text so the caller can persist a
+    normal assistant bubble (empty model text and InferenceError after
+    tools included). InferenceError before any tool still propagates.
     """
     events: list[tuple[str, dict[str, Any]]] = []
     history: list[dict[str, Any]] = [dict(m) for m in messages]
@@ -754,6 +786,7 @@ async def run_tool_loop(
     }
     rounds = 0
     final_parts: list[str] = []
+    tool_outcomes: list[tuple[str, bool, str]] = []
 
     while True:
         text_parts: list[str] = []
@@ -766,8 +799,13 @@ async def run_tool_loop(
                     text_parts.append(part.text)
                 if use_tools and part.tool_calls:
                     tool_calls.extend(part.tool_calls)
-        except InferenceError:
-            raise
+        except InferenceError as exc:
+            if rounds == 0:
+                raise
+            final_parts = [
+                followup_after_tools(tool_outcomes, error=exc.message)
+            ]
+            break
 
         if tool_calls and rounds < max_rounds:
             rounds += 1
@@ -799,6 +837,7 @@ async def run_tool_loop(
                 )
                 ok = not result.startswith("Error:")
                 summary = done_summary(call.name, args, ok)
+                tool_outcomes.append((call.name, ok, result))
                 saved_tool: dict[str, Any] | None = None
                 if persist_tool is not None:
                     persisted = persist_tool(summary, tool_id)
@@ -839,6 +878,8 @@ async def run_tool_loop(
             ]
         else:
             final_parts = text_parts
+            if rounds > 0 and not "".join(final_parts).strip():
+                final_parts = [followup_after_tools(tool_outcomes)]
         break
 
     content = "".join(final_parts)
@@ -858,7 +899,7 @@ async def run_tool_loop(
                 )
             )
     elif stream:
-        # Empty content still allowed; caller persists it.
+        # Empty content still allowed on a no-tool turn; caller persists it.
         pass
     return events, content
 

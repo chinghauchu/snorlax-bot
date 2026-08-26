@@ -858,6 +858,9 @@ async def _generate(
             use_tools=not report_back,
         )
     except InferenceError as exc:
+        # Pre-tool failures only. After tools, run_tool_loop returns
+        # follow-up text instead of raising, so this 1:1 still gets a bubble
+        # rather than event:error with saved=None.
         if stream:
             events.append(("error", {"error": exc.message}))
         return events, None

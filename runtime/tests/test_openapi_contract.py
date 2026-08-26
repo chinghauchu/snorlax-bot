@@ -55,6 +55,7 @@ def test_protocol_openapi_is_locked_v0_contract() -> None:
     assert "sharedProject" in text
     assert "kind=tool" in text
     assert "enum: [message, handoff, tool]" in text
+    assert "always finishes with a normal assistant" in text
     assert "projectPath" not in text
     assert "folderPath" not in text
     assert "not persisted as Message" not in text
