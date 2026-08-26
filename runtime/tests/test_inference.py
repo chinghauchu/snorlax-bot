@@ -237,6 +237,33 @@ async def test_omlx_streams_without_authorization() -> None:
     assert body["model"] == "mlx-community/local"
     assert body["stream"] is True
     assert body["messages"] == [{"role": "user", "content": "hi"}]
+    assert "tools" not in body
+
+
+@pytest.mark.asyncio
+async def test_omlx_passes_tools_on_generate() -> None:
+    transport = _CaptureTransport(
+        lambda _req: httpx.Response(
+            200,
+            content=_stream_body("ok"),
+            headers={"content-type": "text/event-stream"},
+        )
+    )
+    backend = OmlxBackend(
+        "http://127.0.0.1:8000/v1",
+        "mlx-community/local",
+        transport=transport,
+    )
+    tools = [{"type": "function", "function": {"name": "list_dir", "parameters": {}}}]
+    parts = [
+        p
+        async for p in backend.generate(
+            [{"role": "user", "content": "hi"}], tools=tools
+        )
+    ]
+    assert "".join(p.text or "" for p in parts) == "ok"
+    body = json.loads(transport.requests[0].content)
+    assert body["tools"] == tools
 
 
 @pytest.mark.asyncio

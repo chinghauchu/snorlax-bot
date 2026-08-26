@@ -19,7 +19,7 @@ Concrete follow-ups after v0. Filed on GitHub against
 ## Backend
 
 - [B1 — vLLM on GB10 70B FP8 recipe](https://github.com/chinghauchu/snorlax-bot/issues/10)
-- [B2 — Runtime-owned tool loop](https://github.com/chinghauchu/snorlax-bot/issues/14)
+- [B2 — Runtime-owned tool loop](https://github.com/chinghauchu/snorlax-bot/issues/14) — v0.5 built-in files/shell/web + workspace jail; MCP and computer pane stay later
 - [B3 — MCP client: stdio and LAN, not public internet](https://github.com/chinghauchu/snorlax-bot/issues/15)
 - [B4 — Local sandbox computer on the Spark](https://github.com/chinghauchu/snorlax-bot/issues/7)
 - [B5 — Scheduler for routines while the laptop is closed](https://github.com/chinghauchu/snorlax-bot/issues/17)
@@ -32,7 +32,8 @@ Concrete follow-ups after v0. Filed on GitHub against
 - [F3 — Edit agent name and instructions in the desktop UI](https://github.com/chinghauchu/snorlax-bot/issues/19) — v0.3 identity pane PATCHes name/title/description/avatar (no `instructions` field)
 - Attachment chips with “not sent to model” already exist in v0; VL-on
   treatment stays with D3.
-- Computer pane shell stays with D2 until B4 lands.
+- Computer pane shell stays with D2 until B4 lands. v0.5 is muted tool traces
+  in chat, not a computer pane.
 
 ## iOS
 

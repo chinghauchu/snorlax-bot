@@ -121,8 +121,8 @@ export interface paths {
         put?: never;
         /**
          * Send a user message and stream agent replies
-         * @description SSE, chat-only (no tools). Images are stored and returned; never
-         *     forwarded to vLLM.
+         * @description SSE. Images are stored and returned; never forwarded to vLLM.
+         *     The runtime owns the tool loop (clients never send a tools payload).
          *
          *     For a 1:1 agent, hop 0 is that agent. Mentioned peers and hops
          *     reply in a handoff thread on seed `snorlax-bot-group` when present
@@ -146,10 +146,14 @@ export interface paths {
          *
          *     - event `message.delta` data `{ id, role: "assistant", delta, senderId, senderName, senderAvatar }`
          *     - event `message.done` data full Message (not wrapped)
+         *     - event `tool.start` data ToolTrace `{ id, name, summary, senderId, senderName }`
+         *     - event `tool.done` data ToolTrace `{ id, name, summary, ok, senderId, senderName }`
          *     - event `error` data `{ error }` (string)
          *
          *     Multiple `message.done` events may appear on one stream when more
-         *     than one agent speaks in this transcript.
+         *     than one agent speaks in this transcript. Tool traces are ephemeral
+         *     (not persisted as Message rows). Clients that do not understand
+         *     `tool.*` skip those events.
          */
         post: operations["postMessage"];
         delete?: never;
@@ -350,6 +354,15 @@ export interface components {
             senderId?: string;
             senderName?: string;
             senderAvatar?: string | null;
+        };
+        ToolTrace: {
+            id: string;
+            name: string;
+            /** @description Muted client line such as "Searching…" or "Wrote app.py". */
+            summary: string;
+            ok?: boolean | null;
+            senderId?: string;
+            senderName?: string;
         };
         ErrorBody: {
             error: string;

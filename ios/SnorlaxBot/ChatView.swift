@@ -96,6 +96,15 @@ struct ChatView: View {
                             .padding(.top, turnSpacing(at: index, in: visible, message: message))
                             .id(message.id)
                         }
+                        ForEach(model.toolTraces) { trace in
+                            Text(trace.summary)
+                                .font(.system(size: 12))
+                                .foregroundStyle(.secondary)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .padding(.horizontal, 16)
+                                .padding(.top, 4)
+                                .id(trace.id)
+                        }
                     }
                     Color.clear.frame(height: 1).id("bottom")
                 }
@@ -105,6 +114,9 @@ struct ChatView: View {
                 proxy.scrollTo("bottom", anchor: .bottom)
             }
             .onChange(of: model.messages.last?.content) { _, _ in
+                proxy.scrollTo("bottom", anchor: .bottom)
+            }
+            .onChange(of: model.toolTraces.count) { _, _ in
                 proxy.scrollTo("bottom", anchor: .bottom)
             }
         }

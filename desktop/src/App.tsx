@@ -209,6 +209,9 @@ export function App() {
   const [channelNameDraft, setChannelNameDraft] = useState("New channel");
   const [channelMemberDraft, setChannelMemberDraft] = useState<string[]>([]);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [toolTraces, setToolTraces] = useState<
+    { id: string; summary: string }[]
+  >([]);
   const [draft, setDraft] = useState("");
   const [pendingImage, setPendingImage] = useState<PendingImage | null>(null);
   const [busy, setBusy] = useState(false);
@@ -632,6 +635,7 @@ export function App() {
       mentions: [],
     };
     setMessages((prev) => [...prev, userMsg]);
+    setToolTraces([]);
     setBusy(true);
     resizeComposer(true);
     const mentionIds = mentionIdsInText(content, pickedMentions.current);
@@ -688,6 +692,13 @@ export function App() {
         onError(code, message) {
           setComposerError(`${code}: ${message}`);
         },
+        onTool(trace) {
+          if (active.kind === "channel" && !threadId) return;
+          setToolTraces((prev) => {
+            const without = prev.filter((item) => item.id !== trace.id);
+            return [...without, { id: trace.id, summary: trace.summary }];
+          });
+        },
         },
         mentionIds,
         active.kind === "channel" && threadId ? threadId : undefined,
@@ -699,6 +710,7 @@ export function App() {
         active.kind === "channel" && threadId ? { threadId } : undefined,
       );
       setMessages(listed);
+      setToolTraces([]);
       if (active.kind !== "channel") {
         const channelId = listed
           .map((message) => visibleJump(message, agents)?.channelId)
@@ -1050,6 +1062,11 @@ export function App() {
                 );
               })
             )}
+            {toolTraces.map((trace) => (
+              <p key={trace.id} className="tool-trace">
+                {trace.summary}
+              </p>
+            ))}
             {busy ? <p className="typing">…</p> : null}
           </div>
         </div>

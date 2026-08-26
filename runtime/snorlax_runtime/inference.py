@@ -3,7 +3,9 @@ from __future__ import annotations
 
 import json
 import re
+import secrets
 from collections.abc import AsyncIterator
+from dataclasses import dataclass, field
 from typing import Any, Protocol
 from urllib.parse import urlparse
 
@@ -25,8 +27,34 @@ _LOOPBACK_HOSTS = {
 }
 
 
+@dataclass
+class ToolCall:
+    id: str
+    name: str
+    arguments: str
+
+
+@dataclass
+class StreamPart:
+    """One piece of an inference turn: text delta and/or assembled tool calls."""
+
+    text: str | None = None
+    tool_calls: list[ToolCall] = field(default_factory=list)
+
+
 class InferenceBackend(Protocol):
-    async def stream(self, messages: list[dict[str, str]]) -> AsyncIterator[str]:
+    async def stream(
+        self,
+        messages: list[dict[str, Any]],
+        tools: list[dict[str, Any]] | None = None,
+    ) -> AsyncIterator[str]:
+        ...
+
+    async def generate(
+        self,
+        messages: list[dict[str, Any]],
+        tools: list[dict[str, Any]] | None = None,
+    ) -> AsyncIterator[StreamPart]:
         ...
 
 
@@ -49,15 +77,125 @@ def _neutralize_ats(text: str) -> str:
     return re.sub(r"(?<![A-Za-z0-9_])@", "(at)", text)
 
 
-def _mock_reply(messages: list[dict[str, str]]) -> str:
+_WRITE_FILE_RE = re.compile(
+    r"(?:write|create)\s+(?:a\s+)?file\s+named\s+(\S+)\s+"
+    r"(?:containing|with\s+contents?)\s+(.+)$",
+    re.I | re.S,
+)
+_PWD_RE = re.compile(r"\brun pwd(?:\s+in the workspace)?\b", re.I)
+_SEARCH_RE = re.compile(r"\bsearch the web for\s+(.+)$", re.I | re.S)
+_FETCH_RE = re.compile(r"\bfetch the url\s+(\S+)", re.I)
+_LIST_RE = re.compile(r"\blist(?: the)?(?: workspace)?(?: files| dir| directory)\b", re.I)
+_TOOL_DIRECTIVE_RE = re.compile(
+    r"SNORLAX_TOOL\s+(\w+)\s+(\{.*\})\s*$",
+    re.S,
+)
+
+
+def _last_user_text(messages: list[dict[str, Any]]) -> str:
+    for item in reversed(messages):
+        if item.get("role") == "user":
+            content = str(item.get("content") or "")
+            pack = _parse_json_object(content)
+            if pack and pack.get("userAsk") is not None:
+                return str(pack.get("userAsk") or "")
+            return content
+    return ""
+
+
+def _has_tool_results(messages: list[dict[str, Any]]) -> bool:
+    return any(item.get("role") == "tool" for item in messages)
+
+
+def _mock_tool_calls(
+    messages: list[dict[str, Any]],
+    tools: list[dict[str, Any]] | None,
+) -> list[ToolCall]:
+    if not tools:
+        return []
+    offered = {
+        (t.get("function") or {}).get("name")
+        for t in tools
+        if isinstance(t, dict)
+    }
+    ask = _last_user_text(messages).strip()
+    directive = _TOOL_DIRECTIVE_RE.search(ask)
+    if directive:
+        name, raw_args = directive.group(1), directive.group(2)
+        if name in offered:
+            return [ToolCall(id=_call_id(), name=name, arguments=raw_args)]
+    write = _WRITE_FILE_RE.search(ask)
+    if write and "write_file" in offered:
+        path, content = write.group(1).strip().rstrip(".,;"), write.group(2).strip()
+        return [
+            ToolCall(
+                id=_call_id(),
+                name="write_file",
+                arguments=json.dumps({"path": path, "content": content}),
+            )
+        ]
+    if _PWD_RE.search(ask) and "shell" in offered:
+        return [
+            ToolCall(
+                id=_call_id(),
+                name="shell",
+                arguments=json.dumps({"command": "pwd"}),
+            )
+        ]
+    search = _SEARCH_RE.search(ask)
+    if search and "web_search" in offered:
+        return [
+            ToolCall(
+                id=_call_id(),
+                name="web_search",
+                arguments=json.dumps({"query": search.group(1).strip()}),
+            )
+        ]
+    fetch = _FETCH_RE.search(ask)
+    if fetch and "web_fetch" in offered:
+        return [
+            ToolCall(
+                id=_call_id(),
+                name="web_fetch",
+                arguments=json.dumps({"url": fetch.group(1).strip().rstrip(".,;")}),
+            )
+        ]
+    if _LIST_RE.search(ask) and "list_dir" in offered:
+        return [
+            ToolCall(
+                id=_call_id(),
+                name="list_dir",
+                arguments=json.dumps({"path": "."}),
+            )
+        ]
+    return []
+
+
+def _call_id() -> str:
+    return f"call_{secrets.token_hex(6)}"
+
+
+def _mock_after_tools(messages: list[dict[str, Any]]) -> str:
+    chunks = [
+        str(item.get("content") or "")
+        for item in messages
+        if item.get("role") == "tool"
+    ]
+    body = "\n".join(chunks).strip()
+    if len(body) > 800:
+        body = body[:797] + "..."
+    return f"Done.\n{body}" if body else "Done."
+
+
+def _mock_reply(messages: list[dict[str, Any]]) -> str:
     last_user = ""
     system = ""
     for item in messages:
         if item.get("role") == "system" and not system:
-            system = item.get("content", "")
+            system = str(item.get("content") or "")
     for item in reversed(messages):
         if item.get("role") == "user":
-            last_user = item.get("content", "")
+            last_user = str(item.get("content") or "")
             break
     pack = _parse_json_object(last_user)
     forwarded = " ".join(f"@{name}" for name in FORWARD_RE.findall(system))
@@ -82,12 +220,11 @@ def _mock_reply(messages: list[dict[str, str]]) -> str:
         snippet = snippet[:277] + "..."
     snippet = _neutralize_ats(snippet)
     return (
-        "Heard. I'm Snorlax, running locally — mock backend, no cloud LLM, "
-        "no tools in v0.\n\n"
+        "Heard. I'm Snorlax, running locally — mock backend, no cloud LLM.\n\n"
         f"You said: {snippet or '(empty)'}\n\n"
         "When this Spark is wired to vLLM I'll keep the same SSE contract. "
-        "Until then I can still take the brief, remember this transcript, "
-        "and wait for the computer, skills, and MCP work."
+        "I can write files, run a workspace shell, and search or fetch the web "
+        "from this runtime — clients never call those tools."
         f"{extra}"
     )
 
@@ -97,10 +234,32 @@ class MockBackend:
 
     name = BACKEND_MOCK
 
-    async def stream(self, messages: list[dict[str, str]]) -> AsyncIterator[str]:
+    async def generate(
+        self,
+        messages: list[dict[str, Any]],
+        tools: list[dict[str, Any]] | None = None,
+    ) -> AsyncIterator[StreamPart]:
+        if tools and _has_tool_results(messages):
+            reply = _mock_after_tools(messages)
+            for token in _tokenize(reply):
+                yield StreamPart(text=token)
+            return
+        calls = _mock_tool_calls(messages, tools)
+        if calls:
+            yield StreamPart(tool_calls=calls)
+            return
         reply = _mock_reply(messages)
         for token in _tokenize(reply):
-            yield token
+            yield StreamPart(text=token)
+
+    async def stream(
+        self,
+        messages: list[dict[str, Any]],
+        tools: list[dict[str, Any]] | None = None,
+    ) -> AsyncIterator[str]:
+        async for part in self.generate(messages, tools=tools):
+            if part.text:
+                yield part.text
 
 
 def _tokenize(text: str) -> list[str]:
@@ -186,15 +345,31 @@ class OpenAICompatBackend:
             kwargs["transport"] = self._transport
         return httpx.AsyncClient(**kwargs)
 
-    async def stream(self, messages: list[dict[str, str]]) -> AsyncIterator[str]:
+    async def stream(
+        self,
+        messages: list[dict[str, Any]],
+        tools: list[dict[str, Any]] | None = None,
+    ) -> AsyncIterator[str]:
+        async for part in self.generate(messages, tools=tools):
+            if part.text:
+                yield part.text
+
+    async def generate(
+        self,
+        messages: list[dict[str, Any]],
+        tools: list[dict[str, Any]] | None = None,
+    ) -> AsyncIterator[StreamPart]:
         url = f"{self.base_url}/chat/completions"
-        payload = {
+        payload: dict[str, Any] = {
             "model": self.model,
             "messages": messages,
             "stream": True,
             "temperature": 0.7,
         }
+        if tools:
+            payload["tools"] = tools
         headers = self.request_headers()
+        assembled: dict[int, dict[str, str]] = {}
         async with self._client() as client:
             try:
                 async with client.stream(
@@ -216,13 +391,25 @@ class OpenAICompatBackend:
                             chunk = json.loads(data)
                         except json.JSONDecodeError:
                             continue
-                        delta = (
-                            chunk.get("choices", [{}])[0]
-                            .get("delta", {})
-                            .get("content")
-                        )
-                        if delta:
-                            yield delta
+                        choice = (chunk.get("choices") or [{}])[0]
+                        delta = choice.get("delta") or {}
+                        text = delta.get("content")
+                        if text:
+                            yield StreamPart(text=text)
+                        for item in delta.get("tool_calls") or []:
+                            if not isinstance(item, dict):
+                                continue
+                            idx = int(item.get("index") or 0)
+                            slot = assembled.setdefault(
+                                idx, {"id": "", "name": "", "arguments": ""}
+                            )
+                            if item.get("id"):
+                                slot["id"] = str(item["id"])
+                            fn = item.get("function") or {}
+                            if fn.get("name"):
+                                slot["name"] += str(fn["name"])
+                            if fn.get("arguments"):
+                                slot["arguments"] += str(fn["arguments"])
             except InferenceError:
                 raise
             except httpx.HTTPError as exc:
@@ -230,6 +417,18 @@ class OpenAICompatBackend:
                     "inference_unavailable",
                     f"{self.label} is not reachable at {url}: {exc}",
                 ) from exc
+        if assembled:
+            calls = [
+                ToolCall(
+                    id=slot["id"] or f"call_{idx}",
+                    name=slot["name"],
+                    arguments=slot["arguments"],
+                )
+                for idx, slot in sorted(assembled.items())
+                if slot["name"]
+            ]
+            if calls:
+                yield StreamPart(tool_calls=calls)
 
 
 class VllmBackend(OpenAICompatBackend):

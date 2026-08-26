@@ -867,6 +867,15 @@ legend {
   color: var(--accent);
 }
 
+.tool-trace {
+  margin: 6px 2px 0;
+  padding: 0;
+  color: var(--text-muted);
+  font-size: 12px;
+  line-height: 1.3;
+  align-self: flex-start;
+}
+
 .handoff-row {
   display: flex;
   align-items: flex-start;

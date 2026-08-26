@@ -48,6 +48,12 @@ test("jump line is 12px muted under the user bubble", () => {
   assert.match(jump, /color:\s*var\(--text-muted\)/);
 });
 
+test("tool traces are 12px muted system lines", () => {
+  const trace = block(".tool-trace");
+  assert.match(trace, /font-size:\s*12px/);
+  assert.match(trace, /color:\s*var\(--text-muted\)/);
+});
+
 test("info pane is a 320px overlay, not a third column", () => {
   const app = block(".app");
   const profile = block(".profile");

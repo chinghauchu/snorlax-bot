@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 //
-// Generated from protocol/openapi.yaml (Snorlax-Bot 0.4.0).
+// Generated from protocol/openapi.yaml (Snorlax-Bot 0.5.0).
 // Do not edit by hand. Regenerate with:
 //   python3 ios/scripts/generate_v1_types.py
 //
@@ -438,6 +438,46 @@ struct MessageDelta: Codable, Hashable, Identifiable, Sendable {
         try container.encodeIfPresent(senderId, forKey: .senderId)
         try container.encodeIfPresent(senderName, forKey: .senderName)
         try container.encode(senderAvatar, forKey: .senderAvatar)
+    }
+}
+
+struct ToolTrace: Codable, Hashable, Identifiable, Sendable {
+    var id: String
+    var name: String
+    var summary: String
+    var ok: Bool?
+    var senderId: String?
+    var senderName: String?
+
+    init(id: String, name: String, summary: String, ok: Bool? = nil, senderId: String? = nil, senderName: String? = nil) {
+        self.id = id
+        self.name = name
+        self.summary = summary
+        self.ok = ok
+        self.senderId = senderId
+        self.senderName = senderName
+    }
+
+    enum CodingKeys: String, CodingKey { case id, name, summary, ok, senderId, senderName }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(String.self, forKey: .id)
+        name = try container.decode(String.self, forKey: .name)
+        summary = try container.decode(String.self, forKey: .summary)
+        ok = try container.decodeIfPresent(Bool.self, forKey: .ok)
+        senderId = try container.decodeIfPresent(String.self, forKey: .senderId)
+        senderName = try container.decodeIfPresent(String.self, forKey: .senderName)
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(id, forKey: .id)
+        try container.encode(name, forKey: .name)
+        try container.encode(summary, forKey: .summary)
+        try container.encode(ok, forKey: .ok)
+        try container.encodeIfPresent(senderId, forKey: .senderId)
+        try container.encodeIfPresent(senderName, forKey: .senderName)
     }
 }
 

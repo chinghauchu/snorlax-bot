@@ -6,24 +6,26 @@ routines, MCP connectors, question widgets, attachments, desktop + iOS.
 
 ## v0 — this repository’s current slice
 
-Chat-only named agents. Meant to *run*, including without a GPU.
+Named agents plus runtime-owned file/shell/web tools. Meant to *run*,
+including without a GPU.
 
 | In | Out |
 | --- | --- |
-| Seeded agent `snorlax-bot` (Snorlax 1:1, PATCH identity; DELETE 204) and channel `snorlax-bot-group` (DELETE 204, no auto-reseed, never recreate) | Tools / function calling |
-| Create / list / patch / delete agents | Sandbox computer (browser, fs, terminal) |
+| Seeded agent `snorlax-bot` (Snorlax 1:1, PATCH identity; DELETE 204) and channel `snorlax-bot-group` (DELETE 204, no auto-reseed, never recreate) | MCP connectors |
+| Create / list / patch / delete agents | Sandbox computer GUI (browser, screenshot pane) |
 | Transcript persistence (SQLite) | Skills, “teach a task”, routines |
-| `POST .../messages` as SSE (`message.delta` / `message.done` / `error`) | MCP connectors |
+| `POST .../messages` as SSE (`message.delta` / `message.done` / `tool.*` / `error`) | Question widgets |
 | Bearer token LAN auth; bind localhost until a token exists | Vision (images persist, not sent to the model) |
 | Mock inference, **oMLX**, or **vLLM** OpenAI-compat | TensorRT-LLM |
-| Tauri + TypeScript chat UI | Computer pane / tools |
+| Tauri + TypeScript chat UI | Computer pane |
 | Swift/SwiftUI iOS companion | Skills, “teach a task”, routines |
 | Seeded group channel + extra user-created channels + agent DMs + @mentions + v0.2 handoff threads + v0.3 identity pane + v0.4 report-back | Extra channel types / widgets |
-| OpenAPI for `/v1` | Question widgets |
+| Runtime-owned tools: list_dir, read_file, write_file, delete_file, shell, web_search, web_fetch (workspace jail, cap 8 rounds) | Host Docker/SSH secrets in the tool env |
+| OpenAPI for `/v1` | |
 
 Default model on Spark: **70B-class FP8**, swapped via config.
 
-Locked v0.1 / v0.2 / v0.3 / v0.4 (chat layout + agent messaging + collaboration handoff + identity pane + report-back + extra channels): [docs/specs/v0.1-chat-and-agents.md](docs/specs/v0.1-chat-and-agents.md).
+Locked v0.1 / v0.2 / v0.3 / v0.4 / v0.5 (chat layout + agent messaging + collaboration handoff + identity pane + report-back + extra channels + basic tools): [docs/specs/v0.1-chat-and-agents.md](docs/specs/v0.1-chat-and-agents.md).
 
 ## v1 — computer and tools
 

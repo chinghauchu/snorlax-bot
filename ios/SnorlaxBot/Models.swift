@@ -242,3 +242,8 @@ enum RuntimeError: LocalizedError {
         }
     }
 }
+
+struct LiveToolTrace: Identifiable, Hashable, Sendable {
+    var id: String
+    var summary: String
+}

@@ -34,6 +34,7 @@ final class AppModel {
     var selectedAgentID: String?
     var navigationPath: [String] = []
     var messages: [Message] = []
+    var toolTraces: [LiveToolTrace] = []
     var threadID: String?
     var unreadChannelIDs: Set<String> = []
     var lastExtraChannelID: String?
@@ -258,6 +259,7 @@ final class AppModel {
             localPreviews[user.id] = [data]
         }
         messages.append(user)
+        toolTraces = []
         isSending = true
         defer { isSending = false }
 
@@ -276,6 +278,7 @@ final class AppModel {
             }
             if !Task.isCancelled, selectedAgentID == agent.id {
                 messages = try await client.listMessages(agentId: agent.id, threadId: threadID)
+                toolTraces = []
                 prunePreviews()
                 if !agent.isChannel {
                     if let channelId = messages.compactMap({ $0.visibleJump(in: self.agents)?.channelId }).last {
@@ -343,6 +346,13 @@ final class AppModel {
             }
         case .error(let message):
             errorMessage = message
+        case .tool(let id, let summary, _):
+            if onTimeline { return }
+            if let index = toolTraces.firstIndex(where: { $0.id == id }) {
+                toolTraces[index].summary = summary
+            } else {
+                toolTraces.append(LiveToolTrace(id: id, summary: summary))
+            }
         }
     }
 

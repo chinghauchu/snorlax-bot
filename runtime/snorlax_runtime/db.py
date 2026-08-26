@@ -32,6 +32,16 @@ from snorlax_runtime.handoff import format_brief
 ISO = "%Y-%m-%dT%H:%M:%S.%fZ"
 DB_FILENAME = "snorlax.db"
 
+TOOLS_PREAMBLE = (
+    "You have built-in tools (list_dir, read_file, write_file, delete_file, "
+    "shell, web_search, web_fetch). Call them instead of describing the work. "
+    "Write programs to files in the workspace; do not dump a whole app in the "
+    "chat bubble. Do not acknowledge that you can help — do the task. "
+    "1:1 files are private to you. Channel and handoff turns share the "
+    "channel project; if another teammate needs your files, they must already "
+    "be in that project (or you must put them there)."
+)
+
 
 def utcnow() -> str:
     return datetime.now(timezone.utc).strftime(ISO)
@@ -740,6 +750,7 @@ class Store:
                     "the user that. Speak as yourself, not as the other agent. "
                     "Mentions are runtime-routed. Do not dump ACK chatter. Do "
                     "not prefix the bubble with 'from {name}:'.\n\n"
+                    f"{TOOLS_PREAMBLE}\n\n"
                     f"{speaker['description'] or ''}"
                 ).strip()
                 return [
@@ -762,6 +773,7 @@ class Store:
                 "@DisplayName to continue this thread. Do not invent cues "
                 "like [agent] or [Group chat:]. Stay silent on FYI notes that "
                 "do not ask you anything.\n\n"
+                f"{TOOLS_PREAMBLE}\n\n"
                 f"{speaker['description'] or ''}"
             ).strip()
             messages: list[dict[str, str]] = [
@@ -795,6 +807,7 @@ class Store:
             "transcripts stay between you and the user. Do not invent cues "
             f"like [agent] or [Group chat:]. Stay silent on FYI notes that do "
             f"not ask you anything.{routed}\n\n"
+            f"{TOOLS_PREAMBLE}\n\n"
             f"{speaker['description'] or ''}"
         ).strip()
         messages = [{"role": "system", "content": system}]

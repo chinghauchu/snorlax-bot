@@ -263,6 +263,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 mentions=mentions,
                 reply_to=payload.replyTo,
                 preferred_channel_id=payload.channelId,
+                max_tool_rounds=request.app.state.settings.tool_max_rounds,
             ):
                 yield _sse(event, data)
 

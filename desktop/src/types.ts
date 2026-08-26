@@ -7,6 +7,7 @@ export type ChatMessage = components["schemas"]["Message"];
 export type MessageImage = components["schemas"]["ImageOut"];
 export type ImageIn = components["schemas"]["ImageIn"];
 export type MessageDelta = components["schemas"]["MessageDelta"];
+export type ToolTrace = components["schemas"]["ToolTrace"];
 export type RuntimeHealth = components["schemas"]["Health"];
 export type ErrorBody = components["schemas"]["ErrorBody"];
 

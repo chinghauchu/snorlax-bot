@@ -1,10 +1,10 @@
 openapi: 3.1.0
 info:
   title: Snorlax-Bot
-  version: 0.4.0
+  version: 0.5.0
   description: |
-    Locked v0.4 LAN contract. Clients use SNORLAX_URL + SNORLAX_TOKEN.
-    They never call vLLM and never read the Spark filesystem.
+    Locked v0.5 LAN contract. Clients use SNORLAX_URL + SNORLAX_TOKEN.
+    They never call vLLM, never call tools, and never read the Spark filesystem.
 
     Seeded agent: id `snorlax-bot`, name Snorlax, title Assistant, kind
     `agent`. GET/POST /v1/agents/snorlax-bot/messages is the user–Snorlax
@@ -28,9 +28,16 @@ info:
     Members come from memberIds. New agents auto-join the seed only while
     it exists. User-created agent DELETE is still 204.
 
-    Chat-only. No tools, no VL, no MCP, no skills, no box, no computer-use,
-    no routines, no widgets. Images persist and are returned; they are
-    never sent to the model. No mDNS.
+    Runtime-owned tools (v0.5): list_dir, read_file, write_file, delete_file,
+    shell, web_search, web_fetch. The FastAPI runtime runs a function-calling
+    loop against the local OpenAI-compat server (cap 8 rounds). Clients never
+    construct tool calls. Workspaces live under ~/.snorlax-bot/workspaces/
+    (agents/{id} for 1:1, channels/{id} for channel / handoff turns, created
+    lazily on first tool use). Path jail: tools cannot leave the active
+    workspace root. No MCP, no browser-use GUI, no computer screenshot pane,
+    no widgets.
+
+    Images persist and are returned; they are never sent to the model. No mDNS.
 
     Mentions are runtime-routed. Hop 0 is the user→current-agent turn.
     Max depth 3 (A→B→C→D ok; D→E dropped). Max 4 peer sends per user turn.
@@ -73,6 +80,11 @@ info:
     has reported for each. Extra `message.done` on the same stream. B is
     prompted to do the work; no ACK classifier. Extra-channel @stays in
     that channel. Extra user-created channels are kind=channel rows.
+
+    v0.5: runtime tool loop. Additive SSE `tool.start` / `tool.done` traces
+    (`{ id, name, summary, ok?, senderId, senderName }`). Existing
+    `message.delta` / `message.done` / `error` are unchanged. Desktop may
+    show muted traces; unknown events must be ignored.
   license:
     name: Apache-2.0
     identifier: Apache-2.0
@@ -276,8 +288,8 @@ paths:
     post:
       summary: Send a user message and stream agent replies
       description: |
-        SSE, chat-only (no tools). Images are stored and returned; never
-        forwarded to vLLM.
+        SSE. Images are stored and returned; never forwarded to vLLM.
+        The runtime owns the tool loop (clients never send a tools payload).
 
         For a 1:1 agent, hop 0 is that agent. Mentioned peers and hops
         reply in a handoff thread on seed `snorlax-bot-group` when present
@@ -301,10 +313,14 @@ paths:
 
         - event `message.delta` data `{ id, role: "assistant", delta, senderId, senderName, senderAvatar }`
         - event `message.done` data full Message (not wrapped)
+        - event `tool.start` data ToolTrace `{ id, name, summary, senderId, senderName }`
+        - event `tool.done` data ToolTrace `{ id, name, summary, ok, senderId, senderName }`
         - event `error` data `{ error }` (string)
 
         Multiple `message.done` events may appear on one stream when more
-        than one agent speaks in this transcript.
+        than one agent speaks in this transcript. Tool traces are ephemeral
+        (not persisted as Message rows). Clients that do not understand
+        `tool.*` skip those events.
       operationId: postMessage
       requestBody:
         required: true
@@ -656,6 +672,24 @@ components:
           type: string
         senderAvatar:
           type: [string, "null"]
+
+    ToolTrace:
+      type: object
+      required: [id, name, summary]
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        summary:
+          type: string
+          description: Muted client line such as "Searching…" or "Wrote app.py".
+        ok:
+          type: [boolean, "null"]
+        senderId:
+          type: string
+        senderName:
+          type: string
 
     ErrorBody:
       type: object

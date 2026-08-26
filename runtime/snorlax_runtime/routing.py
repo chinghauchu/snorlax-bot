@@ -326,6 +326,7 @@ async def run_user_turn(
     mentions: list[dict[str, str]],
     reply_to: str | None = None,
     preferred_channel_id: str | None = None,
+    max_tool_rounds: int | None = None,
 ) -> AsyncIterator[tuple[str, dict[str, Any]]]:
     """Persist the user message, then route hop-0 and peer work.
 
@@ -344,6 +345,7 @@ async def run_user_turn(
         if is_group
         else a2a_log_channel_id(roster, preferred=preferred_channel_id)
     )
+    tool_rounds = max_tool_rounds
     stored_reply_to = None
     thread_id: str | None = None
     if is_group:
@@ -423,6 +425,7 @@ async def run_user_turn(
                 wake_pack=job.wake_pack,
                 report_back=True,
                 persist=job.persist,
+                max_tool_rounds=tool_rounds,
             )
             if in_origin:
                 for event, payload in events:
@@ -466,6 +469,7 @@ async def run_user_turn(
             thread_id=job.thread_id,
             wake_pack=job.wake_pack,
             persist=job.persist,
+            max_tool_rounds=tool_rounds,
         )
         if in_origin:
             for event, payload in events:
@@ -808,8 +812,10 @@ async def _generate(
     wake_pack: dict[str, Any] | None = None,
     report_back: bool = False,
     persist: bool = True,
+    max_tool_rounds: int | None = None,
 ) -> tuple[list[tuple[str, dict[str, Any]]], dict[str, Any] | None]:
     from snorlax_runtime.inference import InferenceError
+    from snorlax_runtime.tools import MAX_TOOL_ROUNDS, run_tool_loop, workspace_for
 
     assistant_id = new_id("msg")
     roster = await store.list_agents()
@@ -821,31 +827,24 @@ async def _generate(
         thread_id=thread_id,
         wake_pack=wake_pack,
     )
-    pieces: list[str] = []
+    workspace = workspace_for(store.data_dir, conversation or agent, agent["id"])
     events: list[tuple[str, dict[str, Any]]] = []
     try:
-        async for delta in backend.stream(transcript):
-            pieces.append(delta)
-            if stream:
-                events.append(
-                    (
-                        "message.delta",
-                        {
-                            "id": assistant_id,
-                            "role": "assistant",
-                            "delta": delta,
-                            "senderId": agent["id"],
-                            "senderName": agent["name"],
-                            "senderAvatar": agent["avatar"],
-                        },
-                    )
-                )
+        events, raw = await run_tool_loop(
+            backend,
+            transcript,
+            workspace=workspace,
+            agent=agent,
+            assistant_id=assistant_id,
+            stream=stream,
+            max_rounds=max_tool_rounds if max_tool_rounds is not None else MAX_TOOL_ROUNDS,
+        )
     except InferenceError as exc:
         if stream:
             events.append(("error", {"error": exc.message}))
         return events, None
 
-    content = strip_involve_kicker("".join(pieces))
+    content = strip_involve_kicker(raw)
     mentions: list[dict[str, str]] = []
     if not report_back:
         mentions = resolve_agent_mentions(

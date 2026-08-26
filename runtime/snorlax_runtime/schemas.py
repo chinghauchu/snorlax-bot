@@ -120,3 +120,12 @@ class MessageDelta(BaseModel):
     senderId: str | None = None
     senderName: str | None = None
     senderAvatar: str | None = None
+
+
+class ToolTrace(BaseModel):
+    id: str
+    name: str
+    summary: str
+    ok: bool | None = None
+    senderId: str | None = None
+    senderName: str | None = None
