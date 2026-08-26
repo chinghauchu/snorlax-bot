@@ -50,7 +50,10 @@ TOOLS_PREAMBLE = (
     "under the runtime data dir (not a folder on the host Mac). If another "
     "teammate needs your files, turn shared project on or put them there. "
     "If a teammate needs a user decision, report back; do not try to paint "
-    "a question card in someone else's 1:1."
+    "a question card in someone else's 1:1. Skills are how-to recipes "
+    "(SKILL.md) with no trigger of their own — follow a matching skill "
+    "when you work. Routines are cron jobs that fire a skill while the "
+    "user is away."
 )
 
 
@@ -133,6 +136,20 @@ CREATE TABLE IF NOT EXISTS meta (
     key TEXT PRIMARY KEY,
     value TEXT NOT NULL
 );
+
+CREATE TABLE IF NOT EXISTS routines (
+    id TEXT PRIMARY KEY,
+    agent_id TEXT NOT NULL,
+    name TEXT NOT NULL,
+    skill TEXT NOT NULL,
+    cron TEXT NOT NULL,
+    schedule_label TEXT NOT NULL,
+    enabled INTEGER NOT NULL DEFAULT 1,
+    last_run_at TEXT,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    FOREIGN KEY (agent_id) REFERENCES agents(id) ON DELETE CASCADE
+);
 """
 
 ROSTER_SEEDED_KEY = "roster_seeded"
@@ -197,6 +214,7 @@ class Store:
             "handoff_thread_id": "TEXT",
             "origin_conversation_id": "TEXT",
             "widget": "TEXT",
+            "routine_name": "TEXT",
         }
         for name, spec in additions.items():
             if name not in msg_cols:
@@ -496,6 +514,123 @@ class Store:
         await self.conn.commit()
         return cur.rowcount > 0
 
+    def _routine_public(self, row: Any) -> dict[str, Any]:
+        return {
+            "id": row["id"],
+            "name": row["name"],
+            "skill": row["skill"],
+            "schedule": row["cron"],
+            "enabled": bool(row["enabled"]),
+            "scheduleLabel": row["schedule_label"],
+            "agentId": row["agent_id"],
+            "lastRunAt": row["last_run_at"],
+        }
+
+    async def list_routines(self, agent_id: str) -> list[dict[str, Any]]:
+        cur = await self.conn.execute(
+            "SELECT * FROM routines WHERE agent_id = ? "
+            "ORDER BY created_at ASC",
+            (agent_id,),
+        )
+        return [self._routine_public(row) for row in await cur.fetchall()]
+
+    async def list_all_routines(self) -> list[dict[str, Any]]:
+        cur = await self.conn.execute(
+            "SELECT * FROM routines ORDER BY created_at ASC"
+        )
+        return [self._routine_public(row) for row in await cur.fetchall()]
+
+    async def get_routine(
+        self, routine_id: str, *, agent_id: str | None = None
+    ) -> dict[str, Any] | None:
+        if agent_id is None:
+            cur = await self.conn.execute(
+                "SELECT * FROM routines WHERE id = ?", (routine_id,)
+            )
+        else:
+            cur = await self.conn.execute(
+                "SELECT * FROM routines WHERE id = ? AND agent_id = ?",
+                (routine_id, agent_id),
+            )
+        row = await cur.fetchone()
+        if row is None:
+            return None
+        return self._routine_public(row)
+
+    async def create_routine(
+        self,
+        *,
+        agent_id: str,
+        name: str,
+        skill: str,
+        cron: str,
+        schedule_label: str,
+        enabled: bool = True,
+    ) -> dict[str, Any]:
+        routine_id = new_id("rtn")
+        now = utcnow()
+        await self.conn.execute(
+            "INSERT INTO routines "
+            "(id, agent_id, name, skill, cron, schedule_label, enabled, "
+            "last_run_at, created_at, updated_at) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, NULL, ?, ?)",
+            (
+                routine_id,
+                agent_id,
+                name,
+                skill,
+                cron,
+                schedule_label,
+                1 if enabled else 0,
+                now,
+                now,
+            ),
+        )
+        await self.conn.commit()
+        row = await self.get_routine(routine_id)
+        assert row is not None
+        return row
+
+    async def patch_routine(
+        self,
+        routine_id: str,
+        *,
+        agent_id: str,
+        enabled: bool | object = ...,
+    ) -> dict[str, Any] | None:
+        existing = await self.get_routine(routine_id, agent_id=agent_id)
+        if existing is None:
+            return None
+        new_enabled = existing["enabled"] if enabled is ... else bool(enabled)
+        updated = utcnow()
+        await self.conn.execute(
+            "UPDATE routines SET enabled = ?, updated_at = ? "
+            "WHERE id = ? AND agent_id = ?",
+            (
+                1 if new_enabled else 0,
+                updated,
+                routine_id,
+                agent_id,
+            ),
+        )
+        await self.conn.commit()
+        return await self.get_routine(routine_id, agent_id=agent_id)
+
+    async def delete_routine(self, routine_id: str, *, agent_id: str) -> bool:
+        cur = await self.conn.execute(
+            "DELETE FROM routines WHERE id = ? AND agent_id = ?",
+            (routine_id, agent_id),
+        )
+        await self.conn.commit()
+        return cur.rowcount > 0
+
+    async def mark_routine_run(self, routine_id: str, when: str) -> None:
+        await self.conn.execute(
+            "UPDATE routines SET last_run_at = ?, updated_at = ? WHERE id = ?",
+            (when, utcnow(), routine_id),
+        )
+        await self.conn.commit()
+
     async def list_messages(
         self,
         agent_id: str,
@@ -677,6 +812,7 @@ class Store:
             "widget": widget,
             "widgetStatus": widget_status,
             "widgetValues": widget_values,
+            "routineName": message.get("routine_name") or None,
         }
 
     async def list_images(self, message_id: str) -> list[dict[str, Any]]:
@@ -727,6 +863,7 @@ class Store:
         handoff_thread_id: str | None = None,
         origin_conversation_id: str | None = None,
         widget: dict[str, Any] | None = None,
+        routine_name: str | None = None,
     ) -> dict[str, Any]:
         message_id = message_id or new_id("msg")
         created = utcnow()
@@ -748,8 +885,9 @@ class Store:
             "INSERT INTO messages "
             "(id, agent_id, role, content, created_at, sender_id, sender_name, "
             "sender_avatar, hop, mentions, reply_to, kind, user_ask, brief, "
-            "handoff_channel_id, handoff_thread_id, origin_conversation_id, widget) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            "handoff_channel_id, handoff_thread_id, origin_conversation_id, "
+            "widget, routine_name) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (
                 message_id,
                 agent_id,
@@ -769,6 +907,7 @@ class Store:
                 handoff_thread_id,
                 origin_conversation_id,
                 stored_widget,
+                routine_name,
             ),
         )
         for image in images or []:
@@ -918,6 +1057,29 @@ class Store:
         who = speaker["id"] if for_agent_id else conversation_id
         if wake_pack is not None:
             from snorlax_runtime.handoff import is_report_pack, pack_prompt
+            from snorlax_runtime.scheduler import is_routine_pack
+
+            if is_routine_pack(wake_pack):
+                skill_name = str(wake_pack.get("skill") or "")
+                system = (
+                    f"You are {speaker['name']}. A scheduled routine just "
+                    "fired. Follow the skill in the next JSON object "
+                    "{ kind, name, skill, body }. body is the SKILL.md "
+                    "recipe. Do the work now with your tools. Speak as "
+                    "yourself in this 1:1. Do not prefix the bubble with "
+                    "the routine name. Do not paint another agent in this "
+                    "1:1. Isolation stands.\n\n"
+                    f"{tools_preamble()}\n\n"
+                    f"{speaker['description'] or ''}"
+                ).strip()
+                if skill_name:
+                    system = (
+                        f"{system}\n\nThe assigned skill is {skill_name}."
+                    )
+                return [
+                    {"role": "system", "content": system},
+                    {"role": "user", "content": dump_json(wake_pack)},
+                ]
 
             if is_report_pack(wake_pack):
                 system = (

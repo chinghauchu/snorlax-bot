@@ -135,3 +135,42 @@ test("agent identity type sizes and channel member rows", () => {
   assert.match(muted, /color:\s*var\(--text-muted\)/);
   assert.match(member, /height:\s*44px/);
 });
+
+test("routines list is 44px rows with switch on the agent read pane", () => {
+  const header = block(".info-routines-header");
+  const row = block(".info-routine");
+  const name = block(".info-routine-name");
+  const meta = block(".info-routine-meta");
+  const empty = block(".info-routine-empty");
+  const toggle = block(".info-routine-switch");
+  const paused = block(".info-routine.paused .info-routine-name");
+  const kicker = block(".routine-kicker");
+  assert.match(header, /font-size:\s*12px/);
+  assert.match(header, /color:\s*var\(--text-muted\)/);
+  assert.match(row, /height:\s*44px/);
+  assert.match(name, /font-size:\s*14px/);
+  assert.match(name, /font-weight:\s*500/);
+  assert.match(meta, /font-size:\s*12px/);
+  assert.match(meta, /color:\s*var\(--text-muted\)/);
+  assert.match(empty, /font-size:\s*12px/);
+  assert.match(empty, /color:\s*var\(--text-muted\)/);
+  assert.match(toggle, /width:\s*44px/);
+  assert.match(toggle, /height:\s*44px/);
+  assert.match(paused, /opacity:\s*0\.5/);
+  assert.match(kicker, /font-size:\s*12px/);
+  assert.match(kicker, /color:\s*var\(--text-muted\)/);
+
+  const app = readFileSync(
+    join(dirname(fileURLToPath(import.meta.url)), "App.tsx"),
+    "utf8",
+  );
+  assert.match(app, /EMPTY_ROUTINES/);
+  assert.match(app, /role="switch"/);
+  assert.match(app, /info-routines/);
+  assert.match(app, /profileEditing \?/);
+  assert.doesNotMatch(app, /createRoutine/);
+  assert.doesNotMatch(app, /deleteRoutine/);
+  assert.doesNotMatch(app, /Teach a task/);
+  assert.doesNotMatch(app, /marketplace/);
+  assert.doesNotMatch(css, /info-routine-new/);
+});

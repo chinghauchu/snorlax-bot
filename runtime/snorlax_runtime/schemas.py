@@ -127,6 +127,7 @@ class Message(BaseModel):
     widget: Widget | None = None
     widgetStatus: str | None = None
     widgetValues: list[str] = Field(default_factory=list)
+    routineName: str | None = None
 
 
 class MessageCreate(BaseModel):
@@ -189,3 +190,36 @@ class WorkspaceFile(BaseModel):
     path: str
     content: str
     truncated: bool = False
+
+
+class Routine(BaseModel):
+    id: str
+    name: str
+    skill: str
+    schedule: str
+    enabled: bool = True
+    scheduleLabel: str | None = None
+
+
+class RoutineCreate(BaseModel):
+    name: str = Field(min_length=1, max_length=80)
+    skill: str = Field(min_length=1, max_length=80)
+    schedule: str = Field(
+        min_length=1,
+        max_length=80,
+        description=(
+            "5-field cron or a named hour (8am / weekdays at 9am). "
+            "Interpreted in Asia/Taipei."
+        ),
+    )
+
+
+class RoutinePatch(BaseModel):
+    enabled: bool = Field(description="true = enable/resume. false = pause.")
+
+
+class SkillInfo(BaseModel):
+    name: str
+    description: str
+    source: str
+    path: str

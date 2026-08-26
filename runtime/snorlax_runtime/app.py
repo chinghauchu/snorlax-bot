@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0
 from __future__ import annotations
 
+import asyncio
 import secrets
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
@@ -23,6 +24,10 @@ from snorlax_runtime.schemas import (
     Health,
     Message,
     MessageCreate,
+    Routine,
+    RoutineCreate,
+    RoutinePatch,
+    SkillInfo,
     WorkspaceFile,
     WorkspaceListing,
 )
@@ -71,6 +76,15 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             api_key=settings.inference_api_key,
             send_auth=settings.inference_send_auth,
         )
+        scheduler_task = None
+        if settings.scheduler:
+            from snorlax_runtime.scheduler import run_scheduler
+
+            scheduler_task = asyncio.create_task(
+                run_scheduler(app, interval=settings.scheduler_interval),
+                name="snorlax-scheduler",
+            )
+        app.state.scheduler_task = scheduler_task
         inference_url = settings.inference_base_url() or "(mock)"
         print(
             "Snorlax-Bot runtime ready\n"
@@ -85,10 +99,19 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             f"{' ' + settings.search_url if settings.search_url else ''}\n"
             f"  mcp: {len(mcp.servers)} server(s), {len(mcp.qualified)} tool(s)"
             f"{' (none)' if not mcp.servers and not mcp.failures else ''}\n"
+            f"  scheduler: {'on' if settings.scheduler else 'off'} "
+            f"(Asia/Taipei)\n"
             f"  token: {token}",
             flush=True,
         )
         yield
+        task = getattr(app.state, "scheduler_task", None)
+        if task is not None:
+            task.cancel()
+            try:
+                await task
+            except asyncio.CancelledError:
+                pass
         await stop_mcp(mcp)
         await store.close()
 
@@ -368,6 +391,95 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 "X-Accel-Buffering": "no",
             },
         )
+
+    def _require_agent(
+        conversation: dict | None,
+        agent_id: str,
+        *,
+        channel_status: int,
+    ) -> dict:
+        if conversation is None:
+            raise _error(404, f"Agent {agent_id!r} not found")
+        if conversation.get("kind") == KIND_CHANNEL:
+            raise _error(channel_status, "routines are assigned to an agent")
+        return conversation
+
+    @app.get("/v1/agents/{id}/routines", response_model=list[Routine])
+    async def list_routines(
+        id: str, request: Request, _: str = Depends(require_bearer)
+    ) -> list[Routine]:
+        store: Store = request.app.state.store
+        conversation = await store.get_agent(id)
+        _require_agent(conversation, id, channel_status=409)
+        return [Routine.model_validate(r) for r in await store.list_routines(id)]
+
+    @app.post(
+        "/v1/agents/{id}/routines",
+        response_model=Routine,
+        status_code=status.HTTP_201_CREATED,
+    )
+    async def create_routine(
+        id: str,
+        payload: RoutineCreate,
+        request: Request,
+        _: str = Depends(require_bearer),
+    ) -> Routine:
+        from snorlax_runtime.cron import CronError, parse_schedule
+        from snorlax_runtime.skills import find_skill, load_skills, skill_slug
+
+        store: Store = request.app.state.store
+        conversation = await store.get_agent(id)
+        _require_agent(conversation, id, channel_status=422)
+        try:
+            cron, label = parse_schedule(payload.schedule)
+        except CronError as exc:
+            raise _error(422, exc.message) from exc
+        skill_name = payload.skill.strip()
+        matched = find_skill(load_skills(store.data_dir), skill_name)
+        if matched is None:
+            raise _error(422, "unknown skill")
+        row = await store.create_routine(
+            agent_id=id,
+            name=payload.name.strip(),
+            skill=skill_slug(matched),
+            cron=cron,
+            schedule_label=label,
+        )
+        return Routine.model_validate(row)
+
+    @app.patch("/v1/agents/{id}/routines/{routineId}", response_model=Routine)
+    async def patch_routine(
+        id: str,
+        routineId: str,
+        payload: RoutinePatch,
+        request: Request,
+        _: str = Depends(require_bearer),
+    ) -> Routine:
+        store: Store = request.app.state.store
+        conversation = await store.get_agent(id)
+        _require_agent(conversation, id, channel_status=409)
+        row = await store.patch_routine(
+            routineId,
+            agent_id=id,
+            enabled=payload.enabled,
+        )
+        if row is None:
+            raise _error(404, f"Routine {routineId!r} not found")
+        return Routine.model_validate(row)
+
+    @app.get("/v1/agents/{id}/skills", response_model=list[SkillInfo])
+    async def list_skills(
+        id: str, request: Request, _: str = Depends(require_bearer)
+    ) -> list[SkillInfo]:
+        from snorlax_runtime.skills import load_skills
+        from snorlax_runtime.tools import workspace_for
+
+        store: Store = request.app.state.store
+        conversation = await store.get_agent(id)
+        _require_agent(conversation, id, channel_status=422)
+        workspace = workspace_for(store.data_dir, conversation, id)
+        skills = load_skills(store.data_dir, workspace)
+        return [SkillInfo.model_validate(s.public()) for s in skills]
 
     @app.get("/v1/agents/{id}/workspace", response_model=WorkspaceListing)
     async def get_workspace(

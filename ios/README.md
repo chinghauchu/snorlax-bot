@@ -3,7 +3,9 @@
 Snorlax-Bot’s phone client. SwiftUI, iOS 18+, same locked `/v1` camelCase
 contract as desktop. Named agents, streaming transcript, muted tool traces,
 image previews that are **never** sent to the model. Question widgets
-render as LEFT cards in the speaking agent's streak (no extra sheet). No
+render as LEFT cards in the speaking agent's streak (no extra sheet). Agent
+info sheet lists cron routines under the 72px identity (list + enable/pause
+only, no extra sheet). No
 computer pane / file browser this slice (v0.6 desktop-only). MCP is
 runtime-owned; this client never speaks MCP. Tool traces (`kind=tool`)
 already paint as muted status.
@@ -60,6 +62,7 @@ Output: `SnorlaxBot/Generated/V1Types.swift`. Do not hand-edit that file.
 - `SnorlaxBot/SnorlaxBotApp.swift` — entry, theme, accent
 - `SnorlaxBot/ContentView.swift` — iPhone stack / iPad split chrome
 - `SnorlaxBot/AppModel.swift` — roster, chat, settings persistence
+- `SnorlaxBot/ProfileSheet.swift` — identity / channel pane; agent routines list
 - `SnorlaxBot/RuntimeClient.swift` — `/v1` + SSE
 - `SnorlaxBot/Generated/V1Types.swift` — OpenAPI models
 - `SnorlaxBot/KeychainStore.swift` — bearer token

@@ -191,6 +191,91 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/agents/{id}/routines": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["Id"];
+            };
+            cookie?: never;
+        };
+        /**
+         * List cron routines assigned to this agent
+         * @description JSON array of Routine (not wrapped): `{ id, name, skill, schedule,
+         *     enabled }`. Missing agent is 404. kind=channel is 409 (routines
+         *     are agent-only). Used by the agent info pane (list + enable/pause
+         *     only). schedule is 5-field cron in Asia/Taipei. Optional
+         *     scheduleLabel is a display string. Humanized
+         *     `{skill} · {Weekdays 9:00}` is a client concern.
+         */
+        get: operations["listRoutines"];
+        put?: never;
+        /**
+         * Seed a cron routine for this agent
+         * @description Test/runtime seed. Body `{ name, skill, schedule }`. One routine
+         *     = one agent + one SKILL.md slug. schedule is 5-field cron or a
+         *     named hour (weekdays at 9am), Asia/Taipei. Clients have no create
+         *     UI this slice. 422 unknown skill / bad cron / channel id.
+         *     Missing agent is 404. No DELETE this slice.
+         */
+        post: operations["createRoutine"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/agents/{id}/routines/{routineId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["Id"];
+                routineId: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Enable or pause a routine
+         * @description `{ enabled: false }` pauses. `{ enabled: true }` resumes. This
+         *     thin. No name/skill/schedule patch this slice. No DELETE.
+         *     Unknown routine is 404. kind=channel is 409.
+         */
+        patch: operations["patchRoutine"];
+        trace?: never;
+    };
+    "/v1/agents/{id}/skills": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["Id"];
+            };
+            cookie?: never;
+        };
+        /**
+         * List discovered skills for this agent
+         * @description Thin discovery. Runtime reads SKILL.md from
+         *     SNORLAX_DATA_DIR/skills/<slug>/SKILL.md (and may also see a
+         *     workspace SKILL.md). Not a marketplace catalog. kind=channel is
+         *     422. Clients never read the host disk.
+         */
+        get: operations["listSkills"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/agents/{id}/workspace": {
         parameters: {
             query?: never;
@@ -439,6 +524,12 @@ export interface components {
              *     pending or dismissed.
              */
             widgetValues?: string[];
+            /**
+             * @description Set when this assistant Message is a cron-routine result.
+             *     12px muted kicker under the sender name. Absent on ordinary
+             *     turns. Not a channel post.
+             */
+            routineName?: string | null;
         };
         WidgetOption: {
             label: string;
@@ -562,6 +653,36 @@ export interface components {
             content: string;
             /** @description True when the file was larger than the 256k cap. */
             truncated?: boolean;
+        };
+        Routine: {
+            id: string;
+            name: string;
+            /** @description SKILL.md slug this routine fires. */
+            skill: string;
+            /** @description 5-field cron. Interpreted in Asia/Taipei. */
+            schedule: string;
+            /** @description false is paused. Resume is enabled true. */
+            enabled: boolean;
+            /** @description Optional display string (Weekdays 9:00). */
+            scheduleLabel?: string;
+        };
+        RoutineCreate: {
+            name: string;
+            skill: string;
+            /** @description 5-field cron or a named hour (weekdays at 9am). */
+            schedule: string;
+        };
+        RoutinePatch: {
+            /** @description true = enable/resume. false = pause. */
+            enabled: boolean;
+        };
+        SkillInfo: {
+            name: string;
+            description: string;
+            /** @enum {string} */
+            source: "workspace" | "skillsDir";
+            /** @description Path relative to the workspace or skills dir. */
+            path: string;
         };
         ErrorBody: {
             error: string;
@@ -809,6 +930,116 @@ export interface operations {
             401: components["responses"]["Error"];
             404: components["responses"]["Error"];
             409: components["responses"]["Error"];
+            422: components["responses"]["Error"];
+        };
+    };
+    listRoutines: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["Id"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description JSON array of Routine */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Routine"][];
+                };
+            };
+            401: components["responses"]["Error"];
+            404: components["responses"]["Error"];
+            409: components["responses"]["Error"];
+        };
+    };
+    createRoutine: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["Id"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RoutineCreate"];
+            };
+        };
+        responses: {
+            /** @description Created routine */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Routine"];
+                };
+            };
+            401: components["responses"]["Error"];
+            404: components["responses"]["Error"];
+            422: components["responses"]["Error"];
+        };
+    };
+    patchRoutine: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["Id"];
+                routineId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RoutinePatch"];
+            };
+        };
+        responses: {
+            /** @description Updated routine */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Routine"];
+                };
+            };
+            401: components["responses"]["Error"];
+            404: components["responses"]["Error"];
+            409: components["responses"]["Error"];
+            422: components["responses"]["Error"];
+        };
+    };
+    listSkills: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["Id"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description JSON array of SkillInfo (not wrapped) */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SkillInfo"][];
+                };
+            };
+            401: components["responses"]["Error"];
+            404: components["responses"]["Error"];
             422: components["responses"]["Error"];
         };
     };

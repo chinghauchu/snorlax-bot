@@ -87,6 +87,10 @@ extension Message {
     var isHandoffRoot: Bool { kind == .handoff && replyTo == nil }
     var isToolLine: Bool { kind == .tool }
     var isWidget: Bool { kind == .widget || widget != nil }
+    var hasRoutineKicker: Bool {
+        guard let routineName, !routineName.isEmpty else { return false }
+        return true
+    }
 
     var jump: HandoffRef? { handoff }
 
@@ -152,6 +156,36 @@ extension Message {
             hop: 0,
             mentions: []
         )
+    }
+}
+
+extension Routine {
+    var mutedLine: String {
+        let when: String = {
+            if let label = scheduleLabel, !label.isEmpty { return label }
+            return Self.humanizeTaipeiCron(schedule)
+        }()
+        return "\(skill) · \(when)"
+    }
+
+    static func humanizeTaipeiCron(_ cron: String) -> String {
+        let fields = cron.split(whereSeparator: \.isWhitespace).map(String.init)
+        guard fields.count == 5 else { return cron }
+        let minute = fields[0]
+        let hour = fields[1]
+        let dom = fields[2]
+        let month = fields[3]
+        let dow = fields[4]
+        guard let minuteN = Int(minute), let hourN = Int(hour) else { return cron }
+        let clock = "\(hourN):" + String(format: "%02d", minuteN)
+        if dom == "*", month == "*", dow == "*" { return "Every day \(clock)" }
+        if dom == "*", month == "*", (dow == "1-5" || dow == "1,2,3,4,5") {
+            return "Weekdays \(clock)"
+        }
+        if dom == "*", month == "*", (dow == "0,6" || dow == "6,0") {
+            return "Weekends \(clock)"
+        }
+        return cron
     }
 }
 

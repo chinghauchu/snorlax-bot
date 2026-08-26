@@ -99,6 +99,8 @@ def _last_user_text(messages: list[dict[str, Any]]) -> str:
             pack = _parse_json_object(content)
             if pack and pack.get("userAsk") is not None:
                 return str(pack.get("userAsk") or "")
+            if pack and pack.get("kind") == "routine":
+                return str(pack.get("body") or pack.get("prompt") or "")
             return content
     return ""
 
@@ -214,6 +216,13 @@ def _mock_reply(messages: list[dict[str, Any]]) -> str:
         if len(snippet) > 280:
             snippet = snippet[:277] + "..."
         return (snippet or "(empty)") + extra
+
+    if pack and pack.get("kind") == "routine":
+        body = str(pack.get("body") or pack.get("skill") or "").strip()
+        snippet = _neutralize_ats(body.replace("\n", " "))
+        if len(snippet) > 280:
+            snippet = snippet[:277] + "..."
+        return snippet or "(empty)"
 
     snippet = last_user.strip().replace("\n", " ")
     if len(snippet) > 280:

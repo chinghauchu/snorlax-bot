@@ -79,6 +79,21 @@ def test_protocol_openapi_is_locked_v0_contract() -> None:
     assert "never call MCP" in text
     assert "SNORLAX_DATA_DIR" in text
     assert "No MCP, no browser-use GUI" not in text
+    assert "0.9.0" in text
+    assert "/v1/agents/{id}/routines" in text
+    assert "/v1/agents/{id}/skills" in text
+    assert "SKILL.md" in text
+    assert "skillsDir" in text
+    assert "Asia/Taipei" in text
+    assert "routineName" in text
+    assert "{ id, name, skill, schedule, enabled }" in text or "skill, schedule, enabled" in text
+    assert "later: skills, routines" not in text.lower()
+    assert "No computer preview, routines, or connectors" not in text
+    assert "kind=channel is 409" in text
+    assert "unknown skill" in text
+    assert "no catch-up" in text
+    assert "skills/<slug>/SKILL.md" in text
+    assert "No New / create / edit / delete UI" in text or "list + enable/pause" in text or "enable/pause only" in text
 
 
 def test_openapi_copies_match_protocol() -> None:

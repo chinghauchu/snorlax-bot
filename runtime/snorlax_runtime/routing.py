@@ -898,6 +898,49 @@ async def _ensure_handoff(
     )
 
 
+async def run_routine_turn(
+    store: Store,
+    backend: Any,
+    routine: dict[str, Any],
+    *,
+    max_tool_rounds: int | None = None,
+) -> dict[str, Any] | None:
+    """Wake the assigned agent with its SKILL.md. Persist as A LEFT.
+
+    No user Message is written. Never writes into another agent's 1:1.
+    """
+    from snorlax_runtime.scheduler import routine_wake_pack
+    from snorlax_runtime.skills import find_skill, load_skills
+    from snorlax_runtime.tools import workspace_for
+
+    agent_id = routine["agentId"]
+    agent = await store.get_agent(agent_id)
+    if agent is None or agent.get("kind") == KIND_CHANNEL:
+        return None
+    workspace = workspace_for(store.data_dir, agent, agent_id)
+    skill = find_skill(load_skills(store.data_dir, workspace), str(routine.get("skill") or ""))
+    body = (
+        skill.body
+        if skill is not None
+        else f"Skill {routine.get('skill')!r} was not found. Say so briefly."
+    )
+    pack = routine_wake_pack(routine, body)
+    _events, saved = await _generate(
+        store,
+        backend,
+        agent=agent,
+        conversation_id=agent_id,
+        hop=0,
+        stream=False,
+        wake_pack=pack,
+        persist=True,
+        max_tool_rounds=max_tool_rounds,
+        routine_name=str(routine.get("name") or "") or None,
+    )
+    del _events
+    return saved
+
+
 async def _generate(
     store: Store,
     backend: Any,
@@ -911,8 +954,10 @@ async def _generate(
     report_back: bool = False,
     persist: bool = True,
     max_tool_rounds: int | None = None,
+    routine_name: str | None = None,
 ) -> tuple[list[tuple[str, dict[str, Any]]], dict[str, Any] | None]:
     from snorlax_runtime.inference import InferenceError
+    from snorlax_runtime.skills import load_skills, skills_preamble
     from snorlax_runtime.tools import MAX_TOOL_ROUNDS, run_tool_loop, workspace_for
 
     assistant_id = new_id("msg")
@@ -926,6 +971,12 @@ async def _generate(
         wake_pack=wake_pack,
     )
     workspace = workspace_for(store.data_dir, conversation or agent, agent["id"])
+    extra = skills_preamble(load_skills(store.data_dir, workspace))
+    if extra and transcript and transcript[0].get("role") == "system":
+        if "### Skill:" not in transcript[0].get("content", ""):
+            transcript[0]["content"] = (
+                transcript[0]["content"] + "\n\n" + extra
+            ).strip()
     events: list[tuple[str, dict[str, Any]]] = []
 
     async def persist_tool(content: str, message_id: str) -> dict[str, Any]:
@@ -987,6 +1038,7 @@ async def _generate(
                     hop=hop,
                     mentions=[],
                     reply_to=thread_id if is_group else None,
+                    routine_name=routine_name,
                 )
                 if stream:
                     events.append(("message.done", saved_text))
@@ -1007,6 +1059,7 @@ async def _generate(
                     reply_to=thread_id if is_group else None,
                     kind="widget",
                     widget=widget,
+                    routine_name=routine_name,
                 )
             except WidgetPendingError:
                 persist_widget = False
@@ -1051,6 +1104,7 @@ async def _generate(
             hop=hop,
             mentions=mentions,
             reply_to=thread_id if is_group else None,
+            routine_name=routine_name,
         )
     else:
         saved = {

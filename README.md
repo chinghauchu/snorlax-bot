@@ -20,10 +20,12 @@ computer. Bots live on your LAN, talk through a thin local runtime, and (in
 later versions) browse, click, schedule, and call tools without sending tokens
 off-box.
 
-v0.8 is still small: **named teammates + identity pane + group channel threads
+v0.9 is still small: **named teammates + identity pane + group channel threads
 + chat with @mentions + report-back + extra channels + built-in tools + a
-thin desktop Computer pane + a runtime MCP client + question widgets**. Header click opens agent identity (PATCH) or
-the channel member list. 1:1s are user ↔ that agent only; a user `@chip`
+thin desktop Computer pane + a runtime MCP client + question widgets +
+skills and cron routines (list + enable/pause)**. Header click opens agent identity (PATCH) or
+the channel member list. Agent identity lists cron routines with a live
+enable/pause switch. 1:1s are user ↔ that agent only; a user `@chip`
 (or agent DM) opens a handoff thread in a channel (seed `snorlax-bot-group`
 by default). B answers in the thread; A reports back in A's 1:1 as A. Seed
 `snorlax-bot` can be deleted (no auto-reseed). Users can create more
@@ -183,11 +185,12 @@ default).
 
 ## v0 vs later
 
-See [ROADMAP.md](ROADMAP.md). Short version: v0.8 is named agents plus
+See [ROADMAP.md](ROADMAP.md). Short version: v0.9 is named agents plus
 runtime-owned file/shell/web tools in a `~/.snorlax-bot` sandbox, a
 thin desktop Computer pane over that sandbox, a runtime MCP client
-(stdio + LAN from `mcp.json`), and question widgets in the transcript.
-Later: full sandbox computer GUI, skills, routines, MCP marketplace UI.
+(stdio + LAN from `mcp.json`), question widgets in the transcript, and
+cron routines that fire a SKILL.md into that agent's 1:1.
+Later: full sandbox computer GUI, teach-a-task, MCP marketplace UI.
 
 ## Contributing
 

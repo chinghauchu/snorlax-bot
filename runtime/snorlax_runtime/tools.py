@@ -35,7 +35,7 @@ SEARCH_RESULT_CAP = 8
 
 _SAFE_ID = re.compile(r"^[A-Za-z0-9._-]+$")
 _USER_AGENT = (
-    "Snorlax-Bot/0.8 (+https://github.com/chinghauchu/snorlax-bot)"
+    "Snorlax-Bot/0.9 (+https://github.com/chinghauchu/snorlax-bot)"
 )
 BINARY_POLICY = "binary / too large"
 DEFAULT_SEARCH_PROVIDER = "duckduckgo"

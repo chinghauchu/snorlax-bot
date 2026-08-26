@@ -86,3 +86,31 @@ export function nextRosterSelection<T extends { id: string; kind: string }>(
   }
   return fallbackRosterSelection(roster);
 }
+
+export const EMPTY_ROUTINES = "No routines yet.";
+
+/** Humanized Asia/Taipei cron for the muted routine line. Client concern. */
+export function humanizeTaipeiCron(cron: string): string {
+  const fields = cron.trim().split(/\s+/);
+  if (fields.length !== 5) return cron;
+  const [minute, hour, dom, month, dow] = fields;
+  if (!/^\d+$/.test(minute) || !/^\d+$/.test(hour)) return cron;
+  const clock = `${Number(hour)}:${String(Number(minute)).padStart(2, "0")}`;
+  if (dom === "*" && month === "*" && dow === "*") return `Every day ${clock}`;
+  if (dom === "*" && month === "*" && (dow === "1-5" || dow === "1,2,3,4,5")) {
+    return `Weekdays ${clock}`;
+  }
+  if (dom === "*" && month === "*" && (dow === "0,6" || dow === "6,0")) {
+    return `Weekends ${clock}`;
+  }
+  return cron;
+}
+
+export function routineMutedLine(routine: {
+  skill: string;
+  schedule: string;
+  scheduleLabel?: string | null;
+}): string {
+  const when = (routine.scheduleLabel || "").trim() || humanizeTaipeiCron(routine.schedule);
+  return `${routine.skill} · ${when}`;
+}

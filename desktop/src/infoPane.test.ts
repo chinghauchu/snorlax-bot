@@ -8,9 +8,12 @@ import {
   canToggleSharedProject,
   channelMembers,
   displayInitials,
+  EMPTY_ROUTINES,
+  humanizeTaipeiCron,
   infoPaneKind,
   fallbackRosterSelection,
   nextRosterSelection,
+  routineMutedLine,
 } from "./infoPane.ts";
 
 test("user-created channels are editable; seed channel is not", () => {
@@ -127,4 +130,25 @@ test("after seed channel delete, empty roster selects nothing and does not inven
     null,
   );
   assert.equal(fallbackRosterSelection([]), null);
+});
+
+test("empty routines copy is locked", () => {
+  assert.equal(EMPTY_ROUTINES, "No routines yet.");
+});
+
+test("humanizeTaipeiCron matches Weekdays 9:00", () => {
+  assert.equal(humanizeTaipeiCron("0 9 * * 1-5"), "Weekdays 9:00");
+  assert.equal(humanizeTaipeiCron("0 8 * * *"), "Every day 8:00");
+  assert.equal(
+    routineMutedLine({ skill: "status", schedule: "0 9 * * 1-5" }),
+    "status · Weekdays 9:00",
+  );
+  assert.equal(
+    routineMutedLine({
+      skill: "status",
+      schedule: "0 9 * * 1-5",
+      scheduleLabel: "Weekdays 9:00",
+    }),
+    "status · Weekdays 9:00",
+  );
 });

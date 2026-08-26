@@ -1,7 +1,7 @@
 # Snorlax-Bot runtime
 
 Thin FastAPI process that owns agents, transcripts, LAN auth, the
-built-in tool loop, and the MCP client. oMLX (Mac-local OpenAI-compat), vLLM (Spark), or the
+built-in tool loop, the MCP client, and the cron scheduler. oMLX (Mac-local OpenAI-compat), vLLM (Spark), or the
 mock backend sits behind it. Clients never call the model server, never
 call tools, never call MCP, and never read `~/.snorlax-bot/` — they use `SNORLAX_URL` +
 `SNORLAX_TOKEN`. Desktop may `GET /v1/agents/{id}/workspace` (a runtime
@@ -29,7 +29,7 @@ overrides the file.
 
 | Variable | Default | Meaning |
 | --- | --- | --- |
-| `SNORLAX_DATA_DIR` | `~/.snorlax-bot` | `snorlax.db` + `token` + images + `workspaces/` + `mcp.json` |
+| `SNORLAX_DATA_DIR` | `~/.snorlax-bot` | `snorlax.db` + `token` + images + `workspaces/` + `mcp.json` + `skills/` |
 | `SNORLAX_TOKEN` | generated file | Override bearer token |
 | `SNORLAX_BIND` | auto | Force host (`127.0.0.1` / `0.0.0.0`) |
 | `SNORLAX_PORT` | `8787` | Listen port |
@@ -42,6 +42,8 @@ overrides the file.
 | `SNORLAX_TOOL_MAX_ROUNDS` | `8` | Cap on runtime tool-loop rounds per generation |
 | `SNORLAX_SEARCH_PROVIDER` | `duckduckgo` | `web_search` provider name (not hardcoded in the loop) |
 | `SNORLAX_SEARCH_URL` | provider default | Optional search URL template; `{query}` is URL-encoded |
+| `SNORLAX_SCHEDULER` | `true` | Cron scheduler inside this process (Asia/Taipei) |
+| `SNORLAX_SCHEDULER_INTERVAL` | `15` | Seconds between scheduler ticks |
 
 Loopback inference (`127.0.0.1` / `localhost`) gets **no** `Authorization`
 header by default. Do not send the LAN `SNORLAX_TOKEN` to oMLX or vLLM.
@@ -53,6 +55,18 @@ A channel shared-project toggle (default off) opts that channel into
 host Mac. Tools auto-run. Shell has no extra network; HTTP is `web_search`
 / `web_fetch` only. DELETE of an agent or user-created channel drops its
 workspace dir.
+
+## Skills and routines
+
+`SKILL.md` files live in `$SNORLAX_DATA_DIR/skills/<slug>/SKILL.md`.
+YAML frontmatter `name` + `description`, then markdown body.
+A skill has no trigger of its own. No marketplace / client picker.
+
+Routines are cron jobs on an agent (`GET /v1/agents/{id}/routines`,
+`PATCH .../routines/{id}` `{ enabled }`). The scheduler runs in this
+process (Asia/Taipei). A due run writes a normal assistant Message in
+that agent's 1:1 with optional `routineName`. Clients list and
+enable/pause only this slice.
 
 ## MCP (`mcp.json`)
 
