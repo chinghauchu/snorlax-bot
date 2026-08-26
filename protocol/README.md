@@ -58,9 +58,10 @@ status=connected. Chrome: muted `Webhook` / `Weekdays 9:00` plus Copy
 for the URL. No New routine button.
 
 v0.14 Box computer preview: `GET /v1/agents/{id}/computer`
-`{ hasSandbox, width: 1280, height: 800, imageUrl }`. Bearer PNG at
-`imageUrl`. Channel 409. Unknown 404. No click/key POST. Clients poll
-while the identity pane is open.
+`{ hasSandbox, width: 1280, height: 800, imageUrl }`. `imageUrl` is
+`GET /v1/agents/{id}/computer/screenshot` (Bearer, image/png).
+hasSandbox false omits imageUrl. Channel 409. Missing agent 404. No
+click/key/scroll POST. Clients poll while the identity pane is open.
 
 A copy is also kept at `runtime/openapi.yaml` and `desktop/openapi.yaml`
 so those trees are self-contained. Do not let the files diverge.

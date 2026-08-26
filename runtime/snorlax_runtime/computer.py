@@ -67,7 +67,7 @@ _FONT: dict[str, tuple[int, int, int, int, int]] = {
 
 
 def image_url(agent_id: str) -> str:
-    return f"/v1/agents/{agent_id}/computer/image"
+    return f"/v1/agents/{agent_id}/computer/screenshot"
 
 
 def encode_png(width: int, height: int, rgb: bytes) -> bytes:

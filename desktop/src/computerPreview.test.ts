@@ -32,16 +32,16 @@ test("hasSandbox true shows the last screenshot url", () => {
       hasSandbox: true,
       width: 1280,
       height: 800,
-      imageUrl: "/v1/agents/snorlax-bot/computer/image",
+      imageUrl: "/v1/agents/snorlax-bot/computer/screenshot",
     }),
     true,
   );
   assert.equal(
     computerImageUrl({
       hasSandbox: true,
-      imageUrl: "/v1/agents/snorlax-bot/computer/image",
+      imageUrl: "/v1/agents/snorlax-bot/computer/screenshot",
     }),
-    "/v1/agents/snorlax-bot/computer/image",
+    "/v1/agents/snorlax-bot/computer/screenshot",
   );
 });
 
@@ -75,6 +75,7 @@ test("desktop identity pane paints Computer above Routines without Open or click
   assert.match(api, /\/v1\/agents\/\$\{encodeURIComponent\(agentId\)\}\/computer/);
   assert.doesNotMatch(api, /computer\/click/);
   assert.doesNotMatch(api, /computer\/key/);
+  assert.doesNotMatch(api, /computer\/scroll/);
   assert.match(css, /\.info-computer-frame \{/);
   assert.match(css, /width:\s*288px/);
   assert.match(css, /height:\s*180px/);

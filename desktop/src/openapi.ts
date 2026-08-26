@@ -406,11 +406,11 @@ export interface paths {
          *     clicks. Clients never speak MCP or the model. kind=channel is
          *     409. Unknown agent is 404. `{ hasSandbox, width: 1280,
          *     height: 800, imageUrl }`. `imageUrl` is present only when
-         *     hasSandbox is true (Bearer PNG at that path; same SNORLAX_TOKEN).
-         *     No sandbox: hasSandbox false, no imageUrl, no frame on clients
-         *     (`No computer yet.`). Idle desktop still counts as on. No
-         *     click/key/mouse POST this slice. Workspace file-tree GETs are
-         *     unchanged.
+         *     hasSandbox is true: GET `/v1/agents/{id}/computer/screenshot`
+         *     (Bearer, image/png). No sandbox: hasSandbox false, omit imageUrl,
+         *     no frame on clients (`No computer yet.`). Idle desktop still
+         *     returns a 1280x800 shot (always on). No click/key/scroll POST.
+         *     Workspace file-tree GETs are unchanged.
          */
         get: operations["getComputer"];
         put?: never;
@@ -421,7 +421,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/v1/agents/{id}/computer/image": {
+    "/v1/agents/{id}/computer/screenshot": {
         parameters: {
             query?: never;
             header?: never;
@@ -434,10 +434,10 @@ export interface paths {
          * Bearer PNG screenshot of the agent sandbox display
          * @description image/png of the live 1280x800 framebuffer. Same SNORLAX_TOKEN
          *     as other GETs. kind=channel is 409. Unknown agent is 404. No
-         *     sandbox is 404. Not a decorative static asset. No click/key
-         *     POST.
+         *     sandbox is 404. Idle still returns a desktop shot. Not a
+         *     decorative static asset. No click/key/scroll POST.
          */
-        get: operations["getComputerImage"];
+        get: operations["getComputerScreenshot"];
         put?: never;
         post?: never;
         delete?: never;
@@ -945,9 +945,9 @@ export interface components {
             height: 800;
             /**
              * @description Present only when hasSandbox is true. Path to the Bearer PNG
-             *     (`/v1/agents/{id}/computer/image`). Same SNORLAX_TOKEN as
-             *     other GETs. Omitted when hasSandbox is false. Clients must
-             *     not invent a click/key POST.
+             *     (`/v1/agents/{id}/computer/screenshot`). Same SNORLAX_TOKEN
+             *     as other GETs. Omitted when hasSandbox is false. Clients must
+             *     not invent a click/key/scroll POST.
              */
             imageUrl?: string;
         };
@@ -1489,7 +1489,7 @@ export interface operations {
             409: components["responses"]["Error"];
         };
     };
-    getComputerImage: {
+    getComputerScreenshot: {
         parameters: {
             query?: never;
             header?: never;

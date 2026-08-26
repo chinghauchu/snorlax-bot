@@ -28,8 +28,8 @@ NVIDIA DGX Spark.
   SKILL.md from the workspace and/or `SNORLAX_DATA_DIR/skills`; cron XOR
   trigger), assistant markdown (clients render
   LEFT `kind=message`; `content` stays a plain string), and a display-only
-  Box computer preview (`GET /v1/agents/{id}/computer` Bearer PNG in the
-  agent identity pane; no clicks). Full sandbox
+  Box computer preview (`GET /v1/agents/{id}/computer` JSON; Bearer PNG at
+  `/computer/screenshot`; identity pane only; no clicks). Full sandbox
   computer GUI (VNC / take-over), vision, marketplace UI, teach-a-task, and Slack/GitHub
   inbound listeners are later — see [ROADMAP.md](ROADMAP.md).
 

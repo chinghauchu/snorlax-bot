@@ -101,9 +101,11 @@ def test_protocol_openapi_is_locked_v0_contract() -> None:
     assert "v0.13" in text
     assert "v0.14" in text
     assert "/v1/agents/{id}/computer" in text
-    assert "/v1/agents/{id}/computer/image" in text
+    assert "/v1/agents/{id}/computer/screenshot" in text
+    assert "/v1/agents/{id}/computer/image" not in text
     assert "/v1/agents/{id}/computer/click" not in text
     assert "/v1/agents/{id}/computer/key" not in text
+    assert "/v1/agents/{id}/computer/scroll" not in text
     assert "ComputerPreview" in text
     assert "hasSandbox" in text
     assert "No computer yet." in text

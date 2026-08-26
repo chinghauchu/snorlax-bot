@@ -801,8 +801,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         )
         return ComputerPreview.model_validate(_computer(request).preview(id))
 
-    @app.get("/v1/agents/{id}/computer/image")
-    async def get_computer_image(
+    @app.get("/v1/agents/{id}/computer/screenshot")
+    async def get_computer_screenshot(
         id: str, request: Request, _: str = Depends(require_bearer)
     ) -> Response:
         store: Store = request.app.state.store

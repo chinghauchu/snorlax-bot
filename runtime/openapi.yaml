@@ -301,8 +301,9 @@ info:
     (1280x800). Clients never send clicks this slice. Clients never speak
     MCP or the model. GET /v1/agents/{id}/computer returns
     `{ hasSandbox, width: 1280, height: 800, imageUrl }`. Screenshot is
-    Bearer PNG at `imageUrl` (same SNORLAX_TOKEN as other GETs). Channel
-    id is 409. Unknown agent is 404. No click/key/mouse POST this slice.
+    Bearer PNG at `imageUrl` (`GET /v1/agents/{id}/computer/screenshot`,
+    same SNORLAX_TOKEN as other GETs). Channel
+    id is 409. Missing agent is 404. No click/key/scroll POST this slice.
     File-tree workspace GETs stay as they are (v0.6 Computer pane /
     workspaceTree.ts). Do not reintroduce computerPane.ts. Do not change
     the existing 320px file-tree column this slice. Chrome is the agent
@@ -311,11 +312,11 @@ info:
     radius, 1px --border). Letterbox the 1280x800 sandbox into that.
     Display only: default cursor, no overlay, no Open, no clicks. Live:
     paint whatever screenshot the runtime last sent (poll GET computer /
-    image at a modest interval, e.g. ~1-2s while the pane is open; do
-    not spin when closed). If that agent has no sandbox: no frame, 12px
-    muted `No computer yet.` Otherwise the desktop is always on, even
-    idle (still show the last/idle screenshot). iOS: same block in the
-    agent sheet, 16:10, 8pt radius, 1pt border, 12pt labels. No
+    screenshot at a modest interval, e.g. ~1-2s while the pane is open; do
+    not spin when closed). If that agent has no sandbox: omit imageUrl, no
+    frame, 12px muted `No computer yet.` Otherwise the desktop is always
+    on, even idle (still show the last/idle screenshot). iOS: same block
+    in the agent sheet, 16:10, 8pt radius, 1pt border, 12pt labels. No
     tap-to-open. No extra sheet. Channel pane unchanged. Run result /
     tools / widgets / connect / markdown / routines / MCP Add custom
     unchanged. Teach-a-task waits. Out of scope: user takeover,
@@ -867,11 +868,11 @@ paths:
         clicks. Clients never speak MCP or the model. kind=channel is
         409. Unknown agent is 404. `{ hasSandbox, width: 1280,
         height: 800, imageUrl }`. `imageUrl` is present only when
-        hasSandbox is true (Bearer PNG at that path; same SNORLAX_TOKEN).
-        No sandbox: hasSandbox false, no imageUrl, no frame on clients
-        (`No computer yet.`). Idle desktop still counts as on. No
-        click/key/mouse POST this slice. Workspace file-tree GETs are
-        unchanged.
+        hasSandbox is true: GET `/v1/agents/{id}/computer/screenshot`
+        (Bearer, image/png). No sandbox: hasSandbox false, omit imageUrl,
+        no frame on clients (`No computer yet.`). Idle desktop still
+        returns a 1280x800 shot (always on). No click/key/scroll POST.
+        Workspace file-tree GETs are unchanged.
       operationId: getComputer
       responses:
         "200":
@@ -887,7 +888,7 @@ paths:
         "409":
           $ref: "#/components/responses/Error"
 
-  /v1/agents/{id}/computer/image:
+  /v1/agents/{id}/computer/screenshot:
     parameters:
       - $ref: "#/components/parameters/Id"
     get:
@@ -895,9 +896,9 @@ paths:
       description: |
         image/png of the live 1280x800 framebuffer. Same SNORLAX_TOKEN
         as other GETs. kind=channel is 409. Unknown agent is 404. No
-        sandbox is 404. Not a decorative static asset. No click/key
-        POST.
-      operationId: getComputerImage
+        sandbox is 404. Idle still returns a desktop shot. Not a
+        decorative static asset. No click/key/scroll POST.
+      operationId: getComputerScreenshot
       responses:
         "200":
           description: PNG screenshot
@@ -1618,9 +1619,9 @@ components:
           type: string
           description: |
             Present only when hasSandbox is true. Path to the Bearer PNG
-            (`/v1/agents/{id}/computer/image`). Same SNORLAX_TOKEN as
-            other GETs. Omitted when hasSandbox is false. Clients must
-            not invent a click/key POST.
+            (`/v1/agents/{id}/computer/screenshot`). Same SNORLAX_TOKEN
+            as other GETs. Omitted when hasSandbox is false. Clients must
+            not invent a click/key/scroll POST.
 
     Routine:
       type: object

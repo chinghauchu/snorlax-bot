@@ -241,12 +241,13 @@ routine button.
 
 v0.14: Box computer preview. Runtime owns a per-agent 1280×800 sandbox
 display. `GET /v1/agents/{id}/computer` returns `{ hasSandbox, width: 1280,
-height: 800, imageUrl }`. Screenshot is Bearer PNG at `imageUrl`. Channel
-id is 409. Unknown agent 404. No click/key POST. Agent identity pane
+height: 800, imageUrl }`. `imageUrl` is `GET .../computer/screenshot`
+(Bearer, image/png). Channel id is 409. Missing agent 404. No
+click/key/scroll POST. Agent identity pane
 (desktop 320px overlay / iOS sheet) shows a 16:10 shot above Routines
-(288×180, 8px radius). No sandbox → `No computer yet.` no frame. Idle
-desktop still on. File-tree 320px column unchanged. Do not reintroduce
-`computerPane.ts`.
+(288×180, 8px radius). No sandbox → omit imageUrl, `No computer yet.`
+no frame. Idle desktop still on. File-tree 320px column unchanged. Do
+not reintroduce `computerPane.ts`.
 
 ## Inference interface
 
