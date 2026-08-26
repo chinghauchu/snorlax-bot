@@ -8,8 +8,11 @@ struct ChatView: View {
     @FocusState private var composerFocused: Bool
 
     private var agent: Agent {
-        model.visibleAgents.first(where: { $0.id == agentID }) ?? .placeholderChannel
+        model.visibleAgents.first(where: { $0.id == agentID })
+            ?? (model.isConfigured ? .chrome : .placeholderChannel)
     }
+
+    private var hasRealAgent: Bool { !agent.id.isEmpty }
 
     var body: some View {
         @Bindable var model = model
@@ -33,25 +36,33 @@ struct ChatView: View {
                 }
             }
             ToolbarItem(placement: .principal) {
-                Button {
-                    model.showProfile = true
-                } label: {
-                    HStack(spacing: 8) {
-                        AgentAvatar(agent: agent, size: 24)
-                        Text(agent.name)
-                            .font(.system(size: 14, weight: .semibold))
-                            .foregroundStyle(.primary)
-                            .lineLimit(1)
+                if hasRealAgent {
+                    Button {
+                        model.showProfile = true
+                    } label: {
+                        HStack(spacing: 8) {
+                            AgentAvatar(agent: agent, size: 24)
+                            Text(agent.name)
+                                .font(.system(size: 14, weight: .semibold))
+                                .foregroundStyle(.primary)
+                                .lineLimit(1)
+                        }
                     }
+                    .accessibilityLabel(agent.name)
+                    .accessibilityHint("Opens info")
+                } else {
+                    Text(agent.name)
+                        .font(.system(size: 14, weight: .semibold))
                 }
-                .accessibilityLabel(agent.name)
-                .accessibilityHint("Opens info")
             }
         }
         .sheet(isPresented: $model.showProfile) {
-            ProfileSheet(agent: agent)
+            if hasRealAgent {
+                ProfileSheet(agent: agent)
+            }
         }
         .task(id: agentID) {
+            guard hasRealAgent || !model.isConfigured else { return }
             if !(model.selectedAgentID == agentID && model.threadID != nil) {
                 await model.select(agentID, push: false)
             }
@@ -346,7 +357,7 @@ private struct MessageBubble: View {
                 if !isUser { Spacer(minLength: 48) }
             }
             .padding(.horizontal, 12)
-            if isUser, let jump = message.jump {
+            if isUser, let jump = message.visibleJump(in: agents) {
                 Button {
                     onJump?(jump)
                 } label: {

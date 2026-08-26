@@ -40,6 +40,20 @@ extension Agent {
         return fallbackRosterSelection(in: roster)
     }
 
+    /// Wordmark chrome when the roster is empty. Not a real roster row —
+    /// never invent `snorlax-bot-group` after delete.
+    static let chrome = Agent(
+        id: "",
+        name: "Snorlax-Bot",
+        title: "",
+        description: "",
+        avatar: nil,
+        kind: .agent,
+        memberIds: [],
+        createdAt: .distantPast,
+        updatedAt: .distantPast
+    )
+
     static let placeholderChannel = Agent(
         id: channelID,
         name: "Snorlax-Bot",
@@ -70,6 +84,14 @@ extension Message {
     var isHandoffRoot: Bool { kind == .handoff && replyTo == nil }
 
     var jump: HandoffRef? { handoff }
+
+    func visibleJump(in roster: [Agent]) -> HandoffRef? {
+        guard let jump else { return nil }
+        guard roster.contains(where: { $0.id == jump.channelId && $0.isChannel }) else {
+            return nil
+        }
+        return jump
+    }
 
     var displayContent: String {
         let raw = content

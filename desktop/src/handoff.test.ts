@@ -12,6 +12,7 @@ import {
   jumpChannelName,
   messageHandoff,
   repliesLabel,
+  visibleJump,
 } from "./handoff.ts";
 
 const css = readFileSync(
@@ -56,6 +57,34 @@ test("handoff helpers", () => {
     { channelId: "snorlax-bot-group", threadId: "msg_1" },
   );
   assert.equal(messageHandoff({} as never), null);
+  assert.deepEqual(
+    visibleJump(
+      {
+        handoff: { channelId: "snorlax-bot-group", threadId: "msg_1" },
+      } as never,
+      [{ id: "snorlax-bot-group", kind: "channel" }],
+    ),
+    { channelId: "snorlax-bot-group", threadId: "msg_1" },
+  );
+  assert.equal(
+    visibleJump(
+      {
+        handoff: { channelId: "snorlax-bot-group", threadId: "msg_1" },
+      } as never,
+      [{ id: "snorlax-bot", kind: "agent" }],
+    ),
+    null,
+  );
+  assert.deepEqual(
+    visibleJump(
+      {
+        handoff: { channelId: "ops", threadId: "msg_1" },
+      } as never,
+      [{ id: "ops", kind: "channel" }],
+    ),
+    { channelId: "ops", threadId: "msg_1" },
+  );
+  assert.equal(visibleJump({} as never, []), null);
   assert.equal(
     jumpChannelName("ops", [
       { id: "snorlax-bot-group", name: "Snorlax-Bot" },

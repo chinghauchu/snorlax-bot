@@ -72,11 +72,13 @@ struct AgentListView: View {
                 .tag(agent.id)
                 .listRowInsets(EdgeInsets(top: 0, leading: 16, bottom: 0, trailing: 16))
                 .swipeActions(edge: .trailing, allowsFullSwipe: false) {
-                    Button("Delete", role: .destructive) {
-                        pendingDelete = agent
+                    if model.isConfigured {
+                        Button("Delete", role: .destructive) {
+                            pendingDelete = agent
+                        }
                     }
                 }
-                .modifier(UserAgentDeleteMenu(enabled: true) {
+                .modifier(UserAgentDeleteMenu(enabled: model.isConfigured) {
                     pendingDelete = agent
                 })
         }

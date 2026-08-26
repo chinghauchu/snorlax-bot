@@ -66,7 +66,7 @@ final class AppModel {
         return RuntimeClient(baseURL: url, token: token.trimmingCharacters(in: .whitespacesAndNewlines))
     }
 
-    var canCompose: Bool { client != nil && !isSending }
+    var canCompose: Bool { client != nil && !isSending && selectedAgent != nil }
 
     var visibleAgents: [Agent] {
         if !isConfigured && agents.isEmpty {
@@ -112,6 +112,9 @@ final class AppModel {
     }
 
     func openJump(channelId: String, threadId: String) async {
+        guard agents.contains(where: { $0.id == channelId && $0.isChannel }) else {
+            return
+        }
         unreadChannelIDs.remove(channelId)
         await loadConversation(channelId, thread: threadId, push: true)
     }
@@ -187,6 +190,7 @@ final class AppModel {
         do {
             try await client.deleteAgent(id: agent.id)
             agents.removeAll { $0.id == agent.id }
+            unreadChannelIDs.remove(agent.id)
             if lastExtraChannelID == agent.id {
                 lastExtraChannelID = nil
             }
@@ -204,6 +208,7 @@ final class AppModel {
                     selectedAgentID = nil
                     messages = []
                     navigationPath = []
+                    threadID = nil
                 }
             }
             showProfile = false
@@ -272,8 +277,8 @@ final class AppModel {
             if !Task.isCancelled, selectedAgentID == agent.id {
                 messages = try await client.listMessages(agentId: agent.id, threadId: threadID)
                 prunePreviews()
-                if !agent.isChannel, messages.contains(where: { $0.handoff != nil }) {
-                    if let channelId = messages.compactMap(\.handoff?.channelId).last {
+                if !agent.isChannel {
+                    if let channelId = messages.compactMap({ $0.visibleJump(in: self.agents)?.channelId }).last {
                         unreadChannelIDs.insert(channelId)
                     }
                 }

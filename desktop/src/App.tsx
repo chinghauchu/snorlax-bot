@@ -27,8 +27,8 @@ import {
   fromLabel,
   isHandoffRoot,
   jumpChannelName,
-  messageHandoff,
   repliesLabel,
+  visibleJump,
 } from "./handoff";
 import {
   canDeleteAgent,
@@ -438,6 +438,9 @@ export function App() {
   }
 
   async function openJump(channelId: string, nextThread: string) {
+    if (!agents.some((row) => row.id === channelId && row.kind === "channel")) {
+      return;
+    }
     setUnreadIds((prev) => {
       if (!prev.has(channelId)) return prev;
       const next = new Set(prev);
@@ -578,6 +581,10 @@ export function App() {
       if (lastExtraChannelId.current === doomed.id) {
         lastExtraChannelId.current = null;
       }
+      setUnreadIds((prev) => {
+        const keep = new Set(roster.map((row) => row.id));
+        return new Set([...prev].filter((id) => keep.has(id)));
+      });
       if (activeId === doomed.id) {
         const next = nextRosterSelection(roster, doomed.id, activeId);
         setActiveId(next);
@@ -692,12 +699,9 @@ export function App() {
         active.kind === "channel" && threadId ? { threadId } : undefined,
       );
       setMessages(listed);
-      if (
-        active.kind !== "channel" &&
-        listed.some((message) => messageHandoff(message))
-      ) {
+      if (active.kind !== "channel") {
         const channelId = listed
-          .map((message) => messageHandoff(message)?.channelId)
+          .map((message) => visibleJump(message, agents)?.channelId)
           .find((id): id is string => Boolean(id));
         if (channelId) {
           setUnreadIds((prev) => new Set(prev).add(channelId));
@@ -774,7 +778,7 @@ export function App() {
   }
 
   function onAgentContext(event: MouseEvent, agent: Agent) {
-    if (!canDelete(agent)) return;
+    if (!credsReady || !canDelete(agent)) return;
     event.preventDefault();
     event.stopPropagation();
     setContextMenu({ x: event.clientX, y: event.clientY, agent });
@@ -925,7 +929,7 @@ export function App() {
                   ...agents.filter((a) => a.kind !== "channel").map((a) => a.name),
                   "everyone",
                 ];
-                const jump = messageHandoff(message);
+                const jump = visibleJump(message, agents);
                 const viewingChannel = active?.kind === "channel";
                 const timelineHandoff =
                   viewingChannel && !threadId && isHandoffRoot(message);
