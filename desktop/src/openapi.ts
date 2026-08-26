@@ -158,9 +158,13 @@ export interface paths {
          *     `Fetched …`), same senderId as the speaking agent, in that
          *     transcript only (1:1 if A tools; channel thread if B tools).
          *     Report-back into A's 1:1 is a normal assistant `kind=message` as A
-         *     and does not copy B's tool lines. Live `tool.start` / `tool.done`
-         *     traces stay additive. Clients that do not understand `tool.*` skip
-         *     those events and may still render `kind=tool` rows from GET.
+         *     and does not copy B's tool lines. A turn that ran tools always
+         *     finishes with a normal assistant `kind=message` (streamed and
+         *     persisted). Empty model text or an inference error after tools still
+         *     produce that follow-up; do not end on only a `kind=tool` line or
+         *     `event:error` with no saved assistant message. Live `tool.start` /
+         *     `tool.done` traces stay additive. Clients that do not understand
+         *     `tool.*` skip those events and may still render `kind=tool` rows from GET.
          */
         post: operations["postMessage"];
         delete?: never;

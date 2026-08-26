@@ -6,7 +6,7 @@ from pathlib import Path
 import pytest
 
 from snorlax_runtime.config import Settings
-from snorlax_runtime.inference import MockBackend, StreamPart, ToolCall
+from snorlax_runtime.inference import InferenceError, MockBackend, StreamPart, ToolCall
 from snorlax_runtime.tools import (
     PathJailError,
     configure_tools,
@@ -198,6 +198,185 @@ def test_path_traversal_rejected_on_write(client, tmp_path) -> None:
         if m["role"] == "assistant" and m.get("kind") != "tool"
     ][-1]
     assert "Error" in assistant["content"] or "escape" in assistant["content"].lower()
+
+
+class _FetchThenEmpty:
+    async def generate(self, messages, tools=None):
+        del tools
+        if any(item.get("role") == "tool" for item in messages):
+            return
+        yield StreamPart(
+            tool_calls=[
+                ToolCall(
+                    id="call_fetch",
+                    name="web_fetch",
+                    arguments='{"url": "https://example.com/missing"}',
+                )
+            ]
+        )
+
+
+class _FetchThenTalk:
+    async def generate(self, messages, tools=None):
+        del tools
+        if any(item.get("role") == "tool" for item in messages):
+            yield StreamPart(text="That page could not be fetched.")
+            return
+        yield StreamPart(
+            tool_calls=[
+                ToolCall(
+                    id="call_fetch",
+                    name="web_fetch",
+                    arguments='{"url": "https://example.com/missing"}',
+                )
+            ]
+        )
+
+
+class _ToolThenBoom:
+    async def generate(self, messages, tools=None):
+        del tools
+        if any(item.get("role") == "tool" for item in messages):
+            raise InferenceError(
+                "inference_unavailable", "model died after tools"
+            )
+        yield StreamPart(
+            tool_calls=[
+                ToolCall(
+                    id="call_ls",
+                    name="list_dir",
+                    arguments='{"path": "."}',
+                )
+            ]
+        )
+
+
+class _WriteThenDone:
+    async def generate(self, messages, tools=None):
+        del tools
+        if any(item.get("role") == "tool" for item in messages):
+            yield StreamPart(text="Wrote the file in the workspace.")
+            return
+        yield StreamPart(
+            tool_calls=[
+                ToolCall(
+                    id="call_write",
+                    name="write_file",
+                    arguments='{"path": "ok.py", "content": "print(1)"}',
+                )
+            ]
+        )
+
+
+def _failing_fetch(_url: str, **_kwargs):
+    return 500, "nope", "text/plain"
+
+
+def test_failed_web_fetch_then_empty_model_still_has_assistant_followup(
+    client, monkeypatch
+) -> None:
+    monkeypatch.setattr("snorlax_runtime.tools.http_get", _failing_fetch)
+    client.app.state.backend = _FetchThenEmpty()
+    status, _body, events = _send(client, SEED, "Fetch https://example.com/missing")
+    assert status == 200
+    names = [n for n, _ in events]
+    assert "tool.start" in names
+    assert "tool.done" in names
+    assert "message.delta" in names
+    assert names[-1] == "message.done"
+    done_tool = next(p for n, p in events if n == "tool.done")
+    assert done_tool["ok"] is False
+    assert done_tool["summary"] == "web_fetch failed"
+    tool_msgs = [p for n, p in events if n == "message.done" and p.get("kind") == "tool"]
+    assert tool_msgs
+    assert tool_msgs[0]["content"] == "web_fetch failed"
+    final = _final_assistant(events)
+    assert final.get("kind") != "tool"
+    assert final["role"] == "assistant"
+    assert final["senderId"] == SEED
+    assert final["content"].strip()
+    assert "web_fetch" in final["content"]
+    listed = client.get(f"/v1/agents/{SEED}/messages", headers=AUTH).json()
+    tools = [m for m in listed if m.get("kind") == "tool"]
+    assert tools
+    assert tools[0]["content"] == "web_fetch failed"
+    assistant = [
+        m
+        for m in listed
+        if m["role"] == "assistant" and m.get("kind") != "tool"
+    ][-1]
+    assert assistant["id"] == final["id"]
+    assert assistant["content"] == final["content"]
+
+
+def test_inference_error_after_tool_still_has_assistant_message(client) -> None:
+    client.app.state.backend = _ToolThenBoom()
+    status, _body, events = _send(client, SEED, "List the workspace files")
+    assert status == 200
+    names = [n for n, _ in events]
+    assert "tool.done" in names
+    assert "message.delta" in names
+    assert names[-1] == "message.done"
+    tool_msgs = [p for n, p in events if n == "message.done" and p.get("kind") == "tool"]
+    assert tool_msgs
+    assert tool_msgs[0]["content"] == "Listed ."
+    final = _final_assistant(events)
+    assert final.get("kind") != "tool"
+    assert final["content"].strip()
+    assert "Inference failed" in final["content"]
+    assert "model died after tools" in final["content"]
+    listed = client.get(f"/v1/agents/{SEED}/messages", headers=AUTH).json()
+    assistant = [
+        m
+        for m in listed
+        if m["role"] == "assistant" and m.get("kind") != "tool"
+    ]
+    assert assistant
+    assert assistant[-1]["content"] == final["content"]
+    assert assistant[-1]["senderId"] == SEED
+
+
+def test_failed_tool_then_model_followup_keeps_model_text(
+    client, monkeypatch
+) -> None:
+    monkeypatch.setattr("snorlax_runtime.tools.http_get", _failing_fetch)
+    client.app.state.backend = _FetchThenTalk()
+    status, _body, events = _send(client, SEED, "Fetch https://example.com/missing")
+    assert status == 200
+    final = _final_assistant(events)
+    assert final["content"] == "That page could not be fetched."
+    assert final.get("kind") != "tool"
+
+
+def test_successful_tool_loop_still_streams_assistant_after_tool_line(
+    client,
+) -> None:
+    client.app.state.backend = _WriteThenDone()
+    status, _body, events = _send(client, SEED, "write ok.py")
+    assert status == 200
+    names = [n for n, _ in events]
+    assert "tool.start" in names
+    assert "tool.done" in names
+    assert "message.delta" in names
+    assert names[-1] == "message.done"
+    done_tool = next(p for n, p in events if n == "tool.done")
+    assert done_tool["ok"] is True
+    assert done_tool["summary"] == "Wrote ok.py"
+    tool_msgs = [p for n, p in events if n == "message.done" and p.get("kind") == "tool"]
+    assert tool_msgs
+    assert tool_msgs[0]["content"] == "Wrote ok.py"
+    final = _final_assistant(events)
+    assert final.get("kind") != "tool"
+    assert final["content"] == "Wrote the file in the workspace."
+    listed = client.get(f"/v1/agents/{SEED}/messages", headers=AUTH).json()
+    tools = [m for m in listed if m.get("kind") == "tool"]
+    assert tools[0]["content"] == "Wrote ok.py"
+    assistant = [
+        m
+        for m in listed
+        if m["role"] == "assistant" and m.get("kind") != "tool"
+    ][-1]
+    assert assistant["content"] == "Wrote the file in the workspace."
 
 
 def test_web_fetch_and_search_mocked(client, monkeypatch) -> None:
@@ -489,6 +668,66 @@ async def test_tool_round_cap(tmp_path) -> None:
     starts = [p for n, p in events if n == "tool.start"]
     assert len(starts) == 3
     assert "tool-round cap" in content
+
+
+@pytest.mark.asyncio
+async def test_run_tool_loop_empty_after_failed_fetch_synthesizes_followup(
+    tmp_path, monkeypatch
+) -> None:
+    monkeypatch.setattr("snorlax_runtime.tools.http_get", _failing_fetch)
+    saved: list[dict] = []
+
+    async def persist(content: str, message_id: str) -> dict:
+        row = {
+            "id": message_id,
+            "kind": "tool",
+            "content": content,
+            "role": "assistant",
+            "senderId": "a",
+        }
+        saved.append(row)
+        return row
+
+    workspace = tmp_path / "ws"
+    workspace.mkdir()
+    events, content = await run_tool_loop(
+        _FetchThenEmpty(),
+        [{"role": "user", "content": "fetch it"}],
+        workspace=workspace,
+        agent={"id": "a", "name": "A", "avatar": None},
+        assistant_id="msg_follow",
+        stream=True,
+        persist_tool=persist,
+    )
+    assert saved
+    assert saved[0]["kind"] == "tool"
+    assert saved[0]["content"] == "web_fetch failed"
+    assert any(n == "tool.done" and p["ok"] is False for n, p in events)
+    assert any(n == "message.done" and p.get("kind") == "tool" for n, p in events)
+    assert any(n == "message.delta" for n, _ in events)
+    assert content.strip()
+    assert "web_fetch" in content
+
+
+@pytest.mark.asyncio
+async def test_run_tool_loop_inference_error_after_tool_returns_followup(
+    tmp_path,
+) -> None:
+    workspace = tmp_path / "ws"
+    workspace.mkdir()
+    events, content = await run_tool_loop(
+        _ToolThenBoom(),
+        [{"role": "user", "content": "list files"}],
+        workspace=workspace,
+        agent={"id": "a", "name": "A", "avatar": None},
+        assistant_id="msg_err",
+        stream=True,
+    )
+    assert any(n == "tool.done" for n, _ in events)
+    assert not any(n == "error" for n, _ in events)
+    assert any(n == "message.delta" for n, _ in events)
+    assert "Inference failed" in content
+    assert "model died after tools" in content
 
 
 def test_workspace_for_channel_vs_agent(tmp_path) -> None:
