@@ -40,6 +40,7 @@ import {
   fallbackRosterSelection,
   infoPaneKind,
   nextRosterSelection,
+  SHARED_PROJECT_HINT,
 } from "./infoPane";
 import {
   USER_SENDER_ID,
@@ -1328,8 +1329,7 @@ export function App() {
                   <span>
                     <strong>Shared project</strong>
                     <span className="shared-project-hint">
-                      On: channel threads share a sandbox. Off: each
-                      agent’s workspace. Not a folder on this Mac.
+                      {SHARED_PROJECT_HINT}
                     </span>
                   </span>
                 </label>
@@ -1353,8 +1353,7 @@ export function App() {
                   <span>
                     <strong>Shared project</strong>
                     <span className="shared-project-hint">
-                      On: channel threads share a sandbox. Off: each
-                      agent’s workspace. Not a folder on this Mac.
+                      {SHARED_PROJECT_HINT}
                     </span>
                   </span>
                 </label>

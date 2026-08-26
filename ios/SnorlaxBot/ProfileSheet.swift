@@ -185,7 +185,7 @@ struct ProfileSheet: View {
                 Toggle(isOn: $draft.sharedProject) {
                     VStack(alignment: .leading, spacing: 2) {
                         Text("Shared project")
-                        Text("On: channel threads share a sandbox. Off: each agent’s workspace.")
+                        Text("On: channel threads share a sandbox. Off: each agent’s workspace. Not a folder on this Mac.")
                             .font(.system(size: 12))
                             .foregroundStyle(.secondary)
                     }

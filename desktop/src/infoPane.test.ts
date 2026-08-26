@@ -2,6 +2,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
+  SHARED_PROJECT_HINT,
   canDeleteAgent,
   canEditChannel,
   canToggleSharedProject,
@@ -19,6 +20,15 @@ test("user-created channels are editable; seed channel is not", () => {
     false,
   );
   assert.equal(canEditChannel({ kind: "agent", id: "snorlax-bot" }), false);
+});
+
+test("shared project helper copy is the Design lock", () => {
+  assert.equal(
+    SHARED_PROJECT_HINT,
+    "On: channel threads share a sandbox. Off: each agent’s workspace. Not a folder on this Mac.",
+  );
+  assert.equal(SHARED_PROJECT_HINT.includes("folder"), true);
+  assert.doesNotMatch(SHARED_PROJECT_HINT, /\/Users\//);
 });
 
 test("shared project toggle is on every channel pane, including seed", () => {
