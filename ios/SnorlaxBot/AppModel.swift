@@ -36,6 +36,7 @@ final class AppModel {
     var messages: [Message] = []
     var threadID: String?
     var unreadChannelIDs: Set<String> = []
+    var lastExtraChannelID: String?
     var localPreviews: [String: [Data]] = [:]
     var draft = ""
     var pendingImage: PendingImage?
@@ -65,10 +66,13 @@ final class AppModel {
         return RuntimeClient(baseURL: url, token: token.trimmingCharacters(in: .whitespacesAndNewlines))
     }
 
-    var canCompose: Bool { client != nil && !isSending }
+    var canCompose: Bool { client != nil && !isSending && selectedAgent != nil }
 
     var visibleAgents: [Agent] {
-        agents.isEmpty ? [.placeholderChannel, .placeholder] : agents
+        if !isConfigured && agents.isEmpty {
+            return [.placeholderChannel, .placeholder]
+        }
+        return agents
     }
 
     var selectedAgent: Agent? {
@@ -89,11 +93,14 @@ final class AppModel {
         do {
             let roster = try await client.listAgents()
             agents = roster
-            let channel = roster.first(where: \.isChannel)
-            let seed = channel ?? roster.first(where: \.isSeed) ?? roster.first
-            if let seed {
-                await select(seed.id, push: true)
+            if let next = Agent.fallbackRosterSelection(in: roster) {
+                await select(next.id, push: true)
                 wantsComposerFocus = true
+            } else {
+                selectedAgentID = nil
+                messages = []
+                navigationPath = []
+                threadID = nil
             }
         } catch {
             errorMessage = error.localizedDescription
@@ -105,6 +112,9 @@ final class AppModel {
     }
 
     func openJump(channelId: String, threadId: String) async {
+        guard agents.contains(where: { $0.id == channelId && $0.isChannel }) else {
+            return
+        }
         unreadChannelIDs.remove(channelId)
         await loadConversation(channelId, thread: threadId, push: true)
     }
@@ -125,6 +135,9 @@ final class AppModel {
         }
         if visibleAgents.first(where: { $0.id == id })?.isChannel == true {
             unreadChannelIDs.remove(id)
+            if id != Agent.channelID {
+                lastExtraChannelID = id
+            }
         }
         guard isConfigured, let client else {
             messages = []
@@ -173,21 +186,29 @@ final class AppModel {
     }
 
     func delete(_ agent: Agent) async {
-        guard !agent.isProtected, let client else { return }
+        guard let client else { return }
         do {
             try await client.deleteAgent(id: agent.id)
             agents.removeAll { $0.id == agent.id }
+            unreadChannelIDs.remove(agent.id)
+            if lastExtraChannelID == agent.id {
+                lastExtraChannelID = nil
+            }
             for index in agents.indices where agents[index].isChannel {
                 agents[index].memberIds.removeAll { $0 == agent.id }
             }
             if selectedAgentID == agent.id {
-                let next = agents.first(where: \.isChannel) ?? agents.first(where: \.isSeed) ?? agents.first
-                if let next {
+                if let next = Agent.nextRosterSelection(
+                    in: agents,
+                    removedId: agent.id,
+                    currentId: selectedAgentID
+                ) {
                     await select(next.id, push: true)
                 } else {
-                    selectedAgentID = Agent.channelID
+                    selectedAgentID = nil
                     messages = []
                     navigationPath = []
+                    threadID = nil
                 }
             }
             showProfile = false
@@ -246,7 +267,8 @@ final class AppModel {
                 content: content,
                 images: image.map { [$0.asInput] } ?? [],
                 mentions: mentionIDs,
-                replyTo: agent.isChannel ? threadID : nil
+                replyTo: agent.isChannel ? threadID : nil,
+                channelId: agent.isChannel ? nil : lastExtraChannelID
             ) { [weak self] event in
                 Task { @MainActor in
                     self?.handle(event, agentId: agent.id)
@@ -255,11 +277,9 @@ final class AppModel {
             if !Task.isCancelled, selectedAgentID == agent.id {
                 messages = try await client.listMessages(agentId: agent.id, threadId: threadID)
                 prunePreviews()
-                if !agent.isChannel, messages.contains(where: { $0.handoff != nil }) {
-                    if let channelId = messages.compactMap(\.handoff?.channelId).last {
+                if !agent.isChannel {
+                    if let channelId = messages.compactMap({ $0.visibleJump(in: self.agents)?.channelId }).last {
                         unreadChannelIDs.insert(channelId)
-                    } else {
-                        unreadChannelIDs.insert(Agent.channelID)
                     }
                 }
             }

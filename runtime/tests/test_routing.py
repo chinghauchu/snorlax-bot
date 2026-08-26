@@ -6,10 +6,18 @@ from tests.conftest import AUTH, parse_sse
 CHANNEL = "snorlax-bot-group"
 
 
-def _send(client, dest: str, content: str, mentions: list[str] | None = None):
+def _send(
+    client,
+    dest: str,
+    content: str,
+    mentions: list[str] | None = None,
+    channel_id: str | None = None,
+):
     payload: dict = {"content": content}
     if mentions is not None:
         payload["mentions"] = mentions
+    if channel_id is not None:
+        payload["channelId"] = channel_id
     with client.stream(
         "POST",
         f"/v1/agents/{dest}/messages",
@@ -60,9 +68,27 @@ def test_seed_channel_auto_join(client) -> None:
     assert inbox["kind"] == "agent"
     assert inbox["memberIds"] == []
 
-    blocked = client.delete(f"/v1/agents/{CHANNEL}", headers=AUTH)
-    assert blocked.status_code == 409
-    assert blocked.json() == {"error": "seeded channel cannot be deleted"}
+
+def test_new_agent_does_not_auto_join_when_seed_channel_gone(client) -> None:
+    ops = client.post(
+        "/v1/agents",
+        headers=AUTH,
+        json={
+            "name": "Ops",
+            "kind": "channel",
+            "memberIds": ["snorlax-bot"],
+        },
+    )
+    assert ops.status_code == 201
+    extra_id = ops.json()["id"]
+    assert client.delete(f"/v1/agents/{CHANNEL}", headers=AUTH).status_code == 204
+    inbox = _create(client, "Inbox")
+    assert client.get(f"/v1/agents/{CHANNEL}", headers=AUTH).status_code == 404
+    extra = client.get(f"/v1/agents/{extra_id}", headers=AUTH).json()
+    assert extra["memberIds"] == ["snorlax-bot"]
+    assert inbox["id"] not in extra["memberIds"]
+    roster = client.get("/v1/agents", headers=AUTH).json()
+    assert all(a["id"] != CHANNEL for a in roster)
 
 
 def test_mention_routing_in_group(client) -> None:

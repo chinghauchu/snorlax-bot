@@ -10,7 +10,7 @@ Chat-only named agents. Meant to *run*, including without a GPU.
 
 | In | Out |
 | --- | --- |
-| Seeded agent `snorlax-bot` (Snorlax 1:1, PATCH identity; DELETE 204) and channel `snorlax-bot-group` (DELETE 409) | Tools / function calling |
+| Seeded agent `snorlax-bot` (Snorlax 1:1, PATCH identity; DELETE 204) and channel `snorlax-bot-group` (DELETE 204, no auto-reseed, never recreate) | Tools / function calling |
 | Create / list / patch / delete agents | Sandbox computer (browser, fs, terminal) |
 | Transcript persistence (SQLite) | Skills, “teach a task”, routines |
 | `POST .../messages` as SSE (`message.delta` / `message.done` / `error`) | MCP connectors |

@@ -16,7 +16,7 @@ The Spark stays up when the phone sleeps. Reconnect is
 | Network | URLSession, `Authorization: Bearer` on everything except `GET /v1/health` |
 | Chat | `POST /v1/agents/{id}/messages` as SSE (`message.delta` / `message.done` / `error`) |
 | Pairing | Settings sheet. Token in Keychain, URL in AppStorage. No gate screen |
-| Seed | `snorlax-bot` (Snorlax / Assistant) and `snorlax-bot-group` (Snorlax-Bot, Channel). Extra user-created channels. Swipe-delete on agents including the seed; seed channel stays; user channels are deletable |
+| Seed | `snorlax-bot` (Snorlax / Assistant) and `snorlax-bot-group` (Snorlax-Bot, Channel). Extra user-created channels. Swipe-delete on every row including the seed agent and seed channel (not in the info pane). After seed channel delete, select an agent first if any remain, else a remaining channel; never recreate `snorlax-bot-group`. Empty roster keeps chrome. No jump chip if no channel remains |
 
 Open `SnorlaxBot.xcodeproj` in Xcode. Product name is **SnorlaxBot**; chrome
 says **Snorlax-Bot**.

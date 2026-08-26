@@ -8,10 +8,51 @@ extension Agent {
 
     var isSeed: Bool { id == Self.seedID }
     var isChannel: Bool { kind == .channel }
-    var isProtected: Bool { id == Self.channelID }
-    var canEditChannel: Bool { isChannel && !isProtected }
+    var isSeedChannel: Bool { id == Self.channelID }
+    var canEditChannel: Bool { isChannel && !isSeedChannel }
 
     var rosterSubtitle: String { isChannel ? "Channel" : title }
+
+    /// Seed channel present → prefer a channel. Seed gone → agent first,
+    /// else a remaining channel. Never invent `snorlax-bot-group`.
+    static func fallbackRosterSelection(in roster: [Agent]) -> Agent? {
+        if roster.contains(where: { $0.id == channelID }) {
+            return roster.first(where: \.isChannel)
+                ?? roster.first(where: \.isSeed)
+                ?? roster.first
+        }
+        return roster.first(where: { $0.kind == .agent })
+            ?? roster.first(where: \.isChannel)
+            ?? roster.first
+    }
+
+    static func nextRosterSelection(
+        in roster: [Agent],
+        removedId: String?,
+        currentId: String?
+    ) -> Agent? {
+        if let currentId,
+           currentId != removedId,
+           let row = roster.first(where: { $0.id == currentId })
+        {
+            return row
+        }
+        return fallbackRosterSelection(in: roster)
+    }
+
+    /// Wordmark chrome when the roster is empty. Not a real roster row —
+    /// never invent `snorlax-bot-group` after delete.
+    static let chrome = Agent(
+        id: "",
+        name: "Snorlax-Bot",
+        title: "",
+        description: "",
+        avatar: nil,
+        kind: .agent,
+        memberIds: [],
+        createdAt: .distantPast,
+        updatedAt: .distantPast
+    )
 
     static let placeholderChannel = Agent(
         id: channelID,
@@ -43,6 +84,14 @@ extension Message {
     var isHandoffRoot: Bool { kind == .handoff && replyTo == nil }
 
     var jump: HandoffRef? { handoff }
+
+    func visibleJump(in roster: [Agent]) -> HandoffRef? {
+        guard let jump else { return nil }
+        guard roster.contains(where: { $0.id == jump.channelId && $0.isChannel }) else {
+            return nil
+        }
+        return jump
+    }
 
     var displayContent: String {
         let raw = content

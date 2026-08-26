@@ -3,9 +3,9 @@
 export const SEED_AGENT_ID = "snorlax-bot";
 export const SEED_CHANNEL_ID = "snorlax-bot-group";
 
-/** Seed channel is not deletable. Agents (including seed) and user channels are. */
-export function canDeleteAgent(agent: { id?: string; kind: string }): boolean {
-  return agent.id !== SEED_CHANNEL_ID;
+/** Sidebar delete is allowed for every roster row, including the seed channel. */
+export function canDeleteAgent(_agent: { id?: string; kind: string }): boolean {
+  return true;
 }
 
 export function canEditChannel(agent: { id?: string; kind: string }): boolean {
@@ -36,7 +36,33 @@ export function channelMembers<T extends { id: string; kind: string }>(
   return out;
 }
 
-/** After deleting an agent, prefer the channel. Never invent a missing seed. */
+/**
+ * Fallback roster row when the current selection is gone.
+ * Seed channel present → prefer a channel (historical first-load).
+ * Seed channel gone → agent first, else a remaining channel.
+ * Never invent `snorlax-bot-group`.
+ */
+export function fallbackRosterSelection<T extends { id: string; kind: string }>(
+  roster: T[],
+): string | null {
+  if (roster.length === 0) return null;
+  if (roster.some((row) => row.id === SEED_CHANNEL_ID)) {
+    return (
+      roster.find((row) => row.kind === "channel")?.id ??
+      roster.find((row) => row.id === SEED_AGENT_ID)?.id ??
+      roster[0]?.id ??
+      null
+    );
+  }
+  return (
+    roster.find((row) => row.kind === "agent")?.id ??
+    roster.find((row) => row.kind === "channel")?.id ??
+    roster[0]?.id ??
+    null
+  );
+}
+
+/** After deleting a row, keep the current selection if it remains. Else fallback. */
 export function nextRosterSelection<T extends { id: string; kind: string }>(
   roster: T[],
   removedId: string | null,
@@ -49,10 +75,5 @@ export function nextRosterSelection<T extends { id: string; kind: string }>(
   ) {
     return currentId;
   }
-  return (
-    roster.find((row) => row.kind === "channel")?.id ??
-    roster.find((row) => row.id === SEED_AGENT_ID)?.id ??
-    roster[0]?.id ??
-    null
-  );
+  return fallbackRosterSelection(roster);
 }

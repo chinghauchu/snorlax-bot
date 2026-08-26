@@ -203,8 +203,6 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     async def delete_agent(
         id: str, request: Request, _: str = Depends(require_bearer)
     ) -> None:
-        if id == SEEDED_CHANNEL_ID:
-            raise _error(409, "seeded channel cannot be deleted")
         store: Store = request.app.state.store
         deleted = await store.delete_agent(id)
         if not deleted:
@@ -221,7 +219,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         replyTo: str | None = Query(default=None),
     ) -> list[Message]:
         store: Store = request.app.state.store
-        if await store.get_agent(id) is None:
+        conversation = await store.get_agent(id)
+        if conversation is None:
             raise _error(404, f"Agent {id!r} not found")
         thread_id = threadId or replyTo
         rows = await store.list_messages(
@@ -263,6 +262,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 images=images,
                 mentions=mentions,
                 reply_to=payload.replyTo,
+                preferred_channel_id=payload.channelId,
             ):
                 yield _sse(event, data)
 

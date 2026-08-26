@@ -16,6 +16,19 @@ export function messageHandoff(
   return { channelId, threadId };
 }
 
+/** Jump chip only if the target channel is still in the roster. No fake seed. */
+export function visibleJump(
+  message: ChatMessage,
+  roster: { id: string; kind?: string }[],
+): HandoffRef | null {
+  const jump = messageHandoff(message);
+  if (!jump) return null;
+  const row = roster.find((item) => item.id === jump.channelId);
+  if (!row) return null;
+  if (row.kind != null && row.kind !== "channel") return null;
+  return jump;
+}
+
 export function isHandoffRoot(message: ChatMessage): boolean {
   return message.kind === "handoff";
 }

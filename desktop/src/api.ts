@@ -167,18 +167,21 @@ export async function sendMessage(
   handlers: StreamHandlers,
   mentions: string[] = [],
   replyTo?: string | null,
+  channelId?: string | null,
 ): Promise<void> {
   const body: {
     content: string;
     images: ImageIn[];
     mentions?: string[];
     replyTo?: string;
+    channelId?: string;
   } = {
     content,
     images,
   };
   if (mentions.length) body.mentions = mentions;
   if (replyTo) body.replyTo = replyTo;
+  if (channelId) body.channelId = channelId;
   const response = await fetch(
     `${session.baseUrl}/v1/agents/${encodeURIComponent(agentId)}/messages`,
     {

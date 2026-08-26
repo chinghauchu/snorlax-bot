@@ -67,6 +67,8 @@ private struct iPadRoot: View {
         } detail: {
             if let id = model.selectedAgentID {
                 ChatView(agentID: id)
+            } else if model.isConfigured {
+                ChatView(agentID: "")
             } else {
                 ChatView(agentID: Agent.channelID)
             }

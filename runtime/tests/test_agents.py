@@ -110,6 +110,49 @@ def test_delete_seed_does_not_reseed_on_runtime_restart(tmp_path) -> None:
         assert missing.status_code == 404
 
 
+def test_delete_seed_channel_does_not_reseed_on_runtime_restart(tmp_path) -> None:
+    settings = Settings(
+        data_dir=tmp_path,
+        token=TOKEN,
+        bind="127.0.0.1",
+        inference_backend="mock",
+        port=8787,
+    )
+    with TestClient(create_app(settings)) as client:
+        deleted = client.delete("/v1/agents/snorlax-bot-group", headers=AUTH)
+        assert deleted.status_code == 204
+        roster = client.get("/v1/agents", headers=AUTH).json()
+        assert [a["id"] for a in roster] == ["snorlax-bot"]
+        missing = client.get("/v1/agents/snorlax-bot-group", headers=AUTH)
+        assert missing.status_code == 404
+    with TestClient(create_app(settings)) as client:
+        roster = client.get("/v1/agents", headers=AUTH).json()
+        ids = [a["id"] for a in roster]
+        assert "snorlax-bot-group" not in ids
+        assert ids == ["snorlax-bot"]
+        missing = client.get("/v1/agents/snorlax-bot-group", headers=AUTH)
+        assert missing.status_code == 404
+
+
+def test_empty_roster_does_not_reseed_on_runtime_restart(tmp_path) -> None:
+    settings = Settings(
+        data_dir=tmp_path,
+        token=TOKEN,
+        bind="127.0.0.1",
+        inference_backend="mock",
+        port=8787,
+    )
+    with TestClient(create_app(settings)) as client:
+        assert client.delete("/v1/agents/snorlax-bot", headers=AUTH).status_code == 204
+        assert (
+            client.delete("/v1/agents/snorlax-bot-group", headers=AUTH).status_code
+            == 204
+        )
+        assert client.get("/v1/agents", headers=AUTH).json() == []
+    with TestClient(create_app(settings)) as client:
+        assert client.get("/v1/agents", headers=AUTH).json() == []
+
+
 def test_patch_seed_identity(client) -> None:
     patched = client.patch(
         "/v1/agents/snorlax-bot",
@@ -145,12 +188,14 @@ def test_cannot_patch_seeded_channel(client) -> None:
     assert still["name"] == "Snorlax-Bot"
 
 
-def test_cannot_delete_seeded_channel(client) -> None:
+def test_delete_seeded_channel_is_204_and_gone(client) -> None:
     response = client.delete("/v1/agents/snorlax-bot-group", headers=AUTH)
-    assert response.status_code == 409
-    assert response.json() == {"error": "seeded channel cannot be deleted"}
-    still = client.get("/v1/agents/snorlax-bot-group", headers=AUTH)
-    assert still.status_code == 200
+    assert response.status_code == 204
+    missing = client.get("/v1/agents/snorlax-bot-group", headers=AUTH)
+    assert missing.status_code == 404
+    roster = client.get("/v1/agents", headers=AUTH).json()
+    assert all(a["id"] != "snorlax-bot-group" for a in roster)
+    assert any(a["id"] == "snorlax-bot" for a in roster)
 
 
 def test_create_and_delete_user_channel(client) -> None:
@@ -189,8 +234,10 @@ def test_create_and_delete_user_channel(client) -> None:
     assert deleted.status_code == 204
     missing = client.get(f"/v1/agents/{body['id']}", headers=AUTH)
     assert missing.status_code == 404
-    seed_blocked = client.delete("/v1/agents/snorlax-bot-group", headers=AUTH)
-    assert seed_blocked.status_code == 409
+    seed_deleted = client.delete("/v1/agents/snorlax-bot-group", headers=AUTH)
+    assert seed_deleted.status_code == 204
+    seed_missing = client.get("/v1/agents/snorlax-bot-group", headers=AUTH)
+    assert seed_missing.status_code == 404
 
 
 def test_create_channel_requires_name(client) -> None:
@@ -360,6 +407,24 @@ async def test_delete_seed_does_not_reseed_when_only_channel_remains(
     assert channel is not None
     assert channel["kind"] == "channel"
     assert channel["memberIds"] == []
+    await again.close()
+
+
+@pytest.mark.asyncio
+async def test_delete_seed_channel_does_not_reseed_when_agents_remain(
+    tmp_path,
+) -> None:
+    store = Store(tmp_path)
+    await store.connect()
+    assert await store.delete_agent("snorlax-bot-group")
+    await store.close()
+
+    again = Store(tmp_path)
+    await again.connect()
+    assert await again.get_agent("snorlax-bot-group") is None
+    seed = await again.get_agent("snorlax-bot")
+    assert seed is not None
+    assert seed["kind"] == "agent"
     await again.close()
 
 

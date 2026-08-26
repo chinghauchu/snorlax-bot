@@ -27,14 +27,15 @@ import {
   fromLabel,
   isHandoffRoot,
   jumpChannelName,
-  messageHandoff,
   repliesLabel,
+  visibleJump,
 } from "./handoff";
 import {
   canDeleteAgent,
   canEditChannel,
   channelMembers,
   displayInitials,
+  fallbackRosterSelection,
   infoPaneKind,
   nextRosterSelection,
 } from "./infoPane";
@@ -217,6 +218,7 @@ export function App() {
   const [mentionQuery, setMentionQuery] = useState("");
   const [mentionIndex, setMentionIndex] = useState(0);
   const pickedMentions = useRef(new Map<string, string>());
+  const lastExtraChannelId = useRef<string | null>(null);
   const pendingCaret = useRef<number | null>(null);
   const highlightRef = useRef<HTMLDivElement>(null);
 
@@ -364,11 +366,7 @@ export function App() {
       try {
         const roster = await listAgents(next);
         setAgents(roster);
-        const preferred =
-          roster.find((a) => a.kind === "channel")?.id ??
-          roster.find((a) => a.id === SEED_AGENT_ID)?.id ??
-          roster[0]?.id ??
-          null;
+        const preferred = fallbackRosterSelection(roster);
         setActiveId(preferred);
         if (preferred) {
           setThreadId(null);
@@ -406,6 +404,9 @@ export function App() {
     setProfileEditing(false);
     const agent = agents.find((a) => a.id === id);
     if (agent?.kind === "channel") {
+      if (agent.id !== SEED_CHANNEL_ID) {
+        lastExtraChannelId.current = agent.id;
+      }
       setUnreadIds((prev) => {
         if (!prev.has(id)) return prev;
         const next = new Set(prev);
@@ -437,6 +438,9 @@ export function App() {
   }
 
   async function openJump(channelId: string, nextThread: string) {
+    if (!agents.some((row) => row.id === channelId && row.kind === "channel")) {
+      return;
+    }
     setUnreadIds((prev) => {
       if (!prev.has(channelId)) return prev;
       const next = new Set(prev);
@@ -574,6 +578,13 @@ export function App() {
             : a,
         );
       setAgents(roster);
+      if (lastExtraChannelId.current === doomed.id) {
+        lastExtraChannelId.current = null;
+      }
+      setUnreadIds((prev) => {
+        const keep = new Set(roster.map((row) => row.id));
+        return new Set([...prev].filter((id) => keep.has(id)));
+      });
       if (activeId === doomed.id) {
         const next = nextRosterSelection(roster, doomed.id, activeId);
         setActiveId(next);
@@ -680,6 +691,7 @@ export function App() {
         },
         mentionIds,
         active.kind === "channel" && threadId ? threadId : undefined,
+        active.kind === "channel" ? undefined : lastExtraChannelId.current,
       );
       const listed = await listMessages(
         session,
@@ -687,15 +699,13 @@ export function App() {
         active.kind === "channel" && threadId ? { threadId } : undefined,
       );
       setMessages(listed);
-      if (
-        active.kind !== "channel" &&
-        listed.some((message) => messageHandoff(message))
-      ) {
-        const channelId =
-          listed
-            .map((message) => messageHandoff(message)?.channelId)
-            .find((id): id is string => Boolean(id)) ?? SEED_CHANNEL_ID;
-        setUnreadIds((prev) => new Set(prev).add(channelId));
+      if (active.kind !== "channel") {
+        const channelId = listed
+          .map((message) => visibleJump(message, agents)?.channelId)
+          .find((id): id is string => Boolean(id));
+        if (channelId) {
+          setUnreadIds((prev) => new Set(prev).add(channelId));
+        }
       }
       pickedMentions.current.clear();
     } catch (err) {
@@ -768,7 +778,7 @@ export function App() {
   }
 
   function onAgentContext(event: MouseEvent, agent: Agent) {
-    if (!canDelete(agent)) return;
+    if (!credsReady || !canDelete(agent)) return;
     event.preventDefault();
     event.stopPropagation();
     setContextMenu({ x: event.clientX, y: event.clientY, agent });
@@ -919,7 +929,7 @@ export function App() {
                   ...agents.filter((a) => a.kind !== "channel").map((a) => a.name),
                   "everyone",
                 ];
-                const jump = messageHandoff(message);
+                const jump = visibleJump(message, agents);
                 const viewingChannel = active?.kind === "channel";
                 const timelineHandoff =
                   viewingChannel && !threadId && isHandoffRoot(message);
