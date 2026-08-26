@@ -7,6 +7,8 @@ still counts as on: every screenshot is captured from the live buffer.
 
 v0.15: a user takeover session maps pointer/key into this 1280x800 buffer.
 The agent does not drive the sandbox while that session exists.
+v0.16: Record inside that session captures pointer/key (and screenshots)
+so POST /skills can write a runnable SKILL.md.
 """
 
 from __future__ import annotations
@@ -307,6 +309,8 @@ def _draw_click_mark(pixels: bytearray, x: int, y: int) -> None:
 POINTER_TYPES = frozenset({"move", "down", "up", "click"})
 KEY_TYPES = frozenset({"down", "up", "type"})
 SANDBOX_DRIVE_TOOLS = frozenset({"computer_click", "computer_key"})
+MAX_CAPTURE_EVENTS = 400
+MAX_CAPTURE_FRAMES = 8
 
 _HUB: ComputerHub | None = None
 
@@ -316,6 +320,52 @@ class ComputerError(Exception):
         super().__init__(message)
         self.status = status
         self.message = message
+
+
+class Capture:
+    """In-memory demonstration. Disk write happens only on POST /skills."""
+
+    def __init__(self) -> None:
+        self.events: list[dict[str, object]] = []
+        self.start_png: bytes | None = None
+        self.end_png: bytes | None = None
+        self.frames: list[bytes] = []
+        self._pending_move: dict[str, object] | None = None
+
+    def add_pointer(self, x: int, y: int, kind: str) -> None:
+        event = {"kind": "pointer", "type": kind, "x": x, "y": y}
+        if kind == "move":
+            self._pending_move = event
+            return
+        if self._pending_move is not None:
+            self._append(self._pending_move)
+            self._pending_move = None
+        self._append(event)
+
+    def add_key(self, key: str, kind: str, text: str | None) -> None:
+        if self._pending_move is not None:
+            self._append(self._pending_move)
+            self._pending_move = None
+        event: dict[str, object] = {"kind": "key", "type": kind, "key": key}
+        if text:
+            event["text"] = text
+        self._append(event)
+
+    def add_frame(self, png: bytes) -> None:
+        if len(self.frames) >= MAX_CAPTURE_FRAMES:
+            return
+        if png:
+            self.frames.append(png)
+
+    def finish(self) -> None:
+        if self._pending_move is not None:
+            self._append(self._pending_move)
+            self._pending_move = None
+
+    def _append(self, event: dict[str, object]) -> None:
+        if len(self.events) >= MAX_CAPTURE_EVENTS:
+            return
+        self.events.append(event)
 
 
 def configure_computer(hub: ComputerHub | None) -> None:
@@ -354,6 +404,8 @@ class ComputerHub:
         self._sessions: dict[str, str] = {}
         self._driver: dict[str, str] = {}
         self._names: dict[str, str] = {}
+        self._recording: set[str] = set()
+        self._captures: dict[str, Capture] = {}
 
     def detach(self, agent_id: str) -> None:
         self._detached.add(agent_id)
@@ -364,6 +416,8 @@ class ComputerHub:
         self._sessions.pop(agent_id, None)
         self._driver.pop(agent_id, None)
         self._names.pop(agent_id, None)
+        self._recording.discard(agent_id)
+        self._captures.pop(agent_id, None)
 
     def has_sandbox(self, agent_id: str) -> bool:
         return agent_id not in self._detached
@@ -378,16 +432,22 @@ class ComputerHub:
             return "agent"
         return "idle"
 
+    def is_recording(self, agent_id: str) -> bool:
+        return agent_id in self._recording and self.has_session(agent_id)
+
     def preview(self, agent_id: str) -> dict[str, object]:
         if not self.has_sandbox(agent_id):
             return {"hasSandbox": False, "width": WIDTH, "height": HEIGHT}
-        return {
+        body: dict[str, object] = {
             "hasSandbox": True,
             "width": WIDTH,
             "height": HEIGHT,
             "imageUrl": image_url(agent_id),
             "driving": self.driving(agent_id),
         }
+        if self.has_session(agent_id):
+            body["recording"] = self.is_recording(agent_id)
+        return body
 
     def open_session(self, agent_id: str, name: str = "") -> dict[str, str] | None:
         if not self.has_sandbox(agent_id):
@@ -410,6 +470,41 @@ class ComputerHub:
         if agent_id in self._sessions:
             self._snapshot(agent_id)
         self._sessions.pop(agent_id, None)
+        self._recording.discard(agent_id)
+        self._captures.pop(agent_id, None)
+
+    def start_record(self, agent_id: str) -> dict[str, bool]:
+        if not self.has_session(agent_id):
+            raise ComputerError(409, "no computer session")
+        if agent_id in self._recording:
+            return {"recording": True}
+        capture = Capture()
+        png = self._png_now(agent_id)
+        capture.start_png = png
+        capture.add_frame(png)
+        self._captures[agent_id] = capture
+        self._recording.add(agent_id)
+        return {"recording": True}
+
+    def stop_record(self, agent_id: str) -> None:
+        if not self.has_session(agent_id):
+            raise ComputerError(409, "no computer session")
+        capture = self._captures.get(agent_id)
+        if agent_id in self._recording and capture is not None:
+            capture.finish()
+            png = self._png_now(agent_id)
+            capture.end_png = png
+            capture.add_frame(png)
+        self._recording.discard(agent_id)
+
+    def take_capture(self, agent_id: str) -> Capture:
+        if self.is_recording(agent_id):
+            raise ComputerError(409, "recording is active")
+        capture = self._captures.pop(agent_id, None)
+        if capture is None:
+            raise ComputerError(409, "no recording")
+        capture.finish()
+        return capture
 
     def pointer(
         self,
@@ -430,6 +525,8 @@ class ComputerHub:
         if not user:
             self._driver[agent_id] = "agent"
         self._snapshot(agent_id)
+        if user:
+            self._record_pointer(agent_id, x, y, kind)
 
     def key(
         self,
@@ -459,6 +556,8 @@ class ComputerHub:
         if not user:
             self._driver[agent_id] = "agent"
         self._snapshot(agent_id)
+        if user:
+            self._record_key(agent_id, key, kind, text)
 
     def screenshot_png(self, agent_id: str, name: str = "") -> bytes | None:
         if not self.has_sandbox(agent_id):
@@ -506,3 +605,27 @@ class ComputerHub:
     def _snapshot(self, agent_id: str) -> None:
         png = encode_png(WIDTH, HEIGHT, bytes(self._composite(agent_id)))
         self._last[agent_id] = png
+
+    def _png_now(self, agent_id: str) -> bytes:
+        self._snapshot(agent_id)
+        return self._last[agent_id]
+
+    def _record_pointer(self, agent_id: str, x: int, y: int, kind: str) -> None:
+        if agent_id not in self._recording:
+            return
+        capture = self._captures.get(agent_id)
+        if capture is None:
+            return
+        capture.add_pointer(x, y, kind)
+        if kind in {"down", "click"}:
+            capture.add_frame(self._png_now(agent_id))
+
+    def _record_key(
+        self, agent_id: str, key: str, kind: str, text: str | None
+    ) -> None:
+        if agent_id not in self._recording:
+            return
+        capture = self._captures.get(agent_id)
+        if capture is None:
+            return
+        capture.add_key(key, kind, text)

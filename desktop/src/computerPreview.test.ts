@@ -75,14 +75,31 @@ test("desktop identity pane paints Computer above Routines with Open when hasSan
   assert.match(preview, /Bearer/);
   assert.match(takeover, /DRIVING_LABEL/);
   assert.match(takeover, /DONE_LABEL/);
+  assert.match(takeover, /RECORD_LABEL/);
+  assert.match(takeover, /STOP_LABEL/);
+  assert.match(takeover, /SAVE_AS_SKILL_TITLE/);
+  assert.match(takeover, /SAVE_LABEL/);
+  assert.match(takeover, /SAVED_LABEL/);
+  assert.match(takeover, /CANCEL_LABEL/);
+  assert.match(takeover, /doneDisabled/);
+  assert.match(takeover, /escapeAction/);
+  assert.match(takeover, /startComputerRecord/);
+  assert.match(takeover, /stopComputerRecord/);
+  assert.match(takeover, /createSkill/);
+  assert.match(takeover, /computer-takeover-dot/);
+  assert.match(takeover, /disabled=\{doneDisabled\(recording\)\}/);
   assert.match(takeover, /Escape/);
   assert.match(app, /ComputerTakeover/);
   assert.match(app, /composerInert/);
   assert.match(app, /readOnly=\{takeoverOpen\}/);
+  assert.doesNotMatch(preview, /RECORD_LABEL/);
+  assert.doesNotMatch(preview, /Save as skill/);
   assert.match(api, /\/v1\/agents\/\$\{encodeURIComponent\(agentId\)\}\/computer/);
   assert.match(api, /computer\/session/);
   assert.match(api, /computer\/pointer/);
   assert.match(api, /computer\/key/);
+  assert.match(api, /computer\/record/);
+  assert.match(api, /\/skills/);
   assert.doesNotMatch(api, /computer\/click/);
   assert.doesNotMatch(api, /computer\/scroll/);
   assert.match(css, /\.info-computer-frame \{/);
@@ -126,6 +143,22 @@ test("iOS agent sheet matches: 16:10, 8pt, 12pt labels, no tap-to-open", () => {
   );
   assert.doesNotMatch(client, /computer\/session/);
   assert.doesNotMatch(client, /computer\/pointer/);
+  assert.doesNotMatch(client, /computer\/record/);
   assert.doesNotMatch(model, /computer\/session/);
+  assert.doesNotMatch(model, /computer\/record/);
   assert.doesNotMatch(sheet, /computer\/session/);
+  assert.doesNotMatch(sheet, /Save as skill/);
+  assert.doesNotMatch(sheet, /RECORD_LABEL/);
+  const chat = readFileSync(
+    join(here, "../../ios/SnorlaxBot/ChatView.swift"),
+    "utf8",
+  );
+  const content = readFileSync(
+    join(here, "../../ios/SnorlaxBot/ContentView.swift"),
+    "utf8",
+  );
+  assert.doesNotMatch(chat, /computer\/record/);
+  assert.doesNotMatch(chat, /Save as skill/);
+  assert.doesNotMatch(content, /computer\/record/);
+  assert.doesNotMatch(content, /Save as skill/);
 });

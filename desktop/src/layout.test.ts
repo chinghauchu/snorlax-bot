@@ -158,13 +158,31 @@ test("computer preview in the identity pane is 288x180 16:10 with 8px radius", (
   const bar = block(".computer-takeover-bar");
   const status = block(".computer-takeover-status");
   const done = block(".computer-takeover-done");
+  const record = block(".computer-takeover-record");
+  const recording = block(".computer-takeover-record.recording");
+  const dot = block(".computer-takeover-dot");
+  const saved = block(".computer-takeover-saved");
   const takeoverFrame = block(".computer-takeover-frame");
   assert.match(bar, /height:\s*52px/);
   assert.match(status, /font-size:\s*12px/);
   assert.match(status, /color:\s*var\(--text-muted\)/);
   assert.match(done, /height:\s*36px/);
+  assert.match(record, /font-size:\s*12px/);
+  assert.match(record, /color:\s*var\(--text-muted\)/);
+  assert.match(recording, /color:\s*var\(--danger\)/);
+  assert.match(dot, /width:\s*6px/);
+  assert.match(dot, /height:\s*6px/);
+  assert.match(dot, /background:\s*var\(--danger\)/);
+  assert.match(saved, /font-size:\s*12px/);
+  assert.match(css, /prefers-reduced-motion:\s*reduce[\s\S]*\.computer-takeover-dot \{[\s\S]*animation:\s*none/);
   assert.match(takeoverFrame, /border-radius:\s*8px/);
   assert.match(takeoverFrame, /border:\s*1px\s+solid\s+var\(--border\)/);
+  const sheet = block(".modal.plugin-add-sheet");
+  assert.match(sheet, /width:\s*320px/);
+  const skillName = block(".computer-skill-name");
+  const skillSave = block(".computer-skill-save");
+  assert.match(skillName, /font-size:\s*14px/);
+  assert.match(skillSave, /min-height:\s*36px/);
   const app = readFileSync(
     join(dirname(fileURLToPath(import.meta.url)), "App.tsx"),
     "utf8",

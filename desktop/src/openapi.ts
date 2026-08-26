@@ -329,7 +329,20 @@ export interface paths {
          */
         get: operations["listSkills"];
         put?: never;
-        post?: never;
+        /**
+         * Save a recorded demonstration as SKILL.md
+         * @description Body `{ name }`. Writes SKILL.md from the capture stopped with
+         *     DELETE `/computer/record` (same v0.9 load path:
+         *     SNORLAX_DATA_DIR/skills/<slug>/SKILL.md). 201 SkillInfo.
+         *     Discard is omit this POST — no SKILL.md. No capture (or session
+         *     closed without save) is 409. Still recording is 409. kind=channel
+         *     is 409. Missing agent is 404. Missing name is 422. Capture
+         *     includes pointer/key plus screenshot context so the skill is
+         *     runnable later via v0.9 (computer_click / computer_key). Not an
+         *     empty stub. Clients have no extra skills chrome this slice
+         *     (v0.9 list only). Desktop Save-as-skill sheet only.
+         */
+        post: operations["createSkill"];
         delete?: never;
         options?: never;
         head?: never;
@@ -410,7 +423,10 @@ export interface paths {
          *     (`No computer yet.`). Idle desktop still returns a 1280x800 shot
          *     (always on). When hasSandbox, GET may include `driving`: `user`
          *     (takeover session), `agent` (agent last drove the sandbox), or
-         *     `idle`. Omitted when hasSandbox is false. Takeover is POST
+         *     `idle`. Omitted when hasSandbox is false. While a takeover
+         *     session exists, GET may include `recording` (boolean): true
+         *     after POST `/computer/record`, false after DELETE `/computer/record`
+         *     or before Record. Omitted when no session. Takeover is POST
          *     `/v1/agents/{id}/computer/session` (201 `{ sessionId }`) then
          *     pointer/key while the session exists. Workspace file-tree GETs
          *     are unchanged.
@@ -553,6 +569,39 @@ export interface paths {
          */
         post: operations["postComputerKey"];
         delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/agents/{id}/computer/record": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["Id"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Start capture inside a takeover session
+         * @description Record only inside a takeover session. 201 `{ recording: true }`.
+         *     Idempotent if already recording. kind=channel is 409. Missing
+         *     agent is 404. No session is 409 (`no computer session`). Desktop
+         *     only this slice; iOS does not POST this route. Capture records
+         *     pointer/key (and screenshot context) until DELETE this path.
+         */
+        post: operations["startComputerRecord"];
+        /**
+         * Stop capture (no SKILL.md yet)
+         * @description 204. Keeps the capture in memory. Discard is omit POST
+         *     `/v1/agents/{id}/skills`. Save is that POST `{ name }`.
+         *     kind=channel is 409. Missing agent is 404. No session is 409.
+         *     Idempotent if not recording while a session exists.
+         */
+        delete: operations["stopComputerRecord"];
         options?: never;
         head?: never;
         patch?: never;
@@ -1069,10 +1118,20 @@ export interface components {
              * @enum {string}
              */
             driving?: "user" | "agent" | "idle";
+            /**
+             * @description Present while a takeover session exists. true while POST
+             *     `/computer/record` is capturing; false after DELETE
+             *     `/computer/record` or before Record. Omitted when no session.
+             */
+            recording?: boolean;
         };
         ComputerSession: {
             /** @description Opaque takeover session id. Same id if POST while already open. */
             sessionId: string;
+        };
+        ComputerRecording: {
+            /** @description true after POST /computer/record. */
+            recording: boolean;
         };
         PointerEvent: {
             /** @description Sandbox x in 0..1279 (1280x800). */
@@ -1138,6 +1197,14 @@ export interface components {
             source: "workspace" | "skillsDir";
             /** @description Path relative to the workspace or skills dir. */
             path: string;
+        };
+        SkillCreate: {
+            /**
+             * @description Display name for the saved SKILL.md (frontmatter name).
+             *     Writes SNORLAX_DATA_DIR/skills/<slug>/SKILL.md from the
+             *     stopped capture. Discard is omit this POST.
+             */
+            name: string;
         };
         Plugin: {
             id: string;
@@ -1550,6 +1617,36 @@ export interface operations {
             422: components["responses"]["Error"];
         };
     };
+    createSkill: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["Id"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SkillCreate"];
+            };
+        };
+        responses: {
+            /** @description Written skill */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SkillInfo"];
+                };
+            };
+            401: components["responses"]["Error"];
+            404: components["responses"]["Error"];
+            409: components["responses"]["Error"];
+            422: components["responses"]["Error"];
+        };
+    };
     listWorkspace: {
         parameters: {
             query?: {
@@ -1782,6 +1879,54 @@ export interface operations {
             404: components["responses"]["Error"];
             409: components["responses"]["Error"];
             422: components["responses"]["Error"];
+        };
+    };
+    startComputerRecord: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["Id"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Capture is running */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ComputerRecording"];
+                };
+            };
+            401: components["responses"]["Error"];
+            404: components["responses"]["Error"];
+            409: components["responses"]["Error"];
+        };
+    };
+    stopComputerRecord: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["Id"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Capture stopped; no file yet */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Error"];
+            404: components["responses"]["Error"];
+            409: components["responses"]["Error"];
         };
     };
     listPlugins: {

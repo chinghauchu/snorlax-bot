@@ -264,6 +264,19 @@ trailing primary Done 36px. Esc = Done. Composer inert. Done returns to
 display-only; preview last frame. File-tree column untouched. Teach-a-task
 waits. Out: recording, a separate OS window, VNC.
 
+v0.16: teach-a-task. Desktop + runtime only. iOS unchanged (no Record,
+no Save-as-skill). Record only inside a takeover session.
+`POST /v1/agents/{id}/computer/record` starts capture;
+`DELETE .../record` stops (no file yet);
+`POST /v1/agents/{id}/skills { name }` writes SKILL.md from that
+capture (v0.9 load path). GET may include `recording` while a session
+exists. Channel 409. No session + record 409. Capture records
+pointer/key plus screenshot context. Desktop 52px bar: 12px muted
+Record left of Done; recording is 12px `--danger` Stop + 6px danger
+dot (static if Reduce Motion); Done disabled while recording; Esc
+while recording = Stop. Stop opens 320px Save as skill. Out: blank New
+skill UI, marketplace, iOS record, VNC, a separate OS window.
+
 ## Inference interface
 
 ```text

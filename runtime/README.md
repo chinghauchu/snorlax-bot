@@ -13,6 +13,11 @@ read of the sandbox); iOS does not browse files this slice.
 (204). While the session exists, `POST .../pointer` and `POST .../key`
 map into 1280×800 (200). GET may include `driving: user|agent|idle`.
 Agent-driven sandbox tools 409. Channel ids are 409. Missing agent 404.
+`POST /v1/agents/{id}/computer/record` starts a teach-a-task capture
+inside that session (201 `{ recording: true }`); `DELETE` that path
+stops (204, no file yet). `POST /v1/agents/{id}/skills { name }` writes
+SKILL.md from the capture. GET may include `recording` while a session
+exists.
 
 Contract: [../protocol/openapi.yaml](../protocol/openapi.yaml) (copy:
 [openapi.yaml](openapi.yaml)).

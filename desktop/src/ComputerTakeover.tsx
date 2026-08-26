@@ -7,24 +7,38 @@ import {
   useState,
 } from "react";
 import {
+  createSkill,
   getComputer,
   postComputerKey,
   postComputerPointer,
   resolveMediaUrl,
+  startComputerRecord,
+  stopComputerRecord,
 } from "./api";
 import {
   COMPUTER_POLL_MS,
   computerImageUrl,
 } from "./computerPreview";
 import {
+  CANCEL_LABEL,
   DONE_BUTTON_PX,
   DONE_LABEL,
   DRIVING_LABEL,
+  RECORD_LABEL,
+  SAVE_AS_SKILL_TITLE,
+  SAVE_BUTTON_PX,
+  SAVE_LABEL,
+  SAVED_FEEDBACK_MS,
+  SAVED_LABEL,
   SANDBOX_HEIGHT,
   SANDBOX_WIDTH,
+  STOP_LABEL,
   TAKEOVER_BAR_PX,
+  doneDisabled,
+  escapeAction,
   keyEventPayload,
   mapPointerToSandbox,
+  saveDisabled,
 } from "./computerSession";
 import type { Agent, Session } from "./types";
 
@@ -42,6 +56,20 @@ export function ComputerTakeover({
   const frameRef = useRef<HTMLDivElement>(null);
   const rootRef = useRef<HTMLDivElement>(null);
   const [blobUrl, setBlobUrl] = useState("");
+  const [recording, setRecording] = useState(false);
+  const [saveOpen, setSaveOpen] = useState(false);
+  const [skillName, setSkillName] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [savedUntil, setSavedUntil] = useState(0);
+  const recordingRef = useRef(false);
+  const saveOpenRef = useRef(false);
+
+  useEffect(() => {
+    recordingRef.current = recording;
+  }, [recording]);
+  useEffect(() => {
+    saveOpenRef.current = saveOpen;
+  }, [saveOpen]);
 
   useEffect(() => {
     rootRef.current?.focus();
@@ -52,6 +80,15 @@ export function ComputerTakeover({
       if (event.key !== "Escape") return;
       event.preventDefault();
       event.stopPropagation();
+      const action = escapeAction(recordingRef.current, saveOpenRef.current);
+      if (action === "discard") {
+        discardSave();
+        return;
+      }
+      if (action === "stop") {
+        void stopCapture();
+        return;
+      }
       onDone();
     }
     window.addEventListener("keydown", onEsc, true);
@@ -124,7 +161,6 @@ export function ComputerTakeover({
     if (event.key === "Escape") {
       event.preventDefault();
       event.stopPropagation();
-      onDone();
       return;
     }
     const payload = keyEventPayload({ key: event.key, type: event.type });
@@ -137,6 +173,56 @@ export function ComputerTakeover({
       /* session may have ended */
     }
   }
+
+  async function startCapture() {
+    try {
+      await startComputerRecord(session, agent.id);
+      setRecording(true);
+    } catch {
+      /* no session */
+    }
+  }
+
+  async function stopCapture() {
+    try {
+      await stopComputerRecord(session, agent.id);
+    } catch {
+      /* already stopped */
+    }
+    setRecording(false);
+    setSkillName("");
+    setSaveOpen(true);
+  }
+
+  function discardSave() {
+    setSaveOpen(false);
+    setSkillName("");
+  }
+
+  async function saveSkill() {
+    const name = skillName.trim();
+    if (saveDisabled(name) || saving) return;
+    setSaving(true);
+    try {
+      await createSkill(session, agent.id, { name });
+      setSaveOpen(false);
+      setSkillName("");
+      setSavedUntil(Date.now() + SAVED_FEEDBACK_MS);
+    } catch {
+      /* capture gone */
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  const showSaved = savedUntil > Date.now();
+
+  useEffect(() => {
+    if (savedUntil <= 0) return;
+    const wait = Math.max(0, savedUntil - Date.now());
+    const id = window.setTimeout(() => setSavedUntil(0), wait);
+    return () => window.clearTimeout(id);
+  }, [savedUntil]);
 
   return (
     <div
@@ -155,10 +241,32 @@ export function ComputerTakeover({
         {avatar}
         <span className="computer-takeover-name">{agent.name}</span>
         <span className="computer-takeover-status">{DRIVING_LABEL}</span>
+        {showSaved ? (
+          <span className="computer-takeover-saved">{SAVED_LABEL}</span>
+        ) : null}
+        {recording ? (
+          <button
+            type="button"
+            className="computer-takeover-record recording"
+            onClick={() => void stopCapture()}
+          >
+            <span className="computer-takeover-dot" aria-hidden="true" />
+            {STOP_LABEL}
+          </button>
+        ) : (
+          <button
+            type="button"
+            className="computer-takeover-record"
+            onClick={() => void startCapture()}
+          >
+            {RECORD_LABEL}
+          </button>
+        )}
         <button
           type="button"
           className="primary computer-takeover-done"
           style={{ height: DONE_BUTTON_PX }}
+          disabled={doneDisabled(recording)}
           onClick={onDone}
         >
           {DONE_LABEL}
@@ -181,6 +289,62 @@ export function ComputerTakeover({
           )}
         </div>
       </div>
+      {saveOpen ? (
+        <div
+          className="modal-backdrop plugin-sheet computer-skill-sheet"
+          onClick={discardSave}
+        >
+          <div
+            className="modal plugin-add-sheet"
+            role="dialog"
+            aria-label={SAVE_AS_SKILL_TITLE}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <header>
+              <h2>{SAVE_AS_SKILL_TITLE}</h2>
+              <button
+                type="button"
+                className="icon-btn"
+                aria-label="Close"
+                onClick={discardSave}
+              >
+                ×
+              </button>
+            </header>
+            <div className="profile-form">
+              <label>
+                Name
+                <input
+                  className="plugin-add-name computer-skill-name"
+                  value={skillName}
+                  autoFocus
+                  onChange={(e) => setSkillName(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      e.preventDefault();
+                      void saveSkill();
+                    }
+                  }}
+                />
+              </label>
+              <div className="confirm-actions">
+                <button type="button" onClick={discardSave}>
+                  {CANCEL_LABEL}
+                </button>
+                <button
+                  type="button"
+                  className="primary plugin-add-primary computer-skill-save"
+                  style={{ height: SAVE_BUTTON_PX }}
+                  disabled={saving || saveDisabled(skillName)}
+                  onClick={() => void saveSkill()}
+                >
+                  {SAVE_LABEL}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }

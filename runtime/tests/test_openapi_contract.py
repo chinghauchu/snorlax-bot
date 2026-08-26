@@ -94,6 +94,7 @@ def test_protocol_openapi_is_locked_v0_contract() -> None:
     assert "never call MCP" in text
     assert "SNORLAX_DATA_DIR" in text
     assert "No MCP, no browser-use GUI" not in text
+    assert "0.16.0" in text
     assert "0.15.0" in text
     assert "0.14.0" in text
     assert "0.13.0" in text
@@ -102,21 +103,27 @@ def test_protocol_openapi_is_locked_v0_contract() -> None:
     assert "v0.13" in text
     assert "v0.14" in text
     assert "v0.15" in text
+    assert "v0.16" in text
     assert "/v1/agents/{id}/computer" in text
     assert "/v1/agents/{id}/computer/screenshot" in text
     assert "/v1/agents/{id}/computer/session" in text
     assert "/v1/agents/{id}/computer/session/{sessionId}" in text
     assert "/v1/agents/{id}/computer/pointer" in text
     assert "/v1/agents/{id}/computer/key" in text
+    assert "/v1/agents/{id}/computer/record" in text
     assert "/v1/agents/{id}/computer/image" not in text
     assert "/v1/agents/{id}/computer/click" not in text
     assert "/v1/agents/{id}/computer/scroll" not in text
     assert "ComputerPreview" in text
     assert "ComputerSession" in text
+    assert "ComputerRecording" in text
     assert "PointerEvent" in text
     assert "KeyEvent" in text
+    assert "SkillCreate" in text
     assert "sessionId" in text
     assert "hasSandbox" in text
+    assert "recording" in text
+    assert "Save as skill" in text
     assert "No computer yet." in text
     assert "288x180" in text or "288×180" in text
     assert "You're driving" in text

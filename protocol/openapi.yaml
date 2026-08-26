@@ -1,9 +1,9 @@
 openapi: 3.1.0
 info:
   title: Snorlax-Bot
-  version: 0.15.0
+  version: 0.16.0
   description: |
-    Locked v0.15 LAN contract. Clients use SNORLAX_URL + SNORLAX_TOKEN.
+    Locked v0.16 LAN contract. Clients use SNORLAX_URL + SNORLAX_TOKEN.
     They never call vLLM, never call tools, never call MCP, and never read
     the Spark filesystem. Additive workspace GETs are runtime reads of the
     existing sandbox (same roots as the tool loop), not a second tool loop.
@@ -352,6 +352,37 @@ info:
     `workspaceTree.ts` (never reintroduce `computerPane.ts`). File-tree
     column untouched. Teach-a-task waits. Out: teach-a-task,
     recording, a separate OS window, VNC. OpenAPI **0.15.0**.
+
+    v0.16: teach-a-task (desktop + runtime only). iOS is unchanged this
+    slice — no Record, no Save-as-skill, no ios/ UI work (generated /v1
+    types only if this OpenAPI bump requires). Spec rides this PR.
+    Record only exists inside a desktop takeover session (the v0.15
+    Open overlay). Preview Open and iOS still are unchanged.
+    Chrome — 52px takeover bar: 12px muted `Record` left of primary
+    `Done`. Recording: that control is 12px `--danger` `Stop` plus a
+    6px danger dot (static if Reduce Motion). Done is disabled while
+    recording. Esc while recording = Stop. Esc otherwise still Done.
+    Stop opens a 320px sheet (same family as Add plugin). Title
+    `Save as skill`. Name 14px. Primary `Save` 36px, disabled until
+    name. × / Cancel discards — no SKILL.md. Save writes that agent's
+    skill (v0.9 list, no extra chrome) and returns to takeover with
+    `Record` muted again. Optional 1.5s 12px `Saved` on the bar.
+    HTTP: Record only inside a takeover session.
+    `POST /v1/agents/{id}/computer/record` starts capture.
+    `DELETE /v1/agents/{id}/computer/record` stops (no file yet).
+    `POST /v1/agents/{id}/skills { name }` writes SKILL.md from that
+    capture (same v0.9 load path: workspace and/or
+    SNORLAX_DATA_DIR/skills). Discard is omit this POST.
+    GET computer can include `recording` (boolean) while a session
+    exists. Channel id → 409. No session + record → 409. Missing agent
+    404. Capture records pointer/key (and screenshot context) so the
+    skill is runnable later via v0.9 — not an empty stub SKILL.md.
+    Isolation, report-back, widgets, markdown, MCP, routines, seed
+    DELETE 204, Mac oMLX, no Mac folder picker, workspaceTree.ts
+    stand. Takeover session 201/204 and pointer/key routes stay.
+    Out of scope: blank New skill UI, edit generated markdown,
+    marketplace, iOS record, VNC, a separate OS window. OpenAPI
+    **0.16.0**.
   license:
     name: Apache-2.0
     identifier: Apache-2.0
@@ -817,6 +848,41 @@ paths:
           $ref: "#/components/responses/Error"
         "422":
           $ref: "#/components/responses/Error"
+    post:
+      summary: Save a recorded demonstration as SKILL.md
+      description: |
+        Body `{ name }`. Writes SKILL.md from the capture stopped with
+        DELETE `/computer/record` (same v0.9 load path:
+        SNORLAX_DATA_DIR/skills/<slug>/SKILL.md). 201 SkillInfo.
+        Discard is omit this POST — no SKILL.md. No capture (or session
+        closed without save) is 409. Still recording is 409. kind=channel
+        is 409. Missing agent is 404. Missing name is 422. Capture
+        includes pointer/key plus screenshot context so the skill is
+        runnable later via v0.9 (computer_click / computer_key). Not an
+        empty stub. Clients have no extra skills chrome this slice
+        (v0.9 list only). Desktop Save-as-skill sheet only.
+      operationId: createSkill
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SkillCreate"
+      responses:
+        "201":
+          description: Written skill
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SkillInfo"
+        "401":
+          $ref: "#/components/responses/Error"
+        "404":
+          $ref: "#/components/responses/Error"
+        "409":
+          $ref: "#/components/responses/Error"
+        "422":
+          $ref: "#/components/responses/Error"
 
   /v1/agents/{id}/workspace:
     parameters:
@@ -901,7 +967,10 @@ paths:
         (`No computer yet.`). Idle desktop still returns a 1280x800 shot
         (always on). When hasSandbox, GET may include `driving`: `user`
         (takeover session), `agent` (agent last drove the sandbox), or
-        `idle`. Omitted when hasSandbox is false. Takeover is POST
+        `idle`. Omitted when hasSandbox is false. While a takeover
+        session exists, GET may include `recording` (boolean): true
+        after POST `/computer/record`, false after DELETE `/computer/record`
+        or before Record. Omitted when no session. Takeover is POST
         `/v1/agents/{id}/computer/session` (201 `{ sessionId }`) then
         pointer/key while the session exists. Workspace file-tree GETs
         are unchanged.
@@ -1071,6 +1140,49 @@ paths:
         "409":
           $ref: "#/components/responses/Error"
         "422":
+          $ref: "#/components/responses/Error"
+
+  /v1/agents/{id}/computer/record:
+    parameters:
+      - $ref: "#/components/parameters/Id"
+    post:
+      summary: Start capture inside a takeover session
+      description: |
+        Record only inside a takeover session. 201 `{ recording: true }`.
+        Idempotent if already recording. kind=channel is 409. Missing
+        agent is 404. No session is 409 (`no computer session`). Desktop
+        only this slice; iOS does not POST this route. Capture records
+        pointer/key (and screenshot context) until DELETE this path.
+      operationId: startComputerRecord
+      responses:
+        "201":
+          description: Capture is running
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ComputerRecording"
+        "401":
+          $ref: "#/components/responses/Error"
+        "404":
+          $ref: "#/components/responses/Error"
+        "409":
+          $ref: "#/components/responses/Error"
+    delete:
+      summary: Stop capture (no SKILL.md yet)
+      description: |
+        204. Keeps the capture in memory. Discard is omit POST
+        `/v1/agents/{id}/skills`. Save is that POST `{ name }`.
+        kind=channel is 409. Missing agent is 404. No session is 409.
+        Idempotent if not recording while a session exists.
+      operationId: stopComputerRecord
+      responses:
+        "204":
+          description: Capture stopped; no file yet
+        "401":
+          $ref: "#/components/responses/Error"
+        "404":
+          $ref: "#/components/responses/Error"
+        "409":
           $ref: "#/components/responses/Error"
 
   /v1/plugins:
@@ -1788,6 +1900,12 @@ components:
             session exists; `agent` after the agent drove the sandbox
             (`computer_click` / `computer_key`); `idle` otherwise.
             Omitted when hasSandbox is false.
+        recording:
+          type: boolean
+          description: |
+            Present while a takeover session exists. true while POST
+            `/computer/record` is capturing; false after DELETE
+            `/computer/record` or before Record. Omitted when no session.
 
     ComputerSession:
       type: object
@@ -1796,6 +1914,14 @@ components:
         sessionId:
           type: string
           description: Opaque takeover session id. Same id if POST while already open.
+
+    ComputerRecording:
+      type: object
+      required: [recording]
+      properties:
+        recording:
+          type: boolean
+          description: true after POST /computer/record.
 
     PointerEvent:
       type: object
@@ -1927,6 +2053,19 @@ components:
         path:
           type: string
           description: Path relative to the workspace or skills dir.
+
+    SkillCreate:
+      type: object
+      required: [name]
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 80
+          description: |
+            Display name for the saved SKILL.md (frontmatter name).
+            Writes SNORLAX_DATA_DIR/skills/<slug>/SKILL.md from the
+            stopped capture. Discard is omit this POST.
 
     Plugin:
       type: object

@@ -2,19 +2,35 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
+  CANCEL_LABEL,
   DONE_BUTTON_PX,
   DONE_LABEL,
   DRIVING_LABEL,
   OPEN_LABEL,
+  RECORD_DOT_PX,
+  RECORD_LABEL,
+  RECORD_LABEL_PX,
   SANDBOX_HEIGHT,
   SANDBOX_WIDTH,
+  SAVE_AS_SKILL_TITLE,
+  SAVE_BUTTON_PX,
+  SAVE_LABEL,
+  SAVE_SHEET_PX,
+  SAVED_FEEDBACK_MS,
+  SAVED_LABEL,
+  SKILL_NAME_PX,
+  STOP_LABEL,
   TAKEOVER_AVATAR_PX,
   TAKEOVER_BAR_PX,
   canOpenComputer,
   composerInert,
+  doneDisabled,
+  escapeAction,
   keyEventPayload,
   letterboxRect,
   mapPointerToSandbox,
+  recordControlLabel,
+  saveDisabled,
 } from "./computerSession.ts";
 
 test("Open is only offered when hasSandbox", () => {
@@ -70,4 +86,30 @@ test("Esc is Done and is not sent as a sandbox key", () => {
     key: "Enter",
     type: "up",
   });
+});
+
+test("Record is muted 12px left of Done; Stop is danger + 6px dot; Done disabled while recording", () => {
+  assert.equal(RECORD_LABEL, "Record");
+  assert.equal(STOP_LABEL, "Stop");
+  assert.equal(SAVE_AS_SKILL_TITLE, "Save as skill");
+  assert.equal(SAVE_LABEL, "Save");
+  assert.equal(SAVED_LABEL, "Saved");
+  assert.equal(CANCEL_LABEL, "Cancel");
+  assert.equal(RECORD_LABEL_PX, 12);
+  assert.equal(RECORD_DOT_PX, 6);
+  assert.equal(SAVE_SHEET_PX, 320);
+  assert.equal(SAVE_BUTTON_PX, 36);
+  assert.equal(SKILL_NAME_PX, 14);
+  assert.equal(SAVED_FEEDBACK_MS, 1500);
+  assert.equal(recordControlLabel(false), "Record");
+  assert.equal(recordControlLabel(true), "Stop");
+  assert.equal(doneDisabled(true), true);
+  assert.equal(doneDisabled(false), false);
+  assert.equal(saveDisabled(""), true);
+  assert.equal(saveDisabled("   "), true);
+  assert.equal(saveDisabled("Demo"), false);
+  assert.equal(escapeAction(true), "stop");
+  assert.equal(escapeAction(false), "done");
+  assert.equal(escapeAction(false, true), "discard");
+  assert.equal(escapeAction(true, true), "discard");
 });

@@ -234,6 +234,15 @@ class ComputerPreview(BaseModel):
             "Omitted when hasSandbox is false."
         ),
     )
+    recording: bool | None = Field(
+        default=None,
+        description=(
+            "Present while a takeover session exists. true while POST "
+            "/computer/record is capturing; false after DELETE /computer/record "
+            "or before Record. Omitted when no session (like recording only "
+            "inside takeover)."
+        ),
+    )
 
     @model_validator(mode="after")
     def known_driving(self) -> ComputerPreview:
@@ -248,6 +257,10 @@ class ComputerPreview(BaseModel):
 
 class ComputerSession(BaseModel):
     sessionId: str
+
+
+class ComputerRecording(BaseModel):
+    recording: bool = True
 
 
 class PointerEvent(BaseModel):
@@ -351,6 +364,10 @@ class SkillInfo(BaseModel):
     description: str
     source: str
     path: str
+
+
+class SkillCreate(BaseModel):
+    name: str = Field(min_length=1, max_length=80)
 
 
 class Plugin(BaseModel):
