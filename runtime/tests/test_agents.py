@@ -274,6 +274,23 @@ def test_patch_user_channel_name_and_members(client) -> None:
     assert as_channel.status_code == 422
 
 
+def test_new_agent_joins_seed_only_not_extras(client) -> None:
+    extra = client.post(
+        "/v1/agents",
+        headers=AUTH,
+        json={"name": "Ops", "kind": "channel", "memberIds": ["snorlax-bot"]},
+    ).json()
+    assert extra["memberIds"] == ["snorlax-bot"]
+    bob = client.post("/v1/agents", headers=AUTH, json={"name": "Bob"}).json()
+    seed = client.get("/v1/agents/snorlax-bot-group", headers=AUTH).json()
+    extra_after = client.get(f"/v1/agents/{extra['id']}", headers=AUTH).json()
+    assert bob["id"] in seed["memberIds"]
+    assert bob["id"] not in extra_after["memberIds"]
+    omit_kind = client.post("/v1/agents", headers=AUTH, json={"name": "Carol"})
+    assert omit_kind.status_code == 201
+    assert omit_kind.json()["kind"] == "agent"
+
+
 def test_patch_avatar_null_clears(client) -> None:
     set_avatar = client.patch(
         "/v1/agents/snorlax-bot",

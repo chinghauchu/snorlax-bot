@@ -205,9 +205,14 @@ def test_one_plus_one_report_back_answers_user_in_a_one_to_one(client) -> None:
 
     alice_replies = [m for m in alice_msgs if m["senderId"] == alice["id"]]
     assert len(alice_replies) >= 2
-    assert alice_replies[-1]["content"].strip() == "2"
-    assert alice_replies[-1]["senderId"] == alice["id"]
-    assert not alice_replies[-1]["content"].lower().startswith("from ")
+    report = alice_replies[-1]
+    assert report["content"].strip() == "2"
+    assert report["senderId"] == alice["id"]
+    assert report["senderName"] == "Alice"
+    assert report["role"] == "assistant"
+    assert report["mentions"] == []
+    assert "from" not in report
+    assert not report["content"].lower().startswith("from ")
     # User does not need to GET the channel for the answer.
     assert any(m["content"].strip() == "2" for m in alice_msgs)
 
