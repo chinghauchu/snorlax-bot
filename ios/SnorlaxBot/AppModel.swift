@@ -406,7 +406,9 @@ final class AppModel {
                 let parts = args.split(whereSeparator: \.isWhitespace).map(String.init)
                 body = PluginCreate(
                     name: trimmed,
-                    stdio: PluginStdio(command: cmd, args: parts.isEmpty ? nil : parts)
+                    transport: .stdio,
+                    command: cmd,
+                    args: parts.isEmpty ? nil : parts
                 )
             } else if let url {
                 let value = url.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -414,7 +416,7 @@ final class AppModel {
                     composerError = "URL is required."
                     return false
                 }
-                body = PluginCreate(name: trimmed, url: value)
+                body = PluginCreate(name: trimmed, transport: .url, url: value)
             } else {
                 composerError = "Command or URL is required."
                 return false

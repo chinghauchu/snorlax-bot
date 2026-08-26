@@ -954,7 +954,9 @@ export function App() {
         }
         await createPlugin(session, {
           name,
-          stdio: { command, args: parsePluginArgs(pluginAddArgs) },
+          transport: "stdio",
+          command,
+          args: parsePluginArgs(pluginAddArgs),
         });
       } else {
         const url = pluginAddUrl.trim();
@@ -962,7 +964,7 @@ export function App() {
           setComposerError("URL is required.");
           return;
         }
-        await createPlugin(session, { name, url });
+        await createPlugin(session, { name, transport: "url", url });
       }
       setPluginAddOpen(false);
       await refreshPlugins();

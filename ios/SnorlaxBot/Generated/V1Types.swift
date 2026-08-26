@@ -939,54 +939,43 @@ struct Plugin: Codable, Hashable, Identifiable, Sendable {
     }
 }
 
-struct PluginStdio: Codable, Hashable, Sendable {
-    var command: String
-    var args: [String]?
-
-    init(command: String, args: [String]? = nil) {
-        self.command = command
-        self.args = args
-    }
-
-    enum CodingKeys: String, CodingKey { case command, args }
-
-    init(from decoder: Decoder) throws {
-        let container = try decoder.container(keyedBy: CodingKeys.self)
-        command = try container.decode(String.self, forKey: .command)
-        args = try container.decodeIfPresent([String].self, forKey: .args)
-    }
-
-    func encode(to encoder: Encoder) throws {
-        var container = encoder.container(keyedBy: CodingKeys.self)
-        try container.encode(command, forKey: .command)
-        try container.encodeIfPresent(args, forKey: .args)
-    }
-}
-
 struct PluginCreate: Codable, Hashable, Sendable {
+    enum Transport: String, Codable, Hashable, Sendable {
+        case stdio
+        case url
+    }
+
     var name: String
-    var stdio: PluginStdio?
+    var transport: Transport
+    var command: String?
+    var args: [String]?
     var url: String?
 
-    init(name: String, stdio: PluginStdio? = nil, url: String? = nil) {
+    init(name: String, transport: Transport, command: String? = nil, args: [String]? = nil, url: String? = nil) {
         self.name = name
-        self.stdio = stdio
+        self.transport = transport
+        self.command = command
+        self.args = args
         self.url = url
     }
 
-    enum CodingKeys: String, CodingKey { case name, stdio, url }
+    enum CodingKeys: String, CodingKey { case name, transport, command, args, url }
 
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         name = try container.decode(String.self, forKey: .name)
-        stdio = try container.decodeIfPresent(PluginStdio.self, forKey: .stdio)
+        transport = try container.decode(Transport.self, forKey: .transport)
+        command = try container.decodeIfPresent(String.self, forKey: .command)
+        args = try container.decodeIfPresent([String].self, forKey: .args)
         url = try container.decodeIfPresent(String.self, forKey: .url)
     }
 
     func encode(to encoder: Encoder) throws {
         var container = encoder.container(keyedBy: CodingKeys.self)
         try container.encode(name, forKey: .name)
-        try container.encodeIfPresent(stdio, forKey: .stdio)
+        try container.encode(transport, forKey: .transport)
+        try container.encodeIfPresent(command, forKey: .command)
+        try container.encodeIfPresent(args, forKey: .args)
         try container.encodeIfPresent(url, forKey: .url)
     }
 }

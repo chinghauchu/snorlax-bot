@@ -222,10 +222,11 @@ messages stay plain as stored. LEFT `kind=message` is 14px markdown
 tappable). Fenced code: language + Copy, 12px/1.45. Inline: 13px / 4px /
 accent 18%.
 
-v0.12: MCP Add custom. `POST /v1/plugins` `{ name, stdio? | url? }`
-persists into `mcp.json`. `DELETE /v1/plugins/{id}` uninstalls (204).
-`POST .../disconnect` returns the row to `needsAuth` without dropping
-the catalog. Settings-only; no marketplace. Clients never speak MCP.
+v0.12: MCP Add custom. `POST /v1/plugins` `{ name, transport: "stdio"|"url",
+command?, args?, url? }` → 201. `DELETE /v1/plugins/{id}` uninstalls
+(204; drops the row and credentials). Do not auto-open a connect card.
+GET and `POST .../auth` stay v0.10. Settings-only; no store. Clients
+never speak MCP.
 
 ## Inference interface
 

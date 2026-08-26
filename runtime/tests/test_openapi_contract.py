@@ -64,8 +64,7 @@ def test_protocol_openapi_is_locked_v0_contract() -> None:
     assert "/v1/plugins/{id}" in text
     assert "/v1/plugins/{id}/disconnect" in text
     assert "PluginCreate" in text
-    assert "stdio or url" in text
-    assert "Add-custom" in text or "add custom" in text.lower() or "POST /v1/plugins" in text
+    assert 'transport: "stdio" | "url"' in text or "transport: \"stdio\"" in text or "enum: [stdio, url]" in text
     assert "No store" in text or "no store" in text.lower() or "No marketplace" in text
     assert "connect.url" in text
     assert "authorizationUrl" in text

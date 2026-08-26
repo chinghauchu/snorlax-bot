@@ -129,6 +129,8 @@ test("plugins list is Settings only, not the agent pane", () => {
   assert.match(app, /listPlugins/);
   assert.match(app, /startPluginAuth/);
   assert.match(app, /createPlugin/);
+  assert.match(app, /transport: "stdio"/);
+  assert.match(app, /transport: "url"/);
   assert.match(app, /deletePlugin/);
   assert.match(app, /disconnectPlugin/);
   assert.match(app, /plugin-add/);

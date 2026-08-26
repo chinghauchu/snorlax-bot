@@ -243,23 +243,21 @@ info:
     v0.12: MCP Add custom. Runtime still owns MCP (v0.7 mcp.json stdio +
     LAN). Clients never speak MCP or the model. Settings Plugins is
     Settings-only and runtime-global. POST /v1/plugins body
-    `{ name, stdio?: { command, args? }, url?: string }` (one of stdio or url required) persists into the runtime MCP catalog (`mcp.json` under
-    SNORLAX_DATA_DIR). 201/200 returns the Plugin. Invalid combo (both or
-    neither) is 422. DELETE /v1/plugins/{id} uninstalls (drops from catalog
-    and tears down the session); 204; unknown id 404. POST
-    /v1/plugins/{id}/disconnect signs out a connected plugin without
-    dropping the catalog entry (status returns to needsAuth); unknown 404.
-    GET /v1/plugins still returns a bare array
-    `{ id, name, status: connected|needsAuth }`. Auth is still the OS
-    browser (`POST /v1/plugins/{id}/auth` → `{ authorizationUrl }`;
-    desktop system browser; iOS ASWebAuthenticationSession). kind=connect
-    cards are unchanged. Tools still auto-run after connect. No approval
-    widgets. No store, no search, no marketplace catalog / public plugin
-    store. Isolation, report-back, widgets, markdown, cron routines, seed
-    DELETE 204, Mac oMLX, no Mac folder picker, and workspaceTree.ts
-    (never reintroduce computerPane.ts) stand. Out of scope: full Box/VNC,
-    teach-a-task, event listeners, marketplace catalog. OpenAPI
-    **0.12.0**.
+    `{ name, transport: "stdio" | "url", command?, args?: string[], url? }`
+    → 201 `{ id, name, status: connected|needsAuth }`. stdio: command
+    required (args optional); 422 if name or command missing. url: url
+    required; allow https and http (LAN); 422 if missing/invalid. Persist
+    into mcp.json under SNORLAX_DATA_DIR. DELETE /v1/plugins/{id}
+    uninstalls (drops the row and credentials); 204; unknown 404. Do not
+    auto-open a connect card. GET /v1/plugins and
+    POST /v1/plugins/{id}/auth stay as v0.10. kind=connect isolation
+    unchanged. POST /v1/plugins/{id}/disconnect may return a connected
+    row to needsAuth without dropping the catalog. No store, no search
+    catalog. Keep v0.8 widgets, v0.9 routines, seed DELETE 204, content
+    string. Isolation, report-back, markdown, Mac oMLX, no Mac folder
+    picker, and workspaceTree.ts (never reintroduce computerPane.ts)
+    stand. Out of scope: full Box/VNC, teach-a-task, event listeners,
+    marketplace catalog. OpenAPI **0.12.0**.
   license:
     name: Apache-2.0
     identifier: Apache-2.0
@@ -779,11 +777,13 @@ paths:
     post:
       summary: Add a custom MCP plugin
       description: |
-        Body `{ name, stdio?: { command, args? }, url?: string }`. One of
-        `stdio` or `url` is required; both or neither is 422. Persists
-        into the runtime MCP catalog (`mcp.json` under SNORLAX_DATA_DIR).
-        201/200 returns the Plugin. Clients never speak MCP. No store /
-        search / install-from-catalog.
+        Body `{ name, transport: "stdio" | "url", command?, args?: string[],
+        url? }`. Returns 201 `{ id, name, status: connected|needsAuth }`.
+        stdio: command required (args optional). 422 if name or command
+        missing. url: url required; allow https and http (LAN). 422 if
+        missing/invalid. Persists into mcp.json under SNORLAX_DATA_DIR.
+        Does not auto-open a kind=connect card. Clients never speak MCP.
+        No store / search catalog.
       operationId: createPlugin
       requestBody:
         required: true
@@ -793,12 +793,6 @@ paths:
               $ref: "#/components/schemas/PluginCreate"
       responses:
         "201":
-          description: Created plugin
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Plugin"
-        "200":
           description: Created plugin
           content:
             application/json:
@@ -815,9 +809,9 @@ paths:
     delete:
       summary: Uninstall a plugin
       description: |
-        Drops the plugin from the runtime MCP catalog and tears down the
-        live session. 204. Unknown id is 404. Connected rows can also be
-        removed this way. Does not speak MCP from the client.
+        Drops the plugin row and credentials from the runtime MCP catalog
+        and tears down the live session. 204. Unknown id is 404. Does not
+        auto-open a connect card. Clients never speak MCP.
       operationId: deletePlugin
       responses:
         "204":
@@ -1535,10 +1529,20 @@ components:
             `connected` when the runtime has a live MCP session.
             `needsAuth` otherwise (including disabled / not signed in).
 
-    PluginStdio:
+    PluginCreate:
       type: object
-      required: [command]
+      required: [name, transport]
+      description: |
+        `transport` is `stdio` or `url`. stdio requires `command` (args
+        optional). url requires `url` (http or https). Missing fields 422.
       properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 80
+        transport:
+          type: string
+          enum: [stdio, url]
         command:
           type: string
           minLength: 1
@@ -1546,19 +1550,6 @@ components:
           type: array
           items:
             type: string
-
-    PluginCreate:
-      type: object
-      required: [name]
-      description: |
-        One of `stdio` or `url` is required. Both or neither is 422.
-      properties:
-        name:
-          type: string
-          minLength: 1
-          maxLength: 80
-        stdio:
-          $ref: "#/components/schemas/PluginStdio"
         url:
           type: string
           description: LAN MCP URL (http or https).

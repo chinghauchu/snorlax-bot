@@ -631,39 +631,35 @@ class McpManager:
         display = str(payload.get("name") or "").strip()
         if not display:
             raise McpConfigError("name is required")
-        stdio = payload.get("stdio")
+        kind = str(payload.get("transport") or "").strip().lower()
+        if kind not in {"stdio", "url"}:
+            raise McpConfigError("transport must be stdio or url")
+        command = str(payload.get("command") or "").strip()
         url = str(payload.get("url") or "").strip()
-        has_stdio = isinstance(stdio, dict)
-        if stdio is not None and not has_stdio:
-            raise McpConfigError("stdio must be an object")
-        if has_stdio and url:
-            raise McpConfigError("provide stdio or url, not both")
-        if not has_stdio and not url:
-            raise McpConfigError("stdio or url is required")
-        command = ""
         args: list[str] = []
-        if has_stdio:
-            command = str(stdio.get("command") or "").strip()
+        if kind == "stdio":
             if not command:
-                raise McpConfigError("stdio.command is required")
-            raw_args = stdio.get("args")
+                raise McpConfigError("command is required")
+            raw_args = payload.get("args")
             if raw_args is None:
                 raw_args = []
             if not isinstance(raw_args, list) or any(
                 not isinstance(item, str) for item in raw_args
             ):
-                raise McpConfigError("stdio.args must be a list of strings")
+                raise McpConfigError("args must be a list of strings")
             args = list(raw_args)
-        if url:
+        else:
+            if not url:
+                raise McpConfigError("url is required")
             ok, reason = mcp_url_allowed(url)
             if not ok:
                 raise McpConfigError(reason)
         name = self._unique_name(display)
         spec: dict[str, Any] = {"name": display, "disabled": False}
-        if command:
+        if kind == "stdio":
             spec["command"] = command
             spec["args"] = args
-        if url:
+        else:
             spec["url"] = url
         rec = self._ensure_record(name, spec)
         rec.status = STATUS_DISCONNECTED
@@ -679,6 +675,11 @@ class McpManager:
             raise McpConfigError(f"plugin {name!r} not found", status=404)
         await self._drop_live(name)
         self.records.pop(name, None)
+        stale = [
+            state for state, plugin in self._auth_states.items() if plugin == name
+        ]
+        for state in stale:
+            self._auth_states.pop(state, None)
         self._drop_spec(name)
 
     async def connect_server(

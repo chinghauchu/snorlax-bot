@@ -367,11 +367,13 @@ export interface paths {
         put?: never;
         /**
          * Add a custom MCP plugin
-         * @description Body `{ name, stdio?: { command, args? }, url?: string }`. One of
-         *     `stdio` or `url` is required; both or neither is 422. Persists
-         *     into the runtime MCP catalog (`mcp.json` under SNORLAX_DATA_DIR).
-         *     201/200 returns the Plugin. Clients never speak MCP. No store /
-         *     search / install-from-catalog.
+         * @description Body `{ name, transport: "stdio" | "url", command?, args?: string[],
+         *     url? }`. Returns 201 `{ id, name, status: connected|needsAuth }`.
+         *     stdio: command required (args optional). 422 if name or command
+         *     missing. url: url required; allow https and http (LAN). 422 if
+         *     missing/invalid. Persists into mcp.json under SNORLAX_DATA_DIR.
+         *     Does not auto-open a kind=connect card. Clients never speak MCP.
+         *     No store / search catalog.
          */
         post: operations["createPlugin"];
         delete?: never;
@@ -394,9 +396,9 @@ export interface paths {
         post?: never;
         /**
          * Uninstall a plugin
-         * @description Drops the plugin from the runtime MCP catalog and tears down the
-         *     live session. 204. Unknown id is 404. Connected rows can also be
-         *     removed this way. Does not speak MCP from the client.
+         * @description Drops the plugin row and credentials from the runtime MCP catalog
+         *     and tears down the live session. 204. Unknown id is 404. Does not
+         *     auto-open a connect card. Clients never speak MCP.
          */
         delete: operations["deletePlugin"];
         options?: never;
@@ -884,14 +886,16 @@ export interface components {
              */
             status: "connected" | "needsAuth";
         };
-        PluginStdio: {
-            command: string;
-            args?: string[];
-        };
-        /** @description One of `stdio` or `url` is required. Both or neither is 422. */
+        /**
+         * @description `transport` is `stdio` or `url`. stdio requires `command` (args
+         *     optional). url requires `url` (http or https). Missing fields 422.
+         */
         PluginCreate: {
             name: string;
-            stdio?: components["schemas"]["PluginStdio"];
+            /** @enum {string} */
+            transport: "stdio" | "url";
+            command?: string;
+            args?: string[];
             /** @description LAN MCP URL (http or https). */
             url?: string;
         };
@@ -1351,15 +1355,6 @@ export interface operations {
             };
         };
         responses: {
-            /** @description Created plugin */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Plugin"];
-                };
-            };
             /** @description Created plugin */
             201: {
                 headers: {
