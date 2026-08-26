@@ -61,6 +61,7 @@ def test_protocol_openapi_is_locked_v0_contract() -> None:
     assert "connectStatus" in text
     assert "/v1/plugins" in text
     assert "/v1/plugins/{id}/auth" in text
+    assert "connect.url" in text
     assert "authorizationUrl" in text
     assert "needsAuth" in text
     assert "NOT kind=widget" in text or "not kind=widget" in text.lower()

@@ -17,7 +17,7 @@ from snorlax_runtime import (
     USER_SENDER_NAME,
 )
 from snorlax_runtime.db import Store, new_id
-from snorlax_runtime.mcp import plugin_is_connected
+from snorlax_runtime.mcp import get_mcp_manager, plugin_is_connected
 from snorlax_runtime.handoff import (
     REPORT_MISS,
     report_pack,
@@ -334,6 +334,31 @@ def looks_like_ask(content: str) -> bool:
     return any(marker in lowered for marker in ask_markers)
 
 
+async def resume_after_connect(
+    *,
+    store: Store,
+    backend: Any,
+    card: dict[str, Any],
+    max_tool_rounds: int | None = None,
+) -> None:
+    """Continue hop-0 after OAuth PATCHes a kind=connect row to connected."""
+    conversation = await store.get_agent(card["agentId"])
+    if conversation is None:
+        return
+    async for _event, _payload in run_user_turn(
+        store=store,
+        backend=backend,
+        conversation=conversation,
+        content="",
+        images=[],
+        mentions=[],
+        reply_to=card.get("replyTo"),
+        max_tool_rounds=max_tool_rounds,
+        resume_connect=card,
+    ):
+        pass
+
+
 async def run_user_turn(
     *,
     store: Store,
@@ -347,6 +372,8 @@ async def run_user_turn(
     max_tool_rounds: int | None = None,
     widget_reply: dict[str, Any] | None = None,
     connect_reply: dict[str, Any] | None = None,
+    resume_connect: dict[str, Any] | None = None,
+    auth_base_url: str | None = None,
 ) -> AsyncIterator[tuple[str, dict[str, Any]]]:
     """Persist the user message, then route hop-0 and peer work.
 
@@ -385,7 +412,14 @@ async def run_user_turn(
     persist_user = bool((content or "").strip())
     wake_agent = False
     resolved_connect: dict[str, Any] | None = None
-    if widget_reply is not None:
+    if resume_connect is not None:
+        persist_user = False
+        wake_agent = True
+        resolved_connect = resume_connect
+        if is_group:
+            thread_id = resolved_connect.get("replyTo") or resolved_connect["id"]
+            stored_reply_to = thread_id
+    elif widget_reply is not None:
         target = await store.get_message(widget_reply["id"])
         if target is None or target.get("agentId") != origin_id:
             raise WidgetAnswerError("widget not found")
@@ -452,17 +486,28 @@ async def run_user_turn(
                 if isinstance(body, dict)
                 else ""
             )
-            if not plugin_is_connected(plugin_id):
-                raise ConnectPendingError()
-            resolved_connect = await store.resolve_connect(
-                target["id"], status=CONNECT_CONNECTED
-            )
-            if resolved_connect is None:
-                raise ConnectAnswerError("connect card not found")
-            yield "message.done", resolved_connect
-            wake_agent = True
-            if is_group and thread_id is None:
-                thread_id = resolved_connect.get("replyTo") or resolved_connect["id"]
+            if plugin_is_connected(plugin_id):
+                resolved_connect = await store.resolve_connect(
+                    target["id"], status=CONNECT_CONNECTED
+                )
+                if resolved_connect is None:
+                    raise ConnectAnswerError("connect card not found")
+                yield "message.done", resolved_connect
+                wake_agent = True
+                if is_group and thread_id is None:
+                    thread_id = (
+                        resolved_connect.get("replyTo") or resolved_connect["id"]
+                    )
+            else:
+                manager = get_mcp_manager()
+                if manager is None or plugin_id not in manager.records:
+                    raise ConnectAnswerError("plugin not found")
+                state = manager.begin_auth(plugin_id)
+                base = (auth_base_url or "").rstrip("/")
+                url = f"{base}/v1/plugins/oauth/start/{plugin_id}?state={state}"
+                yield "connect.url", {"url": url, "pluginId": plugin_id}
+                yield "message.done", target
+                return
     elif persist_user and pending is not None:
         body = pending.get("widget") or {}
         if body.get("dismissOnMoveOn"):

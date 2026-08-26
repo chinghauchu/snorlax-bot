@@ -389,11 +389,10 @@ final class AppModel {
     }
 
     func answerConnect(id: String, pluginId: String) async {
-        if plugins.first(where: { $0.id == pluginId })?.status != .connected {
-            let ok = await connectPlugin(id: pluginId)
-            if !ok { return }
-        }
         await streamAnswer(connectReply: ConnectReply(id: id))
+        _ = await waitUntilPluginConnected(id: pluginId)
+        await refreshPlugins()
+        await refreshMessages()
     }
 
     func dismissConnect(id: String) async {
@@ -517,6 +516,10 @@ final class AppModel {
                         senderName: senderName
                     )
                 )
+            }
+        case .connectUrl(let url, _):
+            if let resolved = client?.resolve(url) ?? URL(string: url) {
+                Task { await PluginBrowser.open(resolved) }
             }
         }
     }

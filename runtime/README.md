@@ -99,8 +99,10 @@ still boots and logs the failure.
 
 `GET /v1/plugins` lists `{ id, name, status: connected|needsAuth }`.
 `POST /v1/plugins/{id}/auth` returns `{ authorizationUrl }` for the OS
-browser; the OAuth callback hits this process. Unauthenticated MCP
-servers can persist a `kind=connect` card. After Connected, those tools
+browser; the OAuth callback hits this process (GET, or POST complete with
+code+state). Unauthenticated MCP servers can persist a `kind=connect`
+card. `connectReply { id }` emits `connect.url` then ends; when auth
+completes the card is PATCHed connected and the turn continues. Tools
 auto-run. No uninstall / store / Add-custom HTTP this slice.
 
 ## Tests

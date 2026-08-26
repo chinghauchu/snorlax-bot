@@ -706,6 +706,7 @@ export function App() {
     const localImages = opts.localImages ?? [];
     const mentionIds = opts.mentionIds ?? [];
     const extra = opts.extra;
+    let openedPluginId: string | null = null;
     let userMsg: ChatMessage | null = null;
     if (opts.optimisticUser) {
       userMsg = {
@@ -788,6 +789,10 @@ export function App() {
           setWorkspaceTick((n) => n + 1);
         }
       },
+      onConnectUrl(url, pluginId) {
+        openedPluginId = pluginId;
+        void openOsBrowser(url);
+      },
     };
     try {
       await sendMessage(
@@ -801,6 +806,10 @@ export function App() {
         active.kind === "channel" ? undefined : lastExtraChannelId.current,
         extra,
       );
+      if (openedPluginId) {
+        await waitUntilPluginConnected(session, openedPluginId);
+        await refreshPlugins();
+      }
       const listed = await listMessages(
         session,
         active.id,
@@ -905,16 +914,8 @@ export function App() {
     }
   }
 
-  async function answerConnect(id: string, pluginId: string) {
+  async function answerConnect(id: string, _pluginId: string) {
     setComposerError(null);
-    if (session) {
-      const rows = await listPlugins(session);
-      const row = rows.find((item) => item.id === pluginId);
-      if (row?.status !== "connected") {
-        const ok = await connectPlugin(pluginId);
-        if (!ok) return;
-      }
-    }
     await submitTurn({
       content: "",
       extra: { connectReply: { id } },

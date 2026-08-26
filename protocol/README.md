@@ -26,10 +26,11 @@ Chrome is list + enable/pause only.
 v0.10 MCP connect chrome: `GET /v1/plugins` `{ id, name, status:
 connected|needsAuth }`. `POST /v1/plugins/{id}/auth` returns
 `{ authorizationUrl }` for the OS browser; the OAuth callback hits the
-runtime. Message `kind=connect` plus `connect` / `connectStatus`. Answer
-with `{ connectReply: { id } }` or `{ dismissed: true }`. No `connect.*`
-SSE event. No uninstall / store / Add-custom UI. Plugins list is Settings
-only.
+runtime (GET, or POST complete with code+state). Message `kind=connect`
+plus `connect` / `connectStatus`. Answer with `{ connectReply: { id } }`
+or `{ dismissed: true }`. `{ id }` emits `connect.url` then ends; dismiss
+does not. No `connect.*` event on the card emit. No uninstall / store /
+Add-custom UI. Plugins list is Settings only.
 
 A copy is also kept at `runtime/openapi.yaml` and `desktop/openapi.yaml`
 so those trees are self-contained. Do not let the files diverge.

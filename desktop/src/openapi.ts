@@ -169,11 +169,19 @@ export interface paths {
          *     SSE ends on that `kind=widget` `message.done` (no `widget.*` event).
          *     A Connect card for an unauthenticated MCP plugin is the same
          *     persist-then-`message.done` shape with `kind=connect` (no
-         *     `connect.*` event). Answer with `{ widgetReply: { id, values?, dismissed? } }` on that
+         *     `connect.*` event on emit). Answer with `{ widgetReply: { id, values?, dismissed? } }` on that
          *     transcript; that is not a user Message. Connect is
          *     `{ connectReply: { id } }` or `{ dismissed: true }` — also not a
          *     user Message. Dismiss does not wake the
-         *     agent. A pick (or a successful connect) continues this POST as hop-0 with the values. A
+         *     agent and does not return a URL. `{ id }` while the plugin still
+         *     needs auth stays pending, emits `event: connect.url` data
+         *     `{ url, pluginId }`, then ends this POST; the client opens the OS
+         *     browser. When OAuth completes (runtime GET callback or POST
+         *     `{ code, state }`), the same Message is PATCHed to
+         *     connectStatus=connected and the agent turn continues (tools
+         *     auto-run). If the plugin is already connected, `{ id }` PATCHes
+         *     connected and continues this POST as hop-0. A pick continues this
+         *     POST as hop-0 with the values. A
          *     normal content send while a card is pending is 409 unless
          *     dismissOnMoveOn (then auto-dismiss, no wake for the widget, then
          *     the new user message). Connect pending has no dismiss-on-move-on:
@@ -379,7 +387,10 @@ export interface paths {
          *     browser; iOS ASWebAuthenticationSession). The OAuth callback hits
          *     the runtime. Unknown id is 404. After the browser finishes,
          *     GET /v1/plugins shows `connected` and tools auto-run (no approval
-         *     widgets). Connect-card reply is a separate POST connectReply.
+         *     widgets). A pending kind=connect card for this plugin is PATCHed
+         *     to connected and that agent turn continues. Connect-card Connect
+         *     tap is POST connectReply, which emits `connect.url` when the
+         *     plugin still needs auth.
          */
         post: operations["startPluginAuth"];
         delete?: never;
@@ -578,8 +589,9 @@ export interface components {
              */
             connect?: components["schemas"]["ConnectCard"];
             /**
-             * @description Set on kind=connect. pending until a connectReply; connected
-             *     after `{ id }`; dismissed after `{ dismissed: true }`.
+             * @description Set on kind=connect. pending until auth finishes or dismiss;
+             *     connected after the OAuth callback PATCHes this row; dismissed
+             *     after `{ dismissed: true }`.
              * @enum {string}
              */
             connectStatus?: "pending" | "connected" | "dismissed";

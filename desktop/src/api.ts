@@ -197,6 +197,7 @@ export type StreamHandlers = {
     senderId?: string;
     senderName?: string;
   }) => void;
+  onConnectUrl?: (url: string, pluginId: string) => void;
 };
 
 export async function sendMessage(
@@ -297,6 +298,10 @@ function dispatchSse(raw: string, handlers: StreamHandlers): void {
       senderId: typeof record.senderId === "string" ? record.senderId : undefined,
       senderName: typeof record.senderName === "string" ? record.senderName : undefined,
     });
+  } else if (event === "connect.url") {
+    const url = typeof record.url === "string" ? record.url : "";
+    const pluginId = typeof record.pluginId === "string" ? record.pluginId : "";
+    if (url) handlers.onConnectUrl?.(url, pluginId);
   }
 }
 

@@ -192,7 +192,13 @@ struct RuntimeClient: Sendable {
         case delta(id: String, text: String, senderId: String?, senderName: String?, senderAvatar: String?)
         case done(Message)
         case tool(id: String, summary: String, done: Bool, senderId: String?, senderName: String?)
+        case connectUrl(url: String, pluginId: String)
         case error(String)
+
+        private struct ConnectUrl: Decodable, Sendable {
+            var url: String
+            var pluginId: String
+        }
 
         static func parse(name: String, data: String) -> StreamEvent? {
             guard let payload = data.data(using: .utf8) else { return nil }
@@ -220,6 +226,9 @@ struct RuntimeClient: Sendable {
                     senderId: body.senderId,
                     senderName: body.senderName
                 )
+            case "connect.url":
+                guard let body = try? decoder.decode(ConnectUrl.self, from: payload) else { return nil }
+                return .connectUrl(url: body.url, pluginId: body.pluginId)
             case "error":
                 let message = (try? decoder.decode(ErrorBody.self, from: payload))?.error ?? data
                 return .error(message)

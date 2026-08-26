@@ -1045,6 +1045,21 @@ class Store:
                 return public
         return None
 
+    async def list_pending_connects(self, plugin_id: str) -> list[dict[str, Any]]:
+        """Pending kind=connect rows for this plugin across transcripts."""
+        cur = await self.conn.execute(
+            "SELECT * FROM messages WHERE kind = 'connect' ORDER BY created_at ASC"
+        )
+        found: list[dict[str, Any]] = []
+        for row in await cur.fetchall():
+            public = await self._message_public(dict(row))
+            if public.get("connectStatus") != "pending":
+                continue
+            body = public.get("connect") or {}
+            if isinstance(body, dict) and body.get("pluginId") == plugin_id:
+                found.append(public)
+        return found
+
     async def resolve_connect(
         self,
         message_id: str,

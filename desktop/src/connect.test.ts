@@ -118,6 +118,7 @@ test("plugins list is Settings only, not the agent pane", () => {
   assert.match(empty, /color:\s*var\(--text-muted\)/);
 
   const connectSrc = readFileSync(join(here, "connect.ts"), "utf8");
+  const api = readFileSync(join(here, "api.ts"), "utf8");
   assert.match(connectSrc, /Needs sign-in/);
   assert.match(app, /settings-plugins/);
   assert.match(app, /No plugins yet\./);
@@ -125,6 +126,8 @@ test("plugins list is Settings only, not the agent pane", () => {
   assert.match(app, /listPlugins/);
   assert.match(app, /startPluginAuth/);
   assert.match(app, /connectReply/);
+  assert.match(app, /onConnectUrl/);
+  assert.match(api, /connect\.url/);
   assert.match(app, /ConnectCard/);
   assert.match(app, /openOsBrowser/);
   assert.doesNotMatch(app, /info-plugins/);

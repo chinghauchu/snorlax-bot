@@ -99,7 +99,7 @@ def test_kind_connect_persist_and_connect_reply(tmp_path) -> None:
             client, SEED, 'SNORLAX_TOOL example__echo {"text": "hello-mcp"}'
         )
         assert status == 200
-        assert "event: connect" not in raw
+        assert "event: connect.url" not in raw
         dones = [p for n, p in events if n == "message.done"]
         card = next(p for p in dones if p.get("kind") == "connect")
         assert card["senderId"] == SEED
@@ -114,26 +114,40 @@ def test_kind_connect_persist_and_connect_reply(tmp_path) -> None:
         assert cards[0]["id"] == card["id"]
         assert all(m.get("role") != "user" or m.get("kind") != "connect" for m in listed)
 
-        auth = client.post("/v1/plugins/example/auth", headers=AUTH).json()
-        client.get(auth["authorizationUrl"], follow_redirects=True)
-        status, _body, events = _send(
+        status, raw, events = _send(
             client, SEED, "", extra={"connectReply": {"id": card["id"]}}
         )
         assert status == 200
-        updated = next(
+        assert "event: connect.url" in raw
+        url_events = [p for n, p in events if n == "connect.url"]
+        assert url_events
+        assert url_events[0]["pluginId"] == "example"
+        assert "/v1/plugins/oauth/start/example" in url_events[0]["url"]
+        dones = [p for n, p in events if n == "message.done"]
+        assert dones[0]["id"] == card["id"]
+        assert dones[0]["connectStatus"] == "pending"
+        pending = next(
             m
             for m in client.get(f"/v1/agents/{SEED}/messages", headers=AUTH).json()
             if m["id"] == card["id"]
         )
+        assert pending["connectStatus"] == "pending"
+
+        done = client.get(url_events[0]["url"], follow_redirects=True)
+        assert done.status_code == 200
+        assert b"Connected" in done.content
+        listed = client.get(f"/v1/agents/{SEED}/messages", headers=AUTH).json()
+        updated = next(m for m in listed if m["id"] == card["id"])
         assert updated["kind"] == "connect"
         assert updated["connectStatus"] == "connected"
-        dones = [p for n, p in events if n == "message.done"]
-        assert dones[0]["id"] == card["id"]
-        assert dones[0]["connectStatus"] == "connected"
-        follow = [p for p in dones if p.get("kind") != "connect"]
+        follow = [
+            m
+            for m in listed
+            if m.get("kind") != "connect" and m["role"] == "assistant" and m["id"] != card["id"]
+        ]
         assert follow
-        assert follow[-1]["role"] == "assistant"
         assert follow[-1]["senderId"] == SEED
+        assert client.get("/v1/plugins", headers=AUTH).json()[0]["status"] == "connected"
 
 
 def test_connect_dismiss_no_user_bubble(tmp_path) -> None:
@@ -144,13 +158,14 @@ def test_connect_dismiss_no_user_bubble(tmp_path) -> None:
             for m in client.get(f"/v1/agents/{SEED}/messages", headers=AUTH).json()
             if m.get("kind") == "connect"
         )
-        status, _body, events = _send(
+        status, raw, events = _send(
             client,
             SEED,
             "",
             extra={"connectReply": {"id": card["id"], "dismissed": True}},
         )
         assert status == 200
+        assert "event: connect.url" not in raw
         dones = [p for n, p in events if n == "message.done"]
         assert dones[0]["connectStatus"] == "dismissed"
         listed = client.get(f"/v1/agents/{SEED}/messages", headers=AUTH).json()
@@ -220,7 +235,7 @@ def test_channel_connect_is_thread_only(tmp_path) -> None:
         del events
 
 
-def test_connect_reply_before_auth_stays_pending(tmp_path) -> None:
+def test_connect_reply_stays_pending_until_auth(tmp_path) -> None:
     with _client_with_mcp(tmp_path, {"example": _disabled_stdio()}) as client:
         _send(client, SEED, 'SNORLAX_TOOL example__echo {"text": "x"}')
         card = next(
@@ -228,16 +243,71 @@ def test_connect_reply_before_auth_stays_pending(tmp_path) -> None:
             for m in client.get(f"/v1/agents/{SEED}/messages", headers=AUTH).json()
             if m.get("kind") == "connect"
         )
-        blocked = client.post(
-            f"/v1/agents/{SEED}/messages",
-            headers=AUTH,
-            json={"content": "", "connectReply": {"id": card["id"]}},
+        status, raw, events = _send(
+            client, SEED, "", extra={"connectReply": {"id": card["id"]}}
         )
-        assert blocked.status_code == 409
+        assert status == 200
+        assert "event: connect.url" in raw
+        url_events = [p for n, p in events if n == "connect.url"]
+        assert url_events[0]["pluginId"] == "example"
         listed = client.get(f"/v1/agents/{SEED}/messages", headers=AUTH).json()
         updated = next(m for m in listed if m["id"] == card["id"])
         assert updated["connectStatus"] == "pending"
         assert client.get("/v1/plugins", headers=AUTH).json()[0]["status"] == "needsAuth"
+        users = [m for m in listed if m["role"] == "user"]
+        assert len(users) == 1
+
+
+def test_post_oauth_complete_with_code_and_state(tmp_path) -> None:
+    with _client_with_mcp(tmp_path, {"example": _disabled_stdio()}) as client:
+        _send(client, SEED, 'SNORLAX_TOOL example__echo {"text": "x"}')
+        card = next(
+            m
+            for m in client.get(f"/v1/agents/{SEED}/messages", headers=AUTH).json()
+            if m.get("kind") == "connect"
+        )
+        _status, _raw, events = _send(
+            client, SEED, "", extra={"connectReply": {"id": card["id"]}}
+        )
+        url = next(p["url"] for n, p in events if n == "connect.url")
+        state = url.split("state=", 1)[1]
+        posted = client.post(
+            "/v1/plugins/oauth/callback",
+            json={"state": state, "code": "local"},
+        )
+        assert posted.status_code == 200
+        assert b"Connected" in posted.content
+        listed = client.get(f"/v1/agents/{SEED}/messages", headers=AUTH).json()
+        updated = next(m for m in listed if m["id"] == card["id"])
+        assert updated["connectStatus"] == "connected"
+        follow = [
+            m
+            for m in listed
+            if m["role"] == "assistant" and m.get("kind") != "connect"
+        ]
+        assert follow
+        assert client.get("/v1/plugins", headers=AUTH).json()[0]["status"] == "connected"
+
+
+def test_settings_auth_completes_pending_connect_card(tmp_path) -> None:
+    with _client_with_mcp(tmp_path, {"example": _disabled_stdio()}) as client:
+        _send(client, SEED, 'SNORLAX_TOOL example__echo {"text": "x"}')
+        card = next(
+            m
+            for m in client.get(f"/v1/agents/{SEED}/messages", headers=AUTH).json()
+            if m.get("kind") == "connect"
+        )
+        auth = client.post("/v1/plugins/example/auth", headers=AUTH).json()
+        client.get(auth["authorizationUrl"], follow_redirects=True)
+        listed = client.get(f"/v1/agents/{SEED}/messages", headers=AUTH).json()
+        updated = next(m for m in listed if m["id"] == card["id"])
+        assert updated["connectStatus"] == "connected"
+        follow = [
+            m
+            for m in listed
+            if m["role"] == "assistant" and m.get("kind") != "connect"
+        ]
+        assert follow
 
 
 def test_unknown_plugin_auth_404(client) -> None:
