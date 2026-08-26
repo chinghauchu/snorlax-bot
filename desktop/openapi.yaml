@@ -31,11 +31,14 @@ info:
     Runtime-owned tools (v0.5): list_dir, read_file, write_file, delete_file,
     shell, web_search, web_fetch. The FastAPI runtime runs a function-calling
     loop against the local OpenAI-compat server (cap 8 rounds). Clients never
-    construct tool calls. Workspaces live under ~/.snorlax-bot/workspaces/
-    (agents/{id} for 1:1, channels/{id} for channel / handoff turns, created
-    lazily on first tool use). Path jail: tools cannot leave the active
-    workspace root. No MCP, no browser-use GUI, no computer screenshot pane,
-    no widgets.
+    construct tool calls. Tools auto-run (no approval or question widgets).
+    Workspaces live under ~/.snorlax-bot/workspaces/ (agents/{id} for 1:1,
+    channels/{id} for channel / handoff turns). The channel project is that
+    sandbox dir, not a picker for a folder on the host Mac. Path jail: tools
+    cannot leave the active workspace root. Shell has no extra network; HTTP
+    is web_search / web_fetch only. Search provider is configuration
+    (SNORLAX_SEARCH_PROVIDER / SNORLAX_SEARCH_URL), not a hardcoded vendor.
+    No MCP, no browser-use GUI, no computer screenshot pane, no widgets.
 
     Images persist and are returned; they are never sent to the model. No mDNS.
 
@@ -84,7 +87,8 @@ info:
     v0.5: runtime tool loop. Additive SSE `tool.start` / `tool.done` traces
     (`{ id, name, summary, ok?, senderId, senderName }`). Existing
     `message.delta` / `message.done` / `error` are unchanged. Desktop may
-    show muted traces; unknown events must be ignored.
+    show muted traces; unknown events must be ignored. Seeded channel DELETE
+    stays 409 (not this slice).
   license:
     name: Apache-2.0
     identifier: Apache-2.0

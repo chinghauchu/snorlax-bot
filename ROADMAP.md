@@ -20,7 +20,7 @@ including without a GPU.
 | Tauri + TypeScript chat UI | Computer pane |
 | Swift/SwiftUI iOS companion | Skills, “teach a task”, routines |
 | Seeded group channel + extra user-created channels + agent DMs + @mentions + v0.2 handoff threads + v0.3 identity pane + v0.4 report-back | Extra channel types / widgets |
-| Runtime-owned tools: list_dir, read_file, write_file, delete_file, shell, web_search, web_fetch (workspace jail, cap 8 rounds) | Host Docker/SSH secrets in the tool env |
+| Runtime-owned tools: list_dir, read_file, write_file, delete_file, shell (no extra network), web_search (configured provider), web_fetch; auto-run; sandbox under `~/.snorlax-bot` | Host Docker/SSH secrets in the tool env; Mac folder picker; approval widgets |
 | OpenAPI for `/v1` | |
 
 Default model on Spark: **70B-class FP8**, swapped via config.

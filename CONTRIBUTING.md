@@ -16,7 +16,8 @@ NVIDIA DGX Spark.
   dependency.
 - **Keep v0.5 small.** Named teammates, identity pane, seeded group plus extra
   channels, @mentions, 1:1 isolation, channel handoff threads, report-back,
-  and runtime-owned file/shell/web tools in a workspace jail. MCP, sandbox
+  and runtime-owned file/shell/web tools in a `~/.snorlax-bot` sandbox (auto-run,
+  no extra shell network, configured search provider). MCP, sandbox
   computer GUI, vision, and routines are later — see [ROADMAP.md](ROADMAP.md).
 
 ## Locked v0 decisions (do not reopen in drive-by PRs)

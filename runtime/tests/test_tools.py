@@ -1,14 +1,19 @@
 # SPDX-License-Identifier: Apache-2.0
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 
+from snorlax_runtime.config import Settings
 from snorlax_runtime.inference import MockBackend, StreamPart, ToolCall
 from snorlax_runtime.tools import (
     PathJailError,
+    configure_tools,
     execute_tool,
     resolve_in_workspace,
     run_tool_loop,
+    search_request_url,
     workspace_for,
 )
 from tests.conftest import AUTH, parse_sse
@@ -146,6 +151,106 @@ def test_channel_turn_uses_channel_project(client, tmp_path) -> None:
     assert channel_file.read_text() == 'print("chan")'
     assert not agent_file.exists()
     assert any(n == "tool.done" for n, _ in events)
+    assert str(channel_file).startswith(str(tmp_path.resolve()))
+    assert "/Users/" not in str(channel_file)
+
+
+def test_channel_project_ignores_host_folder_picker(tmp_path) -> None:
+    channel = {
+        "id": "snorlax-bot-group",
+        "kind": "channel",
+        "projectPath": "/Users/chinghau/Projects/shared",
+    }
+    path = workspace_for(tmp_path, channel, "snorlax-bot")
+    assert path == (
+        tmp_path / "workspaces" / "channels" / "snorlax-bot-group"
+    ).resolve()
+    assert "chinghau" not in str(path)
+    assert "Projects" not in str(path)
+
+
+def test_tools_auto_run_without_approval_events(client, tmp_path) -> None:
+    status, _body, events = _send(
+        client,
+        SEED,
+        "Write a file named auto.py containing print(2)",
+    )
+    assert status == 200
+    names = [n for n, _ in events]
+    assert "tool.start" in names
+    assert "tool.done" in names
+    assert "widget" not in names
+    assert "approval" not in names
+    assert "question" not in names
+    assert (tmp_path / "workspaces" / "agents" / SEED / "auto.py").read_text() == (
+        "print(2)"
+    )
+
+
+def test_shell_has_no_extra_network(tmp_path) -> None:
+    root = tmp_path / "ws"
+    root.mkdir()
+    out = execute_tool("shell", '{"command": "curl https://example.com"}', root)
+    assert "Error: shell has no network" in out
+    assert "web_search" in out
+    wget = execute_tool("shell", '{"command": "wget https://example.com"}', root)
+    assert "Error: shell has no network" in wget
+    env_out = execute_tool(
+        "shell",
+        '{"command": "printf %s \\"$SSH_AUTH_SOCK$DOCKER_HOST$HTTP_PROXY\\""}',
+        root,
+    )
+    assert "SSH" not in env_out
+    assert "docker" not in env_out.lower()
+    assert "http://127.0.0.1:9" in env_out
+
+
+def test_search_provider_is_configurable(monkeypatch) -> None:
+    seen: list[str] = []
+
+    async def fake_get(url: str, **_kwargs):
+        seen.append(url)
+        html = '<a href="https://example.com/hit">Configurable hit</a>'
+        return 200, html, "text/html"
+
+    monkeypatch.setattr("snorlax_runtime.tools.http_get", fake_get)
+    configure_tools(
+        search_provider="generic",
+        search_url="https://search.test/find?q={query}",
+    )
+    try:
+        assert search_request_url("hello world") == (
+            "https://search.test/find?q=hello+world"
+        )
+        result = execute_tool("web_search", '{"query": "hello world"}', Path("/tmp"))
+        assert seen == ["https://search.test/find?q=hello+world"]
+        assert "Configurable hit" in result
+        assert "example.com/hit" in result
+    finally:
+        configure_tools(search_provider="duckduckgo", search_url=None)
+
+
+def test_default_search_url_is_overridable() -> None:
+    configure_tools(search_provider="duckduckgo", search_url=None)
+    assert "html.duckduckgo.com" in search_request_url("snorlax")
+    configure_tools(
+        search_provider="duckduckgo",
+        search_url="https://alt.example/html/?q={query}",
+    )
+    try:
+        assert search_request_url("snorlax") == "https://alt.example/html/?q=snorlax"
+    finally:
+        configure_tools(search_provider="duckduckgo", search_url=None)
+
+
+def test_search_settings_come_from_env(monkeypatch) -> None:
+    monkeypatch.setenv("SNORLAX_SEARCH_PROVIDER", "generic")
+    monkeypatch.setenv(
+        "SNORLAX_SEARCH_URL", "https://search.example/find?q={query}"
+    )
+    settings = Settings()
+    assert settings.search_provider == "generic"
+    assert settings.search_url == "https://search.example/find?q={query}"
 
 
 def test_agent_workspaces_are_isolated(client, tmp_path) -> None:

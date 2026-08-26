@@ -47,4 +47,9 @@ def test_protocol_openapi_is_locked_v0_contract() -> None:
     assert "tool.done" in text
     assert "ToolTrace" in text
     assert "workspaces" in text
+    assert "not a picker for a folder on the host Mac" in text
+    assert "Shell has no extra network" in text
+    assert "web_search / web_fetch only" in text
+    assert "Tools auto-run" in text
+    assert "SNORLAX_SEARCH_PROVIDER" in text
     assert "SSE, chat-only (no tools)" not in text

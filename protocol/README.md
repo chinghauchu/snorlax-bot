@@ -4,7 +4,8 @@ Canonical contract: [openapi.yaml](openapi.yaml).
 
 Clients (`SNORLAX_URL` + `SNORLAX_TOKEN`) talk only to the FastAPI runtime.
 They never call oMLX or vLLM, never call tools, and never read
-`~/.snorlax-bot/` on the host.
+`~/.snorlax-bot/` on the host. Channel workspaces are sandboxes under that
+data dir, not a picker for a folder on the Mac.
 
 A copy is also kept at `runtime/openapi.yaml` so the runtime tree is
 self-contained. Do not let the two files diverge.

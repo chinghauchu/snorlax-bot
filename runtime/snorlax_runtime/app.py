@@ -18,6 +18,7 @@ from snorlax_runtime.inference import build_backend
 from snorlax_runtime.routing import MentionError, resolve_user_mentions, run_user_turn
 from snorlax_runtime.schemas import Agent, AgentCreate, AgentPatch, Health, Message, MessageCreate
 from snorlax_runtime.token import resolve_token, write_token_file
+from snorlax_runtime.tools import configure_tools
 
 
 def _error(status_code: int, message: str) -> HTTPException:
@@ -37,6 +38,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             write_token_file(settings.data_dir, token)
         app.state.settings = settings
         app.state.store = store
+        configure_tools(
+            search_provider=settings.search_provider,
+            search_url=settings.search_url,
+        )
         backend_name = settings.resolved_backend()
         app.state.backend = build_backend(
             backend_name,
@@ -56,6 +61,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             f"  backend: {backend_name}\n"
             f"  inference: {inference_url}\n"
             f"  model: {settings.model}\n"
+            f"  search: {settings.search_provider}"
+            f"{' ' + settings.search_url if settings.search_url else ''}\n"
             f"  token: {token}",
             flush=True,
         )

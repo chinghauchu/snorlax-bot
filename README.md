@@ -27,10 +27,12 @@ that agent only; a user `@chip` (or agent DM) opens a handoff thread in a
 channel (seed `snorlax-bot-group` by default). B answers in the thread; A
 reports back in A's 1:1 as A. Seed `snorlax-bot` can be deleted (no auto-reseed).
 Users can create more channels. Agents can list/read/write files, run a
-workspace shell, and search or fetch the web — the runtime owns that loop;
-clients never call the model or the tools. No MCP, no sandbox GUI / screenshot
-pane, no vision. That slice is meant to actually run on a laptop *or* a Spark,
-with a mocked model backend when a 70B-class checkpoint is not present.
+workspace shell (no extra network), and search or fetch the web — the runtime
+owns that loop and auto-runs tools; clients never call the model or the tools.
+Channel work lives in a sandbox under `~/.snorlax-bot`, not a folder picker on
+the Mac. No MCP, no sandbox GUI / screenshot pane, no vision. That slice is
+meant to actually run on a laptop *or* a Spark, with a mocked model backend
+when a 70B-class checkpoint is not present.
 
 ## Hardware target
 
@@ -177,8 +179,8 @@ default).
 ## v0 vs later
 
 See [ROADMAP.md](ROADMAP.md). Short version: v0.5 is named agents plus
-runtime-owned file/shell/web tools in a workspace jail. Later: sandbox
-computer GUI, skills, routines, MCP, question widgets.
+runtime-owned file/shell/web tools in a `~/.snorlax-bot` sandbox. Later:
+sandbox computer GUI, skills, routines, MCP, question widgets.
 
 ## Contributing
 

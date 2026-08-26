@@ -35,11 +35,14 @@ DB_FILENAME = "snorlax.db"
 TOOLS_PREAMBLE = (
     "You have built-in tools (list_dir, read_file, write_file, delete_file, "
     "shell, web_search, web_fetch). Call them instead of describing the work. "
-    "Write programs to files in the workspace; do not dump a whole app in the "
-    "chat bubble. Do not acknowledge that you can help — do the task. "
-    "1:1 files are private to you. Channel and handoff turns share the "
-    "channel project; if another teammate needs your files, they must already "
-    "be in that project (or you must put them there)."
+    "The runtime runs tools immediately — do not ask the user to approve a "
+    "tool call and do not wait for a widget. Write programs to files in the "
+    "workspace; do not dump a whole app in the chat bubble. Do not "
+    "acknowledge that you can help — do the task. HTTP is web_search / "
+    "web_fetch only; do not curl from shell. 1:1 files are private to you. "
+    "Channel and handoff turns share the channel sandbox under the runtime "
+    "data dir (not a folder on the host Mac); if another teammate needs your "
+    "files, they must already be in that project (or you must put them there)."
 )
 
 

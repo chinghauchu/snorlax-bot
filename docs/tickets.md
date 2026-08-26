@@ -19,7 +19,7 @@ Concrete follow-ups after v0. Filed on GitHub against
 ## Backend
 
 - [B1 — vLLM on GB10 70B FP8 recipe](https://github.com/chinghauchu/snorlax-bot/issues/10)
-- [B2 — Runtime-owned tool loop](https://github.com/chinghauchu/snorlax-bot/issues/14) — v0.5 built-in files/shell/web + workspace jail; MCP and computer pane stay later
+- [B2 — Runtime-owned tool loop](https://github.com/chinghauchu/snorlax-bot/issues/14) — v0.5 built-in files/shell/web in a `~/.snorlax-bot` sandbox (not a Mac folder picker); shell has no extra network; tools auto-run; search provider is env/config; MCP and computer pane stay later
 - [B3 — MCP client: stdio and LAN, not public internet](https://github.com/chinghauchu/snorlax-bot/issues/15)
 - [B4 — Local sandbox computer on the Spark](https://github.com/chinghauchu/snorlax-bot/issues/7)
 - [B5 — Scheduler for routines while the laptop is closed](https://github.com/chinghauchu/snorlax-bot/issues/17)

@@ -11,7 +11,7 @@ from collections.abc import AsyncIterator, Callable
 from html.parser import HTMLParser
 from pathlib import Path
 from typing import Any
-from urllib.parse import parse_qs, unquote, urlencode, urljoin, urlparse
+from urllib.parse import parse_qs, quote_plus, unquote, urljoin, urlparse
 
 import httpx
 
@@ -31,11 +31,54 @@ _SAFE_ID = re.compile(r"^[A-Za-z0-9._-]+$")
 _USER_AGENT = (
     "Snorlax-Bot/0.5 (+https://github.com/chinghauchu/snorlax-bot)"
 )
-DDG_HTML = "https://html.duckduckgo.com/html/"
+DEFAULT_SEARCH_PROVIDER = "duckduckgo"
+DEFAULT_SEARCH_TEMPLATES = {
+    "duckduckgo": "https://html.duckduckgo.com/html/?q={query}",
+}
+_BLOCKED_NET_BINS = (
+    "curl",
+    "wget",
+    "http",
+    "https",
+    "nc",
+    "ncat",
+    "netcat",
+    "ssh",
+    "scp",
+    "sftp",
+    "ftp",
+    "telnet",
+)
 
 # Injected in tests. Signature: async (url, **kwargs) -> (status, body, content_type)
 HttpGet = Callable[..., Any]
 http_get: HttpGet | None = None
+
+_search_provider = DEFAULT_SEARCH_PROVIDER
+_search_url: str | None = None
+_no_net_bin: Path | None = None
+
+
+def configure_tools(
+    *,
+    search_provider: str = DEFAULT_SEARCH_PROVIDER,
+    search_url: str | None = None,
+) -> None:
+    """Set search provider from env/config. Call at runtime startup."""
+    global _search_provider, _search_url
+    _search_provider = (search_provider or DEFAULT_SEARCH_PROVIDER).strip().lower()
+    _search_url = (search_url or "").strip() or None
+
+
+def search_request_url(query: str) -> str:
+    template = _search_url or DEFAULT_SEARCH_TEMPLATES.get(
+        _search_provider, DEFAULT_SEARCH_TEMPLATES[DEFAULT_SEARCH_PROVIDER]
+    )
+    encoded = quote_plus(query)
+    if "{query}" in template:
+        return template.replace("{query}", encoded)
+    joiner = "&" if "?" in template else "?"
+    return f"{template}{joiner}q={encoded}"
 
 
 class PathJailError(Exception):
@@ -47,8 +90,11 @@ class PathJailError(Exception):
 def workspace_for(data_dir: Path, conversation: dict[str, Any], agent_id: str) -> Path:
     """Active workspace root for a turn.
 
-    1:1 → that agent's private dir. Channel / handoff thread → the channel
-    project (created lazily on first tool use).
+    Always a sandbox under ``data_dir/workspaces/``, never a picker for a
+    folder on the host Mac. Extra fields such as ``projectPath`` are ignored.
+
+    1:1 → ``workspaces/agents/{agentId}/``.
+    Channel / handoff → ``workspaces/channels/{channelId}/`` (created lazily).
     """
     if conversation.get("kind") == KIND_CHANNEL:
         return _workspace_dir(data_dir, "channels", conversation["id"])
@@ -128,7 +174,8 @@ TOOL_DEFINITIONS: list[dict[str, Any]] = [
             "description": (
                 "Write a UTF-8 text file inside the active workspace. "
                 "Creates parent directories. Prefer this over dumping a whole "
-                "program in the chat bubble."
+                "program in the chat bubble. The runtime runs this immediately "
+                "(no approval widget)."
             ),
             "parameters": {
                 "type": "object",
@@ -159,7 +206,9 @@ TOOL_DEFINITIONS: list[dict[str, Any]] = [
             "description": (
                 "Run a shell command with cwd set to the workspace root. "
                 "HOME is the workspace, not the host home directory. "
-                "No Docker/SSH host secrets are passed in. Timeout in seconds."
+                "No extra network — do not curl or wget; HTTP is web_search "
+                "or web_fetch only. No Docker/SSH host secrets. Timeout in "
+                "seconds. The runtime runs this immediately (no approval)."
             ),
             "parameters": {
                 "type": "object",
@@ -176,8 +225,9 @@ TOOL_DEFINITIONS: list[dict[str, Any]] = [
         "function": {
             "name": "web_search",
             "description": (
-                "Search the public web (DuckDuckGo HTML). No API key. "
-                "Returns titles, URLs, and snippets."
+                "Search the public web via the configured search provider. "
+                "Returns titles, URLs, and snippets. No API key required. "
+                "The runtime runs this immediately (no approval)."
             ),
             "parameters": {
                 "type": "object",
@@ -192,7 +242,8 @@ TOOL_DEFINITIONS: list[dict[str, Any]] = [
             "name": "web_fetch",
             "description": (
                 "HTTP GET a URL and return text or markdown. Size-capped. "
-                "http/https only."
+                "http/https only. This is the HTTP path; do not use shell "
+                "curl. The runtime runs this immediately (no approval)."
             ),
             "parameters": {
                 "type": "object",
@@ -361,16 +412,67 @@ def _shell_env(workspace: Path) -> dict[str, str]:
     tmp.mkdir(parents=True, exist_ok=True)
     path = os.environ.get("PATH", "/usr/bin:/bin:/usr/local/bin")
     lang = os.environ.get("LANG") or os.environ.get("LC_ALL") or "C.UTF-8"
+    no_net = str(_no_net_bin_dir())
+    dead = "http://127.0.0.1:9"
     return {
         "HOME": str(workspace),
         "TMPDIR": str(tmp),
         "TMP": str(tmp),
         "TEMP": str(tmp),
-        "PATH": path,
+        "PATH": f"{no_net}:{path}",
         "LANG": lang,
         "LC_ALL": lang,
         "TERM": "dumb",
+        # Shell has no extra network. HTTP is web_search / web_fetch only.
+        "http_proxy": dead,
+        "https_proxy": dead,
+        "HTTP_PROXY": dead,
+        "HTTPS_PROXY": dead,
+        "ALL_PROXY": dead,
+        "all_proxy": dead,
+        "FTP_PROXY": dead,
     }
+
+
+def _no_net_bin_dir() -> Path:
+    global _no_net_bin
+    if _no_net_bin is not None:
+        return _no_net_bin
+    import tempfile
+
+    d = Path(tempfile.mkdtemp(prefix="snorlax-no-net-"))
+    script = (
+        "#!/bin/sh\n"
+        'echo "Error: shell has no network. Use web_search or web_fetch." >&2\n'
+        "exit 1\n"
+    )
+    for name in _BLOCKED_NET_BINS:
+        path = d / name
+        path.write_text(script, encoding="utf-8")
+        path.chmod(0o755)
+    _no_net_bin = d
+    return d
+
+
+def _netns_prefix() -> tuple[str, ...]:
+    """Optional kernel netns. Unavailable in many containers; stubs still apply."""
+    import shutil
+    import subprocess
+
+    unshare = shutil.which("unshare")
+    if not unshare:
+        return ()
+    try:
+        probe = subprocess.run(
+            [unshare, "--net", "true"],
+            capture_output=True,
+            timeout=2,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return ()
+    if probe.returncode != 0:
+        return ()
+    return (unshare, "--net")
 
 
 def _shell_sync(workspace: Path, command: str, timeout: float) -> str:
@@ -378,12 +480,13 @@ def _shell_sync(workspace: Path, command: str, timeout: float) -> str:
         return "Error: command is required"
     timeout = min(max(timeout, 0.1), MAX_SHELL_TIMEOUT)
     env = _shell_env(workspace)
+    argv = [*_netns_prefix(), "/bin/sh", "-c", command]
     try:
         import subprocess
 
         completed = subprocess.run(
-            command,
-            shell=True,
+            argv,
+            shell=False,
             cwd=str(workspace),
             env=env,
             capture_output=True,
@@ -404,11 +507,11 @@ async def _web_search(query: str) -> str:
     q = query.strip()
     if not q:
         return "Error: query is required"
-    url = f"{DDG_HTML}?{urlencode({'q': q})}"
+    url = search_request_url(q)
     status, body, _ctype = await _http_get(url)
     if status >= 400:
         return f"Error: search returned HTTP {status}"
-    results = _parse_ddg(body)
+    results = _parse_search_html(body)
     if not results:
         return "No results."
     lines = []
@@ -456,6 +559,30 @@ async def _http_get(
             body = b"".join(chunks).decode("utf-8", "replace")
             ctype = response.headers.get("content-type", "")
             return response.status_code, body, ctype
+
+
+def _parse_search_html(html: str) -> list[dict[str, str]]:
+    if _search_provider == "duckduckgo":
+        return _parse_ddg(html) or _parse_generic_links(html)
+    return _parse_generic_links(html) or _parse_ddg(html)
+
+
+def _parse_generic_links(html: str) -> list[dict[str, str]]:
+    results: list[dict[str, str]] = []
+    seen: set[str] = set()
+    for match in re.finditer(
+        r'<a[^>]+href="(https?://[^"]+)"[^>]*>(.*?)</a>',
+        html,
+        re.I | re.S,
+    ):
+        href = html_unescape(match.group(1)).strip()
+        title = html_unescape(re.sub(r"<[^>]+>", "", match.group(2)))
+        title = re.sub(r"\s+", " ", title).strip()
+        if not href or not title or href in seen:
+            continue
+        seen.add(href)
+        results.append({"title": title, "url": href, "snippet": ""})
+    return results
 
 
 def _parse_ddg(html: str) -> list[dict[str, str]]:
