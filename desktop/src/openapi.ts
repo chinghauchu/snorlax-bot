@@ -115,7 +115,9 @@ export interface paths {
          *     `senderId=user` and that agent. Peer/involve/DM/hop messages are
          *     never in a 1:1. For kind=channel (`snorlax-bot-group`) the default
          *     list is the **timeline**: handoff roots (and other unreplied-to
-         *     roots). Thread replies are omitted. Pass `threadId` (or `replyTo`)
+         *     roots). Thread replies are omitted. Question cards (`kind=widget`)
+         *     never appear on the timeline — only in a thread (`?threadId=`).
+         *     Pass `threadId` (or `replyTo`)
          *     to load that thread (root + flat replies).
          */
         get: operations["listMessages"];
@@ -124,6 +126,9 @@ export interface paths {
          * Send a user message and stream agent replies
          * @description SSE. Images are stored and returned; never forwarded to vLLM.
          *     The runtime owns the tool loop (clients never send a tools payload).
+         *     A question card ends that agent turn: no more tokens or tools after
+         *     `kind=widget` until the user answers or dismisses. Tools still
+         *     auto-run; widgets are not approval cards.
          *
          *     For a 1:1 agent, hop 0 is that agent. Mentioned peers and hops
          *     reply in a handoff thread on seed `snorlax-bot-group` when present
@@ -153,19 +158,27 @@ export interface paths {
          *
          *     Multiple `message.done` events may appear on one stream when more
          *     than one agent speaks in this transcript, and after each persisted
-         *     tool line (`kind=tool`). Tool activity is stored as Message
+         *     tool line (`kind=tool`) or question card (`kind=widget`). Tool activity is stored as Message
          *     `kind=tool` with short content (`Read src/a.ts`, `Ran ls`,
          *     `Fetched …`), same senderId as the speaking agent, in that
          *     transcript only (1:1 if A tools; channel thread if B tools).
          *     Report-back into A's 1:1 is a normal assistant `kind=message` as A
-         *     and does not copy B's tool lines. A turn that ran tools always
+         *     and does not copy B's tool lines or B's widgets. A turn that ran tools always
          *     finishes with a normal assistant `kind=message` (streamed and
-         *     persisted). Empty model text or an inference error after tools still
+         *     persisted) unless the model asked a question card — then the POST
+         *     SSE ends on that `kind=widget` `message.done` (no `widget.*` event).
+         *     Answer with `{ widgetReply: { id, values } }` or `{ dismissed: true }`;
+         *     that is not a user Message. A normal content send while a card is
+         *     pending is 409 unless dismissOnMoveOn (then auto-dismiss and proceed).
+         *     Empty model text or an inference error after tools still
          *     produce that follow-up; do not end on only a `kind=tool` line or
          *     `event:error` with no saved assistant message. Live `tool.start` /
          *     `tool.done` traces stay additive. Clients that do not understand
          *     `tool.*` skip those events and may still render `kind=tool` rows from GET.
          *     MCP tools reuse the same traces (`Used server__tool` / `Ran …`).
+         *     Unknown events must still be ignorable. Widget rows follow
+         *     senderId of the speaking agent (LEFT). GET 1:1 is still only user
+         *     + that agent.
          */
         post: operations["postMessage"];
         delete?: never;
@@ -379,11 +392,13 @@ export interface components {
              * @description Channel handoff root is `handoff` (LEFT card authored as A).
              *     Tool activity is `tool` (LEFT 12px muted status, short content
              *     like `Read src/a.ts` / `Ran ls` / `Fetched …`, same senderId as
-             *     the agent). Not JSON and not a user-right bubble. Default
-             *     `message`.
+             *     the agent). Question card is `widget` (LEFT card under the
+             *     speaking agent's 20px avatar + 13px name; not a user-right
+             *     bubble and not a token stream). Default `message`. Do not
+             *     drop kind=message|handoff|tool.
              * @enum {string}
              */
-            kind?: "message" | "handoff" | "tool";
+            kind?: "message" | "handoff" | "tool" | "widget";
             /** @description Channel thread id. Null on timeline roots and on 1:1s. */
             replyTo?: string | null;
             /**
@@ -402,9 +417,60 @@ export interface components {
             brief?: string | null;
             /** @description Count of thread replies under a timeline root. */
             replyCount?: number;
+            /**
+             * @description Set on kind=widget. Pending, resolved, or dismissed so GET can
+             *     re-render the same card. Absent on other kinds. Never a
+             *     user-right bubble.
+             */
+            widget?: components["schemas"]["Widget"];
+        };
+        WidgetOption: {
+            label: string;
+            /** @description Picked value. Defaults to label. */
+            value?: string;
+            description?: string;
+            /**
+             * @default default
+             * @enum {string}
+             */
+            style: "default" | "primary" | "danger";
+        };
+        Widget: {
+            /** @description Natural-language question. Not a menu instruction. */
+            prompt: string;
+            helpText?: string | null;
+            options: components["schemas"]["WidgetOption"][];
+            /** @default false */
+            allowCustom: boolean;
+            /** @default false */
+            multiSelect: boolean;
+            /**
+             * @description If true, a normal content send auto-dismisses this card and
+             *     proceeds. If false, that send is 409 while the card is pending.
+             * @default false
+             */
+            dismissOnMoveOn: boolean;
+            /** @enum {string} */
+            status: "pending" | "resolved" | "dismissed";
+            /** @description Chosen option values after a pick. Empty when pending or dismissed. */
+            values?: string[];
+        };
+        WidgetReply: {
+            /** @description Message id of the pending kind=widget row. */
+            id: string;
+            /**
+             * @description Option values (default label). multiSelect is an array.
+             *     Not persisted as a user Message.
+             */
+            values: string[];
         };
         MessageCreate: {
-            content: string;
+            /**
+             * @description User text. Required unless widgetReply or dismissed. Empty is
+             *     allowed only for those answer posts. A normal send while a
+             *     question is pending is 409 unless dismissOnMoveOn.
+             */
+            content?: string;
             images?: components["schemas"]["ImageIn"][];
             /**
              * @description Agent ids from typeahead chips. Unresolved `@text` is omitted
@@ -427,6 +493,17 @@ export interface components {
              *     skip the log (do not 422, do not recreate seed).
              */
             channelId?: string | null;
+            /**
+             * @description Answer the pending question card. Not a user Message. Not a
+             *     user-right bubble.
+             */
+            widgetReply?: components["schemas"]["WidgetReply"];
+            /**
+             * @description Decline the pending question card. The card stays on the
+             *     LEFT row as status=dismissed. Does not create a user Message.
+             * @default false
+             */
+            dismissed: boolean;
         };
         MessageDelta: {
             id: string;
@@ -714,6 +791,7 @@ export interface operations {
             };
             401: components["responses"]["Error"];
             404: components["responses"]["Error"];
+            409: components["responses"]["Error"];
             422: components["responses"]["Error"];
         };
     };

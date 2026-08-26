@@ -101,6 +101,7 @@ struct ChatView: View {
                                 && message.role == .assistant
                                 && !message.isHandoffRoot
                                 && !message.isToolLine
+                                && !message.isWidget
                         }
                         let toolThisTurn: Bool = {
                             guard let lastUserIdx else { return false }
@@ -414,6 +415,9 @@ private struct MessageBubble: View {
                 Text(message.content)
                     .font(.system(size: 12))
                     .foregroundStyle(.secondary)
+                    .padding(.horizontal, 12)
+            } else if message.isWidget, let widget = message.widget {
+                WidgetCardView(messageId: message.id, widget: widget)
                     .padding(.horizontal, 12)
             } else {
             HStack(alignment: .top, spacing: 0) {

@@ -21,6 +21,7 @@ import {
   patchAgent,
   resolveMediaUrl,
   sendMessage,
+  type StreamHandlers,
 } from "./api";
 import {
   displayBody,
@@ -60,6 +61,8 @@ import {
 } from "./runtimeUrl";
 import { showThinkingLine, THINKING_LABEL } from "./thinking";
 import { ComputerPane } from "./ComputerPane";
+import { WidgetCard } from "./WidgetCard";
+import { isWidget } from "./widget";
 import type {
   Agent,
   ChatMessage,
@@ -630,6 +633,147 @@ export function App() {
     }
   }
 
+  async function submitTurn(opts: {
+    content: string;
+    images?: ImageIn[];
+    localImages?: ChatMessage["images"];
+    mentionIds?: string[];
+    optimisticUser?: boolean;
+    extra?: { widgetReply?: { id: string; values: string[] }; dismissed?: boolean };
+  }) {
+    if (!session || !active || busy) return;
+    const content = opts.content;
+    const images = opts.images ?? [];
+    const localImages = opts.localImages ?? [];
+    const mentionIds = opts.mentionIds ?? [];
+    const extra = opts.extra;
+    let userMsg: ChatMessage | null = null;
+    if (opts.optimisticUser) {
+      userMsg = {
+        id: `local-${Date.now()}`,
+        agentId: active.id,
+        role: "user",
+        content,
+        images: localImages,
+        createdAt: new Date().toISOString(),
+        senderId: USER_SENDER_ID,
+        senderName: "User",
+        senderAvatar: null,
+        hop: 0,
+        mentions: [],
+      };
+      setMessages((prev) => [...prev, userMsg!]);
+    }
+    setToolTraces([]);
+    setBusy(true);
+    const handlers: StreamHandlers = {
+      onDelta(messageId, delta, sender) {
+        if (active.kind === "channel" && !threadId) return;
+        setMessages((prev) => {
+          const existing = prev.find((m) => m.id === messageId);
+          if (!existing) {
+            return [
+              ...prev,
+              {
+                id: messageId,
+                agentId: active.id,
+                role: "assistant",
+                content: delta,
+                images: [],
+                createdAt: new Date().toISOString(),
+                senderId: sender?.senderId || active.id,
+                senderName: sender?.senderName || active.name,
+                senderAvatar: sender?.senderAvatar ?? active.avatar,
+                hop: 0,
+                mentions: [],
+              },
+            ];
+          }
+          return prev.map((m) =>
+            m.id === messageId ? { ...m, content: m.content + delta } : m,
+          );
+        });
+      },
+      onDone(message) {
+        if (
+          message &&
+          active.kind === "channel" &&
+          !threadId &&
+          message.replyTo
+        ) {
+          return;
+        }
+        if (message) {
+          if (isToolLine(message)) {
+            setToolTraces((prev) =>
+              prev.filter((trace) => trace.id !== message.id),
+            );
+          }
+          setMessages((prev) => {
+            const without = prev.filter((m) => m.id !== message.id);
+            return [...without, message];
+          });
+          setWorkspaceTick((n) => n + 1);
+        }
+      },
+      onError(code, message) {
+        setComposerError(`${code}: ${message}`);
+      },
+      onTool(trace) {
+        if (active.kind === "channel" && !threadId) return;
+        setToolTraces((prev) => {
+          const without = prev.filter((item) => item.id !== trace.id);
+          return [...without, { id: trace.id, summary: trace.summary, senderId: trace.senderId, senderName: trace.senderName }];
+        });
+        if (typeof trace.ok === "boolean") {
+          setWorkspaceTick((n) => n + 1);
+        }
+      },
+    };
+    try {
+      await sendMessage(
+        session,
+        active.id,
+        content,
+        images,
+        handlers,
+        mentionIds,
+        active.kind === "channel" && threadId ? threadId : undefined,
+        active.kind === "channel" ? undefined : lastExtraChannelId.current,
+        extra,
+      );
+      const listed = await listMessages(
+        session,
+        active.id,
+        active.kind === "channel" && threadId ? { threadId } : undefined,
+      );
+      setMessages(listed);
+      setToolTraces([]);
+      if (active.kind !== "channel") {
+        const channelId = listed
+          .map((message) => visibleJump(message, agents)?.channelId)
+          .find((id): id is string => Boolean(id));
+        if (channelId) {
+          setUnreadIds((prev) => new Set(prev).add(channelId));
+        }
+      }
+      pickedMentions.current.clear();
+    } catch (err) {
+      if (err instanceof ApiError && (err.status === 422 || err.status === 409)) {
+        setComposerError(err.message);
+        if (userMsg) {
+          setMessages((prev) => prev.filter((m) => m.id !== userMsg!.id));
+          if (content) setDraft(content);
+        }
+      } else {
+        setComposerError(describeError(err));
+      }
+    } finally {
+      setBusy(false);
+      focusComposer();
+    }
+  }
+
   async function onSend() {
     if (!session || !active || busy) return;
     const content = draft.trim();
@@ -650,126 +794,31 @@ export function App() {
         ]
       : [];
     setPendingImage(null);
-    const userMsg: ChatMessage = {
-      id: `local-${Date.now()}`,
-      agentId: active.id,
-      role: "user",
-      content,
-      images: localImages,
-      createdAt: new Date().toISOString(),
-      senderId: USER_SENDER_ID,
-      senderName: "User",
-      senderAvatar: null,
-      hop: 0,
-      mentions: [],
-    };
-    setMessages((prev) => [...prev, userMsg]);
-    setToolTraces([]);
-    setBusy(true);
     resizeComposer(true);
-    const mentionIds = mentionIdsInText(content, pickedMentions.current);
-    try {
-      await sendMessage(
-        session,
-        active.id,
-        content,
-        images,
-        {
-        onDelta(messageId, delta, sender) {
-          if (active.kind === "channel" && !threadId) return;
-          setMessages((prev) => {
-            const existing = prev.find((m) => m.id === messageId);
-            if (!existing) {
-              return [
-                ...prev,
-                {
-                  id: messageId,
-                  agentId: active.id,
-                  role: "assistant",
-                  content: delta,
-                  images: [],
-                  createdAt: new Date().toISOString(),
-                  senderId: sender?.senderId || active.id,
-                  senderName: sender?.senderName || active.name,
-                  senderAvatar: sender?.senderAvatar ?? active.avatar,
-                  hop: 0,
-                  mentions: [],
-                },
-              ];
-            }
-            return prev.map((m) =>
-              m.id === messageId ? { ...m, content: m.content + delta } : m,
-            );
-          });
-        },
-        onDone(message) {
-          if (
-            message &&
-            active.kind === "channel" &&
-            !threadId &&
-            message.replyTo
-          ) {
-            return;
-          }
-          if (message) {
-            if (isToolLine(message)) {
-              setToolTraces((prev) =>
-                prev.filter((trace) => trace.id !== message.id),
-              );
-            }
-            setMessages((prev) => {
-              const without = prev.filter((m) => m.id !== message.id);
-              return [...without, message];
-            });
-            setWorkspaceTick((n) => n + 1);
-          }
-        },
-        onError(code, message) {
-          setComposerError(`${code}: ${message}`);
-        },
-        onTool(trace) {
-          if (active.kind === "channel" && !threadId) return;
-          setToolTraces((prev) => {
-            const without = prev.filter((item) => item.id !== trace.id);
-            return [...without, { id: trace.id, summary: trace.summary, senderId: trace.senderId, senderName: trace.senderName }];
-          });
-          if (typeof trace.ok === "boolean") {
-            setWorkspaceTick((n) => n + 1);
-          }
-        },
-        },
-        mentionIds,
-        active.kind === "channel" && threadId ? threadId : undefined,
-        active.kind === "channel" ? undefined : lastExtraChannelId.current,
-      );
-      const listed = await listMessages(
-        session,
-        active.id,
-        active.kind === "channel" && threadId ? { threadId } : undefined,
-      );
-      setMessages(listed);
-      setToolTraces([]);
-      if (active.kind !== "channel") {
-        const channelId = listed
-          .map((message) => visibleJump(message, agents)?.channelId)
-          .find((id): id is string => Boolean(id));
-        if (channelId) {
-          setUnreadIds((prev) => new Set(prev).add(channelId));
-        }
-      }
-      pickedMentions.current.clear();
-    } catch (err) {
-      if (err instanceof ApiError && err.status === 422) {
-        setComposerError(err.message);
-        setMessages((prev) => prev.filter((m) => m.id !== userMsg.id));
-        setDraft(content);
-      } else {
-        setComposerError(describeError(err));
-      }
-    } finally {
-      setBusy(false);
-      focusComposer();
-    }
+    await submitTurn({
+      content,
+      images,
+      localImages,
+      mentionIds: mentionIdsInText(content, pickedMentions.current),
+      optimisticUser: true,
+    });
+  }
+
+  async function answerWidget(id: string, values: string[]) {
+    setComposerError(null);
+    await submitTurn({
+      content: "",
+      extra: { widgetReply: { id, values } },
+    });
+  }
+
+  async function dismissWidget(id: string) {
+    void id;
+    setComposerError(null);
+    await submitTurn({
+      content: "",
+      extra: { dismissed: true },
+    });
   }
 
   function onComposerKey(event: KeyboardEvent<HTMLTextAreaElement>) {
@@ -1106,6 +1155,14 @@ export function App() {
                       </div>
                     ) : isToolLine(message) ? (
                       <p className="tool-trace">{message.content}</p>
+                    ) : isWidget(message) && message.widget ? (
+                      <WidgetCard
+                        messageId={message.id}
+                        widget={message.widget}
+                        disabled={busy}
+                        onReply={(id, values) => void answerWidget(id, values)}
+                        onDismiss={(id) => void dismissWidget(id)}
+                      />
                     ) : (
                       <div className={`bubble ${mine ? "user" : "agent"}`}>
                         {message.images.map((image) => (

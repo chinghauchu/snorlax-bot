@@ -26,6 +26,7 @@ from snorlax_runtime.schemas import (
     WorkspaceFile,
     WorkspaceListing,
 )
+from snorlax_runtime.widgets import PENDING_ERROR, STATUS_PENDING, WidgetAnswerError, require_reply_values
 from snorlax_runtime.token import resolve_token, write_token_file
 from snorlax_runtime.mcp import start_mcp, stop_mcp
 from snorlax_runtime.tools import (
@@ -308,6 +309,36 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             raise _error(422, exc.message) from exc
         images = [img.model_dump() for img in payload.images]
         backend = request.app.state.backend
+        stored_reply_to = None
+        if is_group and payload.replyTo:
+            stored_reply_to = await store.resolve_thread_root(id, payload.replyTo)
+        pending = await store.pending_widget(
+            id, thread_id=stored_reply_to if is_group else None
+        )
+        if payload.widgetReply is not None:
+            target = await store.get_message(payload.widgetReply.id)
+            if target is None or target.get("agentId") != id:
+                raise _error(422, "widget not found")
+            if is_group:
+                target_thread = target.get("replyTo") or target["id"]
+                if stored_reply_to and target_thread != stored_reply_to:
+                    raise _error(422, "widget not in this thread")
+            body = target.get("widget") or {}
+            if body.get("status") != STATUS_PENDING:
+                raise _error(422, "widget is not pending")
+            try:
+                require_reply_values(
+                    list(payload.widgetReply.values or []), body
+                )
+            except WidgetAnswerError as exc:
+                raise _error(422, exc.message) from exc
+        elif payload.dismissed:
+            if pending is None:
+                raise _error(422, "no pending widget")
+        elif (payload.content or "").strip() and pending is not None:
+            body = pending.get("widget") or {}
+            if not body.get("dismissOnMoveOn"):
+                raise _error(409, PENDING_ERROR)
 
         async def events() -> AsyncIterator[bytes]:
             async for event, data in run_user_turn(
@@ -320,6 +351,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 reply_to=payload.replyTo,
                 preferred_channel_id=payload.channelId,
                 max_tool_rounds=request.app.state.settings.tool_max_rounds,
+                widget_reply=(
+                    payload.widgetReply.model_dump()
+                    if payload.widgetReply is not None
+                    else None
+                ),
+                dismissed=payload.dismissed,
             ):
                 yield _sse(event, data)
 

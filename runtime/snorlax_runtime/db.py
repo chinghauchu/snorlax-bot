@@ -36,14 +36,21 @@ TOOLS_PREAMBLE = (
     "You have built-in tools (list_dir, read_file, write_file, delete_file, "
     "shell, web_search, web_fetch). Call them instead of describing the work. "
     "The runtime runs tools immediately — do not ask the user to approve a "
-    "tool call and do not wait for a widget. Write programs to files in the "
+    "tool call and do not wait for a widget. Question cards are for user "
+    "judgment (which approach, whether to proceed on a product decision), "
+    "never for gating shell/web/MCP. When you need a decision, call "
+    "ask_user_question with a natural-language prompt and 1-6 options whose "
+    "values read like a reply the user would send. That ends your turn. "
+    "Write programs to files in the "
     "workspace; do not dump a whole app in the chat bubble. Do not "
     "acknowledge that you can help — do the task. HTTP is web_search / "
     "web_fetch only; do not curl from shell. 1:1 files are private to you. "
     "Channel and handoff turns use your private workspace unless that "
     "channel's shared project is on — then they share the channel sandbox "
     "under the runtime data dir (not a folder on the host Mac). If another "
-    "teammate needs your files, turn shared project on or put them there."
+    "teammate needs your files, turn shared project on or put them there. "
+    "If a teammate needs a user decision, report back; do not try to paint "
+    "a question card in someone else's 1:1."
 )
 
 
@@ -189,6 +196,7 @@ class Store:
             "handoff_channel_id": "TEXT",
             "handoff_thread_id": "TEXT",
             "origin_conversation_id": "TEXT",
+            "widget": "TEXT",
         }
         for name, spec in additions.items():
             if name not in msg_cols:
@@ -512,8 +520,12 @@ class Store:
             where += " AND (id = ? OR reply_to = ?)"
             params.extend([root_id, root_id])
         else:
-            # Timeline = roots only. Thread replies stay behind ?threadId=.
-            where += " AND (reply_to IS NULL OR reply_to = '')"
+            # Timeline = roots only. Thread replies and question cards stay
+            # behind ?threadId=. Widgets never appear on the timeline.
+            where += (
+                " AND (reply_to IS NULL OR reply_to = '')"
+                " AND (kind IS NULL OR kind != 'widget')"
+            )
         if before:
             cur = await self.conn.execute(
                 "SELECT created_at FROM messages WHERE id = ? AND agent_id = ?",
@@ -632,6 +644,11 @@ class Store:
         reply_count = 0
         if not reply_to:
             reply_count = await self._reply_count(message["id"])
+        widget = None
+        if kind == "widget":
+            from snorlax_runtime.widgets import public_widget
+
+            widget = public_widget(message.get("widget"))
         return {
             "id": message["id"],
             "agentId": message["agent_id"],
@@ -650,6 +667,7 @@ class Store:
             "userAsk": message.get("user_ask"),
             "brief": message.get("brief"),
             "replyCount": reply_count,
+            "widget": widget,
         }
 
     async def list_images(self, message_id: str) -> list[dict[str, Any]]:
@@ -699,6 +717,7 @@ class Store:
         handoff_channel_id: str | None = None,
         handoff_thread_id: str | None = None,
         origin_conversation_id: str | None = None,
+        widget: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         message_id = message_id or new_id("msg")
         created = utcnow()
@@ -707,12 +726,15 @@ class Store:
         if sender_name is None:
             sender_name = USER_SENDER_NAME if sender_id == USER_SENDER_ID else sender_id
         stored_mentions = json.dumps(mentions or [], ensure_ascii=False)
+        stored_widget = (
+            json.dumps(widget, ensure_ascii=False) if widget is not None else None
+        )
         await self.conn.execute(
             "INSERT INTO messages "
             "(id, agent_id, role, content, created_at, sender_id, sender_name, "
             "sender_avatar, hop, mentions, reply_to, kind, user_ask, brief, "
-            "handoff_channel_id, handoff_thread_id, origin_conversation_id) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            "handoff_channel_id, handoff_thread_id, origin_conversation_id, widget) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (
                 message_id,
                 agent_id,
@@ -731,6 +753,7 @@ class Store:
                 handoff_channel_id,
                 handoff_thread_id,
                 origin_conversation_id,
+                stored_widget,
             ),
         )
         for image in images or []:
@@ -742,6 +765,105 @@ class Store:
         row = await cur.fetchone()
         assert row is not None
         return await self._message_public(dict(row))
+
+    async def pending_widget(
+        self,
+        conversation_id: str,
+        *,
+        thread_id: str | None = None,
+    ) -> dict[str, Any] | None:
+        """Latest pending kind=widget in this transcript (or channel thread)."""
+        params: list[Any] = [conversation_id, "widget"]
+        where = "WHERE agent_id = ? AND kind = ?"
+        conversation = await self.get_agent(conversation_id)
+        is_channel = (
+            conversation is not None and conversation.get("kind") == KIND_CHANNEL
+        )
+        if is_channel and thread_id:
+            root_id = await self.resolve_thread_root(conversation_id, thread_id)
+            where += " AND (id = ? OR reply_to = ?)"
+            params.extend([root_id, root_id])
+        elif is_channel:
+            where += " AND (reply_to IS NULL OR reply_to = '')"
+        cur = await self.conn.execute(
+            f"SELECT * FROM messages {where} ORDER BY created_at DESC",
+            params,
+        )
+        for row in await cur.fetchall():
+            public = await self._message_public(dict(row))
+            widget = public.get("widget") or {}
+            if widget.get("status") == "pending":
+                return public
+        return None
+
+    async def get_message(self, message_id: str) -> dict[str, Any] | None:
+        cur = await self.conn.execute(
+            "SELECT * FROM messages WHERE id = ?", (message_id,)
+        )
+        row = await cur.fetchone()
+        if row is None:
+            return None
+        return await self._message_public(dict(row))
+
+    async def resolve_widget(
+        self,
+        message_id: str,
+        *,
+        status: str,
+        values: list[str] | None = None,
+    ) -> dict[str, Any] | None:
+        from snorlax_runtime.widgets import public_widget
+
+        cur = await self.conn.execute(
+            "SELECT * FROM messages WHERE id = ?", (message_id,)
+        )
+        row = await cur.fetchone()
+        if row is None:
+            return None
+        widget = public_widget(dict(row).get("widget"))
+        if widget is None:
+            return None
+        widget["status"] = status
+        widget["values"] = list(values or [])
+        await self.conn.execute(
+            "UPDATE messages SET widget = ? WHERE id = ?",
+            (json.dumps(widget, ensure_ascii=False), message_id),
+        )
+        await self.conn.commit()
+        cur = await self.conn.execute(
+            "SELECT * FROM messages WHERE id = ?", (message_id,)
+        )
+        updated = await cur.fetchone()
+        assert updated is not None
+        return await self._message_public(dict(updated))
+
+    async def decline_other_pending_widgets(
+        self,
+        conversation_id: str,
+        *,
+        keep_id: str,
+        thread_id: str | None = None,
+    ) -> None:
+        params: list[Any] = [conversation_id, "widget", keep_id]
+        where = "WHERE agent_id = ? AND kind = ? AND id != ?"
+        conversation = await self.get_agent(conversation_id)
+        is_channel = (
+            conversation is not None and conversation.get("kind") == KIND_CHANNEL
+        )
+        if is_channel and thread_id:
+            root_id = await self.resolve_thread_root(conversation_id, thread_id)
+            where += " AND (id = ? OR reply_to = ?)"
+            params.extend([root_id, root_id])
+        cur = await self.conn.execute(
+            f"SELECT id, widget FROM messages {where}",
+            params,
+        )
+        from snorlax_runtime.widgets import public_widget
+
+        for row in await cur.fetchall():
+            widget = public_widget(row["widget"])
+            if widget and widget.get("status") == "pending":
+                await self.resolve_widget(str(row["id"]), status="dismissed")
 
     async def _add_image(
         self, message_id: str, image: dict[str, Any]
@@ -860,7 +982,7 @@ class Store:
             )
             return messages
         cur = await self.conn.execute(
-            "SELECT sender_id, sender_name, role, content, kind FROM messages "
+            "SELECT sender_id, sender_name, role, content, kind, widget FROM messages "
             "WHERE agent_id = ? ORDER BY created_at ASC",
             (conversation_id,),
         )
@@ -885,7 +1007,7 @@ class Store:
     ) -> None:
         root_id = await self.resolve_thread_root(conversation_id, thread_id)
         cur = await self.conn.execute(
-            "SELECT sender_id, sender_name, role, content, kind FROM messages "
+            "SELECT sender_id, sender_name, role, content, kind, widget FROM messages "
             "WHERE agent_id = ? AND (id = ? OR reply_to = ?) "
             "ORDER BY created_at ASC",
             (conversation_id, root_id, root_id),
@@ -899,7 +1021,34 @@ class Store:
         self, messages: list[dict[str, str]], row: Any, who: str
     ) -> None:
         sender = row["sender_id"]
+        kind = row["kind"] if "kind" in row.keys() else "message"
         body = row["content"]
+        if kind == "widget":
+            from snorlax_runtime.widgets import (
+                DECLINE_USER_NOTE,
+                format_widget_for_model,
+                public_widget,
+            )
+
+            widget = public_widget(row["widget"] if "widget" in row.keys() else None)
+            if widget is not None:
+                body = format_widget_for_model(widget)
+            messages.append({"role": "assistant", "content": body})
+            if widget and widget.get("status") == "dismissed":
+                messages.append({"role": "user", "content": DECLINE_USER_NOTE})
+            elif widget and widget.get("status") == "resolved":
+                picked = [
+                    str(item).strip()
+                    for item in (widget.get("values") or [])
+                    if str(item).strip()
+                ]
+                messages.append(
+                    {
+                        "role": "user",
+                        "content": "\n".join(picked) or "(empty)",
+                    }
+                )
+            return
         if sender == who:
             messages.append({"role": "assistant", "content": body})
         elif sender == USER_SENDER_ID:

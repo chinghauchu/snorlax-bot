@@ -23,6 +23,15 @@ from snorlax_runtime.handoff import (
     strip_involve_kicker,
     wake_pack,
 )
+from snorlax_runtime.widgets import (
+    STATUS_DISMISSED,
+    STATUS_PENDING,
+    STATUS_RESOLVED,
+    WIDGET_KIND,
+    WidgetAnswerError,
+    WidgetPendingError,
+    require_reply_values,
+)
 
 log = logging.getLogger("snorlax.routing")
 
@@ -327,6 +336,8 @@ async def run_user_turn(
     reply_to: str | None = None,
     preferred_channel_id: str | None = None,
     max_tool_rounds: int | None = None,
+    widget_reply: dict[str, Any] | None = None,
+    dismissed: bool = False,
 ) -> AsyncIterator[tuple[str, dict[str, Any]]]:
     """Persist the user message, then route hop-0 and peer work.
 
@@ -335,7 +346,10 @@ async def run_user_turn(
     been dropped and A has reported for each. 1:1 @involves log as handoff
     threads on the seed channel when it exists; otherwise on body
     `channelId` if that row is an existing channel; otherwise no channel
-    log (B still wakes).
+    log (B still wakes). A pending question card is answered by
+    `widgetReply` or `dismissed` on this POST — not a new user Message.
+    After a widget is sent, this generator ends the origin SSE (remaining
+    peer jobs still run off-stream).
     """
     origin_id = conversation["id"]
     is_group = conversation.get("kind") == KIND_CHANNEL
@@ -352,20 +366,67 @@ async def run_user_turn(
         if reply_to:
             stored_reply_to = await store.resolve_thread_root(origin_id, reply_to)
             thread_id = stored_reply_to
-    user_saved = await store.add_message(
-        agent_id=origin_id,
-        role="user",
-        content=content,
-        images=images,
-        sender_id=USER_SENDER_ID,
-        sender_name=USER_SENDER_NAME,
-        sender_avatar=None,
-        hop=0,
-        mentions=mentions,
-        reply_to=stored_reply_to,
+    pending = await store.pending_widget(
+        origin_id, thread_id=stored_reply_to if is_group else None
     )
-    if is_group and thread_id is None:
-        thread_id = user_saved["id"]
+    persist_user = bool((content or "").strip())
+    if widget_reply is not None:
+        target = await store.get_message(widget_reply["id"])
+        if target is None or target.get("agentId") != origin_id:
+            raise WidgetAnswerError("widget not found")
+        if is_group:
+            target_thread = target.get("replyTo") or target["id"]
+            if stored_reply_to and target_thread != stored_reply_to:
+                raise WidgetAnswerError("widget not in this thread")
+        body = target.get("widget") or {}
+        if body.get("status") != STATUS_PENDING:
+            raise WidgetAnswerError("widget is not pending")
+        values = require_reply_values(
+            list(widget_reply.get("values") or []), body
+        )
+        pending = await store.resolve_widget(
+            target["id"], status=STATUS_RESOLVED, values=values
+        )
+        if pending is None:
+            raise WidgetAnswerError("widget not found")
+        yield "message.done", pending
+        persist_user = False
+    elif dismissed:
+        if pending is None:
+            raise WidgetAnswerError("no pending widget")
+        pending = await store.resolve_widget(
+            pending["id"], status=STATUS_DISMISSED
+        )
+        if pending is None:
+            raise WidgetAnswerError("no pending widget")
+        yield "message.done", pending
+        persist_user = False
+    elif persist_user and pending is not None:
+        body = pending.get("widget") or {}
+        if body.get("dismissOnMoveOn"):
+            pending = await store.resolve_widget(
+                pending["id"], status=STATUS_DISMISSED
+            )
+            if pending is not None:
+                yield "message.done", pending
+        else:
+            raise WidgetPendingError()
+    user_saved: dict[str, Any] | None = None
+    if persist_user:
+        user_saved = await store.add_message(
+            agent_id=origin_id,
+            role="user",
+            content=content,
+            images=images,
+            sender_id=USER_SENDER_ID,
+            sender_name=USER_SENDER_NAME,
+            sender_avatar=None,
+            hop=0,
+            mentions=mentions,
+            reply_to=stored_reply_to,
+        )
+        if is_group and thread_id is None:
+            thread_id = user_saved["id"]
     turn = TurnState()
     jobs: list[_Job] = []
 
@@ -382,26 +443,47 @@ async def run_user_turn(
             )
         )
 
-    await _enqueue_mentions(
-        jobs,
-        mentions,
-        store=store,
-        roster=roster,
-        turn=turn,
-        source_id=origin_id,
-        source_sender=USER_SENDER_ID,
-        source_name=conversation["name"],
-        quoted=content,
-        hop=0 if is_group else 1,
-        is_group=is_group,
-        peer=not is_group,
-        thread_id=thread_id,
-        origin_user_message_id=user_saved["id"] if not is_group else None,
-        origin_conversation_id=None if is_group else origin_id,
-        handoff_channel_id=log_channel_id,
-    )
+    if persist_user:
+        await _enqueue_mentions(
+            jobs,
+            mentions,
+            store=store,
+            roster=roster,
+            turn=turn,
+            source_id=origin_id,
+            source_sender=USER_SENDER_ID,
+            source_name=conversation["name"],
+            quoted=content,
+            hop=0 if is_group else 1,
+            is_group=is_group,
+            peer=not is_group,
+            thread_id=thread_id,
+            origin_user_message_id=user_saved["id"] if user_saved and not is_group else None,
+            origin_conversation_id=None if is_group else origin_id,
+            handoff_channel_id=log_channel_id,
+        )
+    elif (
+        is_group
+        and pending is not None
+        and thread_id
+        and pending.get("senderId")
+        and pending["senderId"] != USER_SENDER_ID
+    ):
+        jobs.append(
+            _Job(
+                agent_id=pending["senderId"],
+                conversation_id=origin_id,
+                hop=0,
+                peer=False,
+                edge_from=USER_SENDER_ID,
+                edge_to=pending["senderId"],
+                thread_id=thread_id,
+                channel_id=origin_id,
+            )
+        )
 
     i = 0
+    origin_open = True
     while i < len(jobs):
         job = jobs[i]
         i += 1
@@ -420,16 +502,22 @@ async def run_user_turn(
                 agent=agent,
                 conversation_id=job.conversation_id,
                 hop=0,
-                stream=in_origin,
+                stream=in_origin and origin_open,
                 thread_id=None,
                 wake_pack=job.wake_pack,
                 report_back=True,
                 persist=job.persist,
                 max_tool_rounds=tool_rounds,
             )
-            if in_origin:
+            if in_origin and origin_open:
                 for event, payload in events:
                     yield event, payload
+                    if (
+                        event == "message.done"
+                        and isinstance(payload, dict)
+                        and payload.get("kind") == WIDGET_KIND
+                    ):
+                        origin_open = False
             del saved
             continue
 
@@ -465,15 +553,21 @@ async def run_user_turn(
             agent=agent,
             conversation_id=job.conversation_id,
             hop=job.hop,
-            stream=in_origin,
+            stream=in_origin and origin_open,
             thread_id=job.thread_id,
             wake_pack=job.wake_pack,
             persist=job.persist,
             max_tool_rounds=tool_rounds,
         )
-        if in_origin:
+        if in_origin and origin_open:
             for event, payload in events:
                 yield event, payload
+                if (
+                    event == "message.done"
+                    and isinstance(payload, dict)
+                    and payload.get("kind") == WIDGET_KIND
+                ):
+                    origin_open = False
         if saved is None:
             _queue_report_back(
                 jobs,
@@ -846,7 +940,7 @@ async def _generate(
         )
 
     try:
-        events, raw = await run_tool_loop(
+        events, raw, widget = await run_tool_loop(
             backend,
             transcript,
             workspace=workspace,
@@ -854,8 +948,9 @@ async def _generate(
             assistant_id=assistant_id,
             stream=stream,
             max_rounds=max_tool_rounds if max_tool_rounds is not None else MAX_TOOL_ROUNDS,
-            persist_tool=None if report_back else persist_tool,
+            persist_tool=None if report_back or not persist else persist_tool,
             use_tools=not report_back,
+            use_widget=True,
         )
     except InferenceError as exc:
         # Pre-tool failures only. After tools, run_tool_loop returns
@@ -866,6 +961,66 @@ async def _generate(
         return events, None
 
     content = strip_involve_kicker(raw)
+    if widget is not None:
+        persist_widget = persist and not (is_group and not thread_id)
+        if persist_widget:
+            saved_widget: dict[str, Any]
+            if content.strip():
+                saved_text = await store.add_message(
+                    agent_id=conversation_id,
+                    role="assistant",
+                    content=content,
+                    message_id=assistant_id,
+                    sender_id=agent["id"],
+                    sender_name=agent["name"],
+                    sender_avatar=agent["avatar"],
+                    hop=hop,
+                    mentions=[],
+                    reply_to=thread_id if is_group else None,
+                )
+                if stream:
+                    events.append(("message.done", saved_text))
+                widget_id = new_id("msg")
+            else:
+                widget_id = assistant_id
+            await store.decline_other_pending_widgets(
+                conversation_id,
+                keep_id=widget_id,
+                thread_id=thread_id if is_group else None,
+            )
+            saved_widget = await store.add_message(
+                agent_id=conversation_id,
+                role="assistant",
+                content=widget["prompt"],
+                message_id=widget_id,
+                sender_id=agent["id"],
+                sender_name=agent["name"],
+                sender_avatar=agent["avatar"],
+                hop=hop,
+                mentions=[],
+                reply_to=thread_id if is_group else None,
+                kind="widget",
+                widget=widget,
+            )
+            if stream:
+                events.append(("message.done", saved_widget))
+            return events, saved_widget
+        # Channel timeline: never persist a card. persist=False: never
+        # write B's card into B's 1:1.
+        if persist and content.strip():
+            pass
+        else:
+            saved_widget = {
+                "id": assistant_id,
+                "content": widget["prompt"],
+                "mentions": [],
+                "replyTo": None,
+                "kind": "widget",
+                "widget": widget,
+                "senderId": agent["id"],
+            }
+            return events, None if persist else saved_widget
+
     mentions: list[dict[str, str]] = []
     if not report_back:
         mentions = resolve_agent_mentions(

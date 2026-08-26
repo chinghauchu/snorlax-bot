@@ -14,19 +14,20 @@ Meant to *run*, including without a GPU.
 | Seeded agent `snorlax-bot` (Snorlax 1:1, PATCH identity; DELETE 204) and channel `snorlax-bot-group` (DELETE 204, no auto-reseed, never recreate) | MCP marketplace UI / Settings picker |
 | Create / list / patch / delete agents | Sandbox computer GUI (browser, screenshot pane) |
 | Transcript persistence (SQLite) | Skills, “teach a task”, routines |
-| `POST .../messages` as SSE (`message.delta` / `message.done` / `tool.*` / `error`) | Question widgets |
+| `POST .../messages` as SSE (`message.delta` / `message.done` / `tool.*` / `error`) plus `kind=widget` `message.done` | Extra SSE event types (`widget.*`) |
+| Question widgets (`ask_user_question`; POST `widgetReply` / `dismissed`; not a user bubble) | Tool-approval cards; widgets on the channel timeline |
 | Bearer token LAN auth; bind localhost until a token exists | Vision (images persist, not sent to the model) |
 | Mock inference, **oMLX**, or **vLLM** OpenAI-compat | TensorRT-LLM |
 | Tauri + TypeScript chat UI; 320px computer pane (file tree + text preview, collapsible) | Full sandbox computer GUI (browser, screenshot, terminal, VNC) |
 | Swift/SwiftUI iOS companion (chat + muted tool traces; no computer pane this slice) | Skills, “teach a task”, routines |
-| Seeded group channel + extra user-created channels + agent DMs + @mentions + v0.2 handoff threads + v0.3 identity pane + v0.4 report-back | Extra channel types / widgets |
+| Seeded group channel + extra user-created channels + agent DMs + @mentions + v0.2 handoff threads + v0.3 identity pane + v0.4 report-back + v0.8 question widgets | Extra channel types |
 | Runtime-owned tools: list_dir, read_file, write_file, delete_file, shell (no extra network), web_search (configured provider), web_fetch; auto-run; sandbox under `~/.snorlax-bot`; GET workspace list/read for the desktop pane | Host Docker/SSH secrets in the tool env; Mac folder picker; approval widgets |
 | Runtime MCP client: stdio subprocess + LAN HTTP/SSE from `mcp.json` under `SNORLAX_DATA_DIR`; namespaced `server__tool`; built-ins win | Public-cloud MCP requirement; clients speaking MCP |
 | OpenAPI for `/v1` | |
 
 Default model on Spark: **70B-class FP8**, swapped via config.
 
-Locked v0.1 / v0.2 / v0.3 / v0.4 / v0.5 / v0.6 / v0.7 (chat layout + agent messaging + collaboration handoff + identity pane + report-back + extra channels + basic tools + computer pane + runtime MCP client): [docs/specs/v0.1-chat-and-agents.md](docs/specs/v0.1-chat-and-agents.md).
+Locked v0.1 / v0.2 / v0.3 / v0.4 / v0.5 / v0.6 / v0.7 / v0.8 (chat layout + agent messaging + collaboration handoff + identity pane + report-back + extra channels + basic tools + computer pane + runtime MCP client + question widgets): [docs/specs/v0.1-chat-and-agents.md](docs/specs/v0.1-chat-and-agents.md).
 
 ## v1 — computer and tools
 
@@ -45,8 +46,6 @@ Locked v0.1 / v0.2 / v0.3 / v0.4 / v0.5 / v0.6 / v0.7 (chat layout + agent messa
 - Routines: assign a skill to a bot on a schedule or an event.
 - “Teach a task”: record a demonstration on the sandbox computer, draft a
   skill, human reviews.
-- Question widgets in the transcript (approve / pick / short answer) so a bot
-  can stop for judgment without dumping a wall of text.
 
 ## v3 — iOS companion and Spark ops
 

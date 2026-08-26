@@ -42,6 +42,7 @@ BUILTIN_TOOL_NAMES = frozenset(
         "shell",
         "web_search",
         "web_fetch",
+        "ask_user_question",
     }
 )
 

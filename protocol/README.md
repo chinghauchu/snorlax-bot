@@ -9,6 +9,10 @@ reads are served by the runtime from that sandbox. Channel workspaces are
 sandboxes under that data dir, not a picker for a folder on the Mac.
 MCP config (`mcp.json`) stays on the runtime host.
 
+v0.8 question widgets: Message `kind=widget` plus `widget` on that row.
+Answer with `{ widgetReply: { id, values } }` or `{ dismissed: true }`.
+No `widget.*` SSE event. Clients render only.
+
 A copy is also kept at `runtime/openapi.yaml` and `desktop/openapi.yaml`
 so those trees are self-contained. Do not let the files diverge.
 
