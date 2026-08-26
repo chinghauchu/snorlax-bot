@@ -13,8 +13,8 @@ struct AssistantMarkdown: View {
                 switch segment {
                 case .markdown(let source):
                     MarkdownRun(source: source, names: names)
-                case .code(_, let source):
-                    CodeFence(source: source)
+                case .code(let language, let source):
+                    CodeFence(language: language, source: source)
                 }
             }
         }
@@ -24,11 +24,15 @@ struct AssistantMarkdown: View {
 }
 
 private struct CodeFence: View {
+    let language: String
     let source: String
 
     var body: some View {
-        VStack(alignment: .trailing, spacing: 6) {
+        VStack(alignment: .leading, spacing: 0) {
             HStack {
+                Text(language)
+                    .font(.system(size: 12))
+                    .foregroundStyle(.secondary)
                 Spacer(minLength: 0)
                 Button("Copy") {
                     UIPasteboard.general.string = source
@@ -36,16 +40,28 @@ private struct CodeFence: View {
                 .font(.system(size: 12))
                 .foregroundStyle(.secondary)
             }
-            Text(source)
-                .font(.system(size: 12, design: .monospaced))
-                .textSelection(.enabled)
-                .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.horizontal, 10)
+            .padding(.top, 6)
+            ScrollView(.horizontal, showsIndicators: true) {
+                Text(source)
+                    .font(.system(size: 12, design: .monospaced))
+                    .lineSpacing(12 * 0.45)
+                    .textSelection(.enabled)
+                    .fixedSize(horizontal: true, vertical: false)
+            }
+            .padding(.horizontal, 10)
+            .padding(.vertical, 8)
         }
-        .padding(10)
+        .frame(maxWidth: .infinity, alignment: .leading)
         .background(
-            Color(uiColor: .tertiarySystemFill),
+            Color(uiColor: .secondarySystemBackground),
             in: RoundedRectangle(cornerRadius: 8)
         )
+        .overlay {
+            RoundedRectangle(cornerRadius: 8)
+                .stroke(Color(uiColor: .separator), lineWidth: 1)
+        }
+        .clipShape(RoundedRectangle(cornerRadius: 8))
     }
 }
 
@@ -59,6 +75,7 @@ private struct MarkdownRun: View {
             .font(.system(size: 14))
             .textSelection(.enabled)
             .multilineTextAlignment(.leading)
+            .frame(maxWidth: .infinity, alignment: .leading)
             .environment(\.openURL, OpenURLAction { url in
                 guard url.scheme?.lowercased() == "https" else { return .discarded }
                 openURL(url)
@@ -76,16 +93,29 @@ private struct MarkdownRun: View {
         } catch {
             parsed = AttributedString(source)
         }
+        styleHeadings(&parsed)
         styleInlineCode(&parsed)
         dropUnsafeLinks(&parsed)
         highlightMentions(&parsed)
         return parsed
     }
 
+    private func styleHeadings(_ parsed: inout AttributedString) {
+        for run in parsed.runs {
+            guard let intent = run.presentationIntent else { continue }
+            for component in intent.components {
+                if case .header(let level) = component.kind {
+                    let size: CGFloat = level <= 1 ? 16 : 14
+                    parsed[run.range].font = .system(size: size, weight: .semibold)
+                }
+            }
+        }
+    }
+
     private func styleInlineCode(_ parsed: inout AttributedString) {
         for run in parsed.runs {
             guard let intent = run.inlinePresentationIntent, intent.contains(.code) else { continue }
-            parsed[run.range].font = .system(size: 12, design: .monospaced)
+            parsed[run.range].font = .system(size: 13, design: .monospaced)
             parsed[run.range].foregroundColor = .accentColor
             parsed[run.range].backgroundColor = Color.accentColor.opacity(0.18)
         }

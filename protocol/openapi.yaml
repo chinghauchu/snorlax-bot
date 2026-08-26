@@ -225,9 +225,12 @@ info:
     User messages stay plain text as stored. Clients render markdown.
     widget, connect, tool, and routine fields stay intact. No MCP mix-in.
     Assistant LEFT kind=message (from A) is 14px markdown with no grey
-    agent bubble. User-right stays plain text. Fenced code is 8px radius /
-    12px mono with a Copy control. https:// links are accent and open
-    safely. Inline code uses the mention-chip tint. Tool lines, widget
+    agent bubble, 16/14 headings, lists, and bold. User-right stays plain
+    text (https:// URLs tappable). Fenced code is full-turn 8px radius /
+    elevated fill + 1px border / 12px muted language + Copy / 12px/1.45
+    mono with horizontal scroll. https:// links are accent, hover
+    underline, OS browser. Inline code is 13px mono, 4px radius, accent
+    18% mix. Tool lines, widget
     cards, connect cards, thinking, and handoff are unchanged. Out of
     scope: mermaid, math/KaTeX, raw HTML (escape/strip; never inject HTML
     from model text). Isolation, report-back, widgets, cron, connect

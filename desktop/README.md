@@ -44,7 +44,7 @@ Muted 12px tool traces (`Searching…` / `Wrote app.py` / `Used server__tool`) m
 the transcript while the runtime runs tools (including MCP). Agent info
 pane lists cron routines (44px rows, live enable/pause switch). Settings
 lists runtime plugins (`Connected` / `Needs sign-in`). Assistant LEFT
-`kind=message` is 14px markdown (no grey bubble); user-right stays plain.
+`kind=message` is 14px markdown (no grey bubble, 16/14 headings); user-right stays plain (`https://` tappable). Fenced code is full-turn language + Copy at 12px/1.45.
 iOS has no computer pane.
 
 Types and the `/v1` client are generated from the locked camelCase OpenAPI

@@ -462,7 +462,7 @@ private struct MessageBubble: View {
                     VStack(alignment: .leading, spacing: 6) {
                         messageImages
                         if !message.content.isEmpty {
-                            MentionLabel(text: message.displayContent, names: agents.filter { !$0.isChannel }.map(\.name))
+                            MentionLabel(text: message.displayContent, names: agents.filter { !$0.isChannel }.map(\.name), links: true)
                                 .font(.system(size: 14))
                                 .textSelection(.enabled)
                         }

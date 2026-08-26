@@ -9,8 +9,9 @@ only, no extra sheet). Settings lists runtime plugins (OS browser via
 `ASWebAuthenticationSession`). No
 computer pane / file browser this slice (v0.6 desktop-only). MCP is
 runtime-owned; this client never speaks MCP. Connect cards (`kind=connect`)
-render as LEFT chrome, not a user bubble. Assistant `kind=message` is 14px
-markdown with no grey bubble (user-right stays plain). Tool traces (`kind=tool`)
+render as LEFT chrome, not a user bubble. Assistant `kind=message` is 14pt
+markdown with no grey bubble (16/14 headings; user-right stays plain,
+`https://` tappable). Tool traces (`kind=tool`)
 already paint as muted status.
 
 The Spark stays up when the phone sleeps. Reconnect is
