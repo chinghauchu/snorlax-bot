@@ -161,7 +161,7 @@ struct RuntimeClient: Sendable {
     enum StreamEvent: Sendable {
         case delta(id: String, text: String, senderId: String?, senderName: String?, senderAvatar: String?)
         case done(Message)
-        case tool(id: String, summary: String, done: Bool)
+        case tool(id: String, summary: String, done: Bool, senderId: String?, senderName: String?)
         case error(String)
 
         static func parse(name: String, data: String) -> StreamEvent? {
@@ -183,7 +183,13 @@ struct RuntimeClient: Sendable {
                 return .done(message)
             case "tool.start", "tool.done":
                 guard let body = try? decoder.decode(ToolTrace.self, from: payload) else { return nil }
-                return .tool(id: body.id, summary: body.summary, done: name == "tool.done")
+                return .tool(
+                    id: body.id,
+                    summary: body.summary,
+                    done: name == "tool.done",
+                    senderId: body.senderId,
+                    senderName: body.senderName
+                )
             case "error":
                 let message = (try? decoder.decode(ErrorBody.self, from: payload))?.error ?? data
                 return .error(message)

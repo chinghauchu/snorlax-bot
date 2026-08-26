@@ -50,6 +50,7 @@ extension Agent {
         avatar: nil,
         kind: .agent,
         memberIds: [],
+        sharedProject: false,
         createdAt: .distantPast,
         updatedAt: .distantPast
     )
@@ -249,4 +250,6 @@ enum RuntimeError: LocalizedError {
 struct LiveToolTrace: Identifiable, Hashable, Sendable {
     var id: String
     var summary: String
+    var senderId: String?
+    var senderName: String?
 }

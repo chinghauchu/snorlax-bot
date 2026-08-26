@@ -433,11 +433,32 @@ def test_delete_channel_drops_workspace_dir(client, tmp_path) -> None:
     deleted = client.delete(f"/v1/agents/{created['id']}", headers=AUTH)
     assert deleted.status_code == 204
     assert not root.exists()
-    seed_deleted = client.delete(f"/v1/agents/{CHANNEL}", headers=AUTH)
-    assert seed_deleted.status_code == 204
+    still_seed = client.get(f"/v1/agents/{CHANNEL}", headers=AUTH)
+    assert still_seed.status_code == 200
+
+
+def test_delete_seed_channel_drops_workspace_dir_no_reseed(client, tmp_path) -> None:
+    patched = client.patch(
+        f"/v1/agents/{CHANNEL}",
+        headers=AUTH,
+        json={"sharedProject": True},
+    )
+    assert patched.status_code == 200
+    _send(
+        client,
+        CHANNEL,
+        "Write a file named seed.txt containing seed",
+        mentions=[SEED],
+    )
+    root = tmp_path / "workspaces" / "channels" / CHANNEL
+    assert (root / "seed.txt").exists()
+    deleted = client.delete(f"/v1/agents/{CHANNEL}", headers=AUTH)
+    assert deleted.status_code == 204
     assert client.get(f"/v1/agents/{CHANNEL}", headers=AUTH).status_code == 404
-    seed_root = tmp_path / "workspaces" / "channels" / CHANNEL
-    assert not seed_root.exists()
+    assert not root.exists()
+    roster = client.get("/v1/agents", headers=AUTH).json()
+    assert all(a["id"] != CHANNEL for a in roster)
+    assert any(a["id"] == SEED for a in roster)
 
 
 @pytest.mark.asyncio

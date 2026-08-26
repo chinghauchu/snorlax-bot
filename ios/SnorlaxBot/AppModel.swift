@@ -368,12 +368,21 @@ final class AppModel {
             }
         case .error(let message):
             errorMessage = message
-        case .tool(let id, let summary, _):
+        case .tool(let id, let summary, _, let senderId, let senderName):
             if onTimeline { return }
             if let index = toolTraces.firstIndex(where: { $0.id == id }) {
                 toolTraces[index].summary = summary
+                if let senderId { toolTraces[index].senderId = senderId }
+                if let senderName { toolTraces[index].senderName = senderName }
             } else {
-                toolTraces.append(LiveToolTrace(id: id, summary: summary))
+                toolTraces.append(
+                    LiveToolTrace(
+                        id: id,
+                        summary: summary,
+                        senderId: senderId,
+                        senderName: senderName
+                    )
+                )
             }
         }
     }

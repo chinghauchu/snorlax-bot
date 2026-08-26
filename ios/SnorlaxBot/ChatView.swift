@@ -135,13 +135,13 @@ struct ChatView: View {
 
     @ViewBuilder
     private func liveToolStreak(agent: Agent, traces: [LiveToolTrace]) -> some View {
-        let speaker = agent.isChannel
-            ? (model.visibleAgents.first(where: { !$0.isChannel }) ?? .placeholder)
-            : agent
+        let speaker = liveToolSpeaker(agent: agent, traces: traces)
+        let speakerName = traces.first?.senderName.flatMap { $0.isEmpty ? nil : $0 }
+            ?? speaker.name
         VStack(alignment: .leading, spacing: 4) {
             HStack(spacing: 6) {
                 AgentAvatar(agent: speaker, size: 20)
-                Text(speaker.name)
+                Text(speakerName)
                     .font(.system(size: 13, weight: .medium))
                     .foregroundStyle(.secondary)
             }
@@ -156,6 +156,17 @@ struct ChatView: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.top, 16)
         .id("live-tools")
+    }
+
+    /// Match desktop: speaker is the trace's senderId, else the conversation
+    /// (`active`). Never the first roster agent.
+    private func liveToolSpeaker(agent: Agent, traces: [LiveToolTrace]) -> Agent {
+        if let id = traces.first?.senderId, !id.isEmpty,
+           let found = model.visibleAgents.first(where: { $0.id == id })
+        {
+            return found
+        }
+        return agent
     }
 
     @ViewBuilder
