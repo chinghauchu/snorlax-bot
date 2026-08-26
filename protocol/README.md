@@ -78,6 +78,13 @@ session. `POST /v1/agents/{id}/computer/record` → 201 `{ recording: true }`
 capture). GET may include `recording` when hasSandbox. Channel 409.
 iOS does not POST these routes.
 
+v0.17 create/delete routine chrome: `DELETE /v1/agents/{id}/routines/{routineId}`
+→ 204 (unknown 404; channel 409). POST still cron XOR webhook. Chrome:
+trailing 12px `Add` on Routines, 320px `Add routine` sheet (name +
+SKILL.md picker + Schedule/Webhook), muted 12px `Remove` +
+`Remove {name}?`. Pause stays. Copy stays webhook-only. Slack/GitHub
+kinds remain list-only.
+
 A copy is also kept at `runtime/openapi.yaml` and `desktop/openapi.yaml`
 so those trees are self-contained. Do not let the files diverge.
 

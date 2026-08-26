@@ -1,9 +1,9 @@
 openapi: 3.1.0
 info:
   title: Snorlax-Bot
-  version: 0.16.0
+  version: 0.17.0
   description: |
-    Locked v0.16 LAN contract. Clients use SNORLAX_URL + SNORLAX_TOKEN.
+    Locked v0.17 LAN contract. Clients use SNORLAX_URL + SNORLAX_TOKEN.
     They never call vLLM, never call tools, never call MCP, and never read
     the Spark filesystem. Additive workspace GETs are runtime reads of the
     existing sandbox (same roots as the tool loop), not a second tool loop.
@@ -388,6 +388,39 @@ info:
     Out of scope: blank New skill UI, edit generated markdown,
     marketplace, iOS record, VNC, a separate OS window. OpenAPI
     **0.16.0**.
+
+    v0.17: create/delete routine chrome. One impl PR covering runtime
+    + desktop + iOS. Spec rides this PR. OpenAPI **0.17.0**. **No
+    second PR.** Agent identity pane Routines header gets trailing
+    12px `Add` (same family as Plugins `Add`; iOS 12pt). Empty still
+    `No routines yet.` — Add still shows. Add sheet (same family as
+    Add plugin / Save as skill, 320px): title `Add routine`; Name
+    14px; skill list is that agent's SKILL.md as 44px rows via GET
+    `/v1/agents/{id}/skills` `{ id, name }` (v0.9 path; not a markdown
+    editor). None: 12px `No skills yet.` and Add stays disabled.
+    Segmented `Schedule` / `Webhook`. Schedule: cron field, placeholder
+    `0 9 * * 1-5`, 12px muted `Taipei. Weekdays 9:00 is 0 9 * * 1-5.`
+    Webhook: no extra fields; after save the row is kind=webhook with
+    existing Copy (never paint the URL). Primary Add 36px, disabled
+    until name + skill + (cron if Schedule). Header × cancels. Rows
+    stay 44px: name 14px, trailing enable/pause. Muted 12px line is
+    `Webhook` / Taipei cron (`Weekdays 9:00`) as v0.13. Webhook rows
+    keep Copy left of Remove, then the pause switch. Every row gets
+    muted 12px `Remove` + confirm copy `Remove {name}?` then danger
+    Remove / Cancel. Pause stays. No edit-in-place this slice. HTTP:
+    GET skills `{ id, name }` (empty 200 `[]`; channel 409). POST
+    `{ name, skill, schedule }` cron 201; `{ name, skill, trigger:
+    { type: webhook } }` 201 with webhookUrl. 422 missing name/skill,
+    unknown skill, bad cron, both schedule+trigger. Slack/GitHub
+    trigger still 422 (no builder this slice).
+    `DELETE /v1/agents/{id}/routines/{routineId}` → 204. Unknown 404.
+    Channel 409. Pause PATCH `{ enabled }` unchanged. Keep webhook
+    inbound and cron fire as v0.13. Out of scope: marketplace catalog,
+    iOS Open/Record/takeover, skill markdown editor, Slack/GitHub
+    trigger builder (those kinds remain list-only if the plugin is
+    connected). Isolation, report-back, widgets, markdown, MCP,
+    computer preview/takeover/record, seed DELETE 204, Mac oMLX, no
+    Mac folder picker, workspaceTree.ts stand. OpenAPI **0.17.0**.
   license:
     name: Apache-2.0
     identifier: Apache-2.0
@@ -708,11 +741,15 @@ paths:
         omitted (`webhookUrl` is absent on cron rows). Missing agent
         is 404. kind=channel is 409 (routines are agent-only). Used by
         the agent info pane (list + enable/pause + Copy for webhook
-        URL). No New / create / edit / delete UI. Humanized trigger
+        URL). v0.17: trailing 12px `Add` opens a 320px Add routine
+        sheet (name + 44px SKILL.md rows + segmented Schedule/Webhook).
+        Every row has muted 12px `Remove` (`Remove {name}?`). Pause
+        stays. No edit-in-place. Humanized trigger
         line (`Webhook` / `Weekdays 9:00`) is a client concern. Webhook
-        rows show 12px muted Copy left of the switch (`Copied` for 1.5s);
-        do not paint webhookUrl. Slack/GitHub rows have no Copy. Do not
-        emit Connect cards from the pane.
+        rows show 12px muted Copy left of Remove, then the pause switch
+        (`Copied` for 1.5s); do not paint webhookUrl. Slack/GitHub rows
+        have no Copy and no builder UI. Do not emit Connect cards from
+        the pane.
       operationId: listRoutines
       responses:
         "200":
@@ -730,19 +767,18 @@ paths:
         "409":
           $ref: "#/components/responses/Error"
     post:
-      summary: Seed a routine for this agent
+      summary: Create a routine for this agent
       description: |
-        Test/runtime seed. Body is cron XOR trigger. Cron:
+        Body is cron XOR trigger. Cron:
         `{ name, skill, schedule }` (5-field or named hour, Asia/Taipei).
         Webhook: `{ name, skill, trigger: { type: webhook } }` — 201
         with `webhookUrl` (token in the path). POST of an event routine
         without a trigger is 422. POST with both schedule and trigger is
-        422. Slack/GitHub `{ type: slack|github, label? }` is 422 unless
-        GET /v1/plugins shows that plugin status=connected; inbound
-        Slack/GitHub is not in this slice (use webhook). Webhook works
-        with zero plugins. Clients have no create UI this slice. 422
-        unknown skill / bad cron / channel id. Missing agent is 404.
-        No DELETE this slice.
+        422. Slack/GitHub `{ type: slack|github }` is 422 (no builder
+        this slice). Webhook works with zero plugins. 422 missing
+        name/skill, unknown skill, bad cron, or channel id. Missing
+        agent is 404. Pause stays PATCH `{ enabled }`. DELETE is a
+        separate operation.
       operationId: createRoutine
       requestBody:
         required: true
@@ -776,7 +812,7 @@ paths:
       summary: Enable or pause a routine
       description: |
         `{ enabled: false }` pauses. `{ enabled: true }` resumes. This
-        thin. No name/skill/schedule patch this slice. No DELETE.
+        thin. No name/skill/schedule patch this slice.
         Unknown routine is 404. kind=channel is 409.
       operationId: patchRoutine
       requestBody:
@@ -799,6 +835,22 @@ paths:
         "409":
           $ref: "#/components/responses/Error"
         "422":
+          $ref: "#/components/responses/Error"
+    delete:
+      summary: Remove a routine
+      description: |
+        `DELETE /v1/agents/{id}/routines/{routineId}` → 204, gone from
+        GET. Unknown routine is 404. kind=channel is 409. Missing agent
+        is 404. Pause stays a PATCH; this is Remove, not pause.
+      operationId: deleteRoutine
+      responses:
+        "204":
+          description: Deleted; no body
+        "401":
+          $ref: "#/components/responses/Error"
+        "404":
+          $ref: "#/components/responses/Error"
+        "409":
           $ref: "#/components/responses/Error"
 
   /v1/hooks/{token}:
@@ -835,23 +887,26 @@ paths:
       description: |
         Thin discovery. Runtime reads SKILL.md from
         SNORLAX_DATA_DIR/skills/<slug>/SKILL.md (and may also see a
-        workspace SKILL.md). Not a marketplace catalog. kind=channel is
-        422. Clients never read the host disk.
+        workspace SKILL.md). Returns `{ id, name }` per file (`id` is
+        the directory slug or frontmatter name). Empty list is 200
+        `[]`. Not a marketplace catalog. kind=channel is 409. Clients
+        never read the host disk. v0.17 Add-routine picker reuses this
+        list (`id` is the POST skill). No markdown editor.
       operationId: listSkills
       responses:
         "200":
-          description: JSON array of SkillInfo (not wrapped)
+          description: JSON array of Skill `{ id, name }` (not wrapped)
           content:
             application/json:
               schema:
                 type: array
                 items:
-                  $ref: "#/components/schemas/SkillInfo"
+                  $ref: "#/components/schemas/Skill"
         "401":
           $ref: "#/components/responses/Error"
         "404":
           $ref: "#/components/responses/Error"
-        "422":
+        "409":
           $ref: "#/components/responses/Error"
     post:
       summary: Save a recorded demonstration as SKILL.md
@@ -2013,9 +2068,8 @@ components:
           type: string
           description: >
             webhook, slack, or github. webhook always works (zero
-            plugins). slack/github 422 unless GET /v1/plugins shows
-            that plugin status=connected; inbound Slack/GitHub
-            delivery is not in this slice.
+            plugins). slack/github is 422 this slice (no builder).
+            inbound Slack/GitHub delivery is not in this slice.
         label:
           type: string
           maxLength: 80

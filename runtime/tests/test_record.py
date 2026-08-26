@@ -90,8 +90,7 @@ def test_save_writes_skill_md_v09_can_list_and_run(
     assert saved.json() == {"id": "demo-click", "name": "Demo click"}
     listed = client.get(f"/v1/agents/{SEED}/skills", headers=AUTH)
     assert listed.status_code == 200
-    names = {item["name"] for item in listed.json()}
-    assert "Demo click" in names
+    assert {"id": "demo-click", "name": "Demo click"} in listed.json()
     skill_path = tmp_path / "skills" / "demo-click" / "SKILL.md"
     assert skill_path.is_file()
     text = skill_path.read_text(encoding="utf-8")

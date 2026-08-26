@@ -6,7 +6,7 @@ image previews that are **never** sent to the model. Question widgets
 render as LEFT cards in the speaking agent's streak (no extra sheet). Agent
 info sheet lists a 16:10 computer preview above routines (12pt labels,
 8pt radius, no tap-to-open) then routines (list + enable/pause
-+ Copy webhook URL, no extra sheet). Settings lists runtime plugins (Add / Remove; OS browser via
++ Copy webhook URL + 12pt Add / Remove with confirm). Settings lists runtime plugins (Add / Remove; OS browser via
 `ASWebAuthenticationSession`). No
 file-tree computer pane this slice (v0.6 desktop-only). MCP is
 runtime-owned; this client never speaks MCP. Connect cards (`kind=connect`)

@@ -20,7 +20,7 @@ def test_health_no_auth(client) -> None:
     response = client.get("/v1/health")
     assert response.status_code == 200
     body = response.json()
-    assert body == {"ok": True, "name": "Snorlax-Bot", "version": "0.16.0"}
+    assert body == {"ok": True, "name": "Snorlax-Bot", "version": "0.17.0"}
 
 
 def test_v1_requires_bearer(client) -> None:

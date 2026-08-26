@@ -94,6 +94,7 @@ def test_protocol_openapi_is_locked_v0_contract() -> None:
     assert "never call MCP" in text
     assert "SNORLAX_DATA_DIR" in text
     assert "No MCP, no browser-use GUI" not in text
+    assert "0.17.0" in text
     assert "0.16.0" in text
     assert "0.15.0" in text
     assert "0.14.0" in text
@@ -104,6 +105,7 @@ def test_protocol_openapi_is_locked_v0_contract() -> None:
     assert "v0.14" in text
     assert "v0.15" in text
     assert "v0.16" in text
+    assert "v0.17" in text
     assert "/v1/agents/{id}/computer" in text
     assert "/v1/agents/{id}/computer/screenshot" in text
     assert "/v1/agents/{id}/computer/session" in text
@@ -162,7 +164,10 @@ def test_protocol_openapi_is_locked_v0_contract() -> None:
     assert "unknown skill" in text
     assert "no catch-up" in text
     assert "skills/<slug>/SKILL.md" in text
-    assert "No New / create / edit / delete UI" in text or "list + enable/pause" in text or "enable/pause only" in text
+    assert "deleteRoutine" in text
+    assert "Add routine" in text
+    assert "Remove {name}?" in text
+    assert "No New / create / edit / delete UI" in text or "list + enable/pause" in text or "enable/pause only" in text or "Pause stays" in text
 
 
 def test_message_content_stays_a_string_no_blocks() -> None:

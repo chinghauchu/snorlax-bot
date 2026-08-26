@@ -9,7 +9,9 @@ import type {
   PluginCreate,
   ComputerPreview,
   Routine,
+  RoutineCreate,
   RoutinePatch,
+  Skill,
   RuntimeHealth,
   Session,
 } from "./types";
@@ -168,6 +170,45 @@ export async function patchRoutine(
     },
   );
   return json<Routine>(response);
+}
+
+export async function createRoutine(
+  session: Session,
+  agentId: string,
+  body: RoutineCreate,
+): Promise<Routine> {
+  const response = await fetch(
+    `${session.baseUrl}/v1/agents/${encodeURIComponent(agentId)}/routines`,
+    {
+      method: "POST",
+      headers: headers(session, { "Content-Type": "application/json" }),
+      body: JSON.stringify(body),
+    },
+  );
+  return json<Routine>(response);
+}
+
+export async function deleteRoutine(
+  session: Session,
+  agentId: string,
+  routineId: string,
+): Promise<void> {
+  const response = await fetch(
+    `${session.baseUrl}/v1/agents/${encodeURIComponent(agentId)}/routines/${encodeURIComponent(routineId)}`,
+    { method: "DELETE", headers: headers(session) },
+  );
+  if (!response.ok) throw await parseError(response);
+}
+
+export async function listSkills(
+  session: Session,
+  agentId: string,
+): Promise<Skill[]> {
+  const response = await fetch(
+    `${session.baseUrl}/v1/agents/${encodeURIComponent(agentId)}/skills`,
+    { headers: headers(session) },
+  );
+  return asList<Skill>(await json<unknown>(response), "skills");
 }
 
 export async function listMessages(

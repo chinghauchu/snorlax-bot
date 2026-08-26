@@ -15,10 +15,16 @@ import {
   isWebhookRoutine,
   nextRosterSelection,
   routineMutedLine,
+  routineRemoveConfirm,
   showsWebhookCopy,
   visiblePaneRoutines,
   WEBHOOK_COPY_FEEDBACK_MS,
   webhookCopyText,
+  ADD_ROUTINE_TITLE,
+  CRON_PLACEHOLDER,
+  CRON_HINT,
+  NO_SKILLS_YET,
+  canSubmitRoutine,
 } from "./infoPane.ts";
 
 test("user-created channels are editable; seed channel is not", () => {
@@ -214,4 +220,54 @@ test("humanizeTaipeiCron matches Weekdays 9:00", () => {
     ["slack"],
   );
   assert.equal(WEBHOOK_COPY_FEEDBACK_MS, 1500);
+});
+
+test("add-routine submit is name + skill + cron if schedule", () => {
+  assert.equal(ADD_ROUTINE_TITLE, "Add routine");
+  assert.equal(CRON_PLACEHOLDER, "0 9 * * 1-5");
+  assert.equal(CRON_HINT, "Taipei. Weekdays 9:00 is 0 9 * * 1-5.");
+  assert.equal(NO_SKILLS_YET, "No skills yet.");
+  assert.equal(routineRemoveConfirm("Morning status"), "Remove Morning status?");
+  assert.equal(
+    canSubmitRoutine({
+      name: "Morning status",
+      skill: "status",
+      mode: "schedule",
+      schedule: "0 9 * * 1-5",
+    }),
+    true,
+  );
+  assert.equal(
+    canSubmitRoutine({
+      name: "Morning status",
+      skill: "status",
+      mode: "schedule",
+      schedule: "",
+    }),
+    false,
+  );
+  assert.equal(
+    canSubmitRoutine({
+      name: "",
+      skill: "status",
+      mode: "webhook",
+    }),
+    false,
+  );
+  assert.equal(
+    canSubmitRoutine({
+      name: "Inbox ping",
+      skill: "",
+      mode: "webhook",
+    }),
+    false,
+  );
+  assert.equal(
+    canSubmitRoutine({
+      name: "Inbox ping",
+      skill: "status",
+      mode: "webhook",
+    }),
+    true,
+  );
 });

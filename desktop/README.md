@@ -53,7 +53,8 @@ no Record).
 Create agent or channel from +.
 Muted 12px tool traces (`Searching…` / `Wrote app.py` / `Used server__tool`) may appear in
 the transcript while the runtime runs tools (including MCP). Agent info
-pane lists cron routines (44px rows, live enable/pause switch). Webhook
+pane lists cron routines (44px rows, live enable/pause switch, 12px Add /
+Remove). Webhook
 rows show muted `Webhook` plus Copy for the URL. Settings
 lists runtime plugins (`Connected` / `Needs sign-in`; Add / Remove).
 Assistant LEFT
