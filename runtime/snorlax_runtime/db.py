@@ -47,6 +47,20 @@ TOOLS_PREAMBLE = (
 )
 
 
+def tools_preamble() -> str:
+    from snorlax_runtime.mcp import mcp_tool_names
+
+    names = mcp_tool_names()
+    extra = ""
+    if names:
+        extra = (
+            " Additional MCP tools are namespaced as server__tool "
+            f"({', '.join(names)}). Built-in names win on collision. "
+            "MCP HTTP is a runtime path, not the agent shell."
+        )
+    return TOOLS_PREAMBLE + extra
+
+
 def utcnow() -> str:
     return datetime.now(timezone.utc).strftime(ISO)
 
@@ -779,7 +793,7 @@ class Store:
                     "the user that. Speak as yourself, not as the other agent. "
                     "Mentions are runtime-routed. Do not dump ACK chatter. Do "
                     "not prefix the bubble with 'from {name}:'.\n\n"
-                    f"{TOOLS_PREAMBLE}\n\n"
+                    f"{tools_preamble()}\n\n"
                     f"{speaker['description'] or ''}"
                 ).strip()
                 return [
@@ -802,7 +816,7 @@ class Store:
                 "@DisplayName to continue this thread. Do not invent cues "
                 "like [agent] or [Group chat:]. Stay silent on FYI notes that "
                 "do not ask you anything.\n\n"
-                f"{TOOLS_PREAMBLE}\n\n"
+                f"{tools_preamble()}\n\n"
                 f"{speaker['description'] or ''}"
             ).strip()
             messages: list[dict[str, str]] = [
@@ -836,7 +850,7 @@ class Store:
             "transcripts stay between you and the user. Do not invent cues "
             f"like [agent] or [Group chat:]. Stay silent on FYI notes that do "
             f"not ask you anything.{routed}\n\n"
-            f"{TOOLS_PREAMBLE}\n\n"
+            f"{tools_preamble()}\n\n"
             f"{speaker['description'] or ''}"
         ).strip()
         messages = [{"role": "system", "content": system}]

@@ -30,7 +30,7 @@ SEARCH_RESULT_CAP = 8
 
 _SAFE_ID = re.compile(r"^[A-Za-z0-9._-]+$")
 _USER_AGENT = (
-    "Snorlax-Bot/0.6 (+https://github.com/chinghauchu/snorlax-bot)"
+    "Snorlax-Bot/0.7 (+https://github.com/chinghauchu/snorlax-bot)"
 )
 BINARY_POLICY = "binary / too large"
 DEFAULT_SEARCH_PROVIDER = "duckduckgo"
@@ -457,6 +457,22 @@ def followup_after_tools(
     if parts:
         return "\n".join(parts)
     return f"I used {used} but had nothing more to add."
+
+
+def offered_tool_definitions() -> list[dict[str, Any]]:
+    """Built-ins first, then namespaced MCP tools. Built-in names win."""
+    from snorlax_runtime.mcp import mcp_openai_tools
+
+    return [*TOOL_DEFINITIONS, *mcp_openai_tools()]
+
+
+async def execute_named_tool(name: str, arguments: str, workspace: Path) -> str:
+    """Dispatch one tool. MCP stays on the runtime event loop (not the shell)."""
+    from snorlax_runtime.mcp import call_mcp_tool, is_mcp_tool
+
+    if is_mcp_tool(name):
+        return await call_mcp_tool(name, arguments)
+    return await asyncio.to_thread(execute_tool, name, arguments, workspace)
 
 
 def execute_tool(name: str, arguments: str, workspace: Path) -> str:
@@ -895,7 +911,7 @@ async def run_tool_loop(
         tool_calls: list[ToolCall] = []
         try:
             async for part in _generate_parts(
-                backend, history, tools=TOOL_DEFINITIONS if use_tools else None
+                backend, history, tools=offered_tool_definitions() if use_tools else None
             ):
                 if part.text:
                     text_parts.append(part.text)
@@ -934,8 +950,8 @@ async def run_tool_loop(
                             },
                         )
                     )
-                result = await asyncio.to_thread(
-                    execute_tool, call.name, call.arguments, workspace
+                result = await execute_named_tool(
+                    call.name, call.arguments, workspace
                 )
                 ok = not result.startswith("Error:")
                 summary = done_summary(call.name, args, ok)

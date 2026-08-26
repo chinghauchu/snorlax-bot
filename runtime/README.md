@@ -1,9 +1,9 @@
 # Snorlax-Bot runtime
 
-Thin FastAPI process that owns agents, transcripts, LAN auth, and the
-built-in tool loop. oMLX (Mac-local OpenAI-compat), vLLM (Spark), or the
+Thin FastAPI process that owns agents, transcripts, LAN auth, the
+built-in tool loop, and the MCP client. oMLX (Mac-local OpenAI-compat), vLLM (Spark), or the
 mock backend sits behind it. Clients never call the model server, never
-call tools, and never read `~/.snorlax-bot/` — they use `SNORLAX_URL` +
+call tools, never call MCP, and never read `~/.snorlax-bot/` — they use `SNORLAX_URL` +
 `SNORLAX_TOKEN`. Desktop may `GET /v1/agents/{id}/workspace` (a runtime
 read of the sandbox); iOS does not browse files this slice.
 
@@ -29,7 +29,7 @@ overrides the file.
 
 | Variable | Default | Meaning |
 | --- | --- | --- |
-| `SNORLAX_DATA_DIR` | `~/.snorlax-bot` | `snorlax.db` + `token` + images + `workspaces/` |
+| `SNORLAX_DATA_DIR` | `~/.snorlax-bot` | `snorlax.db` + `token` + images + `workspaces/` + `mcp.json` |
 | `SNORLAX_TOKEN` | generated file | Override bearer token |
 | `SNORLAX_BIND` | auto | Force host (`127.0.0.1` / `0.0.0.0`) |
 | `SNORLAX_PORT` | `8787` | Listen port |
@@ -53,6 +53,35 @@ A channel shared-project toggle (default off) opts that channel into
 host Mac. Tools auto-run. Shell has no extra network; HTTP is `web_search`
 / `web_fetch` only. DELETE of an agent or user-created channel drops its
 workspace dir.
+
+## MCP (`mcp.json`)
+
+The runtime is the MCP client. Desktop and iOS never speak MCP. Put
+`mcp.json` next to `snorlax.db` under `SNORLAX_DATA_DIR`:
+
+```json
+{
+  "mcpServers": {
+    "example-stdio": {
+      "command": "python3",
+      "args": ["/path/to/my_mcp_server.py"],
+      "env": {}
+    },
+    "example-lan": {
+      "url": "http://127.0.0.1:8765/mcp"
+    }
+  }
+}
+```
+
+Missing or empty file = no MCP; built-ins still work. stdio servers are
+subprocesses. A `url` is streamable HTTP on the LAN (loopback, RFC1918, or
+`.local` are fine). Use `"transport": "sse"` or a `/sse` path for legacy
+SSE. Tools are offered to the model as `server__tool` so they cannot
+clobber `list_dir` / `read_file` / `write_file` / `delete_file` / `shell` /
+`web_search` / `web_fetch`. MCP HTTP uses the runtime process (like
+`web_fetch`), not the agent shell. If a server fails to start, the runtime
+still boots and logs the failure.
 
 ## Tests
 

@@ -17,7 +17,7 @@ From public Grok Bot docs and the Aug 2026 launch:
 | Files, shell, web on a computer | v0.5: runtime tools in a workspace jail; v0.6: thin file-tree pane |
 | One user-scoped computer shared by all bots | Later: one sandbox on the Spark, shared files/logins, per-bot screen |
 | Skills (how) and routines (when) | Later: stored on the runtime, executed locally |
-| MCP + computer-use for sites without an API | Later: local MCP + sandbox browser |
+| MCP + computer-use for sites without an API | v0.7: local/LAN MCP client; later: sandbox browser |
 | Question / approval moments | Later: widgets in the transcript |
 | Desktop + iOS, same bots | Tauri desktop now; Swift iOS companion on the LAN |
 | Cloud LLM | vLLM on GB10 (70B FP8 default; 200B-class in-range) |
@@ -65,8 +65,8 @@ Implications for us:
 │  • agents, transcripts, images (SQLite)                │
 │  • LAN auth, bind policy                               │
 │  • inference interface (mock | oMLX | vLLM)            │
-│  • built-in tools (files, shell, web) + tool loop      │
-│  later: MCP, sandbox GUI, scheduler                    │
+│  • built-in tools + MCP client + tool loop             │
+│  later: sandbox GUI, scheduler                         │
 └──────────────────────────┬────────────────────────────┘
                            │ OpenAI-compat streaming
                            ▼
@@ -131,10 +131,13 @@ SQLite file `~/.snorlax-bot/snorlax.db` (override with `SNORLAX_DATA_DIR`):
   is under `SNORLAX_DATA_DIR` / `~/.snorlax-bot`, not a picker for a folder
   on the host Mac. Tools cannot escape that root. Isolated from the host
   home directory. Shell has no extra network; HTTP is `web_search` /
-  `web_fetch`. Tools auto-run (no approval widgets). Search provider is
+  `web_fetch` (and runtime MCP HTTP). Tools auto-run (no approval widgets). Search provider is
   `SNORLAX_SEARCH_PROVIDER` / `SNORLAX_SEARCH_URL`. DELETE of an agent or
   user-created channel drops that workspace dir. v0.6 desktop GETs
   (`/v1/agents/{id}/workspace` and `.../file`) read that same jail.
+- `mcp.json` (v0.7) — not in SQLite. Optional file under `SNORLAX_DATA_DIR`
+  listing stdio and LAN MCP servers. Desktop/iOS never read it. Empty or
+  missing = no MCP; built-ins still work.
 
 v0.1 keeps one transcript per agent (the 1:1) plus one seeded group channel
 and extra user-created channels (v0.4).
@@ -172,13 +175,18 @@ rounds). Built-in tools are list_dir, read_file, write_file, delete_file,
 shell, web_search, web_fetch. 1:1 tools use the speaking agent's workspace;
 channel / handoff tools use the channel sandbox only when `sharedProject`
 is on (default off). Additive SSE `tool.start` / `tool.done` as 12px muted
-status under the LEFT streak. Tools auto-run. No MCP, no extra shell
-network, no host-folder picker.
+status under the LEFT streak. Tools auto-run. MCP joins that same loop
+from `mcp.json` (stdio + LAN). No extra shell network, no host-folder
+picker.
 
 v0.6: desktop shows that sandbox as a 320px right Computer pane (file tree
 + text preview, collapsible, default open). `GET /v1/agents/{id}/workspace`
 and `.../file` are runtime reads of the same roots. iOS has no pane this
 slice. No screenshot stream, no terminal GUI, no VNC.
+
+v0.7: the FastAPI runtime is the MCP client. Config is `mcp.json` under
+`SNORLAX_DATA_DIR`. Tools are namespaced `server__tool`; built-in names win.
+Clients never call MCP. A failed MCP server does not prevent boot.
 
 ## Inference interface
 

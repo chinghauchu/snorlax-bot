@@ -87,7 +87,7 @@ _SEARCH_RE = re.compile(r"\bsearch the web for\s+(.+)$", re.I | re.S)
 _FETCH_RE = re.compile(r"\bfetch the url\s+(\S+)", re.I)
 _LIST_RE = re.compile(r"\blist(?: the)?(?: workspace)?(?: files| dir| directory)\b", re.I)
 _TOOL_DIRECTIVE_RE = re.compile(
-    r"SNORLAX_TOOL\s+(\w+)\s+(\{.*\})\s*$",
+    r"SNORLAX_TOOL\s+([A-Za-z0-9_]+)\s+(\{.*\})\s*$",
     re.S,
 )
 
@@ -223,8 +223,8 @@ def _mock_reply(messages: list[dict[str, Any]]) -> str:
         "Heard. I'm Snorlax, running locally — mock backend, no cloud LLM.\n\n"
         f"You said: {snippet or '(empty)'}\n\n"
         "When this Spark is wired to vLLM I'll keep the same SSE contract. "
-        "I can write files, run a workspace shell, and search or fetch the web "
-        "from this runtime — clients never call those tools."
+        "I can write files, run a workspace shell, search or fetch the web, "
+        "and call MCP tools the runtime loaded — clients never call those tools."
         f"{extra}"
     )
 

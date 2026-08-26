@@ -27,6 +27,7 @@ from snorlax_runtime.schemas import (
     WorkspaceListing,
 )
 from snorlax_runtime.token import resolve_token, write_token_file
+from snorlax_runtime.mcp import start_mcp, stop_mcp
 from snorlax_runtime.tools import (
     BinaryFileError,
     PathJailError,
@@ -58,6 +59,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             search_provider=settings.search_provider,
             search_url=settings.search_url,
         )
+        mcp = await start_mcp(settings.data_dir)
+        app.state.mcp = mcp
         backend_name = settings.resolved_backend()
         app.state.backend = build_backend(
             backend_name,
@@ -79,10 +82,13 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             f"  model: {settings.model}\n"
             f"  search: {settings.search_provider}"
             f"{' ' + settings.search_url if settings.search_url else ''}\n"
+            f"  mcp: {len(mcp.servers)} server(s), {len(mcp.qualified)} tool(s)"
+            f"{' (none)' if not mcp.servers and not mcp.failures else ''}\n"
             f"  token: {token}",
             flush=True,
         )
         yield
+        await stop_mcp(mcp)
         await store.close()
 
     app = FastAPI(

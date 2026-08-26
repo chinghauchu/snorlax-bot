@@ -20,21 +20,22 @@ computer. Bots live on your LAN, talk through a thin local runtime, and (in
 later versions) browse, click, schedule, and call tools without sending tokens
 off-box.
 
-v0.6 is still small: **named teammates + identity pane + group channel threads
+v0.7 is still small: **named teammates + identity pane + group channel threads
 + chat with @mentions + report-back + extra channels + built-in tools + a
-thin desktop Computer pane**. Header click opens agent identity (PATCH) or
+thin desktop Computer pane + a runtime MCP client**. Header click opens agent identity (PATCH) or
 the channel member list. 1:1s are user ↔ that agent only; a user `@chip`
 (or agent DM) opens a handoff thread in a channel (seed `snorlax-bot-group`
 by default). B answers in the thread; A reports back in A's 1:1 as A. Seed
 `snorlax-bot` can be deleted (no auto-reseed). Users can create more
 channels. Agents can list/read/write files, run a workspace shell (no extra
-network), and search or fetch the web — the runtime owns that loop and
-auto-runs tools; clients never call the model or the tools. Channel work
+network), search or fetch the web, and call MCP tools the runtime loaded
+from `~/.snorlax-bot/mcp.json` — the runtime owns that loop and
+auto-runs tools; clients never call the model, the tools, or MCP. Channel work
 lives in a sandbox under `~/.snorlax-bot` when the channel’s shared-project
 toggle is on (default off); otherwise each agent uses its own workspace.
 Desktop shows that sandbox as a 320px right pane (file tree + text preview;
 collapsible). iOS stays chat + muted tool traces (no file browser this
-slice). No MCP, no screenshot stream / VNC, no vision. That slice is meant
+slice). No screenshot stream / VNC, no vision, no MCP marketplace UI. That slice is meant
 to actually run on a laptop *or* a Spark, with a mocked model backend when a
 70B-class checkpoint is not present.
 
@@ -182,10 +183,11 @@ default).
 
 ## v0 vs later
 
-See [ROADMAP.md](ROADMAP.md). Short version: v0.6 is named agents plus
-runtime-owned file/shell/web tools in a `~/.snorlax-bot` sandbox, with a
-thin desktop Computer pane over that sandbox. Later: full sandbox computer
-GUI, skills, routines, MCP, question widgets.
+See [ROADMAP.md](ROADMAP.md). Short version: v0.7 is named agents plus
+runtime-owned file/shell/web tools in a `~/.snorlax-bot` sandbox, a
+thin desktop Computer pane over that sandbox, and a runtime MCP client
+(stdio + LAN from `mcp.json`). Later: full sandbox computer
+GUI, skills, routines, MCP marketplace UI, question widgets.
 
 ## Contributing
 
