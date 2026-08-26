@@ -32,6 +32,20 @@ from snorlax_runtime.handoff import format_brief
 ISO = "%Y-%m-%dT%H:%M:%S.%fZ"
 DB_FILENAME = "snorlax.db"
 
+TOOLS_PREAMBLE = (
+    "You have built-in tools (list_dir, read_file, write_file, delete_file, "
+    "shell, web_search, web_fetch). Call them instead of describing the work. "
+    "The runtime runs tools immediately — do not ask the user to approve a "
+    "tool call and do not wait for a widget. Write programs to files in the "
+    "workspace; do not dump a whole app in the chat bubble. Do not "
+    "acknowledge that you can help — do the task. HTTP is web_search / "
+    "web_fetch only; do not curl from shell. 1:1 files are private to you. "
+    "Channel and handoff turns use your private workspace unless that "
+    "channel's shared project is on — then they share the channel sandbox "
+    "under the runtime data dir (not a folder on the host Mac). If another "
+    "teammate needs your files, turn shared project on or put them there."
+)
+
 
 def utcnow() -> str:
     return datetime.now(timezone.utc).strftime(ISO)
@@ -58,6 +72,7 @@ CREATE TABLE IF NOT EXISTS agents (
     description TEXT NOT NULL DEFAULT '',
     avatar TEXT,
     kind TEXT NOT NULL DEFAULT 'agent',
+    shared_project INTEGER NOT NULL DEFAULT 0,
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL
 );
@@ -140,6 +155,11 @@ class Store:
         if "kind" not in agent_cols:
             await self.conn.execute(
                 "ALTER TABLE agents ADD COLUMN kind TEXT NOT NULL DEFAULT 'agent'"
+            )
+        if "shared_project" not in agent_cols:
+            await self.conn.execute(
+                "ALTER TABLE agents ADD COLUMN shared_project "
+                "INTEGER NOT NULL DEFAULT 0"
             )
         msg_cols = await self._columns("messages")
         additions = {
@@ -282,6 +302,11 @@ class Store:
             "avatar": row["avatar"],
             "kind": kind,
             "memberIds": list(member_ids) if kind == KIND_CHANNEL else [],
+            "sharedProject": (
+                bool(row["shared_project"])
+                if kind == KIND_CHANNEL and "shared_project" in row.keys()
+                else False
+            ),
             "createdAt": row["created_at"],
             "updatedAt": row["updated_at"],
         }
@@ -389,6 +414,7 @@ class Store:
         title: str | None,
         description: str | None,
         avatar: str | None | object = ...,
+        shared_project: bool | object = ...,
     ) -> dict[str, Any] | None:
         cur = await self.conn.execute(
             "SELECT * FROM agents WHERE id = ?", (agent_id,)
@@ -402,11 +428,22 @@ class Store:
             description if description is not None else row["description"]
         )
         new_avatar = row["avatar"] if avatar is ... else avatar
+        new_shared = row["shared_project"] if "shared_project" in row.keys() else 0
+        if shared_project is not ...:
+            new_shared = 1 if shared_project else 0
         updated = utcnow()
         await self.conn.execute(
             "UPDATE agents SET name = ?, title = ?, description = ?, avatar = ?, "
-            "updated_at = ? WHERE id = ?",
-            (new_name, new_title, new_description, new_avatar, updated, agent_id),
+            "shared_project = ?, updated_at = ? WHERE id = ?",
+            (
+                new_name,
+                new_title,
+                new_description,
+                new_avatar,
+                new_shared,
+                updated,
+                agent_id,
+            ),
         )
         await self.conn.commit()
         return await self.get_agent(agent_id)
@@ -536,6 +573,7 @@ class Store:
         cur = await self.conn.execute(
             "SELECT sender_id, sender_name, content FROM messages "
             "WHERE agent_id = ? AND (sender_id = ? OR sender_id = ?) "
+            "AND (kind IS NULL OR kind = 'message') "
             "ORDER BY created_at DESC LIMIT 8",
             (agent_id, USER_SENDER_ID, agent_id),
         )
@@ -554,7 +592,8 @@ class Store:
 
     async def _reply_count(self, message_id: str) -> int:
         cur = await self.conn.execute(
-            "SELECT COUNT(*) AS n FROM messages WHERE reply_to = ?",
+            "SELECT COUNT(*) AS n FROM messages WHERE reply_to = ? "
+            "AND (kind IS NULL OR kind NOT IN ('tool'))",
             (message_id,),
         )
         row = await cur.fetchone()
@@ -740,6 +779,7 @@ class Store:
                     "the user that. Speak as yourself, not as the other agent. "
                     "Mentions are runtime-routed. Do not dump ACK chatter. Do "
                     "not prefix the bubble with 'from {name}:'.\n\n"
+                    f"{TOOLS_PREAMBLE}\n\n"
                     f"{speaker['description'] or ''}"
                 ).strip()
                 return [
@@ -762,6 +802,7 @@ class Store:
                 "@DisplayName to continue this thread. Do not invent cues "
                 "like [agent] or [Group chat:]. Stay silent on FYI notes that "
                 "do not ask you anything.\n\n"
+                f"{TOOLS_PREAMBLE}\n\n"
                 f"{speaker['description'] or ''}"
             ).strip()
             messages: list[dict[str, str]] = [
@@ -795,6 +836,7 @@ class Store:
             "transcripts stay between you and the user. Do not invent cues "
             f"like [agent] or [Group chat:]. Stay silent on FYI notes that do "
             f"not ask you anything.{routed}\n\n"
+            f"{TOOLS_PREAMBLE}\n\n"
             f"{speaker['description'] or ''}"
         ).strip()
         messages = [{"role": "system", "content": system}]
@@ -804,13 +846,18 @@ class Store:
             )
             return messages
         cur = await self.conn.execute(
-            "SELECT sender_id, sender_name, role, content FROM messages "
+            "SELECT sender_id, sender_name, role, content, kind FROM messages "
             "WHERE agent_id = ? ORDER BY created_at ASC",
             (conversation_id,),
         )
         for row in await cur.fetchall():
             sender = row["sender_id"]
             if not is_group and sender not in {USER_SENDER_ID, who}:
+                continue
+            if (row["kind"] if "kind" in row.keys() else "message") in {
+                "tool",
+                "handoff",
+            }:
                 continue
             self._append_turn(messages, row, who)
         return messages
@@ -830,7 +877,7 @@ class Store:
             (conversation_id, root_id, root_id),
         )
         for row in await cur.fetchall():
-            if (row["kind"] or "message") == "handoff":
+            if (row["kind"] or "message") in {"handoff", "tool"}:
                 continue
             self._append_turn(messages, row, who)
 

@@ -43,3 +43,19 @@ def test_protocol_openapi_is_locked_v0_contract() -> None:
     assert "do not recreate seed" in text
     assert "kind=channel" in text
     assert "report-back" in text
+    assert "tool.start" in text
+    assert "tool.done" in text
+    assert "ToolTrace" in text
+    assert "workspaces" in text
+    assert "not a picker for a folder on the host Mac" in text
+    assert "Shell has no extra network" in text
+    assert "web_search / web_fetch only" in text
+    assert "Tools auto-run" in text
+    assert "SNORLAX_SEARCH_PROVIDER" in text
+    assert "sharedProject" in text
+    assert "kind=tool" in text
+    assert "enum: [message, handoff, tool]" in text
+    assert "projectPath" not in text
+    assert "folderPath" not in text
+    assert "not persisted as Message" not in text
+    assert "SSE, chat-only (no tools)" not in text

@@ -14,6 +14,7 @@ From public Grok Bot docs and the Aug 2026 launch:
 | --- | --- |
 | Persistent named bots / teammates | `/v1/agents`, seeded `snorlax-bot` |
 | Message a bot like a coworker | `POST /v1/agents/{id}/messages` (SSE) |
+| Files, shell, web on a computer | v0.5: runtime tools in a workspace jail (not a GUI computer) |
 | One user-scoped computer shared by all bots | Later: one sandbox on the Spark, shared files/logins, per-bot screen |
 | Skills (how) and routines (when) | Later: stored on the runtime, executed locally |
 | MCP + computer-use for sites without an API | Later: local MCP + sandbox browser |
@@ -64,7 +65,8 @@ Implications for us:
 │  • agents, transcripts, images (SQLite)                │
 │  • LAN auth, bind policy                               │
 │  • inference interface (mock | oMLX | vLLM)            │
-│  later: tools, MCP, sandbox, scheduler                 │
+│  • built-in tools (files, shell, web) + tool loop      │
+│  later: MCP, sandbox GUI, scheduler                    │
 └──────────────────────────┬────────────────────────────┘
                            │ OpenAI-compat streaming
                            ▼
@@ -76,7 +78,7 @@ Implications for us:
 ```
 
 Clients **must not** call oMLX or vLLM. The runtime is the only process that
-holds the model URL, the system prompts, the tool list (later), and the token.
+holds the model URL, the system prompts, the tool list, and the token.
 Mac-local recipe: [mac-local.md](mac-local.md).
 
 ## Bind and auth
@@ -122,6 +124,16 @@ SQLite file `~/.snorlax-bot/snorlax.db` (override with `SNORLAX_DATA_DIR`):
 - `images` — bytes on disk; API shape `{ id, mime, url }`. **Never forwarded
   to the model.**
 - Token is a sibling file `~/.snorlax-bot/token`, not a SQLite setting.
+- Workspaces (v0.5) — not in SQLite. Created lazily on first tool use:
+  `workspaces/agents/{agentId}/` for 1:1 turns (and channel turns when
+  shared project is off). `workspaces/channels/{channelId}/` when the
+  channel pane **sharedProject** toggle is on (default off). That sandbox
+  is under `SNORLAX_DATA_DIR` / `~/.snorlax-bot`, not a picker for a folder
+  on the host Mac. Tools cannot escape that root. Isolated from the host
+  home directory. Shell has no extra network; HTTP is `web_search` /
+  `web_fetch`. Tools auto-run (no approval widgets). Search provider is
+  `SNORLAX_SEARCH_PROVIDER` / `SNORLAX_SEARCH_URL`. DELETE of an agent or
+  user-created channel drops that workspace dir.
 
 v0.1 keeps one transcript per agent (the 1:1) plus one seeded group channel
 and extra user-created channels (v0.4).
@@ -154,20 +166,33 @@ Extra `kind=channel` rows via POST /v1/agents; members are editable.
 Seed channel DELETE is 204 with no auto-reseed. New agents auto-join the
 seed only while that row exists.
 
+v0.5: the runtime owns a function-calling loop against oMLX/vLLM (cap 8
+rounds). Built-in tools are list_dir, read_file, write_file, delete_file,
+shell, web_search, web_fetch. 1:1 tools use the speaking agent's workspace;
+channel / handoff tools use the channel sandbox only when `sharedProject`
+is on (default off). Additive SSE `tool.start` / `tool.done` as 12px muted
+status under the LEFT streak. Tools auto-run. No MCP, no computer pane,
+no extra shell network, no host-folder picker.
+
 ## Inference interface
 
 ```text
-stream(messages: list[{role, content}]) -> async iter[str]
+generate(messages, tools?) -> async iter[text | tool_calls]
 ```
 
-- `mock` — deterministic-ish streaming reply. Default off-Spark and in CI.
+- `mock` — deterministic-ish streaming reply. Emits fake tool calls for
+  test/demo phrases (`Write a file named …`, `Run pwd…`, `Search the web
+  for …`, `Fetch the url …`). Default off-Spark and in CI.
 - `omlx` — Mac-local OpenAI-compat (`POST {OMLX_BASE_URL}/chat/completions`
-  with `stream: true`). Distinct from vLLM. No Bearer to localhost by default.
+  with `stream: true` and a tools array). Distinct from vLLM. No Bearer to
+  localhost by default.
 - `vllm` — Spark `POST {VLLM_BASE_URL}/chat/completions` with `stream: true`.
-  Only text `role`/`content` pairs are sent. Images stay on disk.
+  Only text `role`/`content` pairs (plus tool messages) are sent. Images stay
+  on disk.
 
-System prompt is assembled by the runtime from the agent’s `description`.
-The desktop cannot inject a hidden system prompt around the runtime.
+System prompt is assembled by the runtime from the agent’s `description`
+plus a tools preamble. The desktop cannot inject a hidden system prompt
+around the runtime. Clients never send a tools payload.
 
 ## What “always-on teammates” means here
 
@@ -181,7 +206,8 @@ Snorlax-Bot:
   a file to an “inbox” bot without the human pasting.
 
 Until v1, “always-on” is: the runtime + model stay up, chat history is on
-disk, and the seeded teammate is still `snorlax-bot` after a reboot.
+disk, workspaces persist under `~/.snorlax-bot/workspaces/`, and the seeded
+teammate is still `snorlax-bot` after a reboot.
 
 ## Non-copy constraint
 

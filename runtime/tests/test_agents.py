@@ -186,6 +186,49 @@ def test_cannot_patch_seeded_channel(client) -> None:
     assert response.json() == {"error": "seeded channel cannot be patched"}
     still = client.get("/v1/agents/snorlax-bot-group", headers=AUTH).json()
     assert still["name"] == "Snorlax-Bot"
+    assert still["sharedProject"] is False
+
+
+def test_seed_channel_shared_project_toggle(client) -> None:
+    seed = client.get("/v1/agents/snorlax-bot-group", headers=AUTH).json()
+    assert seed["sharedProject"] is False
+    patched = client.patch(
+        "/v1/agents/snorlax-bot-group",
+        headers=AUTH,
+        json={"sharedProject": True},
+    )
+    assert patched.status_code == 200
+    assert patched.json()["sharedProject"] is True
+    assert patched.json()["name"] == "Snorlax-Bot"
+    fetched = client.get("/v1/agents/snorlax-bot-group", headers=AUTH).json()
+    assert fetched["sharedProject"] is True
+    off = client.patch(
+        "/v1/agents/snorlax-bot-group",
+        headers=AUTH,
+        json={"sharedProject": False},
+    )
+    assert off.status_code == 200
+    assert off.json()["sharedProject"] is False
+    blocked = client.patch(
+        "/v1/agents/snorlax-bot-group",
+        headers=AUTH,
+        json={"name": "Nope", "sharedProject": True},
+    )
+    assert blocked.status_code == 409
+    still = client.get("/v1/agents/snorlax-bot-group", headers=AUTH).json()
+    assert still["name"] == "Snorlax-Bot"
+    assert still["sharedProject"] is False
+
+
+def test_agent_cannot_patch_shared_project(client) -> None:
+    response = client.patch(
+        "/v1/agents/snorlax-bot",
+        headers=AUTH,
+        json={"sharedProject": True},
+    )
+    assert response.status_code == 422
+    snorlax = client.get("/v1/agents/snorlax-bot", headers=AUTH).json()
+    assert snorlax["sharedProject"] is False
 
 
 def test_delete_seeded_channel_is_204_and_gone(client) -> None:
@@ -217,6 +260,7 @@ def test_create_and_delete_user_channel(client) -> None:
     assert body["name"] == "Project"
     assert body["id"] == "project"
     assert body["memberIds"] == ["snorlax-bot", alice["id"]]
+    assert body["sharedProject"] is False
     roster = client.get("/v1/agents", headers=AUTH).json()
     channels = [a for a in roster if a["kind"] == "channel"]
     assert {c["id"] for c in channels} == {"snorlax-bot-group", "project"}

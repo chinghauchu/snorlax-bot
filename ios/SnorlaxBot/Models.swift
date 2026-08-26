@@ -50,6 +50,7 @@ extension Agent {
         avatar: nil,
         kind: .agent,
         memberIds: [],
+        sharedProject: false,
         createdAt: .distantPast,
         updatedAt: .distantPast
     )
@@ -62,6 +63,7 @@ extension Agent {
         avatar: nil,
         kind: .channel,
         memberIds: [seedID],
+        sharedProject: false,
         createdAt: .distantPast,
         updatedAt: .distantPast
     )
@@ -74,6 +76,7 @@ extension Agent {
         avatar: nil,
         kind: .agent,
         memberIds: [],
+        sharedProject: false,
         createdAt: .distantPast,
         updatedAt: .distantPast
     )
@@ -82,6 +85,7 @@ extension Agent {
 extension Message {
     var isFromUser: Bool { senderId == "user" || (senderId.isEmpty && role == .user) }
     var isHandoffRoot: Bool { kind == .handoff && replyTo == nil }
+    var isToolLine: Bool { kind == .tool }
 
     var jump: HandoffRef? { handoff }
 
@@ -241,4 +245,11 @@ enum RuntimeError: LocalizedError {
             return message
         }
     }
+}
+
+struct LiveToolTrace: Identifiable, Hashable, Sendable {
+    var id: String
+    var summary: String
+    var senderId: String?
+    var senderName: String?
 }

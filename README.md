@@ -20,15 +20,20 @@ computer. Bots live on your LAN, talk through a thin local runtime, and (in
 later versions) browse, click, schedule, and call tools without sending tokens
 off-box.
 
-v0.4 is still small: **named teammates + identity pane + group channel threads
-+ chat with @mentions + report-back + extra channels**. Header click opens
-agent identity (PATCH) or the channel member list. 1:1s are user ↔ that agent
-only; a user `@chip` (or agent DM) opens a handoff thread in a channel (seed
-`snorlax-bot-group` by default). B answers in the thread; A reports back in
-A's 1:1 as A. Seed `snorlax-bot` can be deleted (no auto-reseed). Users can
-create more channels. No tools, no sandbox computer, no vision.
-That slice is meant to actually run on a laptop *or* a Spark, with a mocked
-model backend when a 70B-class checkpoint is not present.
+v0.5 is still small: **named teammates + identity pane + group channel threads
++ chat with @mentions + report-back + extra channels + built-in tools**. Header
+click opens agent identity (PATCH) or the channel member list. 1:1s are user ↔
+that agent only; a user `@chip` (or agent DM) opens a handoff thread in a
+channel (seed `snorlax-bot-group` by default). B answers in the thread; A
+reports back in A's 1:1 as A. Seed `snorlax-bot` can be deleted (no auto-reseed).
+Users can create more channels. Agents can list/read/write files, run a
+workspace shell (no extra network), and search or fetch the web — the runtime
+owns that loop and auto-runs tools; clients never call the model or the tools.
+Channel work lives in a sandbox under `~/.snorlax-bot` when the channel’s
+shared-project toggle is on (default off); otherwise each agent uses its own
+workspace. No MCP, no sandbox GUI / screenshot pane, no vision. That slice is
+meant to actually run on a laptop *or* a Spark, with a mocked model backend
+when a 70B-class checkpoint is not present.
 
 ## Hardware target
 
@@ -93,7 +98,8 @@ On first start the process:
    `snorlax-bot-group` (name Snorlax-Bot) on a first empty DB. Deleting the
    seed agent or the seed channel does not reseed (never recreate
    `snorlax-bot-group`). After seed channel delete, clients select an
-   agent first if any remain, else a remaining channel.
+   agent first if any remain, else a remaining channel. Tool workspaces
+   are created lazily under `~/.snorlax-bot/workspaces/`.
 4. Listens on `127.0.0.1:8787` until that token file exists, then
    `0.0.0.0:8787` on later launches. `SNORLAX_TOKEN` overrides the file.
    Clients use `SNORLAX_URL` + `SNORLAX_TOKEN`; they never read the Spark disk.
@@ -173,9 +179,9 @@ default).
 
 ## v0 vs later
 
-See [ROADMAP.md](ROADMAP.md). Short version: v0 is chat-only named agents.
-Later: sandbox computer, skills, routines, MCP, question widgets, iOS
-companion that actually talks to the Spark.
+See [ROADMAP.md](ROADMAP.md). Short version: v0.5 is named agents plus
+runtime-owned file/shell/web tools in a `~/.snorlax-bot` sandbox. Later:
+sandbox computer GUI, skills, routines, MCP, question widgets.
 
 ## Contributing
 

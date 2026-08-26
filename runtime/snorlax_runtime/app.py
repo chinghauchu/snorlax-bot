@@ -18,6 +18,7 @@ from snorlax_runtime.inference import build_backend
 from snorlax_runtime.routing import MentionError, resolve_user_mentions, run_user_turn
 from snorlax_runtime.schemas import Agent, AgentCreate, AgentPatch, Health, Message, MessageCreate
 from snorlax_runtime.token import resolve_token, write_token_file
+from snorlax_runtime.tools import configure_tools, drop_workspace
 
 
 def _error(status_code: int, message: str) -> HTTPException:
@@ -37,6 +38,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             write_token_file(settings.data_dir, token)
         app.state.settings = settings
         app.state.store = store
+        configure_tools(
+            search_provider=settings.search_provider,
+            search_url=settings.search_url,
+        )
         backend_name = settings.resolved_backend()
         app.state.backend = build_backend(
             backend_name,
@@ -56,6 +61,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             f"  backend: {backend_name}\n"
             f"  inference: {inference_url}\n"
             f"  model: {settings.model}\n"
+            f"  search: {settings.search_provider}"
+            f"{' ' + settings.search_url if settings.search_url else ''}\n"
             f"  token: {token}",
             flush=True,
         )
@@ -163,17 +170,37 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         existing = await store.get_agent(id)
         if existing is None:
             raise _error(404, f"Agent {id!r} not found")
+        fields = payload.model_dump(exclude_unset=True)
+        identity = {"name", "title", "description", "avatar", "memberIds"}
+        if existing.get("kind") != KIND_CHANNEL and "sharedProject" in fields:
+            raise _error(422, "sharedProject is a channel field")
         if id == SEEDED_CHANNEL_ID:
-            raise _error(409, "seeded channel cannot be patched")
+            if identity & fields.keys() or "sharedProject" not in fields:
+                raise _error(409, "seeded channel cannot be patched")
+            row = await store.patch_agent(
+                id,
+                name=None,
+                title=None,
+                description=None,
+                avatar=...,
+                shared_project=bool(fields["sharedProject"]),
+            )
+            if row is None:
+                raise _error(404, f"Agent {id!r} not found")
+            return Agent.model_validate(row)
         if existing.get("kind") == KIND_CHANNEL:
-            fields = payload.model_dump(exclude_unset=True)
-            if "name" in fields:
+            if "name" in fields or "sharedProject" in fields:
                 row = await store.patch_agent(
                     id,
                     name=fields.get("name"),
                     title=None,
                     description=None,
                     avatar=...,
+                    shared_project=(
+                        bool(fields["sharedProject"])
+                        if "sharedProject" in fields
+                        else ...
+                    ),
                 )
                 if row is None:
                     raise _error(404, f"Agent {id!r} not found")
@@ -187,7 +214,6 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             if row is None:
                 raise _error(404, f"Agent {id!r} not found")
             return Agent.model_validate(row)
-        fields = payload.model_dump(exclude_unset=True)
         row = await store.patch_agent(
             id,
             name=fields.get("name"),
@@ -204,9 +230,17 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         id: str, request: Request, _: str = Depends(require_bearer)
     ) -> None:
         store: Store = request.app.state.store
+        existing = await store.get_agent(id)
+        if existing is None:
+            raise _error(404, f"Agent {id!r} not found")
         deleted = await store.delete_agent(id)
         if not deleted:
             raise _error(404, f"Agent {id!r} not found")
+        drop_workspace(
+            store.data_dir,
+            "channels" if existing.get("kind") == KIND_CHANNEL else "agents",
+            id,
+        )
 
     @app.get("/v1/agents/{id}/messages", response_model=list[Message])
     async def list_messages(
@@ -263,6 +297,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 mentions=mentions,
                 reply_to=payload.replyTo,
                 preferred_channel_id=payload.channelId,
+                max_tool_rounds=request.app.state.settings.tool_max_rounds,
             ):
                 yield _sse(event, data)
 

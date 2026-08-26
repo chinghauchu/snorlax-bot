@@ -22,6 +22,7 @@ class Agent(BaseModel):
     avatar: str | None
     kind: str
     memberIds: list[str]
+    sharedProject: bool = False
     createdAt: str
     updatedAt: str
 
@@ -49,8 +50,15 @@ class AgentPatch(BaseModel):
     memberIds: list[str] | None = Field(
         default=None,
         description=(
-            "Agent ids for a user-created channel. Seed channel PATCH is 409. "
-            "Unknown ids and channel ids 422."
+            "Agent ids for a user-created channel. Seed channel identity "
+            "PATCH is 409. Unknown ids and channel ids 422."
+        ),
+    )
+    sharedProject: bool | None = Field(
+        default=None,
+        description=(
+            "Channel shared-project toggle. Default off. Seed channel may "
+            "PATCH this field only; identity fields stay 409."
         ),
     )
 
@@ -120,3 +128,12 @@ class MessageDelta(BaseModel):
     senderId: str | None = None
     senderName: str | None = None
     senderAvatar: str | None = None
+
+
+class ToolTrace(BaseModel):
+    id: str
+    name: str
+    summary: str
+    ok: bool | None = None
+    senderId: str | None = None
+    senderName: str | None = None

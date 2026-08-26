@@ -26,6 +26,7 @@ import {
   displayBody,
   fromLabel,
   isHandoffRoot,
+  isToolLine,
   jumpChannelName,
   repliesLabel,
   visibleJump,
@@ -33,11 +34,13 @@ import {
 import {
   canDeleteAgent,
   canEditChannel,
+  canToggleSharedProject,
   channelMembers,
   displayInitials,
   fallbackRosterSelection,
   infoPaneKind,
   nextRosterSelection,
+  SHARED_PROJECT_HINT,
 } from "./infoPane";
 import {
   USER_SENDER_ID,
@@ -80,6 +83,7 @@ const PLACEHOLDER_CHANNEL: Agent = {
   avatar: null,
   kind: "channel",
   memberIds: [SEED_AGENT_ID],
+  sharedProject: false,
   createdAt: "",
   updatedAt: "",
 };
@@ -91,6 +95,7 @@ const PLACEHOLDER_SEED: Agent = {
   avatar: null,
   kind: "agent",
   memberIds: [],
+  sharedProject: false,
   createdAt: "",
   updatedAt: "",
 };
@@ -209,6 +214,9 @@ export function App() {
   const [channelNameDraft, setChannelNameDraft] = useState("New channel");
   const [channelMemberDraft, setChannelMemberDraft] = useState<string[]>([]);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [toolTraces, setToolTraces] = useState<
+    { id: string; summary: string; senderId?: string; senderName?: string }[]
+  >([]);
   const [draft, setDraft] = useState("");
   const [pendingImage, setPendingImage] = useState<PendingImage | null>(null);
   const [busy, setBusy] = useState(false);
@@ -227,6 +235,7 @@ export function App() {
   const [profileDescription, setProfileDescription] = useState("");
   const [profileAvatar, setProfileAvatar] = useState<string | null>(null);
   const [profileMemberIds, setProfileMemberIds] = useState<string[]>([]);
+  const [profileSharedProject, setProfileSharedProject] = useState(false);
   const [profileSaving, setProfileSaving] = useState(false);
 
   const scroller = useRef<HTMLDivElement>(null);
@@ -323,7 +332,7 @@ export function App() {
 
   useEffect(() => {
     scroller.current?.scrollTo({ top: scroller.current.scrollHeight });
-  }, [messages, busy]);
+  }, [messages, busy, toolTraces]);
 
   useEffect(() => {
     const onPointerDown = (event: PointerEvent) => {
@@ -504,6 +513,7 @@ export function App() {
     setProfileDescription(active.description);
     setProfileAvatar(active.avatar);
     setProfileMemberIds([...active.memberIds]);
+    setProfileSharedProject(Boolean(active.sharedProject));
     setProfileEditing(false);
     setProfileOpen(true);
   }
@@ -522,6 +532,7 @@ export function App() {
         setProfileDescription(active.description);
         setProfileAvatar(active.avatar);
         setProfileMemberIds([...active.memberIds]);
+        setProfileSharedProject(Boolean(active.sharedProject));
         setProfileEditing(false);
         setProfileOpen(true);
       }
@@ -540,6 +551,7 @@ export function App() {
           ? await patchAgent(session, active.id, {
               name: profileName.trim() || active.name,
               memberIds: profileMemberIds,
+              sharedProject: profileSharedProject,
             })
           : await patchAgent(session, active.id, {
               name: profileName.trim() || active.name,
@@ -553,11 +565,27 @@ export function App() {
       setProfileDescription(updated.description);
       setProfileAvatar(updated.avatar);
       setProfileMemberIds([...updated.memberIds]);
+      setProfileSharedProject(Boolean(updated.sharedProject));
       setProfileEditing(false);
     } catch (err) {
       setComposerError(describeError(err));
     } finally {
       setProfileSaving(false);
+    }
+  }
+
+  async function setSharedProject(on: boolean) {
+    if (!session || !active || !canToggleSharedProject(active)) return;
+    setProfileSharedProject(on);
+    try {
+      const updated = await patchAgent(session, active.id, {
+        sharedProject: on,
+      });
+      setAgents((prev) => prev.map((a) => (a.id === updated.id ? updated : a)));
+      setProfileSharedProject(Boolean(updated.sharedProject));
+    } catch (err) {
+      setProfileSharedProject(Boolean(active.sharedProject));
+      setComposerError(describeError(err));
     }
   }
 
@@ -632,6 +660,7 @@ export function App() {
       mentions: [],
     };
     setMessages((prev) => [...prev, userMsg]);
+    setToolTraces([]);
     setBusy(true);
     resizeComposer(true);
     const mentionIds = mentionIdsInText(content, pickedMentions.current);
@@ -679,6 +708,11 @@ export function App() {
             return;
           }
           if (message) {
+            if (isToolLine(message)) {
+              setToolTraces((prev) =>
+                prev.filter((trace) => trace.id !== message.id),
+              );
+            }
             setMessages((prev) => {
               const without = prev.filter((m) => m.id !== message.id);
               return [...without, message];
@@ -687,6 +721,13 @@ export function App() {
         },
         onError(code, message) {
           setComposerError(`${code}: ${message}`);
+        },
+        onTool(trace) {
+          if (active.kind === "channel" && !threadId) return;
+          setToolTraces((prev) => {
+            const without = prev.filter((item) => item.id !== trace.id);
+            return [...without, { id: trace.id, summary: trace.summary, senderId: trace.senderId, senderName: trace.senderName }];
+          });
         },
         },
         mentionIds,
@@ -699,6 +740,7 @@ export function App() {
         active.kind === "channel" && threadId ? { threadId } : undefined,
       );
       setMessages(listed);
+      setToolTraces([]);
       if (active.kind !== "channel") {
         const channelId = listed
           .map((message) => visibleJump(message, agents)?.channelId)
@@ -796,6 +838,26 @@ export function App() {
   const visibleMessages = active
     ? messages.filter((message) => isTranscriptVisible(message, active))
     : messages;
+  const lastUserIdx = visibleMessages.reduce(
+    (found, message, index) =>
+      isUserSender(message.senderId, message.role) ? index : found,
+    -1,
+  );
+  const liveTraces = toolTraces.filter(
+    (trace) =>
+      !visibleMessages.some(
+        (message) => isToolLine(message) && message.id === trace.id,
+      ),
+  );
+  const liveAssistantIdx = visibleMessages.findIndex(
+    (message, index) =>
+      index > lastUserIdx &&
+      message.role === "assistant" &&
+      !isHandoffRoot(message) &&
+      !isToolLine(message),
+  );
+  const showStandaloneTraces =
+    liveTraces.length > 0 && liveAssistantIdx < 0;
 
   return (
     <div className="app">
@@ -995,6 +1057,13 @@ export function App() {
                         </span>
                       </div>
                     ) : null}
+                    {!mine && index === liveAssistantIdx
+                      ? liveTraces.map((trace) => (
+                          <p key={trace.id} className="tool-trace">
+                            {trace.summary}
+                          </p>
+                        ))
+                      : null}
                     {threadRoot ? (
                       <div className="handoff-card">
                         <p className="handoff-from">
@@ -1010,6 +1079,8 @@ export function App() {
                           </details>
                         ) : null}
                       </div>
+                    ) : isToolLine(message) ? (
+                      <p className="tool-trace">{message.content}</p>
                     ) : (
                       <div className={`bubble ${mine ? "user" : "agent"}`}>
                         {message.images.map((image) => (
@@ -1050,6 +1121,36 @@ export function App() {
                 );
               })
             )}
+            {showStandaloneTraces ? (
+              <article className="turn left new-sender">
+                <div className="sender-row">
+                  <Avatar
+                    src={
+                      agents.find(
+                        (a) =>
+                          a.id ===
+                          (liveTraces[0]?.senderId || active?.id),
+                      )?.avatar ??
+                      active?.avatar ??
+                      null
+                    }
+                    name={
+                      liveTraces[0]?.senderName || active?.name || "Agent"
+                    }
+                    size={20}
+                    session={session}
+                  />
+                  <span className="sender-name">
+                    {liveTraces[0]?.senderName || active?.name || "Agent"}
+                  </span>
+                </div>
+                {liveTraces.map((trace) => (
+                  <p key={trace.id} className="tool-trace">
+                    {trace.summary}
+                  </p>
+                ))}
+              </article>
+            ) : null}
             {busy ? <p className="typing">…</p> : null}
           </div>
         </div>
@@ -1219,6 +1320,19 @@ export function App() {
                     )
                   }
                 />
+                <label className="shared-project">
+                  <input
+                    type="checkbox"
+                    checked={profileSharedProject}
+                    onChange={(e) => setProfileSharedProject(e.target.checked)}
+                  />
+                  <span>
+                    <strong>Shared project</strong>
+                    <span className="shared-project-hint">
+                      {SHARED_PROJECT_HINT}
+                    </span>
+                  </span>
+                </label>
                 <button type="submit" className="primary" disabled={profileSaving}>
                   Save
                 </button>
@@ -1229,6 +1343,21 @@ export function App() {
                 <p className="info-name">{active.name}</p>
                 <p className="info-muted">Channel</p>
               </div>
+              {canToggleSharedProject(active) ? (
+                <label className="shared-project">
+                  <input
+                    type="checkbox"
+                    checked={profileSharedProject}
+                    onChange={(e) => void setSharedProject(e.target.checked)}
+                  />
+                  <span>
+                    <strong>Shared project</strong>
+                    <span className="shared-project-hint">
+                      {SHARED_PROJECT_HINT}
+                    </span>
+                  </span>
+                </label>
+              ) : null}
               <div className="info-members">
                 {channelMembers(active.memberIds, agents).map((member) => (
                   <div className="info-member" key={member.id}>

@@ -157,6 +157,14 @@ export type StreamHandlers = {
   ) => void;
   onDone: (message: ChatMessage | null) => void;
   onError: (code: string, message: string) => void;
+  onTool?: (trace: {
+    id: string;
+    name: string;
+    summary: string;
+    ok?: boolean | null;
+    senderId?: string;
+    senderName?: string;
+  }) => void;
 };
 
 export async function sendMessage(
@@ -236,6 +244,19 @@ function dispatchSse(raw: string, handlers: StreamHandlers): void {
     );
   } else if (event === "error") {
     handlers.onError("error", errorMessage(payload, "Unknown error"));
+  } else if (event === "tool.start" || event === "tool.done") {
+    const id = typeof record.id === "string" ? record.id : "";
+    const name = typeof record.name === "string" ? record.name : "";
+    const summary = typeof record.summary === "string" ? record.summary : "";
+    if (!id || !summary) return;
+    handlers.onTool?.({
+      id,
+      name,
+      summary,
+      ok: typeof record.ok === "boolean" ? record.ok : null,
+      senderId: typeof record.senderId === "string" ? record.senderId : undefined,
+      senderName: typeof record.senderName === "string" ? record.senderName : undefined,
+    });
   }
 }
 

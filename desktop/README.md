@@ -37,7 +37,9 @@ npm run tauri dev
 ```
 
 v0 chrome: 256px agent sidebar, chat, 320px identity overlay on the chat
-(not a third column), Settings. Create agent or channel from +. No computer pane.
+(not a third column), Settings. Create agent or channel from +. No computer
+pane. Muted 12px tool traces (`Searching…` / `Wrote app.py`) may appear in
+the transcript while the runtime runs tools.
 
 Types and the `/v1` client are generated from the locked camelCase OpenAPI
 (`openapi.yaml`, same contract as `protocol/openapi.yaml` on the Backend

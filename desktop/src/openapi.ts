@@ -81,7 +81,8 @@ export interface paths {
          *     from GET /v1/agents. No auto-reseed; an empty agent roster is OK.
          *     kind=channel including seed `snorlax-bot-group` returns 204 and is
          *     gone from GET /v1/agents. No auto-reseed. User-created agent and
-         *     channel DELETE is 204.
+         *     channel DELETE is 204. DELETE of an agent or channel (including
+         *     seed) drops that workspace dir.
          */
         delete: operations["deleteAgent"];
         options?: never;
@@ -91,9 +92,9 @@ export interface paths {
          * @description kind=agent including seed `snorlax-bot`: `{ name, title,
          *     description, avatar }`. Avatar is string|null (data URL or
          *     existing image id). No new upload route. Id is not editable.
-         *     User-created kind=channel: `{ name, memberIds }` returns 200.
-         *     Seeded channel (`snorlax-bot-group`) identity PATCH returns 409
-         *     `{ error }`.
+         *     User-created kind=channel: `{ name, memberIds, sharedProject }`
+         *     returns 200. Seeded channel (`snorlax-bot-group`) identity PATCH
+         *     returns 409 `{ error }`. Seed may PATCH `{ sharedProject }` only.
          */
         patch: operations["patchAgent"];
         trace?: never;
@@ -121,8 +122,8 @@ export interface paths {
         put?: never;
         /**
          * Send a user message and stream agent replies
-         * @description SSE, chat-only (no tools). Images are stored and returned; never
-         *     forwarded to vLLM.
+         * @description SSE. Images are stored and returned; never forwarded to vLLM.
+         *     The runtime owns the tool loop (clients never send a tools payload).
          *
          *     For a 1:1 agent, hop 0 is that agent. Mentioned peers and hops
          *     reply in a handoff thread on seed `snorlax-bot-group` when present
@@ -146,10 +147,20 @@ export interface paths {
          *
          *     - event `message.delta` data `{ id, role: "assistant", delta, senderId, senderName, senderAvatar }`
          *     - event `message.done` data full Message (not wrapped)
+         *     - event `tool.start` data ToolTrace `{ id, name, summary, senderId, senderName }`
+         *     - event `tool.done` data ToolTrace `{ id, name, summary, ok, senderId, senderName }`
          *     - event `error` data `{ error }` (string)
          *
          *     Multiple `message.done` events may appear on one stream when more
-         *     than one agent speaks in this transcript.
+         *     than one agent speaks in this transcript, and after each persisted
+         *     tool line (`kind=tool`). Tool activity is stored as Message
+         *     `kind=tool` with short content (`Read src/a.ts`, `Ran ls`,
+         *     `Fetched …`), same senderId as the speaking agent, in that
+         *     transcript only (1:1 if A tools; channel thread if B tools).
+         *     Report-back into A's 1:1 is a normal assistant `kind=message` as A
+         *     and does not copy B's tool lines. Live `tool.start` / `tool.done`
+         *     traces stay additive. Clients that do not understand `tool.*` skip
+         *     those events and may still render `kind=tool` rows from GET.
          */
         post: operations["postMessage"];
         delete?: never;
@@ -212,6 +223,13 @@ export interface components {
             kind: "agent" | "channel";
             /** @description Agent ids in a channel. Empty for kind=agent. Channel members come from memberIds. */
             memberIds: string[];
+            /**
+             * @description Channel shared-project toggle, default false. When true, channel
+             *     / handoff turns use workspaces/channels/{id}/. When false, the
+             *     speaking agent's workspace. Ignored (always false) on kind=agent.
+             *     Not a picker for a folder on the host Mac.
+             */
+            sharedProject: boolean;
             /** Format: date-time */
             createdAt: string;
             /** Format: date-time */
@@ -249,9 +267,14 @@ export interface components {
             avatar?: string | null;
             /**
              * @description User-created channel members. Agent ids only. Seed channel
-             *     PATCH is 409. Unknown ids and channel ids 422.
+             *     identity PATCH is 409. Unknown ids and channel ids 422.
              */
             memberIds?: string[];
+            /**
+             * @description Channel shared-project toggle. Seed channel may PATCH this
+             *     field only. kind=agent returns 422.
+             */
+            sharedProject?: boolean;
         };
         ImageOut: {
             id: string;
@@ -294,10 +317,13 @@ export interface components {
             mentions: components["schemas"]["Mention"][];
             /**
              * @description Channel handoff root is `handoff` (LEFT card authored as A).
-             *     Default `message`.
+             *     Tool activity is `tool` (LEFT 12px muted status, short content
+             *     like `Read src/a.ts` / `Ran ls` / `Fetched …`, same senderId as
+             *     the agent). Not JSON and not a user-right bubble. Default
+             *     `message`.
              * @enum {string}
              */
-            kind?: "message" | "handoff";
+            kind?: "message" | "handoff" | "tool";
             /** @description Channel thread id. Null on timeline roots and on 1:1s. */
             replyTo?: string | null;
             /**
@@ -350,6 +376,15 @@ export interface components {
             senderId?: string;
             senderName?: string;
             senderAvatar?: string | null;
+        };
+        ToolTrace: {
+            id: string;
+            name: string;
+            /** @description Muted client line such as "Searching…" or "Wrote app.py". */
+            summary: string;
+            ok?: boolean | null;
+            senderId?: string;
+            senderName?: string;
         };
         ErrorBody: {
             error: string;

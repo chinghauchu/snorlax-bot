@@ -1,10 +1,10 @@
 openapi: 3.1.0
 info:
   title: Snorlax-Bot
-  version: 0.4.0
+  version: 0.5.0
   description: |
-    Locked v0.4 LAN contract. Clients use SNORLAX_URL + SNORLAX_TOKEN.
-    They never call vLLM and never read the Spark filesystem.
+    Locked v0.5 LAN contract. Clients use SNORLAX_URL + SNORLAX_TOKEN.
+    They never call vLLM, never call tools, and never read the Spark filesystem.
 
     Seeded agent: id `snorlax-bot`, name Snorlax, title Assistant, kind
     `agent`. GET/POST /v1/agents/snorlax-bot/messages is the user–Snorlax
@@ -28,9 +28,27 @@ info:
     Members come from memberIds. New agents auto-join the seed only while
     it exists. User-created agent DELETE is still 204.
 
-    Chat-only. No tools, no VL, no MCP, no skills, no box, no computer-use,
-    no routines, no widgets. Images persist and are returned; they are
-    never sent to the model. No mDNS.
+    Runtime-owned tools (v0.5): list_dir, read_file, write_file, delete_file,
+    shell, web_search, web_fetch. The FastAPI runtime runs a function-calling
+    loop against the local OpenAI-compat server (cap 8 rounds). Clients never
+    construct tool calls. Tools auto-run (no approval or question widgets).
+    Workspaces live under ~/.snorlax-bot/workspaces/ (agents/{id} for 1:1).
+    Channel shared project is a pane toggle (user-created + seed), default
+    off (`sharedProject`). When on, channel / handoff turns use
+    channels/{id}/; when off, the speaking agent's workspace. The channel
+    project is that sandbox dir, not a picker for a folder on the host Mac.
+    Path jail: tools cannot leave the active workspace root. Shell has no extra network; HTTP is web_search / web_fetch only. Search provider is
+    configuration (SNORLAX_SEARCH_PROVIDER / SNORLAX_SEARCH_URL), not a
+    hardcoded vendor. DELETE of an agent or channel (including seed) drops that
+    workspace dir (no dir reseed). Tool activity persists as Message
+    `kind=tool` (short content, same senderId) so GET matches live SSE.
+    Compact 12px muted status sits under the speaking agent's LEFT streak;
+    the final answer is a normal LEFT bubble. Report-back does not copy a
+    peer's tool lines. iOS sees chat/status lines only (no file browser).
+    No folder or path field; sharedProject is a boolean toggle. No MCP, no
+    browser-use GUI, no computer screenshot pane, no widgets.
+
+    Images persist and are returned; they are never sent to the model. No mDNS.
 
     Mentions are runtime-routed. Hop 0 is the user→current-agent turn.
     Max depth 3 (A→B→C→D ok; D→E dropped). Max 4 peer sends per user turn.
@@ -73,6 +91,13 @@ info:
     has reported for each. Extra `message.done` on the same stream. B is
     prompted to do the work; no ACK classifier. Extra-channel @stays in
     that channel. Extra user-created channels are kind=channel rows.
+
+    v0.5: runtime tool loop. Additive SSE `tool.start` / `tool.done` traces
+    (`{ id, name, summary, ok?, senderId, senderName }`). Tool activity also
+    persists as Message `kind=tool` so GET matches. Existing
+    `message.delta` / `message.done` / `error` are unchanged. Desktop may
+    show muted traces; unknown events must be ignored. Seeded channel DELETE
+    is 204, gone from GET, no auto-reseed.
   license:
     name: Apache-2.0
     identifier: Apache-2.0
@@ -183,9 +208,9 @@ paths:
         kind=agent including seed `snorlax-bot`: `{ name, title,
         description, avatar }`. Avatar is string|null (data URL or
         existing image id). No new upload route. Id is not editable.
-        User-created kind=channel: `{ name, memberIds }` returns 200.
-        Seeded channel (`snorlax-bot-group`) identity PATCH returns 409
-        `{ error }`.
+        User-created kind=channel: `{ name, memberIds, sharedProject }`
+        returns 200. Seeded channel (`snorlax-bot-group`) identity PATCH
+        returns 409 `{ error }`. Seed may PATCH `{ sharedProject }` only.
       operationId: patchAgent
       requestBody:
         required: true
@@ -214,7 +239,8 @@ paths:
         from GET /v1/agents. No auto-reseed; an empty agent roster is OK.
         kind=channel including seed `snorlax-bot-group` returns 204 and is
         gone from GET /v1/agents. No auto-reseed. User-created agent and
-        channel DELETE is 204.
+        channel DELETE is 204. DELETE of an agent or channel (including
+        seed) drops that workspace dir.
       operationId: deleteAgent
       responses:
         "204":
@@ -276,8 +302,8 @@ paths:
     post:
       summary: Send a user message and stream agent replies
       description: |
-        SSE, chat-only (no tools). Images are stored and returned; never
-        forwarded to vLLM.
+        SSE. Images are stored and returned; never forwarded to vLLM.
+        The runtime owns the tool loop (clients never send a tools payload).
 
         For a 1:1 agent, hop 0 is that agent. Mentioned peers and hops
         reply in a handoff thread on seed `snorlax-bot-group` when present
@@ -301,10 +327,20 @@ paths:
 
         - event `message.delta` data `{ id, role: "assistant", delta, senderId, senderName, senderAvatar }`
         - event `message.done` data full Message (not wrapped)
+        - event `tool.start` data ToolTrace `{ id, name, summary, senderId, senderName }`
+        - event `tool.done` data ToolTrace `{ id, name, summary, ok, senderId, senderName }`
         - event `error` data `{ error }` (string)
 
         Multiple `message.done` events may appear on one stream when more
-        than one agent speaks in this transcript.
+        than one agent speaks in this transcript, and after each persisted
+        tool line (`kind=tool`). Tool activity is stored as Message
+        `kind=tool` with short content (`Read src/a.ts`, `Ran ls`,
+        `Fetched …`), same senderId as the speaking agent, in that
+        transcript only (1:1 if A tools; channel thread if B tools).
+        Report-back into A's 1:1 is a normal assistant `kind=message` as A
+        and does not copy B's tool lines. Live `tool.start` / `tool.done`
+        traces stay additive. Clients that do not understand `tool.*` skip
+        those events and may still render `kind=tool` rows from GET.
       operationId: postMessage
       requestBody:
         required: true
@@ -386,7 +422,7 @@ components:
 
     Agent:
       type: object
-      required: [id, name, title, description, avatar, kind, memberIds, createdAt, updatedAt]
+      required: [id, name, title, description, avatar, kind, memberIds, sharedProject, createdAt, updatedAt]
       properties:
         id:
           type: string
@@ -416,6 +452,13 @@ components:
           items:
             type: string
           description: Agent ids in a channel. Empty for kind=agent. Channel members come from memberIds.
+        sharedProject:
+          type: boolean
+          description: |
+            Channel shared-project toggle, default false. When true, channel
+            / handoff turns use workspaces/channels/{id}/. When false, the
+            speaking agent's workspace. Ignored (always false) on kind=agent.
+            Not a picker for a folder on the host Mac.
         createdAt:
           type: string
           format: date-time
@@ -480,7 +523,12 @@ components:
             type: string
           description: |
             User-created channel members. Agent ids only. Seed channel
-            PATCH is 409. Unknown ids and channel ids 422.
+            identity PATCH is 409. Unknown ids and channel ids 422.
+        sharedProject:
+          type: boolean
+          description: |
+            Channel shared-project toggle. Seed channel may PATCH this
+            field only. kind=agent returns 422.
 
     ImageOut:
       type: object
@@ -575,10 +623,13 @@ components:
             $ref: "#/components/schemas/Mention"
         kind:
           type: string
-          enum: [message, handoff]
+          enum: [message, handoff, tool]
           description: |
             Channel handoff root is `handoff` (LEFT card authored as A).
-            Default `message`.
+            Tool activity is `tool` (LEFT 12px muted status, short content
+            like `Read src/a.ts` / `Ran ls` / `Fetched …`, same senderId as
+            the agent). Not JSON and not a user-right bubble. Default
+            `message`.
         replyTo:
           type: [string, "null"]
           description: Channel thread id. Null on timeline roots and on 1:1s.
@@ -656,6 +707,24 @@ components:
           type: string
         senderAvatar:
           type: [string, "null"]
+
+    ToolTrace:
+      type: object
+      required: [id, name, summary]
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        summary:
+          type: string
+          description: Muted client line such as "Searching…" or "Wrote app.py".
+        ok:
+          type: [boolean, "null"]
+        senderId:
+          type: string
+        senderName:
+          type: string
 
     ErrorBody:
       type: object

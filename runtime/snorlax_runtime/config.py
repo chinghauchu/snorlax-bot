@@ -23,6 +23,9 @@ class Settings(BaseSettings):
     model: str = "meta-llama/Llama-3.3-70B-Instruct-FP8"
     inference_api_key: str | None = None
     inference_send_auth: bool | None = None
+    tool_max_rounds: int = 8
+    search_provider: str = "duckduckgo"
+    search_url: str | None = None
 
     def resolved_backend(self) -> str:
         name = self.inference_backend.strip().lower()

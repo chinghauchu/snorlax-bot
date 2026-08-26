@@ -33,6 +33,11 @@ export function isHandoffRoot(message: ChatMessage): boolean {
   return message.kind === "handoff";
 }
 
+/** Persisted tool chrome. 12px muted LEFT status, not a bubble. */
+export function isToolLine(message: ChatMessage): boolean {
+  return message.kind === "tool";
+}
+
 export function repliesLabel(count: number): string {
   if (count === 1) return "1 reply";
   return `${count} replies`;

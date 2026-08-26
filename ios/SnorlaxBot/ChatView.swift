@@ -91,10 +91,30 @@ struct ChatView: View {
                             .padding(.top, 12)
                     } else {
                         let visible = model.visibleMessages(for: agent)
+                        let lastUserIdx = visible.lastIndex(where: \.isFromUser)
+                        let persistedToolIds = Set(visible.filter(\.isToolLine).map(\.id))
+                        let liveTraces = model.toolTraces.filter { !persistedToolIds.contains($0.id) }
+                        let liveAssistantIdx = visible.indices.first { index in
+                            guard let lastUserIdx else { return false }
+                            let message = visible[index]
+                            return index > lastUserIdx
+                                && message.role == .assistant
+                                && !message.isHandoffRoot
+                                && !message.isToolLine
+                        }
                         ForEach(Array(visible.enumerated()), id: \.element.id) { index, message in
-                            transcriptItem(message, index: index, in: visible, agent: agent)
+                            transcriptItem(
+                                message,
+                                index: index,
+                                in: visible,
+                                agent: agent,
+                                toolTraces: index == liveAssistantIdx ? liveTraces : []
+                            )
                             .padding(.top, turnSpacing(at: index, in: visible, message: message))
                             .id(message.id)
+                        }
+                        if liveAssistantIdx == nil, !liveTraces.isEmpty {
+                            liveToolStreak(agent: agent, traces: liveTraces)
                         }
                     }
                     Color.clear.frame(height: 1).id("bottom")
@@ -107,11 +127,50 @@ struct ChatView: View {
             .onChange(of: model.messages.last?.content) { _, _ in
                 proxy.scrollTo("bottom", anchor: .bottom)
             }
+            .onChange(of: model.toolTraces.count) { _, _ in
+                proxy.scrollTo("bottom", anchor: .bottom)
+            }
         }
     }
 
     @ViewBuilder
-    private func transcriptItem(_ message: Message, index: Int, in messages: [Message], agent: Agent) -> some View {
+    private func liveToolStreak(agent: Agent, traces: [LiveToolTrace]) -> some View {
+        let speaker = liveToolSpeaker(agent: agent, traces: traces)
+        let speakerName = traces.first?.senderName.flatMap { $0.isEmpty ? nil : $0 }
+            ?? speaker.name
+        VStack(alignment: .leading, spacing: 4) {
+            HStack(spacing: 6) {
+                AgentAvatar(agent: speaker, size: 20)
+                Text(speakerName)
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundStyle(.secondary)
+            }
+            .padding(.horizontal, 12)
+            ForEach(traces) { trace in
+                Text(trace.summary)
+                    .font(.system(size: 12))
+                    .foregroundStyle(.secondary)
+                    .padding(.horizontal, 12)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.top, 16)
+        .id("live-tools")
+    }
+
+    /// Match desktop: speaker is the trace's senderId, else the conversation
+    /// (`active`). Never the first roster agent.
+    private func liveToolSpeaker(agent: Agent, traces: [LiveToolTrace]) -> Agent {
+        if let id = traces.first?.senderId, !id.isEmpty,
+           let found = model.visibleAgents.first(where: { $0.id == id })
+        {
+            return found
+        }
+        return agent
+    }
+
+    @ViewBuilder
+    private func transcriptItem(_ message: Message, index: Int, in messages: [Message], agent: Agent, toolTraces: [LiveToolTrace] = []) -> some View {
         let onTimeline = agent.isChannel && model.threadID == nil
         if onTimeline, message.isHandoffRoot {
             Button {
@@ -126,7 +185,8 @@ struct ChatView: View {
                 agents: model.visibleAgents,
                 localPreviews: model.localPreviews[message.id] ?? [],
                 sameSender: !message.isHandoffRoot && sameSender(at: index, in: messages),
-                threadRoot: agent.isChannel && model.threadID != nil && message.isHandoffRoot
+                threadRoot: agent.isChannel && model.threadID != nil && message.isHandoffRoot,
+                toolTraces: toolTraces
             ) { jump in
                 Task { await model.openJump(channelId: jump.channelId, threadId: jump.threadId) }
             }
@@ -273,6 +333,7 @@ private struct MessageBubble: View {
     var localPreviews: [Data] = []
     var sameSender = false
     var threadRoot = false
+    var toolTraces: [LiveToolTrace] = []
     var onJump: ((HandoffRef) -> Void)?
 
     private var isUser: Bool { message.isFromUser }
@@ -294,6 +355,7 @@ private struct MessageBubble: View {
                             avatar: message.senderAvatar,
                             kind: .agent,
                             memberIds: [],
+                            sharedProject: false,
                             createdAt: .distantPast,
                             updatedAt: .distantPast
                         ),
@@ -305,6 +367,18 @@ private struct MessageBubble: View {
                 }
                 .padding(.horizontal, 12)
             }
+            ForEach(toolTraces) { trace in
+                Text(trace.summary)
+                    .font(.system(size: 12))
+                    .foregroundStyle(.secondary)
+                    .padding(.horizontal, 12)
+            }
+            if message.isToolLine {
+                Text(message.content)
+                    .font(.system(size: 12))
+                    .foregroundStyle(.secondary)
+                    .padding(.horizontal, 12)
+            } else {
             HStack(alignment: .top, spacing: 0) {
                 if isUser { Spacer(minLength: 48) }
                 if threadRoot {
@@ -357,6 +431,7 @@ private struct MessageBubble: View {
                 if !isUser { Spacer(minLength: 48) }
             }
             .padding(.horizontal, 12)
+            }
             if isUser, let jump = message.visibleJump(in: agents) {
                 Button {
                     onJump?(jump)
@@ -404,6 +479,7 @@ private struct HandoffTimelineRow: View {
                     avatar: message.senderAvatar,
                     kind: .agent,
                     memberIds: [],
+                    sharedProject: false,
                     createdAt: .distantPast,
                     updatedAt: .distantPast
                 ),

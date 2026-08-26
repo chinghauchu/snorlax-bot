@@ -34,6 +34,7 @@ final class AppModel {
     var selectedAgentID: String?
     var navigationPath: [String] = []
     var messages: [Message] = []
+    var toolTraces: [LiveToolTrace] = []
     var threadID: String?
     var unreadChannelIDs: Set<String> = []
     var lastExtraChannelID: String?
@@ -222,7 +223,11 @@ final class AppModel {
         do {
             let updated = try await client.patchAgent(
                 draft.isChannel
-                    ? AgentPatch(name: draft.name, memberIds: draft.memberIds)
+                    ? AgentPatch(
+                        name: draft.name,
+                        memberIds: draft.memberIds,
+                        sharedProject: draft.sharedProject
+                    )
                     : AgentPatch(
                         name: draft.name,
                         title: draft.title,
@@ -235,6 +240,21 @@ final class AppModel {
                 agents[index] = updated
             } else {
                 agents.append(updated)
+            }
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    func setSharedProject(id: String, on: Bool) async {
+        guard let client else { return }
+        do {
+            let updated = try await client.patchAgent(
+                AgentPatch(sharedProject: on),
+                id: id
+            )
+            if let index = agents.firstIndex(where: { $0.id == updated.id }) {
+                agents[index] = updated
             }
         } catch {
             errorMessage = error.localizedDescription
@@ -258,6 +278,7 @@ final class AppModel {
             localPreviews[user.id] = [data]
         }
         messages.append(user)
+        toolTraces = []
         isSending = true
         defer { isSending = false }
 
@@ -276,6 +297,7 @@ final class AppModel {
             }
             if !Task.isCancelled, selectedAgentID == agent.id {
                 messages = try await client.listMessages(agentId: agent.id, threadId: threadID)
+                toolTraces = []
                 prunePreviews()
                 if !agent.isChannel {
                     if let channelId = messages.compactMap({ $0.visibleJump(in: self.agents)?.channelId }).last {
@@ -341,8 +363,27 @@ final class AppModel {
             } else {
                 messages.append(message)
             }
+            if message.kind == .tool {
+                toolTraces.removeAll { $0.id == message.id }
+            }
         case .error(let message):
             errorMessage = message
+        case .tool(let id, let summary, _, let senderId, let senderName):
+            if onTimeline { return }
+            if let index = toolTraces.firstIndex(where: { $0.id == id }) {
+                toolTraces[index].summary = summary
+                if let senderId { toolTraces[index].senderId = senderId }
+                if let senderName { toolTraces[index].senderName = senderName }
+            } else {
+                toolTraces.append(
+                    LiveToolTrace(
+                        id: id,
+                        summary: summary,
+                        senderId: senderId,
+                        senderName: senderName
+                    )
+                )
+            }
         }
     }
 
@@ -392,6 +433,7 @@ final class AppModel {
                 avatar: nil,
                 kind: .agent,
                 memberIds: [],
+                sharedProject: false,
                 createdAt: .distantPast,
                 updatedAt: .distantPast
             )

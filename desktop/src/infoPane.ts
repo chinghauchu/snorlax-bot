@@ -12,6 +12,15 @@ export function canEditChannel(agent: { id?: string; kind: string }): boolean {
   return agent.kind === "channel" && agent.id !== SEED_CHANNEL_ID;
 }
 
+/** Seed + user-created channel panes both expose the shared-project toggle. */
+export function canToggleSharedProject(agent: { kind: string }): boolean {
+  return agent.kind === "channel";
+}
+
+/** Design helper under the Channel subtitle. Not a Mac folder picker. */
+export const SHARED_PROJECT_HINT =
+  "On: channel threads share a sandbox. Off: each agent’s workspace. Not a folder on this Mac.";
+
 export function infoPaneKind(agent: { kind: string }): "agent" | "channel" {
   return agent.kind === "channel" ? "channel" : "agent";
 }
