@@ -435,6 +435,44 @@ export async function postComputerKey(
   await json<void>(response);
 }
 
+export async function startComputerRecord(
+  session: Session,
+  agentId: string,
+): Promise<{ recording: boolean }> {
+  const response = await fetch(
+    `${session.baseUrl}/v1/agents/${encodeURIComponent(agentId)}/computer/record`,
+    { method: "POST", headers: headers(session) },
+  );
+  return json<{ recording: boolean }>(response);
+}
+
+export async function stopComputerRecord(
+  session: Session,
+  agentId: string,
+): Promise<void> {
+  const response = await fetch(
+    `${session.baseUrl}/v1/agents/${encodeURIComponent(agentId)}/computer/record`,
+    { method: "DELETE", headers: headers(session) },
+  );
+  await json<void>(response);
+}
+
+export async function createSkill(
+  session: Session,
+  agentId: string,
+  body: { name: string },
+): Promise<{ id: string; name: string }> {
+  const response = await fetch(
+    `${session.baseUrl}/v1/agents/${encodeURIComponent(agentId)}/skills`,
+    {
+      method: "POST",
+      headers: headers(session, { "Content-Type": "application/json" }),
+      body: JSON.stringify(body),
+    },
+  );
+  return json(response);
+}
+
 export async function listPlugins(session: Session): Promise<Plugin[]> {
   const response = await fetch(`${session.baseUrl}/v1/plugins`, {
     headers: headers(session),

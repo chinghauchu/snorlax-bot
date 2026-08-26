@@ -21,7 +21,15 @@ def test_get_computer_200_with_png(client) -> None:
     assert body["height"] == 800
     assert body["imageUrl"] == SCREENSHOT
     assert body["driving"] == "idle"
-    assert set(body) == {"hasSandbox", "width", "height", "imageUrl", "driving"}
+    assert body["recording"] is False
+    assert set(body) == {
+        "hasSandbox",
+        "width",
+        "height",
+        "imageUrl",
+        "driving",
+        "recording",
+    }
     denied = client.get(SCREENSHOT)
     assert denied.status_code == 401
     png = client.get(SCREENSHOT, headers=AUTH)

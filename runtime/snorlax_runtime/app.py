@@ -33,6 +33,7 @@ from snorlax_runtime.schemas import (
     AgentCreate,
     AgentPatch,
     ComputerPreview,
+    ComputerRecording,
     ComputerSession,
     Health,
     KeyEvent,
@@ -45,6 +46,8 @@ from snorlax_runtime.schemas import (
     Routine,
     RoutineCreate,
     RoutinePatch,
+    Skill,
+    SkillCreate,
     SkillInfo,
     WorkspaceFile,
     WorkspaceListing,
@@ -741,6 +744,36 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         skills = load_skills(store.data_dir, workspace)
         return [SkillInfo.model_validate(s.public()) for s in skills]
 
+    @app.post(
+        "/v1/agents/{id}/skills",
+        response_model=Skill,
+        status_code=status.HTTP_201_CREATED,
+    )
+    async def create_skill(
+        id: str,
+        payload: SkillCreate,
+        request: Request,
+        _: str = Depends(require_bearer),
+    ) -> Skill:
+        from snorlax_runtime.skills import skill_slug, write_taught_skill
+
+        store: Store = request.app.state.store
+        conversation = await store.get_agent(id)
+        _require_agent(
+            conversation,
+            id,
+            channel_status=409,
+            reason="computer session is agent-only",
+        )
+        try:
+            capture = _computer(request).take_capture(id)
+            skill = write_taught_skill(store.data_dir, payload.name, capture)
+        except ComputerError as exc:
+            raise _error(exc.status, exc.message) from exc
+        except ValueError as exc:
+            raise _error(422, str(exc)) from exc
+        return Skill(id=skill_slug(skill), name=skill.name)
+
     @app.get("/v1/agents/{id}/workspace", response_model=WorkspaceListing)
     async def get_workspace(
         id: str,
@@ -947,6 +980,48 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         except ComputerError as exc:
             raise _error(exc.status, exc.message) from exc
         return Response(status_code=status.HTTP_200_OK)
+
+    @app.post(
+        "/v1/agents/{id}/computer/record",
+        response_model=ComputerRecording,
+        status_code=status.HTTP_201_CREATED,
+    )
+    async def start_computer_record(
+        id: str, request: Request, _: str = Depends(require_bearer)
+    ) -> ComputerRecording:
+        store: Store = request.app.state.store
+        conversation = await store.get_agent(id)
+        _require_agent(
+            conversation,
+            id,
+            channel_status=409,
+            reason="computer session is agent-only",
+        )
+        try:
+            started = _computer(request).start_record(id)
+        except ComputerError as exc:
+            raise _error(exc.status, exc.message) from exc
+        return ComputerRecording.model_validate(started)
+
+    @app.delete(
+        "/v1/agents/{id}/computer/record",
+        status_code=status.HTTP_204_NO_CONTENT,
+    )
+    async def stop_computer_record(
+        id: str, request: Request, _: str = Depends(require_bearer)
+    ) -> None:
+        store: Store = request.app.state.store
+        conversation = await store.get_agent(id)
+        _require_agent(
+            conversation,
+            id,
+            channel_status=409,
+            reason="computer session is agent-only",
+        )
+        try:
+            _computer(request).stop_record(id)
+        except ComputerError as exc:
+            raise _error(exc.status, exc.message) from exc
 
     @app.get("/v1/plugins", response_model=list[Plugin])
     async def list_plugins(

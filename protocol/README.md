@@ -70,6 +70,14 @@ in 1280×800 (200). GET may include `driving: user|agent|idle`. Agent
 tools that drive the sandbox 409. Channel 409. iOS does not POST these
 routes.
 
+v0.16 teach-a-task (desktop + runtime): Record only inside a takeover
+session. `POST /v1/agents/{id}/computer/record` → 201 `{ recording: true }`
+(409 without session / already recording). `DELETE .../record` → 204
+(no SKILL.md; pending until save or discard). `POST /v1/agents/{id}/skills
+{ name }` → 201 Skill `{ id, name }` (422 empty name / no pending
+capture). GET may include `recording` when hasSandbox. Channel 409.
+iOS does not POST these routes.
+
 A copy is also kept at `runtime/openapi.yaml` and `desktop/openapi.yaml`
 so those trees are self-contained. Do not let the files diverge.
 

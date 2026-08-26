@@ -1111,10 +1111,67 @@ button:disabled {
   min-width: 0;
 }
 
+.computer-takeover-saved {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.computer-takeover-record {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: 0;
+  background: transparent;
+  padding: 4px 8px;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.computer-takeover-record.recording {
+  color: var(--danger);
+}
+
+.computer-takeover-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--danger);
+  animation: record-pulse 1s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .computer-takeover-dot {
+    animation: none;
+  }
+}
+
+@keyframes record-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.35;
+  }
+}
+
 .computer-takeover-done {
   height: 36px;
   padding: 0 14px;
-  margin-left: auto;
+}
+
+.modal-backdrop.computer-skill-sheet {
+  z-index: 21;
+}
+
+.computer-skill-name {
+  font-size: 14px;
+}
+
+.computer-skill-save {
+  min-height: 36px;
+  height: 36px;
+  padding: 0 14px;
 }
 
 .computer-takeover-stage {

@@ -45,7 +45,11 @@ chat (not a fourth column), Settings. The agent overlay shows a 288×180
 chat + the info pane (sidebar stays). 52px bar: 24px avatar + name,
 12px muted `You're driving · agent paused`, trailing primary **Done**
 36px. Esc = Done. Composer is inert while driving. Empty `No computer
-yet.` has no Open. iOS stays preview-only (no tap-to-open).
+yet.` has no Open. While driving, 12px muted **Record** sits left of
+Done. Recording swaps that control to `--danger` **Stop** plus a 6px
+danger dot (static if Reduce Motion); Done is disabled. Stop opens a
+320px **Save as skill** sheet. iOS stays preview-only (no tap-to-open,
+no Record).
 Create agent or channel from +.
 Muted 12px tool traces (`Searching…` / `Wrote app.py` / `Used server__tool`) may appear in
 the transcript while the runtime runs tools (including MCP). Agent info

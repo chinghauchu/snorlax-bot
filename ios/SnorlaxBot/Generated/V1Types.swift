@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 //
-// Generated from protocol/openapi.yaml (Snorlax-Bot 0.15.0).
+// Generated from protocol/openapi.yaml (Snorlax-Bot 0.16.0).
 // Do not edit by hand. Regenerate with:
 //   python3 ios/scripts/generate_v1_types.py
 //
@@ -793,16 +793,18 @@ struct ComputerPreview: Codable, Hashable, Sendable {
     var height: Int
     var imageUrl: String?
     var driving: Driving?
+    var recording: Bool?
 
-    init(hasSandbox: Bool, width: Int, height: Int, imageUrl: String? = nil, driving: Driving? = nil) {
+    init(hasSandbox: Bool, width: Int, height: Int, imageUrl: String? = nil, driving: Driving? = nil, recording: Bool? = nil) {
         self.hasSandbox = hasSandbox
         self.width = width
         self.height = height
         self.imageUrl = imageUrl
         self.driving = driving
+        self.recording = recording
     }
 
-    enum CodingKeys: String, CodingKey { case hasSandbox, width, height, imageUrl, driving }
+    enum CodingKeys: String, CodingKey { case hasSandbox, width, height, imageUrl, driving, recording }
 
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
@@ -811,6 +813,7 @@ struct ComputerPreview: Codable, Hashable, Sendable {
         height = try container.decode(Int.self, forKey: .height)
         imageUrl = try container.decodeIfPresent(String.self, forKey: .imageUrl)
         driving = try container.decodeIfPresent(Driving.self, forKey: .driving)
+        recording = try container.decodeIfPresent(Bool.self, forKey: .recording)
     }
 
     func encode(to encoder: Encoder) throws {
@@ -820,6 +823,7 @@ struct ComputerPreview: Codable, Hashable, Sendable {
         try container.encode(height, forKey: .height)
         try container.encodeIfPresent(imageUrl, forKey: .imageUrl)
         try container.encodeIfPresent(driving, forKey: .driving)
+        try container.encodeIfPresent(recording, forKey: .recording)
     }
 }
 
@@ -840,6 +844,26 @@ struct ComputerSession: Codable, Hashable, Sendable {
     func encode(to encoder: Encoder) throws {
         var container = encoder.container(keyedBy: CodingKeys.self)
         try container.encode(sessionId, forKey: .sessionId)
+    }
+}
+
+struct ComputerRecording: Codable, Hashable, Sendable {
+    var recording: Bool
+
+    init(recording: Bool) {
+        self.recording = recording
+    }
+
+    enum CodingKeys: String, CodingKey { case recording }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        recording = try container.decode(Bool.self, forKey: .recording)
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(recording, forKey: .recording)
     }
 }
 
@@ -1081,6 +1105,50 @@ struct SkillInfo: Codable, Hashable, Sendable {
         try container.encode(description, forKey: .description)
         try container.encode(source, forKey: .source)
         try container.encode(path, forKey: .path)
+    }
+}
+
+struct Skill: Codable, Hashable, Identifiable, Sendable {
+    var id: String
+    var name: String
+
+    init(id: String, name: String) {
+        self.id = id
+        self.name = name
+    }
+
+    enum CodingKeys: String, CodingKey { case id, name }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(String.self, forKey: .id)
+        name = try container.decode(String.self, forKey: .name)
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(id, forKey: .id)
+        try container.encode(name, forKey: .name)
+    }
+}
+
+struct SkillCreate: Codable, Hashable, Sendable {
+    var name: String
+
+    init(name: String) {
+        self.name = name
+    }
+
+    enum CodingKeys: String, CodingKey { case name }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        name = try container.decode(String.self, forKey: .name)
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(name, forKey: .name)
     }
 }
 

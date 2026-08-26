@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0
 from __future__ import annotations
 
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 
 class ErrorBody(BaseModel):
@@ -234,6 +234,15 @@ class ComputerPreview(BaseModel):
             "Omitted when hasSandbox is false."
         ),
     )
+    recording: bool | None = Field(
+        default=None,
+        description=(
+            "Present when hasSandbox is true. true while POST "
+            "/computer/record is capturing; false otherwise (idle, "
+            "session without Record, or after DELETE /computer/record). "
+            "Omitted when hasSandbox is false."
+        ),
+    )
 
     @model_validator(mode="after")
     def known_driving(self) -> ComputerPreview:
@@ -248,6 +257,10 @@ class ComputerPreview(BaseModel):
 
 class ComputerSession(BaseModel):
     sessionId: str
+
+
+class ComputerRecording(BaseModel):
+    recording: bool = True
 
 
 class PointerEvent(BaseModel):
@@ -351,6 +364,23 @@ class SkillInfo(BaseModel):
     description: str
     source: str
     path: str
+
+
+class Skill(BaseModel):
+    id: str
+    name: str
+
+
+class SkillCreate(BaseModel):
+    name: str = Field(min_length=1, max_length=80)
+
+    @field_validator("name")
+    @classmethod
+    def name_not_blank(cls, value: str) -> str:
+        text = (value or "").strip()
+        if not text:
+            raise ValueError("name is required")
+        return text
 
 
 class Plugin(BaseModel):
