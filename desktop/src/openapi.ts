@@ -1193,7 +1193,7 @@ export interface components {
             label?: string;
         };
         RoutineTrigger: {
-            /** @description webhook, slack, or github. webhook always works (zero plugins). slack/github 422 unless GET /v1/plugins shows that plugin status=connected; inbound Slack/GitHub delivery is not in this slice. */
+            /** @description webhook, slack, or github. webhook always works (zero plugins). slack/github is 422 this slice (no builder). inbound Slack/GitHub delivery is not in this slice. */
             type: string;
             /** @description Optional Slack/GitHub display, e.g. Slack */
             label?: string;
