@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 //
-// Generated from protocol/openapi.yaml (Snorlax-Bot 0.10.0).
+// Generated from protocol/openapi.yaml (Snorlax-Bot 0.11.0).
 // Do not edit by hand. Regenerate with:
 //   python3 ios/scripts/generate_v1_types.py
 //

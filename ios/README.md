@@ -9,7 +9,8 @@ only, no extra sheet). Settings lists runtime plugins (OS browser via
 `ASWebAuthenticationSession`). No
 computer pane / file browser this slice (v0.6 desktop-only). MCP is
 runtime-owned; this client never speaks MCP. Connect cards (`kind=connect`)
-render as LEFT chrome, not a user bubble. Tool traces (`kind=tool`)
+render as LEFT chrome, not a user bubble. Assistant `kind=message` is 14px
+markdown with no grey bubble (user-right stays plain). Tool traces (`kind=tool`)
 already paint as muted status.
 
 The Spark stays up when the phone sleeps. Reconnect is
@@ -67,6 +68,7 @@ Output: `SnorlaxBot/Generated/V1Types.swift`. Do not hand-edit that file.
 - `SnorlaxBot/ProfileSheet.swift` — identity / channel pane; agent routines list
 - `SnorlaxBot/SettingsSheet.swift` — URL, token, plugins list
 - `SnorlaxBot/ConnectCard.swift` — `kind=connect` LEFT card
+- `SnorlaxBot/AssistantMarkdown.swift` — assistant LEFT markdown
 - `SnorlaxBot/RuntimeClient.swift` — `/v1` + SSE
 - `SnorlaxBot/Generated/V1Types.swift` — OpenAPI models
 - `SnorlaxBot/KeychainStore.swift` — bearer token

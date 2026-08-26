@@ -1,20 +1,21 @@
 {
   "name": "snorlax-bot-desktop",
   "private": true,
-  "version": "0.10.0",
+  "version": "0.11.0",
   "type": "module",
   "license": "Apache-2.0",
   "scripts": {
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview",
-    "test": "node --experimental-strip-types --test src/mentions.test.ts src/layout.test.ts src/handoff.test.ts src/infoPane.test.ts src/workspaceTree.test.ts src/thinking.test.ts src/widget.test.ts src/connect.test.ts",
+    "test": "node --experimental-strip-types --test src/mentions.test.ts src/layout.test.ts src/handoff.test.ts src/infoPane.test.ts src/workspaceTree.test.ts src/thinking.test.ts src/widget.test.ts src/connect.test.ts src/markdown.test.ts",
     "generate:api": "openapi-typescript ./openapi.yaml -o src/openapi.ts",
     "tauri": "tauri"
   },
   "dependencies": {
     "react": "^18.3.1",
-    "react-dom": "^18.3.1"
+    "react-dom": "^18.3.1",
+    "react-markdown": "^10.1.0"
   },
   "devDependencies": {
     "@tauri-apps/cli": "^2.1.0",

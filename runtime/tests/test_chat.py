@@ -84,6 +84,28 @@ def test_transcript_persists_and_images_stay_off_model(client) -> None:
     assert fetched.content == b"hello"
 
 
+def test_markdown_content_stored_as_plain_string(client) -> None:
+    raw = "See **bold** and `code`\n\n```js\nconsole.log(1)\n```\n<a>nope</a>"
+    with client.stream(
+        "POST",
+        "/v1/agents/snorlax-bot/messages",
+        headers=AUTH,
+        json={"content": raw},
+    ) as response:
+        assert response.status_code == 200
+        "".join(response.iter_text())
+
+    listed = client.get("/v1/agents/snorlax-bot/messages", headers=AUTH)
+    assert listed.status_code == 200
+    user = next(m for m in listed.json() if m["role"] == "user")
+    assert user["content"] == raw
+    assert "<p>" not in user["content"]
+    assistant = next(m for m in listed.json() if m["role"] == "assistant")
+    assert isinstance(assistant["content"], str)
+    assert "<p>" not in assistant["content"]
+    assert "<div" not in assistant["content"]
+
+
 def test_messages_oldest_first_and_before_cursor(client) -> None:
     for text in ("one", "two", "three"):
         with client.stream(

@@ -534,6 +534,12 @@ export interface components {
             agentId: string;
             /** @enum {string} */
             role: "user" | "assistant";
+            /**
+             * @description Plain string. Runtime stores user and model text as-is and does
+             *     not rewrite markdown. v0.11 clients render assistant LEFT
+             *     kind=message as markdown. User-right stays plain text. No new
+             *     Message fields.
+             */
             content: string;
             images: components["schemas"]["ImageOut"][];
             /** Format: date-time */

@@ -27,7 +27,7 @@ Concrete follow-ups after v0. Filed on GitHub against
 
 ## Frontend
 
-- [F1 — Streaming markdown without flicker](https://github.com/chinghauchu/snorlax-bot/issues/6)
+- [F1 — Streaming markdown without flicker](https://github.com/chinghauchu/snorlax-bot/issues/6) — **v0.11:** clients render assistant LEFT `kind=message` as 14px markdown (no grey bubble); user-right stays plain; fenced code + Copy; `https://` links; inline code mention-chip tint. Content stays a plain string (no new Message fields). Mermaid / math / raw HTML out of scope.
 - [F2 — Pairing: local token file and LAN paste](https://github.com/chinghauchu/snorlax-bot/issues/16)
 - [F3 — Edit agent name and instructions in the desktop UI](https://github.com/chinghauchu/snorlax-bot/issues/19) — v0.3 identity pane PATCHes name/title/description/avatar (no `instructions` field)
 - Attachment chips with “not sent to model” already exist in v0; VL-on

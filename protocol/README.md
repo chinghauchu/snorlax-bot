@@ -32,6 +32,11 @@ or `{ dismissed: true }`. `{ id }` emits `connect.url` then ends; dismiss
 does not. No `connect.*` event on the card emit. No uninstall / store /
 Add-custom UI. Plugins list is Settings only.
 
+v0.11 assistant markdown: `Message.content` stays a plain string. Clients
+render assistant LEFT `kind=message` as markdown (no grey bubble).
+User-right stays plain text. No new Message fields. Runtime does not
+rewrite content.
+
 A copy is also kept at `runtime/openapi.yaml` and `desktop/openapi.yaml`
 so those trees are self-contained. Do not let the files diverge.
 

@@ -70,6 +70,7 @@ import { showThinkingLine, THINKING_LABEL } from "./thinking";
 import { ComputerPane } from "./ComputerPane";
 import { WidgetCard } from "./WidgetCard";
 import { ConnectCard } from "./ConnectCard";
+import { MarkdownBody } from "./MarkdownBody";
 import { isConnect, pluginStatusLabel } from "./connect";
 import { isWidget } from "./widget";
 import { openOsBrowser } from "./openUrl";
@@ -1293,8 +1294,8 @@ export function App() {
                         onConnect={(id, pluginId) => void answerConnect(id, pluginId)}
                         onDismiss={(id) => void dismissConnect(id)}
                       />
-                    ) : (
-                      <div className={`bubble ${mine ? "user" : "agent"}`}>
+                    ) : mine ? (
+                      <div className="bubble user">
                         {message.images.map((image) => (
                           <AuthedImg
                             key={image.id}
@@ -1314,6 +1315,27 @@ export function App() {
                               knownNames={knownNames}
                             />
                           </pre>
+                        ) : null}
+                      </div>
+                    ) : (
+                      <div className="assistant-md">
+                        {message.images.map((image) => (
+                          <AuthedImg
+                            key={image.id}
+                            className="bubble-image"
+                            src={resolveMediaUrl(session?.baseUrl ?? "", image.url)}
+                            session={session}
+                            alt=""
+                          />
+                        ))}
+                        {message.content ? (
+                          <MarkdownBody
+                            text={displayBody(
+                              message.content,
+                              message.senderName,
+                            )}
+                            knownNames={knownNames}
+                          />
                         ) : null}
                       </div>
                     )}
