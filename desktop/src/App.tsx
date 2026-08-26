@@ -48,9 +48,11 @@ import {
   EMPTY_ROUTINES,
   fallbackRosterSelection,
   infoPaneKind,
+  isWebhookRoutine,
   nextRosterSelection,
   routineMutedLine,
   SHARED_PROJECT_HINT,
+  webhookCopyText,
 } from "./infoPane";
 import {
   USER_SENDER_ID,
@@ -73,6 +75,7 @@ import { ComputerPane } from "./ComputerPane";
 import { WidgetCard } from "./WidgetCard";
 import { ConnectCard } from "./ConnectCard";
 import { HttpsText, MarkdownBody } from "./MarkdownBody";
+import { copyText } from "./markdown";
 import { isConnect, parsePluginArgs, pluginStatusLabel } from "./connect";
 import { isWidget } from "./widget";
 import { openOsBrowser } from "./openUrl";
@@ -1790,6 +1793,16 @@ export function App() {
                         {routineMutedLine(routine)}
                       </p>
                     </div>
+                    {isWebhookRoutine(routine) && routine.webhookUrl ? (
+                      <button
+                        type="button"
+                        className="info-routine-hook-copy"
+                        aria-label={`Copy webhook URL for ${routine.name}`}
+                        onClick={() => void copyText(webhookCopyText(routine))}
+                      >
+                        Copy
+                      </button>
+                    ) : null}
                     <label className="info-routine-switch">
                       <input
                         type="checkbox"

@@ -89,6 +89,14 @@ export function nextRosterSelection<T extends { id: string; kind: string }>(
 
 export const EMPTY_ROUTINES = "No routines yet.";
 
+export type RoutineTriggerLine = {
+  skill?: string;
+  schedule?: string | null;
+  scheduleLabel?: string | null;
+  trigger?: { kind?: string | null } | null;
+  webhookUrl?: string | null;
+};
+
 /** Humanized Asia/Taipei cron for the muted routine line. Client concern. */
 export function humanizeTaipeiCron(cron: string): string {
   const fields = cron.trim().split(/\s+/);
@@ -106,11 +114,30 @@ export function humanizeTaipeiCron(cron: string): string {
   return cron;
 }
 
-export function routineMutedLine(routine: {
-  skill: string;
-  schedule: string;
-  scheduleLabel?: string | null;
+export function isWebhookRoutine(routine: RoutineTriggerLine): boolean {
+  return (
+    routine.trigger?.kind === "webhook" || Boolean((routine.webhookUrl || "").trim())
+  );
+}
+
+/** Muted identity-pane line: trigger only (`Webhook` / `Weekdays 9:00`). */
+export function routineMutedLine(routine: RoutineTriggerLine): string {
+  const kind = (routine.trigger?.kind || "").trim().toLowerCase();
+  if (kind === "webhook" || isWebhookRoutine(routine)) return "Webhook";
+  if (kind === "slack") return "Slack";
+  if (kind === "github") return "GitHub";
+  const when =
+    (routine.scheduleLabel || "").trim() ||
+    humanizeTaipeiCron(routine.schedule || "");
+  return when;
+}
+
+export function webhookCopyText(routine: {
+  webhookUrl?: string | null;
+  webhookKey?: string | null;
 }): string {
-  const when = (routine.scheduleLabel || "").trim() || humanizeTaipeiCron(routine.schedule);
-  return `${routine.skill} · ${when}`;
+  const url = (routine.webhookUrl || "").trim();
+  const key = (routine.webhookKey || "").trim();
+  if (url && key) return `${url}\n${key}`;
+  return url;
 }

@@ -4,8 +4,8 @@ Snorlax-Bot’s phone client. SwiftUI, iOS 18+, same locked `/v1` camelCase
 contract as desktop. Named agents, streaming transcript, muted tool traces,
 image previews that are **never** sent to the model. Question widgets
 render as LEFT cards in the speaking agent's streak (no extra sheet). Agent
-info sheet lists cron routines under the 72px identity (list + enable/pause
-only, no extra sheet). Settings lists runtime plugins (Add / Remove; OS browser via
+info sheet lists routines under the 72px identity (list + enable/pause
++ Copy webhook URL, no extra sheet). Settings lists runtime plugins (Add / Remove; OS browser via
 `ASWebAuthenticationSession`). No
 computer pane / file browser this slice (v0.6 desktop-only). MCP is
 runtime-owned; this client never speaks MCP. Connect cards (`kind=connect`)
@@ -23,7 +23,7 @@ The Spark stays up when the phone sleeps. Reconnect is
 | --- | --- |
 | Language | Swift 5.9+, SwiftUI |
 | Target | iOS 18+ (iPhone + iPad) |
-| Network | URLSession, `Authorization: Bearer` on everything except `GET /v1/health` |
+| Network | URLSession, `Authorization: Bearer` on everything except `GET /v1/health` and incoming `POST /v1/hooks/{routineId}` (hook key header, not the app token) |
 | Chat | `POST /v1/agents/{id}/messages` as SSE (`message.delta` / `message.done` / `tool.start` / `tool.done` / `error`) |
 | Computer | No file browser / computer pane this slice (desktop-only v0.6) |
 | Pairing | Settings sheet. Token in Keychain, URL in AppStorage. No gate screen |

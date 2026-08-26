@@ -325,3 +325,286 @@ def test_missed_tick_is_skipped(client, tmp_path: Path) -> None:
     _fire(client, datetime(2026, 8, 26, 10, 0, tzinfo=TAIPEI))
     after = client.get(f"/v1/agents/{SEED}/messages", headers=AUTH).json()
     assert [m["id"] for m in after] == [m["id"] for m in before]
+
+
+HOOK_HEADER = "X-Snorlax-Hook-Key"
+
+
+def test_post_cron_and_trigger_is_422(client, tmp_path: Path) -> None:
+    _write_status_skill(tmp_path)
+    both = client.post(
+        f"/v1/agents/{SEED}/routines",
+        headers=AUTH,
+        json={
+            "name": "Both",
+            "skill": "status",
+            "schedule": "0 9 * * 1-5",
+            "trigger": {"kind": "webhook"},
+        },
+    )
+    assert both.status_code == 422
+    neither = client.post(
+        f"/v1/agents/{SEED}/routines",
+        headers=AUTH,
+        json={"name": "Neither", "skill": "status"},
+    )
+    assert neither.status_code == 422
+    event_no_trigger = client.post(
+        f"/v1/agents/{SEED}/routines",
+        headers=AUTH,
+        json={"name": "No trigger", "skill": "status", "trigger": None},
+    )
+    assert event_no_trigger.status_code == 422
+
+
+def test_post_webhook_mints_url_and_key_with_zero_plugins(
+    client, tmp_path: Path
+) -> None:
+    _write_status_skill(tmp_path)
+    plugins = client.get("/v1/plugins", headers=AUTH)
+    assert plugins.status_code == 200
+    assert plugins.json() == []
+    created = client.post(
+        f"/v1/agents/{SEED}/routines",
+        headers=AUTH,
+        json={
+            "name": "Inbox ping",
+            "skill": "status",
+            "trigger": {"kind": "webhook"},
+        },
+    )
+    assert created.status_code == 201
+    routine = created.json()
+    assert routine["name"] == "Inbox ping"
+    assert routine["skill"] == "status"
+    assert routine["enabled"] is True
+    assert routine.get("schedule") in {None, ""}
+    assert routine["trigger"] == {"kind": "webhook"}
+    assert routine["scheduleLabel"] == "Webhook"
+    assert routine["webhookUrl"].endswith(f"/v1/hooks/{routine['id']}")
+    assert routine["webhookKey"]
+    listed = client.get(f"/v1/agents/{SEED}/routines", headers=AUTH)
+    assert listed.status_code == 200
+    row = listed.json()[0]
+    assert row["webhookUrl"] == routine["webhookUrl"]
+    assert row["webhookKey"] == routine["webhookKey"]
+    assert row["trigger"]["kind"] == "webhook"
+
+
+def test_webhook_post_fires_left_one_to_one_with_routine_name(
+    client, tmp_path: Path
+) -> None:
+    _write_status_skill(tmp_path)
+    created = client.post(
+        f"/v1/agents/{SEED}/routines",
+        headers=AUTH,
+        json={
+            "name": "Inbox ping",
+            "skill": "status",
+            "trigger": {"kind": "webhook"},
+        },
+    )
+    routine = created.json()
+    before = client.get(f"/v1/agents/{SEED}/messages", headers=AUTH).json()
+    fired = client.post(
+        f"/v1/hooks/{routine['id']}",
+        headers={HOOK_HEADER: routine["webhookKey"]},
+    )
+    assert fired.status_code == 202
+    after = client.get(f"/v1/agents/{SEED}/messages", headers=AUTH).json()
+    new = [m for m in after if m["id"] not in {row["id"] for row in before}]
+    assistant = [
+        m
+        for m in new
+        if m["role"] == "assistant" and m.get("kind") == "message"
+    ]
+    assert assistant, after
+    row = assistant[-1]
+    assert row["senderId"] == SEED
+    assert row["agentId"] == SEED
+    assert row["kind"] == "message"
+    assert row["routineName"] == "Inbox ping"
+    assert all(m["senderId"] != "user" for m in new)
+
+
+def test_webhook_pause_stops_fire(client, tmp_path: Path) -> None:
+    _write_status_skill(tmp_path)
+    created = client.post(
+        f"/v1/agents/{SEED}/routines",
+        headers=AUTH,
+        json={
+            "name": "Inbox ping",
+            "skill": "status",
+            "trigger": {"kind": "webhook"},
+        },
+    )
+    routine = created.json()
+    paused = client.patch(
+        f"/v1/agents/{SEED}/routines/{routine['id']}",
+        headers=AUTH,
+        json={"enabled": False},
+    )
+    assert paused.status_code == 200
+    assert paused.json()["enabled"] is False
+    before = client.get(f"/v1/agents/{SEED}/messages", headers=AUTH).json()
+    fired = client.post(
+        f"/v1/hooks/{routine['id']}",
+        headers={HOOK_HEADER: routine["webhookKey"]},
+    )
+    assert fired.status_code == 202
+    after = client.get(f"/v1/agents/{SEED}/messages", headers=AUTH).json()
+    assert [m["id"] for m in after] == [m["id"] for m in before]
+
+
+def test_webhook_b_never_appears_in_a_one_to_one(client, tmp_path: Path) -> None:
+    _write_status_skill(tmp_path)
+    other = client.post(
+        "/v1/agents", headers=AUTH, json={"name": "Inbox"}
+    ).json()
+    other_id = other["id"]
+    created = client.post(
+        f"/v1/agents/{other_id}/routines",
+        headers=AUTH,
+        json={
+            "name": "Inbox ping",
+            "skill": "status",
+            "trigger": {"kind": "webhook"},
+        },
+    )
+    routine = created.json()
+    a_before = client.get(f"/v1/agents/{SEED}/messages", headers=AUTH).json()
+    fired = client.post(
+        f"/v1/hooks/{routine['id']}",
+        headers={HOOK_HEADER: routine["webhookKey"]},
+    )
+    assert fired.status_code == 202
+    a_after = client.get(f"/v1/agents/{SEED}/messages", headers=AUTH).json()
+    assert [m["id"] for m in a_after] == [m["id"] for m in a_before]
+    assert all(m["senderId"] in {"user", SEED} for m in a_after)
+    b_msgs = client.get(f"/v1/agents/{other_id}/messages", headers=AUTH).json()
+    left = [
+        m
+        for m in b_msgs
+        if m["role"] == "assistant" and m.get("kind") == "message"
+    ]
+    assert left
+    assert all(m["senderId"] == other_id for m in left)
+    assert all(m["senderId"] != SEED for m in b_msgs)
+
+
+def test_webhook_missing_or_bad_key_is_401(client, tmp_path: Path) -> None:
+    _write_status_skill(tmp_path)
+    created = client.post(
+        f"/v1/agents/{SEED}/routines",
+        headers=AUTH,
+        json={
+            "name": "Inbox ping",
+            "skill": "status",
+            "trigger": {"kind": "webhook"},
+        },
+    )
+    rid = created.json()["id"]
+    missing = client.post(f"/v1/hooks/{rid}")
+    assert missing.status_code == 401
+    bearer_only = client.post(f"/v1/hooks/{rid}", headers=AUTH)
+    assert bearer_only.status_code == 401
+    bad = client.post(
+        f"/v1/hooks/{rid}",
+        headers={HOOK_HEADER: "not-the-key-not-the-key-not-the-key-xx"},
+    )
+    assert bad.status_code == 401
+
+
+def test_webhook_unknown_is_404(client) -> None:
+    response = client.post(
+        "/v1/hooks/rtn_missing",
+        headers={HOOK_HEADER: "any-key-any-key-any-key-any-key-xx"},
+    )
+    assert response.status_code == 404
+
+
+def test_cron_routine_hook_path_is_404(client, tmp_path: Path) -> None:
+    _write_status_skill(tmp_path)
+    created = client.post(
+        f"/v1/agents/{SEED}/routines",
+        headers=AUTH,
+        json={
+            "name": "Morning status",
+            "skill": "status",
+            "schedule": "0 9 * * 1-5",
+        },
+    )
+    rid = created.json()["id"]
+    fired = client.post(
+        f"/v1/hooks/{rid}",
+        headers={HOOK_HEADER: "any-key-any-key-any-key-any-key-xx"},
+    )
+    assert fired.status_code == 404
+
+
+def test_slack_github_trigger_422_without_plugin(client, tmp_path: Path) -> None:
+    _write_status_skill(tmp_path)
+    slack = client.post(
+        f"/v1/agents/{SEED}/routines",
+        headers=AUTH,
+        json={
+            "name": "Slack ping",
+            "skill": "status",
+            "trigger": {"kind": "slack"},
+        },
+    )
+    assert slack.status_code == 422
+    github = client.post(
+        f"/v1/agents/{SEED}/routines",
+        headers=AUTH,
+        json={
+            "name": "GitHub ping",
+            "skill": "status",
+            "trigger": {"kind": "github"},
+        },
+    )
+    assert github.status_code == 422
+
+
+def test_plugin_delete_and_auth_unchanged_with_webhook(
+    client, tmp_path: Path
+) -> None:
+    _write_status_skill(tmp_path)
+    created = client.post(
+        f"/v1/agents/{SEED}/routines",
+        headers=AUTH,
+        json={
+            "name": "Inbox ping",
+            "skill": "status",
+            "trigger": {"kind": "webhook"},
+        },
+    )
+    assert created.status_code == 201
+    listed = client.get("/v1/plugins", headers=AUTH)
+    assert listed.status_code == 200
+    assert listed.json() == []
+    missing_auth = client.post("/v1/plugins/missing/auth", headers=AUTH)
+    assert missing_auth.status_code == 404
+    missing = client.delete("/v1/plugins/missing", headers=AUTH)
+    assert missing.status_code == 404
+    assert client.get("/v1/plugins/missing/disconnect", headers=AUTH).status_code != 200
+
+
+def test_webhook_cron_ticker_does_not_fire_event_routine(
+    client, tmp_path: Path
+) -> None:
+    _write_status_skill(tmp_path)
+    client.post(
+        f"/v1/agents/{SEED}/routines",
+        headers=AUTH,
+        json={
+            "name": "Inbox ping",
+            "skill": "status",
+            "trigger": {"kind": "webhook"},
+        },
+    )
+    before = client.get(f"/v1/agents/{SEED}/messages", headers=AUTH).json()
+    _fire(client, _weekdays_nine())
+    after = client.get(f"/v1/agents/{SEED}/messages", headers=AUTH).json()
+    assert [m["id"] for m in after] == [m["id"] for m in before]
+

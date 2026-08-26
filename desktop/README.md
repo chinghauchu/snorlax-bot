@@ -42,7 +42,8 @@ text preview; collapsible, default open), 320px identity overlay on the
 chat (not a fourth column), Settings. Create agent or channel from +.
 Muted 12px tool traces (`Searching…` / `Wrote app.py` / `Used server__tool`) may appear in
 the transcript while the runtime runs tools (including MCP). Agent info
-pane lists cron routines (44px rows, live enable/pause switch). Settings
+pane lists cron routines (44px rows, live enable/pause switch). Webhook
+rows show muted `Webhook` plus Copy for the URL. Settings
 lists runtime plugins (`Connected` / `Needs sign-in`; Add / Remove).
 Assistant LEFT
 `kind=message` is 14px markdown (no grey bubble, 16/14 headings); user-right stays plain (`https://` tappable). Fenced code is full-turn language + Copy at 12px/1.45.

@@ -12,8 +12,10 @@ import {
   humanizeTaipeiCron,
   infoPaneKind,
   fallbackRosterSelection,
+  isWebhookRoutine,
   nextRosterSelection,
   routineMutedLine,
+  webhookCopyText,
 } from "./infoPane.ts";
 
 test("user-created channels are editable; seed channel is not", () => {
@@ -141,7 +143,7 @@ test("humanizeTaipeiCron matches Weekdays 9:00", () => {
   assert.equal(humanizeTaipeiCron("0 8 * * *"), "Every day 8:00");
   assert.equal(
     routineMutedLine({ skill: "status", schedule: "0 9 * * 1-5" }),
-    "status · Weekdays 9:00",
+    "Weekdays 9:00",
   );
   assert.equal(
     routineMutedLine({
@@ -149,6 +151,26 @@ test("humanizeTaipeiCron matches Weekdays 9:00", () => {
       schedule: "0 9 * * 1-5",
       scheduleLabel: "Weekdays 9:00",
     }),
-    "status · Weekdays 9:00",
+    "Weekdays 9:00",
+  );
+  assert.equal(
+    routineMutedLine({
+      skill: "status",
+      trigger: { kind: "webhook" },
+      webhookUrl: "http://127.0.0.1:8787/v1/hooks/rtn_x",
+    }),
+    "Webhook",
+  );
+  assert.equal(isWebhookRoutine({ trigger: { kind: "webhook" } }), true);
+  assert.equal(
+    isWebhookRoutine({ skill: "status", schedule: "0 9 * * 1-5" }),
+    false,
+  );
+  assert.equal(
+    webhookCopyText({
+      webhookUrl: "http://127.0.0.1:8787/v1/hooks/rtn_x",
+      webhookKey: "secret-key",
+    }),
+    "http://127.0.0.1:8787/v1/hooks/rtn_x\nsecret-key",
   );
 });

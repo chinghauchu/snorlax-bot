@@ -1108,6 +1108,23 @@ button:disabled {
   color: var(--text-muted);
 }
 
+.info-routine-hook-copy {
+  flex-shrink: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1.2;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+
+.info-routine-hook-copy:hover {
+  color: var(--accent);
+}
+
 .info-routine-switch {
   width: 44px;
   height: 44px;

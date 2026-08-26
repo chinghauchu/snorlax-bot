@@ -161,12 +161,23 @@ extension Message {
 }
 
 extension Routine {
+    var isWebhook: Bool {
+        trigger?.kind == .webhook || !(webhookUrl ?? "").isEmpty
+    }
+
     var mutedLine: String {
-        let when: String = {
-            if let label = scheduleLabel, !label.isEmpty { return label }
-            return Self.humanizeTaipeiCron(schedule)
-        }()
-        return "\(skill) · \(when)"
+        if isWebhook { return "Webhook" }
+        if trigger?.kind == .slack { return "Slack" }
+        if trigger?.kind == .github { return "GitHub" }
+        if let label = scheduleLabel, !label.isEmpty { return label }
+        return Self.humanizeTaipeiCron(schedule ?? "")
+    }
+
+    var copyPayload: String {
+        let url = (webhookUrl ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        let key = (webhookKey ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        if !url.isEmpty, !key.isEmpty { return "\(url)\n\(key)" }
+        return url
     }
 
     static func humanizeTaipeiCron(_ cron: String) -> String {

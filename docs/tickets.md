@@ -7,7 +7,7 @@ Concrete follow-ups after v0. Filed on GitHub against
 
 - [P1 — First-run roster roles without a workflow builder](https://github.com/chinghauchu/snorlax-bot/issues/2)
 - [P2 — Question widgets: approve, pick, short answer](https://github.com/chinghauchu/snorlax-bot/issues/3) — **v0.8:** runtime-owned `kind=widget` LEFT card; POST `widgetReply: { id, values?, dismissed? }` (not a user bubble); dismiss does not wake; 409 unless `dismissOnMoveOn`; thread-only in channels. Not a tool-approval card.
-- [P3 — Skills vs routines object model](https://github.com/chinghauchu/snorlax-bot/issues/4) — **v0.9:** one routine = one agent + one SKILL.md; GET `{ id, name, skill, schedule, enabled }`; PATCH `{ enabled }`; chrome is list + enable/pause only (no create/edit/delete UI, no teach-a-task, no marketplace).
+- [P3 — Skills vs routines object model](https://github.com/chinghauchu/snorlax-bot/issues/4) — **v0.9:** one routine = one agent + one SKILL.md; GET `{ id, name, skill, schedule, enabled }`; PATCH `{ enabled }`; chrome is list + enable/pause only (no create/edit/delete UI, no teach-a-task, no marketplace). **v0.13:** cron XOR trigger; webhook URL + Copy; `POST /v1/hooks/{routineId}` (`X-Snorlax-Hook-Key`, not SNORLAX_TOKEN).
 - [P4 — Shared sandbox computer threat model](https://github.com/chinghauchu/snorlax-bot/issues/5)
 
 ## Design
@@ -22,7 +22,7 @@ Concrete follow-ups after v0. Filed on GitHub against
 - [B2 — Runtime-owned tool loop](https://github.com/chinghauchu/snorlax-bot/issues/14) — v0.5 built-in files/shell/web in a `~/.snorlax-bot` sandbox (not a Mac folder picker); shell has no extra network; tools auto-run; search provider is env/config; MCP stays later; computer pane first slice is v0.6
 - [B3 — MCP client: stdio and LAN, not public internet](https://github.com/chinghauchu/snorlax-bot/issues/15) — v0.7: FastAPI is the MCP client; `mcp.json` under `SNORLAX_DATA_DIR`; stdio + LAN HTTP/SSE; namespaced `server__tool`; built-ins win; desktop/iOS never speak MCP. **v0.10:** `GET /v1/plugins` + `POST .../auth` + `kind=connect` chrome (Settings list; OS browser). **v0.12:** Settings Add custom (`POST /v1/plugins`, `DELETE .../{id}`; no separate disconnect). No marketplace catalog.
 - [B4 — Local sandbox computer on the Spark](https://github.com/chinghauchu/snorlax-bot/issues/7) — v0.6 first slice: GET list/read of the existing tool sandbox (same `workspace_for()` roots). Full B4 (browser, per-agent VNC, 128GB Spark VM) stays later
-- [B5 — Scheduler for routines while the laptop is closed](https://github.com/chinghauchu/snorlax-bot/issues/17) — **v0.9:** FastAPI-process scheduler, cron in Asia/Taipei; a due run writes a normal assistant Message in that agent's 1:1 (`senderId=A`, `kind=message`, optional `routineName`). Isolation stands.
+- [B5 — Scheduler for routines while the laptop is closed](https://github.com/chinghauchu/snorlax-bot/issues/17) — **v0.9:** FastAPI-process scheduler, cron in Asia/Taipei; a due run writes a normal assistant Message in that agent's 1:1 (`senderId=A`, `kind=message`, optional `routineName`). Isolation stands. **v0.13:** webhook fire is the same 1:1 path; pause still stops fire.
 - [B6 — Agent-to-agent messages and group threads](https://github.com/chinghauchu/snorlax-bot/issues/18) — v0.1 isolation + v0.2 handoff threads / jump chip + v0.4 report-back and extra channels
 
 ## Frontend

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 import PhotosUI
 import SwiftUI
+import UIKit
 
 struct ProfileSheet: View {
     @Environment(AppModel.self) private var model
@@ -103,18 +104,7 @@ struct ProfileSheet: View {
                     .foregroundStyle(.secondary)
             } else {
                 ForEach(model.routines) { routine in
-                    Toggle(isOn: Binding(
-                        get: { routine.enabled },
-                        set: { on in
-                            Task {
-                                await model.setRoutineEnabled(
-                                    agentId: live.id,
-                                    id: routine.id,
-                                    enabled: on
-                                )
-                            }
-                        }
-                    )) {
+                    HStack(spacing: 8) {
                         VStack(alignment: .leading, spacing: 1) {
                             Text(routine.name)
                                 .font(.system(size: 14, weight: .medium))
@@ -124,10 +114,35 @@ struct ProfileSheet: View {
                                 .foregroundStyle(.secondary)
                                 .lineLimit(1)
                         }
+                        Spacer(minLength: 0)
+                        if routine.isWebhook, !routine.copyPayload.isEmpty {
+                            Button("Copy") {
+                                UIPasteboard.general.string = routine.copyPayload
+                            }
+                            .font(.system(size: 12, weight: .medium))
+                            .foregroundStyle(.secondary)
+                            .buttonStyle(.plain)
+                            .accessibilityLabel("Copy webhook URL")
+                        }
+                        Toggle(isOn: Binding(
+                            get: { routine.enabled },
+                            set: { on in
+                                Task {
+                                    await model.setRoutineEnabled(
+                                        agentId: live.id,
+                                        id: routine.id,
+                                        enabled: on
+                                    )
+                                }
+                            }
+                        )) {
+                            EmptyView()
+                        }
+                        .labelsHidden()
+                        .disabled(!model.isConfigured)
+                        .accessibilityLabel(routine.enabled ? "Pause \(routine.name)" : "Enable \(routine.name)")
                     }
                     .frame(minHeight: 44)
-                    .disabled(!model.isConfigured)
-                    .accessibilityLabel(routine.enabled ? "Pause \(routine.name)" : "Enable \(routine.name)")
                 }
             }
         }

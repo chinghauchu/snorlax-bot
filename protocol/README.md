@@ -46,6 +46,15 @@ separate disconnect endpoint. Do not auto-open a connect card. GET and
 `POST .../auth` stay v0.10. No store / search catalog. Plugins list is
 Settings only.
 
+v0.13 event listeners, webhook first: a routine is cron XOR trigger.
+POST `{ name, skill, trigger: { kind: webhook } }` mints `webhookUrl` +
+`webhookKey`. Incoming fire is `POST /v1/hooks/{routineId}` with
+`X-Snorlax-Hook-Key` (not SNORLAX_TOKEN). Invalid/missing key 401;
+unknown 404; success 202 then the skill into that agent's 1:1. Slack/GitHub
+`trigger.kind` 422 unless that MCP plugin is connected; inbound
+Slack/GitHub is not this slice. Chrome: muted `Webhook` / `Weekdays 9:00`
+plus Copy for the URL. No New routine button.
+
 A copy is also kept at `runtime/openapi.yaml` and `desktop/openapi.yaml`
 so those trees are self-contained. Do not let the files diverge.
 

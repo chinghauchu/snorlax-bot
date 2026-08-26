@@ -29,12 +29,20 @@ def is_routine_pack(pack: dict[str, Any] | None) -> bool:
     return bool(pack) and pack.get("kind") == "routine"
 
 
+def is_cron_routine(routine: dict[str, Any]) -> bool:
+    kind = str(routine.get("triggerType") or "cron").strip().lower()
+    return kind in {"", "cron"}
+
+
 def is_due(routine: dict[str, Any], when: datetime) -> bool:
     """True only if enabled and the cron matches this Asia/Taipei minute.
 
     Missed ticks while the runtime was down are skipped (no catch-up storm).
+    Event-trigger routines are never due on the cron ticker.
     """
     if not routine.get("enabled"):
+        return False
+    if not is_cron_routine(routine):
         return False
     if not cron_matches(str(routine.get("schedule") or ""), when):
         return False
@@ -53,6 +61,31 @@ def is_due(routine: dict[str, Any], when: datetime) -> bool:
     return True
 
 
+async def fire_routine_now(
+    store: Store,
+    backend: Any,
+    routine: dict[str, Any],
+    *,
+    max_tool_rounds: int | None = None,
+) -> dict[str, Any] | None:
+    """Run one routine's skill into that agent's 1:1. No-op if paused.
+
+    Same SKILL.md / prompt path as cron. Isolation: never write into a
+    peer 1:1. Result is role=assistant senderId=A with optional routineName.
+    """
+    from snorlax_runtime.routing import run_routine_turn
+
+    if not routine.get("enabled"):
+        return None
+    await store.mark_routine_run(routine["id"], utcnow())
+    return await run_routine_turn(
+        store,
+        backend,
+        routine,
+        max_tool_rounds=max_tool_rounds,
+    )
+
+
 async def fire_due_routines(
     store: Store,
     backend: Any,
@@ -66,17 +99,15 @@ async def fire_due_routines(
     runtime was down are skipped (no catch-up storm). Result lands in that
     agent's 1:1 as role=assistant senderId=A with optional routineName.
     Isolation: never write into a peer 1:1. Paused routines do not fire.
+    Webhook / Slack / GitHub routines are skipped here.
     """
-    from snorlax_runtime.routing import run_routine_turn
-
     when = now_taipei(now)
     fired: list[dict[str, Any]] = []
     for routine in await store.list_all_routines():
         if not is_due(routine, when):
             continue
-        await store.mark_routine_run(routine["id"], utcnow())
         try:
-            saved = await run_routine_turn(
+            saved = await fire_routine_now(
                 store,
                 backend,
                 routine,

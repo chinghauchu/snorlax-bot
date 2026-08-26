@@ -167,10 +167,14 @@ test("routines list is 44px rows with switch on the agent read pane", () => {
   assert.match(app, /EMPTY_ROUTINES/);
   assert.match(app, /role="switch"/);
   assert.match(app, /info-routines/);
+  assert.match(app, /info-routine-hook-copy/);
   assert.match(app, /profileEditing \?/);
   assert.doesNotMatch(app, /createRoutine/);
   assert.doesNotMatch(app, /deleteRoutine/);
   assert.doesNotMatch(app, /Teach a task/);
   assert.doesNotMatch(app, /marketplace/);
   assert.doesNotMatch(css, /info-routine-new/);
+  const hookCopy = block(".info-routine-hook-copy");
+  assert.match(hookCopy, /font-size:\s*12px/);
+  assert.match(hookCopy, /color:\s*var\(--text-muted\)/);
 });
