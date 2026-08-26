@@ -102,6 +102,17 @@ struct ChatView: View {
                                 && !message.isHandoffRoot
                                 && !message.isToolLine
                         }
+                        let toolThisTurn: Bool = {
+                            guard let lastUserIdx else { return false }
+                            return visible.enumerated().contains {
+                                $0.offset > lastUserIdx && $0.element.isToolLine
+                            }
+                        }()
+                        let showThinking = ThinkingChrome.shouldShow(
+                            busy: model.isSending,
+                            hasLiveAssistant: liveAssistantIdx != nil,
+                            hasLiveTool: !liveTraces.isEmpty || toolThisTurn
+                        )
                         ForEach(Array(visible.enumerated()), id: \.element.id) { index, message in
                             transcriptItem(
                                 message,
@@ -116,6 +127,9 @@ struct ChatView: View {
                         if liveAssistantIdx == nil, !liveTraces.isEmpty {
                             liveToolStreak(agent: agent, traces: liveTraces)
                         }
+                        if showThinking {
+                            thinkingStreak(agent: agent)
+                        }
                     }
                     Color.clear.frame(height: 1).id("bottom")
                 }
@@ -128,6 +142,9 @@ struct ChatView: View {
                 proxy.scrollTo("bottom", anchor: .bottom)
             }
             .onChange(of: model.toolTraces.count) { _, _ in
+                proxy.scrollTo("bottom", anchor: .bottom)
+            }
+            .onChange(of: model.isSending) { _, _ in
                 proxy.scrollTo("bottom", anchor: .bottom)
             }
         }
@@ -156,6 +173,26 @@ struct ChatView: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.top, 16)
         .id("live-tools")
+    }
+
+    @ViewBuilder
+    private func thinkingStreak(agent: Agent) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            HStack(spacing: 6) {
+                AgentAvatar(agent: agent, size: 20)
+                Text(agent.name)
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundStyle(.secondary)
+            }
+            .padding(.horizontal, 12)
+            ThinkingLabel()
+                .padding(.horizontal, 12)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.top, 16)
+        .id("thinking")
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("\(agent.name), \(ThinkingChrome.label)")
     }
 
     /// Match desktop: speaker is the trace's senderId, else the conversation
