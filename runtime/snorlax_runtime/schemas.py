@@ -137,3 +137,21 @@ class ToolTrace(BaseModel):
     ok: bool | None = None
     senderId: str | None = None
     senderName: str | None = None
+
+
+class WorkspaceEntry(BaseModel):
+    name: str
+    kind: str
+    size: int | None = None
+
+
+class WorkspaceListing(BaseModel):
+    root: str
+    path: str
+    entries: list[WorkspaceEntry]
+
+
+class WorkspaceFile(BaseModel):
+    path: str
+    content: str
+    truncated: bool = False

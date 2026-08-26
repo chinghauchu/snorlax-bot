@@ -16,9 +16,25 @@ from snorlax_runtime.config import Settings
 from snorlax_runtime.db import Store, dump_json
 from snorlax_runtime.inference import build_backend
 from snorlax_runtime.routing import MentionError, resolve_user_mentions, run_user_turn
-from snorlax_runtime.schemas import Agent, AgentCreate, AgentPatch, Health, Message, MessageCreate
+from snorlax_runtime.schemas import (
+    Agent,
+    AgentCreate,
+    AgentPatch,
+    Health,
+    Message,
+    MessageCreate,
+    WorkspaceFile,
+    WorkspaceListing,
+)
 from snorlax_runtime.token import resolve_token, write_token_file
-from snorlax_runtime.tools import configure_tools, drop_workspace
+from snorlax_runtime.tools import (
+    BinaryFileError,
+    PathJailError,
+    configure_tools,
+    drop_workspace,
+    list_workspace,
+    read_workspace_file,
+)
 
 
 def _error(status_code: int, message: str) -> HTTPException:
@@ -310,6 +326,52 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 "X-Accel-Buffering": "no",
             },
         )
+
+    @app.get("/v1/agents/{id}/workspace", response_model=WorkspaceListing)
+    async def get_workspace(
+        id: str,
+        request: Request,
+        _: str = Depends(require_bearer),
+        path: str = Query(default="."),
+    ) -> WorkspaceListing:
+        store: Store = request.app.state.store
+        conversation = await store.get_agent(id)
+        if conversation is None:
+            raise _error(404, f"Agent {id!r} not found")
+        try:
+            return WorkspaceListing.model_validate(
+                list_workspace(store.data_dir, conversation, path)
+            )
+        except PathJailError as exc:
+            raise _error(422, exc.message) from exc
+        except FileNotFoundError:
+            raise _error(404, "path not found") from None
+        except NotADirectoryError:
+            raise _error(422, "not a directory") from None
+
+    @app.get("/v1/agents/{id}/workspace/file", response_model=WorkspaceFile)
+    async def get_workspace_file(
+        id: str,
+        request: Request,
+        _: str = Depends(require_bearer),
+        path: str = Query(default="."),
+    ) -> WorkspaceFile:
+        store: Store = request.app.state.store
+        conversation = await store.get_agent(id)
+        if conversation is None:
+            raise _error(404, f"Agent {id!r} not found")
+        try:
+            return WorkspaceFile.model_validate(
+                read_workspace_file(store.data_dir, conversation, path)
+            )
+        except PathJailError as exc:
+            raise _error(422, exc.message) from exc
+        except BinaryFileError as exc:
+            raise _error(422, exc.message) from exc
+        except FileNotFoundError:
+            raise _error(404, "path not found") from None
+        except IsADirectoryError:
+            raise _error(422, "not a file") from None
 
     @app.get("/v1/images/{id}")
     async def get_image(

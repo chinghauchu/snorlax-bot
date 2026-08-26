@@ -30,8 +30,9 @@ SEARCH_RESULT_CAP = 8
 
 _SAFE_ID = re.compile(r"^[A-Za-z0-9._-]+$")
 _USER_AGENT = (
-    "Snorlax-Bot/0.5 (+https://github.com/chinghauchu/snorlax-bot)"
+    "Snorlax-Bot/0.6 (+https://github.com/chinghauchu/snorlax-bot)"
 )
+BINARY_POLICY = "binary / too large"
 DEFAULT_SEARCH_PROVIDER = "duckduckgo"
 DEFAULT_SEARCH_TEMPLATES = {
     "duckduckgo": "https://html.duckduckgo.com/html/?q={query}",
@@ -87,6 +88,12 @@ def search_request_url(query: str) -> str:
 
 class PathJailError(Exception):
     def __init__(self, message: str) -> None:
+        super().__init__(message)
+        self.message = message
+
+
+class BinaryFileError(Exception):
+    def __init__(self, message: str = BINARY_POLICY) -> None:
         super().__init__(message)
         self.message = message
 
@@ -154,6 +161,101 @@ def resolve_in_workspace(root: Path, user_path: str | None) -> Path:
     except ValueError as exc:
         raise PathJailError("path escapes workspace") from exc
     return resolved
+
+
+def pane_workspace(data_dir: Path, conversation: dict[str, Any]) -> Path:
+    """Workspace the computer pane shows for this conversation.
+
+    Same roots as ``workspace_for()``. Channel + ``sharedProject`` on →
+    ``workspaces/channels/{channelId}/``. Channel + off → first member
+    agent's workspace (speaking/selected is unclear on a GET). 1:1 →
+    that agent's workspace. Never a Mac folder picker.
+    """
+    if conversation.get("kind") == KIND_CHANNEL and _shared_project_on(
+        conversation
+    ):
+        return _workspace_dir(data_dir, "channels", conversation["id"])
+    if conversation.get("kind") == KIND_CHANNEL:
+        members = list(
+            conversation.get("memberIds") or conversation.get("member_ids") or []
+        )
+        if members:
+            return _workspace_dir(data_dir, "agents", members[0])
+        return _workspace_dir(data_dir, "channels", conversation["id"])
+    return _workspace_dir(data_dir, "agents", conversation["id"])
+
+
+def workspace_root_label(data_dir: Path, root: Path) -> str:
+    """Sandbox-relative root such as ``workspaces/agents/{id}``. Not a Mac path."""
+    base = data_dir.resolve()
+    try:
+        return str(root.resolve().relative_to(base)).replace("\\", "/")
+    except ValueError:
+        return "workspaces"
+
+
+def _rel_display(root: Path, target: Path) -> str:
+    base = root.resolve()
+    resolved = target.resolve()
+    if resolved == base:
+        return "."
+    return str(resolved.relative_to(base)).replace("\\", "/")
+
+
+def list_workspace(
+    data_dir: Path, conversation: dict[str, Any], user_path: str | None
+) -> dict[str, Any]:
+    """List a directory inside the pane workspace. Empty root is ``[]``."""
+    root = pane_workspace(data_dir, conversation)
+    label = workspace_root_label(data_dir, root)
+    target = resolve_in_workspace(root, user_path)
+    rel = _rel_display(root, target)
+    if not target.exists():
+        if rel == ".":
+            return {"root": label, "path": ".", "entries": []}
+        raise FileNotFoundError(rel)
+    if not target.is_dir():
+        raise NotADirectoryError(rel)
+    items = sorted(target.iterdir(), key=lambda p: (not p.is_dir(), p.name.lower()))
+    entries: list[dict[str, Any]] = []
+    for item in items[:MAX_LIST_ENTRIES]:
+        if item.is_dir():
+            entries.append({"name": item.name, "kind": "dir"})
+        else:
+            try:
+                size = item.stat().st_size
+            except OSError:
+                size = 0
+            entries.append({"name": item.name, "kind": "file", "size": size})
+    return {"root": label, "path": rel, "entries": entries}
+
+
+def read_workspace_file(
+    data_dir: Path, conversation: dict[str, Any], user_path: str | None
+) -> dict[str, Any]:
+    """Read a UTF-8 text file from the pane workspace.
+
+    Missing → FileNotFoundError. Escape → PathJailError. Binary →
+    BinaryFileError. Oversized text is truncated at ``MAX_FILE_BYTES``.
+    """
+    root = pane_workspace(data_dir, conversation)
+    target = resolve_in_workspace(root, user_path)
+    if not target.exists():
+        raise FileNotFoundError(_rel_display(root, target))
+    if target.is_dir():
+        raise IsADirectoryError(_rel_display(root, target))
+    data = target.read_bytes()
+    if b"\x00" in data[:4096]:
+        raise BinaryFileError()
+    truncated = False
+    if len(data) > MAX_FILE_BYTES:
+        data = data[:MAX_FILE_BYTES]
+        truncated = True
+    return {
+        "path": _rel_display(root, target),
+        "content": data.decode("utf-8", "replace"),
+        "truncated": truncated,
+    }
 
 
 TOOL_DEFINITIONS: list[dict[str, Any]] = [

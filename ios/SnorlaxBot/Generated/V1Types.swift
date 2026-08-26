@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 //
-// Generated from protocol/openapi.yaml (Snorlax-Bot 0.5.0).
+// Generated from protocol/openapi.yaml (Snorlax-Bot 0.6.0).
 // Do not edit by hand. Regenerate with:
 //   python3 ios/scripts/generate_v1_types.py
 //
@@ -487,6 +487,95 @@ struct ToolTrace: Codable, Hashable, Identifiable, Sendable {
         try container.encode(ok, forKey: .ok)
         try container.encodeIfPresent(senderId, forKey: .senderId)
         try container.encodeIfPresent(senderName, forKey: .senderName)
+    }
+}
+
+struct WorkspaceEntry: Codable, Hashable, Sendable {
+    enum Kind: String, Codable, Hashable, Sendable {
+        case file
+        case dir
+    }
+
+    var name: String
+    var kind: Kind
+    var size: Int?
+
+    init(name: String, kind: Kind, size: Int? = nil) {
+        self.name = name
+        self.kind = kind
+        self.size = size
+    }
+
+    enum CodingKeys: String, CodingKey { case name, kind, size }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        name = try container.decode(String.self, forKey: .name)
+        kind = try container.decode(Kind.self, forKey: .kind)
+        size = try container.decodeIfPresent(Int.self, forKey: .size)
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(name, forKey: .name)
+        try container.encode(kind, forKey: .kind)
+        try container.encodeIfPresent(size, forKey: .size)
+    }
+}
+
+struct WorkspaceListing: Codable, Hashable, Sendable {
+    var root: String
+    var path: String
+    var entries: [WorkspaceEntry]
+
+    init(root: String, path: String, entries: [WorkspaceEntry]) {
+        self.root = root
+        self.path = path
+        self.entries = entries
+    }
+
+    enum CodingKeys: String, CodingKey { case root, path, entries }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        root = try container.decode(String.self, forKey: .root)
+        path = try container.decode(String.self, forKey: .path)
+        entries = try container.decode([WorkspaceEntry].self, forKey: .entries)
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(root, forKey: .root)
+        try container.encode(path, forKey: .path)
+        try container.encode(entries, forKey: .entries)
+    }
+}
+
+struct WorkspaceFile: Codable, Hashable, Sendable {
+    var path: String
+    var content: String
+    var truncated: Bool?
+
+    init(path: String, content: String, truncated: Bool? = nil) {
+        self.path = path
+        self.content = content
+        self.truncated = truncated
+    }
+
+    enum CodingKeys: String, CodingKey { case path, content, truncated }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        path = try container.decode(String.self, forKey: .path)
+        content = try container.decode(String.self, forKey: .content)
+        truncated = try container.decodeIfPresent(Bool.self, forKey: .truncated)
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(path, forKey: .path)
+        try container.encode(content, forKey: .content)
+        try container.encodeIfPresent(truncated, forKey: .truncated)
     }
 }
 

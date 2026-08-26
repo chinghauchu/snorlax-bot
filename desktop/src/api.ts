@@ -272,3 +272,47 @@ export function resolveMediaUrl(baseUrl: string, url: string): string {
   const root = baseUrl.replace(/\/$/, "");
   return url.startsWith("/") ? `${root}${url}` : `${root}/${url}`;
 }
+
+export type WorkspaceEntry = {
+  name: string;
+  kind: "file" | "dir";
+  size?: number | null;
+};
+
+export type WorkspaceListing = {
+  root: string;
+  path: string;
+  entries: WorkspaceEntry[];
+};
+
+export type WorkspaceFile = {
+  path: string;
+  content: string;
+  truncated?: boolean;
+};
+
+export async function listWorkspace(
+  session: Session,
+  agentId: string,
+  path = ".",
+): Promise<WorkspaceListing> {
+  const params = new URLSearchParams({ path: path || "." });
+  const response = await fetch(
+    `${session.baseUrl}/v1/agents/${encodeURIComponent(agentId)}/workspace?${params}`,
+    { headers: headers(session) },
+  );
+  return json<WorkspaceListing>(response);
+}
+
+export async function readWorkspaceFile(
+  session: Session,
+  agentId: string,
+  path: string,
+): Promise<WorkspaceFile> {
+  const params = new URLSearchParams({ path });
+  const response = await fetch(
+    `${session.baseUrl}/v1/agents/${encodeURIComponent(agentId)}/workspace/file?${params}`,
+    { headers: headers(session) },
+  );
+  return json<WorkspaceFile>(response);
+}

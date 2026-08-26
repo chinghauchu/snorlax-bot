@@ -13,9 +13,10 @@ npm install
 npm run dev
 ```
 
-Open http://127.0.0.1:1420. There is no Connect gate — the two-column chrome
-is always on screen. Click the **Local** chip (sidebar footer) and paste the
-Runtime URL plus token under Settings → General.
+Open http://127.0.0.1:1420. There is no Connect gate — the chrome
+(sidebar, chat, computer pane) is always on screen. Click the **Local**
+chip (sidebar footer) and paste the Runtime URL plus token under
+Settings → General.
 
 - Prefill `SNORLAX_URL` / `SNORLAX_TOKEN` if those env vars are set.
 - Loopback is first-class: `http://127.0.0.1:8787` and `http://localhost:8787`
@@ -36,10 +37,11 @@ npm install
 npm run tauri dev
 ```
 
-v0 chrome: 256px agent sidebar, chat, 320px identity overlay on the chat
-(not a third column), Settings. Create agent or channel from +. No computer
-pane. Muted 12px tool traces (`Searching…` / `Wrote app.py`) may appear in
-the transcript while the runtime runs tools.
+v0 chrome: 256px agent sidebar, chat, 320px computer pane (file tree +
+text preview; collapsible, default open), 320px identity overlay on the
+chat (not a fourth column), Settings. Create agent or channel from +.
+Muted 12px tool traces (`Searching…` / `Wrote app.py`) may appear in
+the transcript while the runtime runs tools. iOS has no computer pane.
 
 Types and the `/v1` client are generated from the locked camelCase OpenAPI
 (`openapi.yaml`, same contract as `protocol/openapi.yaml` on the Backend

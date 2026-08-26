@@ -14,7 +14,7 @@ From public Grok Bot docs and the Aug 2026 launch:
 | --- | --- |
 | Persistent named bots / teammates | `/v1/agents`, seeded `snorlax-bot` |
 | Message a bot like a coworker | `POST /v1/agents/{id}/messages` (SSE) |
-| Files, shell, web on a computer | v0.5: runtime tools in a workspace jail (not a GUI computer) |
+| Files, shell, web on a computer | v0.5: runtime tools in a workspace jail; v0.6: thin file-tree pane |
 | One user-scoped computer shared by all bots | Later: one sandbox on the Spark, shared files/logins, per-bot screen |
 | Skills (how) and routines (when) | Later: stored on the runtime, executed locally |
 | MCP + computer-use for sites without an API | Later: local MCP + sandbox browser |
@@ -133,7 +133,8 @@ SQLite file `~/.snorlax-bot/snorlax.db` (override with `SNORLAX_DATA_DIR`):
   home directory. Shell has no extra network; HTTP is `web_search` /
   `web_fetch`. Tools auto-run (no approval widgets). Search provider is
   `SNORLAX_SEARCH_PROVIDER` / `SNORLAX_SEARCH_URL`. DELETE of an agent or
-  user-created channel drops that workspace dir.
+  user-created channel drops that workspace dir. v0.6 desktop GETs
+  (`/v1/agents/{id}/workspace` and `.../file`) read that same jail.
 
 v0.1 keeps one transcript per agent (the 1:1) plus one seeded group channel
 and extra user-created channels (v0.4).
@@ -171,8 +172,13 @@ rounds). Built-in tools are list_dir, read_file, write_file, delete_file,
 shell, web_search, web_fetch. 1:1 tools use the speaking agent's workspace;
 channel / handoff tools use the channel sandbox only when `sharedProject`
 is on (default off). Additive SSE `tool.start` / `tool.done` as 12px muted
-status under the LEFT streak. Tools auto-run. No MCP, no computer pane,
-no extra shell network, no host-folder picker.
+status under the LEFT streak. Tools auto-run. No MCP, no extra shell
+network, no host-folder picker.
+
+v0.6: desktop shows that sandbox as a 320px right Computer pane (file tree
++ text preview, collapsible, default open). `GET /v1/agents/{id}/workspace`
+and `.../file` are runtime reads of the same roots. iOS has no pane this
+slice. No screenshot stream, no terminal GUI, no VNC.
 
 ## Inference interface
 

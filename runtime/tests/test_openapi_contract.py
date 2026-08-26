@@ -60,3 +60,10 @@ def test_protocol_openapi_is_locked_v0_contract() -> None:
     assert "folderPath" not in text
     assert "not persisted as Message" not in text
     assert "SSE, chat-only (no tools)" not in text
+    assert "/v1/agents/{id}/workspace" in text
+    assert "/v1/agents/{id}/workspace/file" in text
+    assert "WorkspaceListing" in text
+    assert "WorkspaceFile" in text
+    assert "binary / too large" in text
+    assert "computer pane" in text
+    assert "320px computer pane" in text

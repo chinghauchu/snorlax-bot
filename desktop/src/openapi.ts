@@ -173,6 +173,61 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/agents/{id}/workspace": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["Id"];
+            };
+            cookie?: never;
+        };
+        /**
+         * List the conversation workspace
+         * @description Runtime read of the existing sandbox (same roots as workspace_for).
+         *     Clients never call tools or the model. Path default `.`. Empty
+         *     workspace is `{ entries: [] }` and does not create the dir.
+         *     `root` is sandbox-relative (`workspaces/agents/{id}` or
+         *     `workspaces/channels/{id}`), never a Mac folder path.
+         *     1:1 → that agent's workspace. Channel + sharedProject true →
+         *     channel sandbox. Channel + sharedProject false → first member
+         *     agent's workspace. Isolation: a 1:1 listing never includes
+         *     another 1:1's files or a channel sandbox.
+         */
+        get: operations["listWorkspace"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/agents/{id}/workspace/file": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["Id"];
+            };
+            cookie?: never;
+        };
+        /**
+         * Read a text file from the conversation workspace
+         * @description UTF-8 text only. Size cap matches read_file (256k); larger text
+         *     sets `truncated: true`. Binary (NUL in the first 4k) is 422
+         *     `{ error: "binary / too large" }` — not a hex dump. Path escape
+         *     is 422. Missing file is 404. Path default `.`.
+         */
+        get: operations["getWorkspaceFile"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/images/{id}": {
         parameters: {
             query?: never;
@@ -389,6 +444,29 @@ export interface components {
             ok?: boolean | null;
             senderId?: string;
             senderName?: string;
+        };
+        WorkspaceEntry: {
+            name: string;
+            /** @enum {string} */
+            kind: "file" | "dir";
+            /** @description Byte size for files. Omitted for directories. */
+            size?: number;
+        };
+        WorkspaceListing: {
+            /**
+             * @description Sandbox-relative root (`workspaces/agents/{id}` or
+             *     `workspaces/channels/{id}`). Never a host Mac path.
+             */
+            root: string;
+            /** @description Requested path relative to root. Default `.`. */
+            path: string;
+            entries: components["schemas"]["WorkspaceEntry"][];
+        };
+        WorkspaceFile: {
+            path: string;
+            content: string;
+            /** @description True when the file was larger than the 256k cap. */
+            truncated?: boolean;
         };
         ErrorBody: {
             error: string;
@@ -631,6 +709,62 @@ export interface operations {
                 };
                 content: {
                     "text/event-stream": string;
+                };
+            };
+            401: components["responses"]["Error"];
+            404: components["responses"]["Error"];
+            422: components["responses"]["Error"];
+        };
+    };
+    listWorkspace: {
+        parameters: {
+            query?: {
+                /** @description Directory relative to the workspace root. */
+                path?: string;
+            };
+            header?: never;
+            path: {
+                id: components["parameters"]["Id"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Directory listing */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkspaceListing"];
+                };
+            };
+            401: components["responses"]["Error"];
+            404: components["responses"]["Error"];
+            422: components["responses"]["Error"];
+        };
+    };
+    getWorkspaceFile: {
+        parameters: {
+            query?: {
+                /** @description File path relative to the workspace root. */
+                path?: string;
+            };
+            header?: never;
+            path: {
+                id: components["parameters"]["Id"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description File contents */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkspaceFile"];
                 };
             };
             401: components["responses"]["Error"];

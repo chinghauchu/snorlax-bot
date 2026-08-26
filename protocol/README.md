@@ -4,11 +4,12 @@ Canonical contract: [openapi.yaml](openapi.yaml).
 
 Clients (`SNORLAX_URL` + `SNORLAX_TOKEN`) talk only to the FastAPI runtime.
 They never call oMLX or vLLM, never call tools, and never read
-`~/.snorlax-bot/` on the host. Channel workspaces are sandboxes under that
-data dir, not a picker for a folder on the Mac.
+`~/.snorlax-bot/` on the host. Additive `GET /v1/agents/{id}/workspace`
+reads are served by the runtime from that sandbox. Channel workspaces are
+sandboxes under that data dir, not a picker for a folder on the Mac.
 
-A copy is also kept at `runtime/openapi.yaml` so the runtime tree is
-self-contained. Do not let the two files diverge.
+A copy is also kept at `runtime/openapi.yaml` and `desktop/openapi.yaml`
+so those trees are self-contained. Do not let the files diverge.
 
 iOS `/v1` Codable types are generated from this file:
 

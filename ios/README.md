@@ -2,7 +2,8 @@
 
 Snorlax-Bot’s phone client. SwiftUI, iOS 18+, same locked `/v1` camelCase
 contract as desktop. Named agents, streaming transcript, muted tool traces,
-image previews that are **never** sent to the model.
+image previews that are **never** sent to the model. No computer pane / file
+browser this slice (v0.6 desktop-only).
 
 The Spark stays up when the phone sleeps. Reconnect is
 `GET /v1/agents/{id}/messages`.
@@ -15,6 +16,7 @@ The Spark stays up when the phone sleeps. Reconnect is
 | Target | iOS 18+ (iPhone + iPad) |
 | Network | URLSession, `Authorization: Bearer` on everything except `GET /v1/health` |
 | Chat | `POST /v1/agents/{id}/messages` as SSE (`message.delta` / `message.done` / `tool.start` / `tool.done` / `error`) |
+| Computer | No file browser / computer pane this slice (desktop-only v0.6) |
 | Pairing | Settings sheet. Token in Keychain, URL in AppStorage. No gate screen |
 | Seed | `snorlax-bot` (Snorlax / Assistant) and `snorlax-bot-group` (Snorlax-Bot, Channel). Extra user-created channels. Swipe-delete on every row including the seed agent and seed channel (not in the info pane). After seed channel delete, select an agent first if any remain, else a remaining channel; never recreate `snorlax-bot-group`. Empty roster keeps chrome. No jump chip if no channel remains |
 

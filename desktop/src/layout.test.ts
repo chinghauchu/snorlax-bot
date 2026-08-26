@@ -11,7 +11,8 @@ const css = readFileSync(
 );
 
 function block(selector: string): string {
-  const idx = css.indexOf(`${selector} {`);
+  const needle = `\n${selector} {`;
+  const idx = css.indexOf(needle);
   assert.ok(idx >= 0, `missing ${selector}`);
   const start = css.indexOf("{", idx);
   const end = css.indexOf("}", start);
@@ -25,7 +26,7 @@ test("256px sidebar is a separate overflow context from the transcript", () => {
   const transcript = block(".transcript");
   const roster = block(".roster");
 
-  assert.match(app, /grid-template-columns:\s*256px\s+1fr/);
+  assert.match(app, /grid-template-columns:\s*256px\s+1fr\s+320px/);
   assert.match(app, /overflow:\s*hidden/);
   assert.match(sidebar, /overflow:\s*hidden/);
   assert.match(sidebar, /min-height:\s*0/);
@@ -60,13 +61,44 @@ test("shared project hint is 12px muted", () => {
   assert.match(hint, /color:\s*var\(--text-muted\)/);
 });
 
-test("info pane is a 320px overlay, not a third column", () => {
-  const app = block(".app");
+test("info pane is a 320px overlay on chat, not a fourth column", () => {
+  const chat = block(".chat");
   const profile = block(".profile");
-  assert.match(app, /grid-template-columns:\s*256px\s+1fr/);
-  assert.doesNotMatch(app, /320px/);
+  assert.match(chat, /position:\s*relative/);
   assert.match(profile, /position:\s*absolute/);
   assert.match(profile, /width:\s*320px/);
+});
+
+test("computer pane is a 320px column; collapse drops it; sidebar stays 256px", () => {
+  const app = block(".app");
+  const collapsed = block(".app.computer-collapsed");
+  const hidden = block(".app.computer-collapsed .computer");
+  const computer = block(".computer");
+  const sidebar = block(".sidebar");
+  assert.match(app, /grid-template-columns:\s*256px\s+1fr\s+320px/);
+  assert.match(collapsed, /grid-template-columns:\s*256px\s+1fr;/);
+  assert.match(hidden, /display:\s*none/);
+  assert.match(computer, /width:\s*320px/);
+  assert.match(sidebar, /min-width:\s*256px/);
+  assert.doesNotMatch(sidebar, /320px/);
+});
+
+test("computer tree and preview scroll separately from the transcript", () => {
+  const transcript = block(".transcript");
+  const tree = block(".computer-tree");
+  const preview = block(".computer-preview");
+  assert.match(transcript, /overflow:\s*auto/);
+  assert.match(tree, /overflow:\s*auto/);
+  assert.match(preview, /overflow:\s*auto/);
+});
+
+test("computer chrome uses muted 12px language", () => {
+  const root = block(".computer-root");
+  const empty = block(".computer-empty");
+  assert.match(root, /font-size:\s*12px/);
+  assert.match(root, /color:\s*var\(--text-muted\)/);
+  assert.match(empty, /font-size:\s*12px/);
+  assert.match(empty, /color:\s*var\(--text-muted\)/);
 });
 
 test("create menu is 160px; new channel overlay is 320px; member rows 44px", () => {
@@ -87,4 +119,3 @@ test("agent identity type sizes and channel member rows", () => {
   assert.match(muted, /color:\s*var\(--text-muted\)/);
   assert.match(member, /height:\s*44px/);
 });
-
