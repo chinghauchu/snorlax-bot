@@ -20,6 +20,8 @@ import {
   deleteAgent,
   deletePlugin,
   deleteRoutine,
+  deleteSkill,
+  getSkill,
   listAgents,
   listMessages,
   listPlugins,
@@ -27,6 +29,7 @@ import {
   listSkills,
   patchAgent,
   patchRoutine,
+  patchSkill,
   resolveMediaUrl,
   sendMessage,
   startPluginAuth,
@@ -57,11 +60,14 @@ import {
   CRON_HINT,
   NO_SKILLS_YET,
   canSubmitRoutine,
+  canSubmitSkill,
   fallbackRosterSelection,
   infoPaneKind,
   nextRosterSelection,
   routineMutedLine,
   routineRemoveConfirm,
+  skillRemoveConfirm,
+  EDIT_SKILL_TITLE,
   SHARED_PROJECT_HINT,
   showsWebhookCopy,
   visiblePaneRoutines,
@@ -292,6 +298,38 @@ function AgentRoutineRow({
   );
 }
 
+function AgentSkillRow({
+  skill,
+  onEdit,
+  onRemove,
+}: {
+  skill: Skill;
+  onEdit: (skill: Skill) => void;
+  onRemove: (skill: Skill) => void;
+}) {
+  return (
+    <div className="info-skill">
+      <p className="info-skill-name">{skill.name}</p>
+      <button
+        type="button"
+        className="info-skill-edit"
+        aria-label={`Edit ${skill.name}`}
+        onClick={() => onEdit(skill)}
+      >
+        Edit
+      </button>
+      <button
+        type="button"
+        className="info-skill-remove"
+        aria-label={`Remove ${skill.name}`}
+        onClick={() => onRemove(skill)}
+      >
+        Remove
+      </button>
+    </div>
+  );
+}
+
 export function App() {
   const [urlInput, setUrlInput] = useState(initialUrl);
   const [tokenInput, setTokenInput] = useState(initialToken);
@@ -357,6 +395,14 @@ export function App() {
   const [routineAddSaving, setRoutineAddSaving] = useState(false);
   const [pendingRoutineRemove, setPendingRoutineRemove] =
     useState<Routine | null>(null);
+  const [pendingSkillRemove, setPendingSkillRemove] = useState<Skill | null>(
+    null,
+  );
+  const [skillEditOpen, setSkillEditOpen] = useState(false);
+  const [skillEditId, setSkillEditId] = useState("");
+  const [skillEditName, setSkillEditName] = useState("");
+  const [skillEditBody, setSkillEditBody] = useState("");
+  const [skillEditSaving, setSkillEditSaving] = useState(false);
   const [plugins, setPlugins] = useState<Plugin[]>([]);
   const [pluginAddOpen, setPluginAddOpen] = useState(false);
   const [pluginAddName, setPluginAddName] = useState("");
@@ -388,6 +434,10 @@ export function App() {
     skill: routineAddSkill,
     mode: routineAddMode,
     schedule: routineAddCron,
+  });
+  const skillEditReady = canSubmitSkill({
+    name: skillEditName,
+    body: skillEditBody,
   });
 
   function commitSession(url = urlInput, token = tokenInput) {
@@ -698,6 +748,11 @@ export function App() {
     setProfileEditing(false);
     setProfileOpen(true);
     void loadRoutines(agent);
+    if (agent.kind === "channel") {
+      setRoutineSkills([]);
+    } else {
+      void loadSkills(agent.id);
+    }
   }
 
   async function toggleRoutine(routine: Routine, enabled: boolean) {
@@ -771,6 +826,69 @@ export function App() {
     try {
       await deleteRoutine(session, active.id, id);
       setRoutines((prev) => prev.filter((row) => row.id !== id));
+    } catch (err) {
+      setComposerError(describeError(err));
+    }
+  }
+
+  async function openSkillEdit(skill: Skill) {
+    if (!session || !active || active.kind === "channel") return;
+    try {
+      const row = await getSkill(session, active.id, skill.id);
+      setSkillEditId(row.id);
+      setSkillEditName(row.name);
+      setSkillEditBody(row.body);
+      setSkillEditOpen(true);
+    } catch (err) {
+      setComposerError(describeError(err));
+    }
+  }
+
+  async function saveSkillEdit() {
+    if (
+      !session ||
+      !active ||
+      !skillEditId ||
+      skillEditSaving ||
+      !skillEditReady
+    ) {
+      return;
+    }
+    setSkillEditSaving(true);
+    try {
+      const updated = await patchSkill(session, active.id, skillEditId, {
+        name: skillEditName.trim(),
+        body: skillEditBody.trim(),
+      });
+      setRoutineSkills((prev) => {
+        const next = prev.map((row) =>
+          row.id === skillEditId
+            ? { id: updated.id, name: updated.name }
+            : row,
+        );
+        if (!next.some((row) => row.id === updated.id)) {
+          return [...next.filter((row) => row.id !== skillEditId), {
+            id: updated.id,
+            name: updated.name,
+          }];
+        }
+        return next;
+      });
+      setSkillEditOpen(false);
+    } catch (err) {
+      setComposerError(describeError(err));
+    } finally {
+      setSkillEditSaving(false);
+    }
+  }
+
+  async function confirmSkillRemove() {
+    if (!session || !active || !pendingSkillRemove) return;
+    const id = pendingSkillRemove.id;
+    setPendingSkillRemove(null);
+    try {
+      await deleteSkill(session, active.id, id);
+      setRoutineSkills((prev) => prev.filter((row) => row.id !== id));
     } catch (err) {
       setComposerError(describeError(err));
     }
@@ -2009,6 +2127,21 @@ export function App() {
                 ))
               )}
             </section>
+            <section className="info-skills" aria-label="Skills">
+              <p className="info-skills-header">Skills</p>
+              {routineSkills.length === 0 ? (
+                <p className="info-skill-empty">{NO_SKILLS_YET}</p>
+              ) : (
+                routineSkills.map((skill) => (
+                  <AgentSkillRow
+                    key={skill.id}
+                    skill={skill}
+                    onEdit={(row) => void openSkillEdit(row)}
+                    onRemove={(row) => setPendingSkillRemove(row)}
+                  />
+                ))
+              )}
+            </section>
             </>
           )}
         </aside>
@@ -2508,6 +2641,94 @@ export function App() {
                   onClick={() => void saveRoutineAdd()}
                 >
                   Add
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {pendingSkillRemove ? (
+        <div
+          className="modal-backdrop plugin-sheet"
+          onClick={() => setPendingSkillRemove(null)}
+        >
+          <div
+            className="modal confirm"
+            role="dialog"
+            aria-label="Confirm remove skill"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <p>{skillRemoveConfirm(pendingSkillRemove.name)}</p>
+            <div className="confirm-actions">
+              <button
+                type="button"
+                onClick={() => setPendingSkillRemove(null)}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="danger-fill"
+                onClick={() => void confirmSkillRemove()}
+              >
+                Remove
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {skillEditOpen ? (
+        <div
+          className="modal-backdrop plugin-sheet"
+          onClick={() => setSkillEditOpen(false)}
+        >
+          <div
+            className="modal plugin-add-sheet skill-edit-sheet"
+            role="dialog"
+            aria-label={EDIT_SKILL_TITLE}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <header>
+              <h2>{EDIT_SKILL_TITLE}</h2>
+              <button
+                type="button"
+                className="icon-btn"
+                aria-label="Close"
+                onClick={() => setSkillEditOpen(false)}
+              >
+                ×
+              </button>
+            </header>
+            <div className="profile-form">
+              <label>
+                Name
+                <input
+                  className="skill-edit-name"
+                  value={skillEditName}
+                  autoFocus
+                  onChange={(e) => setSkillEditName(e.target.value)}
+                />
+              </label>
+              <label>
+                Body
+                <textarea
+                  className="skill-edit-body"
+                  value={skillEditBody}
+                  spellCheck={false}
+                  autoComplete="off"
+                  onChange={(e) => setSkillEditBody(e.target.value)}
+                />
+              </label>
+              <div className="confirm-actions">
+                <button
+                  type="button"
+                  className="primary skill-edit-save"
+                  disabled={skillEditSaving || !session || !skillEditReady}
+                  onClick={() => void saveSkillEdit()}
+                >
+                  Save
                 </button>
               </div>
             </div>

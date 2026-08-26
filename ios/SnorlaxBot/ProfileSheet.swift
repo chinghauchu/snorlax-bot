@@ -12,7 +12,20 @@ struct ProfileSheet: View {
     @State private var pickerItem: PhotosPickerItem?
     @State private var copiedRoutineId: String?
     @State private var showAddRoutine = false
-    @State private var pendingRemove: Routine?
+    @State private var pendingRemove: PendingRemove?
+    @State private var editingSkill: Skill?
+
+    private enum PendingRemove {
+        case routine(Routine)
+        case skill(Skill)
+
+        var name: String {
+            switch self {
+            case .routine(let row): return row.name
+            case .skill(let row): return row.name
+            }
+        }
+    }
 
     init(agent: Agent) {
         self.agent = agent
@@ -86,12 +99,14 @@ struct ProfileSheet: View {
             }
             computerBlock
             routinesList
+            skillsList
             Spacer(minLength: 0)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(16)
         .task(id: live.id) {
             await model.loadRoutines(for: live.id)
+            await model.loadSkillsList(for: live.id)
             await model.loadComputer(for: live.id)
             while !Task.isCancelled {
                 try? await Task.sleep(nanoseconds: 1_500_000_000)
@@ -100,6 +115,9 @@ struct ProfileSheet: View {
         }
         .sheet(isPresented: $showAddRoutine) {
             AddRoutineSheet(agentId: live.id)
+        }
+        .sheet(item: $editingSkill) { skill in
+            EditSkillSheet(agentId: live.id, skill: skill)
         }
         .confirmationDialog(
             pendingRemove.map { "Remove \($0.name)?" } ?? "",
@@ -110,10 +128,17 @@ struct ProfileSheet: View {
             titleVisibility: .visible
         ) {
             Button("Remove", role: .destructive) {
-                if let routine = pendingRemove {
+                switch pendingRemove {
+                case .routine(let routine):
                     Task {
                         await model.removeRoutine(agentId: live.id, id: routine.id)
                     }
+                case .skill(let skill):
+                    Task {
+                        await model.removeSkill(agentId: live.id, id: skill.id)
+                    }
+                case nil:
+                    break
                 }
                 pendingRemove = nil
             }
@@ -202,7 +227,7 @@ struct ProfileSheet: View {
                             .accessibilityLabel("Copy webhook URL")
                         }
                         Button("Remove") {
-                            pendingRemove = routine
+                            pendingRemove = .routine(routine)
                         }
                         .font(.system(size: 12, weight: .medium))
                         .foregroundStyle(.secondary)
@@ -225,6 +250,44 @@ struct ProfileSheet: View {
                         .labelsHidden()
                         .disabled(!model.isConfigured)
                         .accessibilityLabel(routine.enabled ? "Pause \(routine.name)" : "Enable \(routine.name)")
+                    }
+                    .frame(minHeight: 44)
+                }
+            }
+        }
+    }
+
+    private var skillsList: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            Text("Skills")
+                .font(.system(size: 12))
+                .foregroundStyle(.secondary)
+                .padding(.top, 12)
+                .padding(.bottom, 8)
+            if model.skills.isEmpty {
+                Text("No skills yet.")
+                    .font(.system(size: 12))
+                    .foregroundStyle(.secondary)
+            } else {
+                ForEach(model.skills) { skill in
+                    HStack(spacing: 8) {
+                        Text(skill.name)
+                            .font(.system(size: 14, weight: .medium))
+                        Spacer(minLength: 0)
+                        Button("Edit") {
+                            editingSkill = skill
+                        }
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundStyle(.secondary)
+                        .buttonStyle(.plain)
+                        .accessibilityLabel("Edit \(skill.name)")
+                        Button("Remove") {
+                            pendingRemove = .skill(skill)
+                        }
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundStyle(.secondary)
+                        .buttonStyle(.plain)
+                        .accessibilityLabel("Remove \(skill.name)")
                     }
                     .frame(minHeight: 44)
                 }
@@ -499,6 +562,75 @@ private struct AddRoutineSheet: View {
             skill: skill,
             schedule: mode == .schedule ? cron : nil,
             webhook: mode == .webhook
+        )
+        if ok { dismiss() }
+    }
+}
+
+private struct EditSkillSheet: View {
+    @Environment(AppModel.self) private var model
+    @Environment(\.dismiss) private var dismiss
+    let agentId: String
+    let skill: Skill
+    @State private var name = ""
+    @State private var source = ""
+    @State private var saving = false
+
+    private var canSave: Bool {
+        !name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            && !source.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                TextField("Name", text: $name)
+                    .font(.system(size: 14))
+                TextEditor(text: $source)
+                    .font(.system(size: 12, design: .monospaced))
+                    .lineSpacing(12 * 0.45) // 12pt / 1.45
+                    .frame(minHeight: 200)
+                    .textInputAutocapitalization(.never)
+                    .autocorrectionDisabled()
+                    .accessibilityLabel("Skill source")
+                Button("Save") {
+                    Task { await save() }
+                }
+                .frame(maxWidth: .infinity, minHeight: 44)
+                .disabled(saving || !model.isConfigured || !canSave)
+            }
+            .navigationTitle("Edit skill")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button {
+                        dismiss()
+                    } label: {
+                        Image(systemName: "xmark")
+                    }
+                    .accessibilityLabel("Close")
+                }
+            }
+            .task {
+                if let row = await model.loadSkill(agentId: agentId, id: skill.id) {
+                    name = row.name
+                    source = row.body
+                } else {
+                    name = skill.name
+                }
+            }
+        }
+    }
+
+    private func save() async {
+        guard canSave else { return }
+        saving = true
+        defer { saving = false }
+        let ok = await model.saveSkill(
+            agentId: agentId,
+            id: skill.id,
+            name: name,
+            body: source
         )
         if ok { dismiss() }
     }

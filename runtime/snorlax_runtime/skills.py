@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import os
 import re
+import shutil
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -302,6 +303,109 @@ def _event_line(event: dict[str, object]) -> str:
     return f"key {etype} {key}{extra}"
 
 
+def render_skill_markdown(name: str, description: str, body: str) -> str:
+    text = (body or "").replace("\r\n", "\n").strip()
+    if text:
+        text += "\n"
+    return (
+        f"---\nname: {_yaml_scalar(name)}\n"
+        f"description: {_yaml_scalar(description)}\n---\n\n{text}"
+    )
+
+
+def skill_disk_path(
+    data_dir: Path, workspace: Path | None, skill: Skill
+) -> Path:
+    root = (
+        workspace
+        if skill.source == SOURCE_WORKSPACE and workspace is not None
+        else skills_dir(data_dir)
+    )
+    return root / skill.path
+
+
+def skill_wire(
+    data_dir: Path, workspace: Path | None, skill: Skill
+) -> dict[str, str]:
+    """GET/PATCH shape: full SKILL.md source (frontmatter + recipe)."""
+    path = skill_disk_path(data_dir, workspace, skill)
+    try:
+        raw = path.read_text(encoding="utf-8")
+    except OSError:
+        raw = render_skill_markdown(skill.name, skill.description, skill.body)
+    return {"id": skill_slug(skill), "name": skill.name, "body": raw}
+
+
+def _compose_patched_markdown(skill: Skill, name: str, body: str) -> str:
+    """Write-ready SKILL.md. Body may be full source or recipe-only."""
+    title = (name or "").strip()
+    text = (body or "").replace("\r\n", "\n")
+    if not title or not text.strip():
+        raise ValueError("name and body are required")
+    match = _FRONTMATTER.match(text if text.endswith("\n") else text + "\n")
+    if match is not None:
+        meta = _parse_frontmatter(match.group("meta"))
+        description = (
+            str(meta.get("description") or "").strip()
+            or skill.description
+            or title
+        )
+        recipe = match.group("body")
+        return render_skill_markdown(title, description, recipe)
+    return render_skill_markdown(title, skill.description or title, text)
+
+
+def patch_skill(
+    data_dir: Path,
+    workspace: Path | None,
+    sid: str,
+    *,
+    name: str,
+    body: str,
+) -> Skill | None:
+    """Rewrite SKILL.md in place. Keep slug/id stable. Empty name/body is 422."""
+    skill = find_skill(load_skills(data_dir, workspace), sid)
+    if skill is None:
+        return None
+    markdown = _compose_patched_markdown(skill, name, body)
+    path = skill_disk_path(data_dir, workspace, skill)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(markdown, encoding="utf-8")
+    updated = parse_skill_markdown(
+        markdown, source=skill.source, path=skill.path
+    )
+    if updated is None:
+        raise ValueError("failed to write skill")
+    return updated
+
+
+def delete_skill(
+    data_dir: Path, workspace: Path | None, sid: str
+) -> bool:
+    """Remove SKILL.md (and its slug directory under the skills dir)."""
+    skill = find_skill(load_skills(data_dir, workspace), sid)
+    if skill is None:
+        return False
+    path = skill_disk_path(data_dir, workspace, skill)
+    if not path.is_file():
+        return False
+    parent = path.parent
+    path.unlink()
+    roots = [skills_dir(data_dir)]
+    if workspace is not None:
+        roots.append(workspace)
+    try:
+        resolved_roots = [root.resolve() for root in roots if root.exists()]
+        resolved_parent = parent.resolve()
+    except OSError:
+        return True
+    if resolved_parent in resolved_roots:
+        return True
+    if parent.name == skill_slug(skill):
+        shutil.rmtree(parent, ignore_errors=True)
+    return True
+
+
 def write_taught_skill(data_dir: Path, name: str, capture: object) -> Skill:
     """Persist a recorded capture as SKILL.md on the v0.9 load path.
 
@@ -319,10 +423,7 @@ def write_taught_skill(data_dir: Path, name: str, capture: object) -> Skill:
         "and computer_key on the 1280×800 sandbox."
     )
     body = skill_body_from_capture(capture)
-    markdown = (
-        f"---\nname: {_yaml_scalar(title)}\n"
-        f"description: {_yaml_scalar(description)}\n---\n\n{body}"
-    )
+    markdown = render_skill_markdown(title, description, body)
     path = root / SKILL_FILENAME
     path.write_text(markdown, encoding="utf-8")
     start_png = getattr(capture, "start_png", None)

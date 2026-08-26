@@ -25,6 +25,10 @@ import {
   CRON_HINT,
   NO_SKILLS_YET,
   canSubmitRoutine,
+  EMPTY_SKILLS,
+  EDIT_SKILL_TITLE,
+  skillRemoveConfirm,
+  canSubmitSkill,
 } from "./infoPane.ts";
 
 test("user-created channels are editable; seed channel is not", () => {
@@ -270,4 +274,18 @@ test("add-routine submit is name + skill + cron if schedule", () => {
     }),
     true,
   );
+});
+
+test("edit-skill submit is name + body; no blank add copy", () => {
+  assert.equal(EMPTY_SKILLS, "No skills yet.");
+  assert.equal(EMPTY_SKILLS, NO_SKILLS_YET);
+  assert.equal(EDIT_SKILL_TITLE, "Edit skill");
+  assert.equal(skillRemoveConfirm("status"), "Remove status?");
+  assert.equal(
+    canSubmitSkill({ name: "status", body: "Summarize status." }),
+    true,
+  );
+  assert.equal(canSubmitSkill({ name: "  ", body: "body" }), false);
+  assert.equal(canSubmitSkill({ name: "status", body: "  " }), false);
+  assert.equal(canSubmitSkill({ name: "", body: "" }), false);
 });

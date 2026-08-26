@@ -65,6 +65,7 @@ test("desktop identity pane paints Computer above Routines with Open when hasSan
   );
   assert.match(pane, /AgentComputer/);
   assert.ok(pane.indexOf("AgentComputer") < pane.indexOf("info-routines"));
+  assert.ok(pane.indexOf("info-routines") < pane.indexOf("info-skills"));
   assert.match(pane, /onOpen/);
   assert.match(preview, /OPEN_LABEL/);
   assert.match(preview, /onClick/);
@@ -174,7 +175,7 @@ test("iOS agent sheet matches: 16:10, 8pt, 12pt labels, no tap-to-open", () => {
   assert.match(sheet, /showsWebhookCopy/);
   const routinesBlock = sheet.slice(
     sheet.indexOf("private var routinesList"),
-    sheet.indexOf("private var channelPane"),
+    sheet.indexOf("private var skillsList"),
   );
   assert.ok(
     routinesBlock.indexOf("showsWebhookCopy") <
@@ -185,14 +186,39 @@ test("iOS agent sheet matches: 16:10, 8pt, 12pt labels, no tap-to-open", () => {
       routinesBlock.indexOf("Toggle"),
   );
   assert.match(client, /listSkills/);
+  assert.match(client, /getSkill/);
+  assert.match(client, /patchSkill/);
+  assert.match(client, /deleteSkill/);
   assert.match(client, /createRoutine/);
   assert.match(client, /deleteRoutine/);
   assert.match(model, /addRoutine/);
   assert.match(model, /removeRoutine/);
+  assert.match(model, /saveSkill/);
+  assert.match(model, /removeSkill/);
+  assert.match(sheet, /Edit skill/);
+  assert.match(sheet, /TextEditor/);
+  assert.match(sheet, /minHeight: 200/);
+  assert.match(sheet, /size: 12/);
+  assert.match(sheet, /design: \.monospaced/);
+  const skillsBlock = sheet.slice(
+    sheet.indexOf("private var skillsList"),
+    sheet.indexOf("private var channelPane"),
+  );
+  assert.match(skillsBlock, /Text\("Skills"\)/);
+  assert.match(skillsBlock, /No skills yet\./);
+  assert.match(skillsBlock, /Button\("Edit"\)/);
+  assert.match(skillsBlock, /Button\("Remove"\)/);
+  assert.ok(
+    skillsBlock.indexOf('Button("Edit")') <
+      skillsBlock.indexOf('Button("Remove")'),
+  );
+  assert.doesNotMatch(skillsBlock, /Button\("Add"\)/);
+  assert.doesNotMatch(skillsBlock, /New skill/);
   const channelPane = sheet.slice(
     sheet.indexOf("channelPane"),
     sheet.indexOf("channelEditForm"),
   );
   assert.doesNotMatch(channelPane, /AddRoutineSheet/);
+  assert.doesNotMatch(channelPane, /EditSkillSheet/);
   assert.doesNotMatch(channelPane, /listSkills/);
 });

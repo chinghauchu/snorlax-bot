@@ -113,6 +113,17 @@ export function canSubmitRoutine(draft: {
   return true;
 }
 
+export const EMPTY_SKILLS = "No skills yet.";
+export const EDIT_SKILL_TITLE = "Edit skill";
+
+export function skillRemoveConfirm(name: string): string {
+  return `Remove ${name}?`;
+}
+
+export function canSubmitSkill(draft: { name: string; body: string }): boolean {
+  return Boolean(draft.name.trim() && draft.body.trim());
+}
+
 export type RoutineTriggerLine = {
   kind?: string | null;
   skill?: string;
