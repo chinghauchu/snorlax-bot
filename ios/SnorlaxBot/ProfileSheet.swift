@@ -28,7 +28,9 @@ struct ProfileSheet: View {
     var body: some View {
         NavigationStack {
             Group {
-                if live.isChannel {
+                if live.isChannel, editing, live.canEditChannel {
+                    channelEditForm
+                } else if live.isChannel {
                     channelPane
                 } else if editing {
                     editForm
@@ -39,7 +41,7 @@ struct ProfileSheet: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItemGroup(placement: .topBarTrailing) {
-                    if !live.isChannel, !editing {
+                    if (!live.isChannel || live.canEditChannel), !editing {
                         Button {
                             draft = live
                             editing = true
@@ -123,6 +125,54 @@ struct ProfileSheet: View {
             Spacer(minLength: 0)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private var channelEditForm: some View {
+        Form {
+            Section {
+                TextField("Name", text: $draft.name)
+            }
+            Section("Members") {
+                ForEach(model.visibleAgents.filter { !$0.isChannel }) { agent in
+                    Button {
+                        if draft.memberIds.contains(agent.id) {
+                            draft.memberIds.removeAll { $0 == agent.id }
+                        } else {
+                            draft.memberIds.append(agent.id)
+                        }
+                    } label: {
+                        HStack(spacing: 10) {
+                            AgentAvatar(agent: agent, size: 28)
+                            VStack(alignment: .leading, spacing: 1) {
+                                Text(agent.name)
+                                    .font(.system(size: 14, weight: .medium))
+                                    .foregroundStyle(.primary)
+                                if !agent.title.isEmpty {
+                                    Text(agent.title)
+                                        .font(.system(size: 13))
+                                        .foregroundStyle(.secondary)
+                                }
+                            }
+                            Spacer(minLength: 0)
+                            Image(systemName: draft.memberIds.contains(agent.id) ? "checkmark.square.fill" : "square")
+                                .foregroundStyle(draft.memberIds.contains(agent.id) ? Color.accentColor : .secondary)
+                        }
+                        .frame(height: 44)
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+            Section {
+                Button("Save") {
+                    Task {
+                        await model.saveProfile(draft)
+                        editing = false
+                    }
+                }
+                .disabled(draft.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || !model.isConfigured)
+            }
+        }
     }
 
     private var editForm: some View {

@@ -17,7 +17,12 @@ from snorlax_runtime import (
     USER_SENDER_NAME,
 )
 from snorlax_runtime.db import Store, new_id
-from snorlax_runtime.handoff import report_pack, strip_involve_kicker, wake_pack
+from snorlax_runtime.handoff import (
+    REPORT_MISS,
+    report_pack,
+    strip_involve_kicker,
+    wake_pack,
+)
 
 log = logging.getLogger("snorlax.routing")
 
@@ -259,6 +264,10 @@ class _Job:
 
 
 def looks_like_ask(content: str) -> bool:
+    """FYI silence for 1:1 involves. Not an ACK classifier.
+
+    Do not detect "I can help" in code. B is prompted to do the work.
+    """
     stripped = content.strip()
     if not stripped:
         return False
@@ -295,11 +304,13 @@ async def run_user_turn(
     images: list[dict[str, Any]],
     mentions: list[dict[str, str]],
     reply_to: str | None = None,
-    handoff_channel_id: str | None = None,
 ) -> AsyncIterator[tuple[str, dict[str, Any]]]:
     """Persist the user message, then route hop-0 and peer work.
 
     Yields SSE (event, payload) only for messages that land in `conversation`.
+    Holds the originating POST open until every mentioned peer has done or
+    been dropped and A has reported for each. 1:1 @involves always log as
+    handoff threads on the seeded channel.
     """
     origin_id = conversation["id"]
     is_group = conversation.get("kind") == KIND_CHANNEL
@@ -336,7 +347,7 @@ async def run_user_turn(
                 peer=False,
                 edge_from=USER_SENDER_ID,
                 edge_to=origin_id,
-                channel_id=handoff_channel_id or SEEDED_CHANNEL_ID,
+                channel_id=SEEDED_CHANNEL_ID,
             )
         )
 
@@ -356,9 +367,7 @@ async def run_user_turn(
         thread_id=thread_id,
         origin_user_message_id=user_saved["id"] if not is_group else None,
         origin_conversation_id=None if is_group else origin_id,
-        handoff_channel_id=None if is_group else (
-            handoff_channel_id or SEEDED_CHANNEL_ID
-        ),
+        handoff_channel_id=None if is_group else SEEDED_CHANNEL_ID,
     )
 
     i = 0
@@ -369,11 +378,46 @@ async def run_user_turn(
         agent = next((a for a in roster if a["id"] == job.agent_id), None)
         if agent is None or agent.get("kind") == KIND_CHANNEL:
             continue
+
+        # Report-back is A's 1:1 assistant turn, not a peer send. Hop caps
+        # only apply to A2A / channel peer sends.
+        if job.report_back:
+            in_origin = job.conversation_id == origin_id
+            events, saved = await _generate(
+                store,
+                backend,
+                agent=agent,
+                conversation_id=job.conversation_id,
+                hop=0,
+                stream=in_origin,
+                thread_id=None,
+                wake_pack=job.wake_pack,
+                report_back=True,
+            )
+            if in_origin:
+                for event, payload in events:
+                    yield event, payload
+            del saved
+            continue
+
+        dropped = False
         if not turn.allow_hop(job.hop):
-            continue
-        if not turn.allow_edge(job.edge_from, job.edge_to):
-            continue
-        if job.peer and not turn.allow_peer():
+            dropped = True
+        elif not turn.allow_edge(job.edge_from, job.edge_to):
+            dropped = True
+        elif job.peer and not turn.allow_peer():
+            dropped = True
+
+        if dropped:
+            _queue_report_back(
+                jobs,
+                at=i,
+                from_agent=agent,
+                result=REPORT_MISS,
+                thread_id=job.thread_id or "",
+                user_ask=_job_user_ask(job),
+                origin_conversation_id=job.origin_conversation_id,
+            )
             continue
 
         turn.commit_edge(job.edge_from, job.edge_to)
@@ -395,9 +439,15 @@ async def run_user_turn(
             for event, payload in events:
                 yield event, payload
         if saved is None:
-            continue
-
-        if job.report_back:
+            _queue_report_back(
+                jobs,
+                at=i,
+                from_agent=agent,
+                result=REPORT_MISS,
+                thread_id=job.thread_id or "",
+                user_ask=_job_user_ask(job),
+                origin_conversation_id=job.origin_conversation_id,
+            )
             continue
 
         source_is_group = (
@@ -428,14 +478,17 @@ async def run_user_turn(
             origin_conversation_id=origin_conversation,
             handoff_channel_id=job.channel_id,
         )
-        await _enqueue_report_back(
-            jobs,
-            turn=turn,
-            agent=agent,
-            saved=saved,
-            job=job,
-            origin_conversation_id=origin_conversation,
-        )
+        result = (saved.get("content") or "").strip()
+        if result:
+            _queue_report_back(
+                jobs,
+                at=i,
+                from_agent=agent,
+                result=result,
+                thread_id=job.thread_id or saved.get("replyTo") or saved["id"],
+                user_ask=_job_user_ask(job),
+                origin_conversation_id=origin_conversation,
+            )
 
 
 async def _enqueue_mentions(
@@ -482,11 +535,12 @@ async def _enqueue_mentions(
         return
 
     # 1:1 isolation: never write peer/involve/DM into either 1:1.
-    # Handoff lives on a channel as a thread under a kind=handoff root.
+    # Handoff always lives on the seeded channel as a thread under a
+    # kind=handoff root. Extra channels are a separate create flow.
     targets = [t for t in targets if t != source_id]
     if not targets:
         return
-    channel_id = handoff_channel_id or SEEDED_CHANNEL_ID
+    channel_id = SEEDED_CHANNEL_ID
     if next((a for a in roster if a["id"] == channel_id), None) is None:
         return
     through_id = source_sender if source_sender != USER_SENDER_ID else source_id
@@ -498,6 +552,24 @@ async def _enqueue_mentions(
     cap_runnable = turn.preview_runnable(
         hop=hop, edge_from=through["id"], targets=targets
     )
+    should_report = (not user_caused) or looks_like_ask(quoted)
+    if should_report:
+        index = {a["id"]: a for a in roster}
+        for target_id in targets:
+            if target_id in cap_runnable:
+                continue
+            peer = index.get(target_id)
+            if peer is None:
+                continue
+            _queue_report_back(
+                jobs,
+                at=len(jobs),
+                from_agent=peer,
+                result=REPORT_MISS,
+                thread_id="",
+                user_ask=quoted,
+                origin_conversation_id=origin_id,
+            )
     if not cap_runnable:
         return
 
@@ -550,56 +622,62 @@ async def _enqueue_mentions(
         )
 
 
-async def _enqueue_report_back(
+def _job_user_ask(job: _Job) -> str:
+    pack = job.wake_pack or {}
+    ask = pack.get("userAsk")
+    return ask if isinstance(ask, str) else ""
+
+
+def _queue_report_back(
     jobs: list[_Job],
     *,
-    turn: TurnState,
-    agent: dict[str, Any],
-    saved: dict[str, Any],
-    job: _Job,
+    at: int,
+    from_agent: dict[str, Any],
+    result: str,
+    thread_id: str,
+    user_ask: str,
     origin_conversation_id: str | None,
 ) -> None:
-    """Wake originating A in A's 1:1 with B's thread result.
+    """Enqueue A's 1:1 report as the next job (report-as-each-lands).
 
-    Counts as a hop (and a peer send). If dropped, B's thread reply stays.
+    Not a peer send. Does not increment hop or spend hop budget.
     """
-    del turn  # hop/peer/edge checked when the job runs
-    if job.report_back:
-        return
     if not origin_conversation_id:
         return
-    if job.conversation_id == origin_conversation_id:
-        return
-    if job.wake_pack is None:
-        return
-    result = (saved.get("content") or "").strip()
-    if not result:
+    if from_agent["id"] == origin_conversation_id:
         return
     origin = origin_conversation_id
-    queued = {(j.agent_id, j.conversation_id, j.hop) for j in jobs}
-    hop = job.hop + 1
-    key = (origin, origin, hop)
-    if key in queued:
-        return
+    from_id = from_agent["id"]
+    for existing in jobs:
+        if not existing.report_back:
+            continue
+        pack = existing.wake_pack or {}
+        if (
+            existing.agent_id == origin
+            and (pack.get("from") or {}).get("id") == from_id
+        ):
+            return
     pack = report_pack(
-        from_agent=agent,
+        from_agent=from_agent,
         result=result,
-        thread_id=job.thread_id or saved.get("replyTo") or saved["id"],
+        thread_id=thread_id,
+        user_ask=user_ask,
     )
-    jobs.append(
+    jobs.insert(
+        min(at, len(jobs)),
         _Job(
             agent_id=origin,
             conversation_id=origin,
-            hop=hop,
-            peer=True,
-            edge_from=agent["id"],
+            hop=0,
+            peer=False,
+            edge_from=from_agent["id"],
             edge_to=origin,
-            thread_id=job.thread_id,
+            thread_id=thread_id or None,
             wake_pack=pack,
             origin_conversation_id=origin,
             report_back=True,
-            channel_id=job.channel_id,
-        )
+            channel_id=SEEDED_CHANNEL_ID,
+        ),
     )
 
 
@@ -665,6 +743,7 @@ async def _generate(
     stream: bool,
     thread_id: str | None = None,
     wake_pack: dict[str, Any] | None = None,
+    report_back: bool = False,
 ) -> tuple[list[tuple[str, dict[str, Any]]], dict[str, Any] | None]:
     from snorlax_runtime.inference import InferenceError
 
@@ -703,9 +782,11 @@ async def _generate(
         return events, None
 
     content = strip_involve_kicker("".join(pieces))
-    mentions = resolve_agent_mentions(
-        content, roster, is_group=is_group, self_id=agent["id"]
-    )
+    mentions: list[dict[str, str]] = []
+    if not report_back:
+        mentions = resolve_agent_mentions(
+            content, roster, is_group=is_group, self_id=agent["id"]
+        )
     saved = await store.add_message(
         agent_id=conversation_id,
         role="assistant",

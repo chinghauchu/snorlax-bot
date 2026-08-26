@@ -8,6 +8,10 @@ export function canDeleteAgent(agent: { id?: string; kind: string }): boolean {
   return agent.id !== SEED_CHANNEL_ID;
 }
 
+export function canEditChannel(agent: { id?: string; kind: string }): boolean {
+  return agent.kind === "channel" && agent.id !== SEED_CHANNEL_ID;
+}
+
 export function infoPaneKind(agent: { kind: string }): "agent" | "channel" {
   return agent.kind === "channel" ? "channel" : "agent";
 }

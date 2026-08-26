@@ -46,6 +46,13 @@ class AgentPatch(BaseModel):
             "from name. No new upload route."
         ),
     )
+    memberIds: list[str] | None = Field(
+        default=None,
+        description=(
+            "Agent ids for a user-created channel. Seed channel PATCH is 409. "
+            "Unknown ids and channel ids 422."
+        ),
+    )
 
 
 class ImageOut(BaseModel):
@@ -94,7 +101,6 @@ class MessageCreate(BaseModel):
     images: list[ImageIn] = Field(default_factory=list)
     mentions: list[str] = Field(default_factory=list)
     replyTo: str | None = None
-    channelId: str | None = None
 
 
 class MessageDelta(BaseModel):

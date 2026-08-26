@@ -4,6 +4,7 @@ from __future__ import annotations
 import pytest
 
 from snorlax_runtime.handoff import (
+    REPORT_MISS,
     format_brief,
     report_pack,
     strip_involve_kicker,
@@ -121,6 +122,10 @@ def test_peer_cap_drop_has_no_handoff(client, monkeypatch) -> None:
     assert user.get("handoff") is None
     assert _msgs(client, bob["id"]) == []
     assert _msgs(client, CHANNEL) == []
+    assert any(
+        m["senderId"] == alice["id"] and REPORT_MISS in m["content"]
+        for m in alice_msgs
+    )
 
 
 def test_looping_b_does_not_suppress_a_in_one_to_one(client) -> None:
@@ -164,11 +169,13 @@ def test_report_pack_shape() -> None:
         from_agent={"id": "bob", "name": "Bob", "title": "Math"},
         result="from Bob: 2",
         thread_id="msg_thread",
+        user_ask="@Bob answer 1+1",
     )
     assert pack == {
         "from": {"id": "bob", "name": "Bob", "title": "Math"},
         "result": "2",
         "threadId": "msg_thread",
+        "userAsk": "@Bob answer 1+1",
     }
 
 
@@ -224,21 +231,56 @@ def test_report_back_copies_scripted_b_result(client) -> None:
     assert _msgs(client, bob["id"]) == []
 
 
-def test_report_back_hop_drop_keeps_thread_reply(client, monkeypatch) -> None:
-    monkeypatch.setattr("snorlax_runtime.routing.MAX_HOP", 1)
+def test_report_back_hop_drop_still_reports_miss(client, monkeypatch) -> None:
+    monkeypatch.setattr("snorlax_runtime.routing.MAX_HOP", 0)
     alice = _create(client, "Alice")
     bob = _create(client, "Bob")
     status, _ = _send(client, alice["id"], "@Bob answer 1+1")
     assert status == 200
     alice_msgs = _msgs(client, alice["id"])
     user = [m for m in alice_msgs if m["senderId"] == "user"][-1]
-    thread = _thread(client, user["handoff"]["threadId"])
-    assert any(m["senderId"] == bob["id"] and m["content"].strip() == "2" for m in thread)
+    assert user.get("handoff") is None
     alice_replies = [m for m in alice_msgs if m["senderId"] == alice["id"]]
+    assert any(REPORT_MISS in m["content"] for m in alice_replies)
     assert not any(m["content"].strip() == "2" for m in alice_replies)
+    assert {m["senderId"] for m in alice_msgs} <= {"user", alice["id"]}
+    assert _msgs(client, bob["id"]) == []
+    assert _msgs(client, CHANNEL) == []
 
 
-def test_handoff_channel_id_override(client) -> None:
+def test_two_chips_report_as_each_lands(client) -> None:
+    alice = _create(client, "Alice")
+    bob = _create(client, "Bob")
+    carol = _create(client, "Carol")
+    status, _ = _send(client, alice["id"], "@Bob @Carol answer 1+1")
+    assert status == 200
+    alice_msgs = _msgs(client, alice["id"])
+    assert {m["senderId"] for m in alice_msgs} <= {"user", alice["id"]}
+    assert not any(m["senderId"] == bob["id"] for m in alice_msgs)
+    assert not any(m["senderId"] == carol["id"] for m in alice_msgs)
+    assert _msgs(client, bob["id"]) == []
+    assert _msgs(client, carol["id"]) == []
+
+    user = [m for m in alice_msgs if m["senderId"] == "user"][-1]
+    assert user["handoff"]["channelId"] == CHANNEL
+    thread = _thread(client, user["handoff"]["threadId"])
+    bob_reply = next(m for m in thread if m["senderId"] == bob["id"])
+    carol_reply = next(m for m in thread if m["senderId"] == carol["id"])
+    reports = [
+        m
+        for m in alice_msgs
+        if m["senderId"] == alice["id"] and m["content"].strip() == "2"
+    ]
+    assert len(reports) == 2
+    assert (
+        bob_reply["createdAt"]
+        < reports[0]["createdAt"]
+        < carol_reply["createdAt"]
+        < reports[1]["createdAt"]
+    )
+
+
+def test_one_to_one_involve_stays_on_seed_channel(client) -> None:
     alice = _create(client, "Alice")
     bob = _create(client, "Bob")
     created = client.post(
@@ -262,14 +304,43 @@ def test_handoff_channel_id_override(client) -> None:
         "".join(response.iter_text())
     alice_msgs = _msgs(client, alice["id"])
     user = [m for m in alice_msgs if m["senderId"] == "user"][-1]
-    assert user["handoff"]["channelId"] == channel_id
-    assert _msgs(client, CHANNEL) == []
+    assert user["handoff"]["channelId"] == CHANNEL
+    extra_timeline = client.get(
+        f"/v1/agents/{channel_id}/messages", headers=AUTH
+    ).json()
+    assert extra_timeline == []
+    thread = _thread(client, user["handoff"]["threadId"])
+    assert any(m["senderId"] == bob["id"] for m in thread)
+
+
+def test_extra_channel_mention_stays_in_that_channel(client) -> None:
+    alice = _create(client, "Alice")
+    bob = _create(client, "Bob")
+    created = client.post(
+        "/v1/agents",
+        headers=AUTH,
+        json={
+            "name": "Ops",
+            "kind": "channel",
+            "memberIds": [alice["id"], bob["id"]],
+        },
+    )
+    assert created.status_code == 201
+    channel_id = created.json()["id"]
+    status, _ = _send(client, channel_id, "@Bob answer 1+1")
+    assert status == 200
+    timeline = client.get(
+        f"/v1/agents/{channel_id}/messages", headers=AUTH
+    ).json()
+    assert timeline[0]["senderId"] == "user"
     thread = client.get(
         f"/v1/agents/{channel_id}/messages",
         headers=AUTH,
-        params={"threadId": user["handoff"]["threadId"]},
+        params={"threadId": timeline[0]["id"]},
     ).json()
     assert any(m["senderId"] == bob["id"] for m in thread)
+    assert _msgs(client, CHANNEL) == []
+    assert _msgs(client, bob["id"]) == []
 
 
 @pytest.mark.asyncio
@@ -303,6 +374,7 @@ async def test_wake_and_one_to_one_prompts(tmp_path) -> None:
         from_agent={"id": "bob", "name": "Bob", "title": ""},
         result="2",
         thread_id="msg_1",
+        user_ask="@Bob answer 1+1",
     )
     follow = await store.inference_transcript(
         alice["id"],
@@ -311,4 +383,5 @@ async def test_wake_and_one_to_one_prompts(tmp_path) -> None:
     )
     assert "report-back" in follow[0]["content"]
     assert '"result": "2"' in follow[1]["content"]
+    assert '"userAsk": "@Bob answer 1+1"' in follow[1]["content"]
     await store.close()

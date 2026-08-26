@@ -804,6 +804,36 @@ legend {
   position: absolute;
   top: 32px;
   right: 0;
+  width: 160px;
+  min-width: 160px;
+}
+
+.modal.channel-create {
+  width: 320px;
+}
+
+.member-pick {
+  display: flex;
+  flex-direction: column;
+  max-height: 240px;
+  overflow: auto;
+}
+
+.member-pick-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  height: 44px;
+  padding: 0 2px;
+  color: var(--text);
+  font-size: 14px;
+}
+
+.member-pick-row input {
+  width: 16px;
+  height: 16px;
+  padding: 0;
+  accent-color: var(--accent);
 }
 
 .unread-dot {

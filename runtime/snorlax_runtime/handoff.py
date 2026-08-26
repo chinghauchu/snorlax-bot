@@ -56,11 +56,15 @@ def wake_pack(
     }
 
 
+REPORT_MISS = "was not reached"
+
+
 def report_pack(
     *,
     from_agent: dict[str, Any],
     result: str,
     thread_id: str,
+    user_ask: str = "",
 ) -> dict[str, Any]:
     return {
         "from": {
@@ -70,6 +74,7 @@ def report_pack(
         },
         "result": strip_involve_kicker(result),
         "threadId": thread_id,
+        "userAsk": user_ask,
     }
 
 

@@ -387,6 +387,25 @@ class Store:
         await self.conn.commit()
         return await self.get_agent(agent_id)
 
+    async def set_channel_members(
+        self, channel_id: str, member_ids: list[str]
+    ) -> None:
+        await self.conn.execute(
+            "DELETE FROM channel_members WHERE channel_id = ?",
+            (channel_id,),
+        )
+        for member_id in member_ids:
+            await self.conn.execute(
+                "INSERT OR IGNORE INTO channel_members (channel_id, agent_id) "
+                "VALUES (?, ?)",
+                (channel_id, member_id),
+            )
+        await self.conn.execute(
+            "UPDATE agents SET updated_at = ? WHERE id = ?",
+            (utcnow(), channel_id),
+        )
+        await self.conn.commit()
+
     async def delete_agent(self, agent_id: str) -> bool:
         cur = await self.conn.execute(
             "DELETE FROM agents WHERE id = ?", (agent_id,)
@@ -692,11 +711,11 @@ class Store:
                     f"You are {speaker['name']}. You are in a 1:1 with the user. "
                     "A teammate finished work that was routed for this user. The "
                     "next JSON object is a report-back pack: { from, result, "
-                    "threadId }. Answer the user in this 1:1 with that result. "
-                    "Speak as yourself, not as the other agent. Do not say you "
-                    "could not reach them. Mentions are runtime-routed. Do not "
-                    "dump ACK chatter. Do not prefix the bubble with "
-                    "'from {name}:'.\n\n"
+                    "threadId, userAsk }. Answer the user in this 1:1 with that "
+                    "result. If result says the teammate was not reached, tell "
+                    "the user that. Speak as yourself, not as the other agent. "
+                    "Mentions are runtime-routed. Do not dump ACK chatter. Do "
+                    "not prefix the bubble with 'from {name}:'.\n\n"
                     f"{speaker['description'] or ''}"
                 ).strip()
                 return [
@@ -709,7 +728,7 @@ class Store:
             )
             system = (
                 f"You are {speaker['name']}. You are in {place}. "
-                "The next JSON object is a handoff pack from a teammate, not a "
+                "A JSON handoff pack is the last user message, not a "
                 "quote. You were asked to DO the task in userAsk. Do not "
                 "acknowledge that you can. Do not ping-pong. If you have the "
                 "answer, state it. Use brief as 1:1 context (user + the "
@@ -721,12 +740,12 @@ class Store:
             ).strip()
             messages: list[dict[str, str]] = [
                 {"role": "system", "content": system},
-                {"role": "user", "content": pack_prompt(wake_pack)},
             ]
             if thread_id:
                 await self._append_thread_turns(
                     messages, conversation_id, thread_id, who
                 )
+            messages.append({"role": "user", "content": pack_prompt(wake_pack)})
             return messages
         place = (
             "a shared group channel with every teammate"

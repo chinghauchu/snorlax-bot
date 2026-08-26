@@ -193,28 +193,85 @@ def test_create_and_delete_user_channel(client) -> None:
     assert seed_blocked.status_code == 409
 
 
-def test_create_channel_defaults_members_and_name(client) -> None:
+def test_create_channel_requires_name(client) -> None:
     created = client.post(
         "/v1/agents",
         headers=AUTH,
         json={"kind": "channel"},
     )
+    assert created.status_code == 422
+    assert "name" in created.json()["error"].lower()
+
+
+def test_create_channel_omitted_members_snapshots_agents(client) -> None:
+    created = client.post(
+        "/v1/agents",
+        headers=AUTH,
+        json={"kind": "channel", "name": "Ops"},
+    )
     assert created.status_code == 201
     body = created.json()
-    assert body["name"] == "New channel"
+    assert body["name"] == "Ops"
     assert body["kind"] == "channel"
     assert "snorlax-bot" in body["memberIds"]
     assert body["id"] != "snorlax-bot-group"
 
 
-def test_unknown_channel_id_on_send_is_422(client) -> None:
+def test_channel_id_in_member_ids_is_422(client) -> None:
     response = client.post(
-        "/v1/agents/snorlax-bot/messages",
+        "/v1/agents",
         headers=AUTH,
-        json={"content": "hi @nope", "channelId": "not-a-channel"},
+        json={
+            "name": "Bad room",
+            "kind": "channel",
+            "memberIds": ["snorlax-bot-group"],
+        },
     )
     assert response.status_code == 422
-    assert "channel" in response.json()["error"].lower()
+
+
+def test_patch_user_channel_name_and_members(client) -> None:
+    alice = client.post(
+        "/v1/agents", headers=AUTH, json={"name": "Alice"}
+    ).json()
+    created = client.post(
+        "/v1/agents",
+        headers=AUTH,
+        json={
+            "name": "Project",
+            "kind": "channel",
+            "memberIds": ["snorlax-bot", alice["id"]],
+        },
+    )
+    assert created.status_code == 201
+    channel_id = created.json()["id"]
+    patched = client.patch(
+        f"/v1/agents/{channel_id}",
+        headers=AUTH,
+        json={"name": "Ops", "memberIds": [alice["id"]]},
+    )
+    assert patched.status_code == 200
+    body = patched.json()
+    assert body["name"] == "Ops"
+    assert body["memberIds"] == [alice["id"]]
+    seed = client.patch(
+        "/v1/agents/snorlax-bot-group",
+        headers=AUTH,
+        json={"name": "Nope", "memberIds": [alice["id"]]},
+    )
+    assert seed.status_code == 409
+    unknown = client.patch(
+        f"/v1/agents/{channel_id}",
+        headers=AUTH,
+        json={"memberIds": ["nope"]},
+    )
+    assert unknown.status_code == 422
+    as_channel = client.patch(
+        f"/v1/agents/{channel_id}",
+        headers=AUTH,
+        json={"memberIds": ["snorlax-bot-group"]},
+    )
+    assert as_channel.status_code == 422
 
 
 def test_patch_avatar_null_clears(client) -> None:

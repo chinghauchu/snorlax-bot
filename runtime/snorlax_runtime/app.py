@@ -121,25 +121,14 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         if kind not in {KIND_AGENT, KIND_CHANNEL}:
             raise _error(422, "kind must be agent or channel")
         if kind == KIND_CHANNEL:
+            fields = payload.model_dump(exclude_unset=True)
+            if "name" not in fields:
+                raise _error(422, "missing name")
             name = payload.name
-            if name == "New agent":
-                name = "New channel"
             roster = await store.list_agents()
-            agents = [a for a in roster if a.get("kind") != KIND_CHANNEL]
-            requested = list(payload.memberIds or [])
-            if not requested:
-                member_ids = [a["id"] for a in agents]
-            else:
-                index = {a["id"]: a for a in agents}
-                member_ids = []
-                seen: set[str] = set()
-                for raw_id in requested:
-                    if raw_id in seen:
-                        continue
-                    if raw_id not in index:
-                        raise _error(422, "Unknown member id")
-                    seen.add(raw_id)
-                    member_ids.append(raw_id)
+            member_ids = _channel_member_ids(
+                roster, list(payload.memberIds or []), snapshot_if_empty=True
+            )
             row = await store.create_channel(
                 name,
                 payload.title,
@@ -174,8 +163,30 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         existing = await store.get_agent(id)
         if existing is None:
             raise _error(404, f"Agent {id!r} not found")
-        if existing.get("kind") == KIND_CHANNEL or id == SEEDED_CHANNEL_ID:
+        if id == SEEDED_CHANNEL_ID:
             raise _error(409, "seeded channel cannot be patched")
+        if existing.get("kind") == KIND_CHANNEL:
+            fields = payload.model_dump(exclude_unset=True)
+            if "name" in fields:
+                row = await store.patch_agent(
+                    id,
+                    name=fields.get("name"),
+                    title=None,
+                    description=None,
+                    avatar=...,
+                )
+                if row is None:
+                    raise _error(404, f"Agent {id!r} not found")
+            if "memberIds" in fields:
+                roster = await store.list_agents()
+                member_ids = _channel_member_ids(
+                    roster, list(fields.get("memberIds") or []), snapshot_if_empty=False
+                )
+                await store.set_channel_members(id, member_ids)
+            row = await store.get_agent(id)
+            if row is None:
+                raise _error(404, f"Agent {id!r} not found")
+            return Agent.model_validate(row)
         fields = payload.model_dump(exclude_unset=True)
         row = await store.patch_agent(
             id,
@@ -242,11 +253,6 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             raise _error(422, exc.message) from exc
         images = [img.model_dump() for img in payload.images]
         backend = request.app.state.backend
-        handoff_channel_id = payload.channelId
-        if handoff_channel_id:
-            channel = await store.get_agent(handoff_channel_id)
-            if channel is None or channel.get("kind") != KIND_CHANNEL:
-                raise _error(422, "Unknown channel")
 
         async def events() -> AsyncIterator[bytes]:
             async for event, data in run_user_turn(
@@ -257,7 +263,6 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 images=images,
                 mentions=mentions,
                 reply_to=payload.replyTo,
-                handoff_channel_id=handoff_channel_id,
             ):
                 yield _sse(event, data)
 
@@ -288,3 +293,30 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 def _sse(event: str, data: dict) -> bytes:
     payload = dump_json(data)
     return f"event: {event}\ndata: {payload}\n\n".encode("utf-8")
+
+
+def _channel_member_ids(
+    roster: list,
+    requested: list[str],
+    *,
+    snapshot_if_empty: bool,
+) -> list[str]:
+    agents = [a for a in roster if a.get("kind") != KIND_CHANNEL]
+    channel_ids = {a["id"] for a in roster if a.get("kind") == KIND_CHANNEL}
+    agent_ids = {a["id"] for a in agents}
+    if not requested:
+        if snapshot_if_empty:
+            return [a["id"] for a in agents]
+        return []
+    member_ids: list[str] = []
+    seen: set[str] = set()
+    for raw_id in requested:
+        if raw_id in seen:
+            continue
+        if raw_id in channel_ids:
+            raise _error(422, "memberIds must be agent ids")
+        if raw_id not in agent_ids:
+            raise _error(422, "Unknown member id")
+        seen.add(raw_id)
+        member_ids.append(raw_id)
+    return member_ids

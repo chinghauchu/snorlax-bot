@@ -155,16 +155,15 @@ final class AppModel {
         }
     }
 
-    func createChannel(name: String) async {
+    func createChannel(name: String, memberIds: [String]) async {
         guard let client else {
             showSettings = true
             return
         }
         let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
-        let label = trimmed.isEmpty ? "New channel" : trimmed
+        guard !trimmed.isEmpty else { return }
         do {
-            let memberIds = agents.filter { !$0.isChannel }.map(\.id)
-            let channel = try await client.createChannel(name: label, memberIds: memberIds)
+            let channel = try await client.createChannel(name: trimmed, memberIds: memberIds)
             agents.append(channel)
             await select(channel.id, push: true)
             wantsComposerFocus = true
@@ -201,12 +200,14 @@ final class AppModel {
         guard let client else { return }
         do {
             let updated = try await client.patchAgent(
-                AgentPatch(
-                    name: draft.name,
-                    title: draft.title,
-                    description: draft.description,
-                    avatar: draft.avatar
-                ),
+                draft.isChannel
+                    ? AgentPatch(name: draft.name, memberIds: draft.memberIds)
+                    : AgentPatch(
+                        name: draft.name,
+                        title: draft.title,
+                        description: draft.description,
+                        avatar: draft.avatar
+                    ),
                 id: draft.id
             )
             if let index = agents.firstIndex(where: { $0.id == updated.id }) {

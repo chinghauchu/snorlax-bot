@@ -5,7 +5,6 @@ struct AgentListView: View {
     @Environment(AppModel.self) private var model
     @State private var pendingDelete: Agent?
     @State private var showCreateChannel = false
-    @State private var channelName = "New channel"
 
     var body: some View {
         styledList
@@ -16,7 +15,6 @@ struct AgentListView: View {
                             Task { await model.createAgent() }
                         }
                         Button("New channel") {
-                            channelName = "New channel"
                             showCreateChannel = true
                         }
                     } label: {
@@ -26,13 +24,8 @@ struct AgentListView: View {
                     .accessibilityLabel("Create")
                 }
             }
-            .alert("New channel", isPresented: $showCreateChannel) {
-                TextField("Name", text: $channelName)
-                Button("Create") {
-                    let name = channelName
-                    Task { await model.createChannel(name: name) }
-                }
-                Button("Cancel", role: .cancel) {}
+            .sheet(isPresented: $showCreateChannel) {
+                CreateChannelSheet()
             }
             .safeAreaInset(edge: .bottom, spacing: 0) {
                 AccountChip {
@@ -179,5 +172,81 @@ private struct UserAgentDeleteMenu: ViewModifier {
         } else {
             content
         }
+    }
+}
+
+private struct CreateChannelSheet: View {
+    @Environment(AppModel.self) private var model
+    @Environment(\.dismiss) private var dismiss
+    @State private var name = "New channel"
+    @State private var memberIds: Set<String> = []
+
+    private var people: [Agent] {
+        model.visibleAgents.filter { !$0.isChannel }
+    }
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section {
+                    TextField("Name", text: $name)
+                }
+                Section("Members") {
+                    ForEach(people) { agent in
+                        Button {
+                            if memberIds.contains(agent.id) {
+                                memberIds.remove(agent.id)
+                            } else {
+                                memberIds.insert(agent.id)
+                            }
+                        } label: {
+                            HStack(spacing: 10) {
+                                AgentAvatar(agent: agent, size: 28)
+                                VStack(alignment: .leading, spacing: 1) {
+                                    Text(agent.name)
+                                        .font(.system(size: 14, weight: .medium))
+                                        .foregroundStyle(.primary)
+                                    if !agent.title.isEmpty {
+                                        Text(agent.title)
+                                            .font(.system(size: 13))
+                                            .foregroundStyle(.secondary)
+                                    }
+                                }
+                                Spacer(minLength: 0)
+                                Image(systemName: memberIds.contains(agent.id) ? "checkmark.square.fill" : "square")
+                                    .foregroundStyle(memberIds.contains(agent.id) ? Color.accentColor : .secondary)
+                            }
+                            .frame(height: 44)
+                            .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+            }
+            .navigationTitle("New channel")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") { dismiss() }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Create") {
+                        let ids = people.map(\.id).filter { memberIds.contains($0) }
+                        Task {
+                            await model.createChannel(name: name, memberIds: ids)
+                            dismiss()
+                        }
+                    }
+                    .disabled(
+                        name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                            || memberIds.isEmpty
+                    )
+                }
+            }
+            .onAppear {
+                memberIds = Set(people.map(\.id))
+            }
+        }
+        .presentationDetents([.medium, .large])
     }
 }

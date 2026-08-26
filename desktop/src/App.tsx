@@ -32,6 +32,7 @@ import {
 } from "./handoff";
 import {
   canDeleteAgent,
+  canEditChannel,
   channelMembers,
   displayInitials,
   infoPaneKind,
@@ -205,6 +206,7 @@ export function App() {
   const [createMenuOpen, setCreateMenuOpen] = useState(false);
   const [createChannelOpen, setCreateChannelOpen] = useState(false);
   const [channelNameDraft, setChannelNameDraft] = useState("New channel");
+  const [channelMemberDraft, setChannelMemberDraft] = useState<string[]>([]);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [draft, setDraft] = useState("");
   const [pendingImage, setPendingImage] = useState<PendingImage | null>(null);
@@ -222,6 +224,7 @@ export function App() {
   const [profileTitle, setProfileTitle] = useState("");
   const [profileDescription, setProfileDescription] = useState("");
   const [profileAvatar, setProfileAvatar] = useState<string | null>(null);
+  const [profileMemberIds, setProfileMemberIds] = useState<string[]>([]);
   const [profileSaving, setProfileSaving] = useState(false);
 
   const scroller = useRef<HTMLDivElement>(null);
@@ -462,12 +465,10 @@ export function App() {
 
   async function onCreateChannel() {
     if (!session) return;
-    const name = channelNameDraft.trim() || "New channel";
+    const name = channelNameDraft.trim();
+    if (!name || channelMemberDraft.length === 0) return;
     try {
-      const memberIds = agents
-        .filter((a) => a.kind !== "channel")
-        .map((a) => a.id);
-      const channel = await createChannel(session, name, memberIds);
+      const channel = await createChannel(session, name, channelMemberDraft);
       setAgents((prev) => {
         const without = prev.filter((a) => a.id !== channel.id);
         const channels = without.filter((a) => a.kind === "channel");
@@ -479,6 +480,7 @@ export function App() {
       setCreateChannelOpen(false);
       setCreateMenuOpen(false);
       setChannelNameDraft("New channel");
+      setChannelMemberDraft([]);
       setActiveId(channel.id);
       setThreadId(null);
       setMessages([]);
@@ -497,6 +499,7 @@ export function App() {
     setProfileTitle(active.title);
     setProfileDescription(active.description);
     setProfileAvatar(active.avatar);
+    setProfileMemberIds([...active.memberIds]);
     setProfileEditing(false);
     setProfileOpen(true);
   }
@@ -514,6 +517,7 @@ export function App() {
         setProfileTitle(active.title);
         setProfileDescription(active.description);
         setProfileAvatar(active.avatar);
+        setProfileMemberIds([...active.memberIds]);
         setProfileEditing(false);
         setProfileOpen(true);
       }
@@ -527,17 +531,24 @@ export function App() {
     if (!session || !active) return;
     setProfileSaving(true);
     try {
-      const updated = await patchAgent(session, active.id, {
-        name: profileName.trim() || active.name,
-        title: profileTitle,
-        description: profileDescription,
-        avatar: profileAvatar,
-      });
+      const updated =
+        infoPaneKind(active) === "channel"
+          ? await patchAgent(session, active.id, {
+              name: profileName.trim() || active.name,
+              memberIds: profileMemberIds,
+            })
+          : await patchAgent(session, active.id, {
+              name: profileName.trim() || active.name,
+              title: profileTitle,
+              description: profileDescription,
+              avatar: profileAvatar,
+            });
       setAgents((prev) => prev.map((a) => (a.id === updated.id ? updated : a)));
       setProfileName(updated.name);
       setProfileTitle(updated.title);
       setProfileDescription(updated.description);
       setProfileAvatar(updated.avatar);
+      setProfileMemberIds([...updated.memberIds]);
       setProfileEditing(false);
     } catch (err) {
       setComposerError(describeError(err));
@@ -809,6 +820,11 @@ export function App() {
                   onClick={() => {
                     setCreateMenuOpen(false);
                     setChannelNameDraft("New channel");
+                    setChannelMemberDraft(
+                      agents
+                        .filter((a) => a.kind !== "channel")
+                        .map((a) => a.id),
+                    );
                     setCreateChannelOpen(true);
                   }}
                 >
@@ -1147,7 +1163,8 @@ export function App() {
               {infoPaneKind(active) === "channel" ? "Channel" : "Agent"}
             </h2>
             <div className="profile-actions">
-              {infoPaneKind(active) === "agent" && !profileEditing ? (
+              {(infoPaneKind(active) === "agent" || canEditChannel(active)) &&
+              !profileEditing ? (
                 <button
                   type="button"
                   className="icon-btn"
@@ -1171,6 +1188,32 @@ export function App() {
             </div>
           </header>
           {infoPaneKind(active) === "channel" ? (
+            profileEditing && canEditChannel(active) ? (
+              <form className="profile-form" onSubmit={saveProfile}>
+                <label>
+                  Name
+                  <input
+                    value={profileName}
+                    onChange={(e) => setProfileName(e.target.value)}
+                  />
+                </label>
+                <MemberPicker
+                  agents={agents}
+                  selectedIds={profileMemberIds}
+                  session={session}
+                  onToggle={(id) =>
+                    setProfileMemberIds((prev) =>
+                      prev.includes(id)
+                        ? prev.filter((item) => item !== id)
+                        : [...prev, id],
+                    )
+                  }
+                />
+                <button type="submit" className="primary" disabled={profileSaving}>
+                  Save
+                </button>
+              </form>
+            ) : (
             <div>
               <div className="info-identity">
                 <p className="info-name">{active.name}</p>
@@ -1193,6 +1236,7 @@ export function App() {
                 ))}
               </div>
             </div>
+            )
           ) : profileEditing ? (
             <form className="profile-form" onSubmit={saveProfile}>
               <button
@@ -1208,6 +1252,15 @@ export function App() {
                 />
                 <span>Change</span>
               </button>
+              {profileAvatar ? (
+                <button
+                  type="button"
+                  className="text-btn"
+                  onClick={() => setProfileAvatar(null)}
+                >
+                  Remove avatar
+                </button>
+              ) : null}
               <input
                 ref={avatarFileRef}
                 type="file"
@@ -1419,44 +1472,109 @@ export function App() {
           onClick={() => setCreateChannelOpen(false)}
         >
           <div
-            className="modal confirm"
+            className="modal channel-create"
             role="dialog"
             aria-label="New channel"
             onClick={(e) => e.stopPropagation()}
           >
-            <p>New channel</p>
-            <label>
-              Name
-              <input
-                value={channelNameDraft}
-                autoFocus
-                onChange={(e) => setChannelNameDraft(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") {
-                    e.preventDefault();
-                    void onCreateChannel();
-                  }
-                }}
-              />
-            </label>
-            <div className="confirm-actions">
+            <header>
+              <h2>New channel</h2>
               <button
                 type="button"
+                className="icon-btn"
+                aria-label="Close"
                 onClick={() => setCreateChannelOpen(false)}
               >
-                Cancel
+                ×
               </button>
-              <button
-                type="button"
-                className="primary"
-                onClick={() => void onCreateChannel()}
-              >
-                Create
-              </button>
+            </header>
+            <div className="profile-form">
+              <label>
+                Name
+                <input
+                  value={channelNameDraft}
+                  autoFocus
+                  onChange={(e) => setChannelNameDraft(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      e.preventDefault();
+                      void onCreateChannel();
+                    }
+                  }}
+                />
+              </label>
+              <MemberPicker
+                agents={agents}
+                selectedIds={channelMemberDraft}
+                session={session}
+                onToggle={(id) =>
+                  setChannelMemberDraft((prev) =>
+                    prev.includes(id)
+                      ? prev.filter((item) => item !== id)
+                      : [...prev, id],
+                  )
+                }
+              />
+              <div className="confirm-actions">
+                <button
+                  type="button"
+                  onClick={() => setCreateChannelOpen(false)}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  className="primary"
+                  disabled={!channelNameDraft.trim() || channelMemberDraft.length === 0}
+                  onClick={() => void onCreateChannel()}
+                >
+                  Create
+                </button>
+              </div>
             </div>
           </div>
         </div>
       ) : null}
+    </div>
+  );
+}
+
+function MemberPicker({
+  agents,
+  selectedIds,
+  session,
+  onToggle,
+}: {
+  agents: Agent[];
+  selectedIds: string[];
+  session: Session | null;
+  onToggle: (id: string) => void;
+}) {
+  const people = agents.filter((row) => row.kind !== "channel");
+  return (
+    <div className="member-pick" role="group" aria-label="Members">
+      {people.map((agent) => {
+        const checked = selectedIds.includes(agent.id);
+        return (
+          <label className="member-pick-row" key={agent.id}>
+            <input
+              type="checkbox"
+              checked={checked}
+              onChange={() => onToggle(agent.id)}
+            />
+            <Avatar
+              src={agent.avatar}
+              name={agent.name}
+              size={28}
+              session={session}
+            />
+            <span className="info-member-copy">
+              <strong>{agent.name}</strong>
+              {agent.title ? <span>{agent.title}</span> : null}
+            </span>
+          </label>
+        );
+      })}
     </div>
   );
 }
