@@ -46,6 +46,7 @@ from snorlax_runtime.schemas import (
     Routine,
     RoutineCreate,
     RoutinePatch,
+    Skill,
     SkillCreate,
     SkillInfo,
     WorkspaceFile,
@@ -745,7 +746,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     @app.post(
         "/v1/agents/{id}/skills",
-        response_model=SkillInfo,
+        response_model=Skill,
         status_code=status.HTTP_201_CREATED,
     )
     async def create_skill(
@@ -753,8 +754,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         payload: SkillCreate,
         request: Request,
         _: str = Depends(require_bearer),
-    ) -> SkillInfo:
-        from snorlax_runtime.skills import write_taught_skill
+    ) -> Skill:
+        from snorlax_runtime.skills import skill_slug, write_taught_skill
 
         store: Store = request.app.state.store
         conversation = await store.get_agent(id)
@@ -771,7 +772,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             raise _error(exc.status, exc.message) from exc
         except ValueError as exc:
             raise _error(422, str(exc)) from exc
-        return SkillInfo.model_validate(skill.public())
+        return Skill(id=skill_slug(skill), name=skill.name)
 
     @app.get("/v1/agents/{id}/workspace", response_model=WorkspaceListing)
     async def get_workspace(

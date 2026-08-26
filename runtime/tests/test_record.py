@@ -21,7 +21,7 @@ def _open_session(client) -> str:
     return opened.json()["sessionId"]
 
 
-def test_record_start_stop_during_session(client) -> None:
+def test_record_start_stop_during_session(client, tmp_path: Path) -> None:
     _open_session(client)
     preview = client.get(f"/v1/agents/{SEED}/computer", headers=AUTH).json()
     assert preview["driving"] == "user"
@@ -30,14 +30,16 @@ def test_record_start_stop_during_session(client) -> None:
     assert started.status_code == 201
     assert started.json() == {"recording": True}
     again = client.post(f"/v1/agents/{SEED}/computer/record", headers=AUTH)
-    assert again.status_code == 201
-    assert again.json() == {"recording": True}
+    assert again.status_code == 409
+    assert again.json() == {"error": "already recording"}
     live = client.get(f"/v1/agents/{SEED}/computer", headers=AUTH).json()
     assert live["recording"] is True
     assert live["driving"] == "user"
+    skills_root = tmp_path / "skills"
     stopped = client.delete(f"/v1/agents/{SEED}/computer/record", headers=AUTH)
     assert stopped.status_code == 204
     assert stopped.content == b""
+    assert not (skills_root.exists() and list(skills_root.rglob("SKILL.md")))
     idle = client.get(f"/v1/agents/{SEED}/computer", headers=AUTH).json()
     assert idle["recording"] is False
     assert idle["driving"] == "user"
@@ -45,7 +47,7 @@ def test_record_start_stop_during_session(client) -> None:
     assert again_stop.status_code == 204
     client.delete(f"/v1/agents/{SEED}/computer/session", headers=AUTH)
     after = client.get(f"/v1/agents/{SEED}/computer", headers=AUTH).json()
-    assert "recording" not in after
+    assert after["recording"] is False
     assert after["driving"] == "idle"
 
 
@@ -57,7 +59,8 @@ def test_record_without_session_is_409(client) -> None:
     assert stopped.status_code == 409
     assert stopped.json() == {"error": "no computer session"}
     preview = client.get(f"/v1/agents/{SEED}/computer", headers=AUTH).json()
-    assert "recording" not in preview
+    assert preview["recording"] is False
+    assert preview["hasSandbox"] is True
 
 
 def test_save_writes_skill_md_v09_can_list_and_run(
@@ -84,11 +87,7 @@ def test_save_writes_skill_md_v09_can_list_and_run(
         json={"name": "Demo click"},
     )
     assert saved.status_code == 201
-    row = saved.json()
-    assert row["name"] == "Demo click"
-    assert row["source"] == "skillsDir"
-    assert row["path"] == "demo-click/SKILL.md"
-    assert "computer_click" in row["description"] or "computer_key" in row["description"]
+    assert saved.json() == {"id": "demo-click", "name": "Demo click"}
     listed = client.get(f"/v1/agents/{SEED}/skills", headers=AUTH)
     assert listed.status_code == 200
     names = {item["name"] for item in listed.json()}
@@ -128,6 +127,12 @@ def test_save_writes_skill_md_v09_can_list_and_run(
     assert routine.status_code == 201
     stored_skill = routine.json()["skill"]
     assert find_skill(loaded, stored_skill) is not None
+    routines = client.get(f"/v1/agents/{SEED}/routines", headers=AUTH)
+    assert routines.status_code == 200
+    assert any(
+        row["name"] == "Replay demo" and find_skill(loaded, row["skill"]) is not None
+        for row in routines.json()
+    )
     # Takeover pauses the agent; Done (close session) before a v0.9 fire.
     assert (
         client.delete(f"/v1/agents/{SEED}/computer/session", headers=AUTH).status_code
@@ -174,13 +179,44 @@ def test_discard_writes_no_skill_md(client, tmp_path: Path) -> None:
         headers=AUTH,
         json={"name": "Should not save"},
     )
-    assert missing.status_code == 409
-    assert missing.json() == {"error": "no recording"}
+    assert missing.status_code == 422
+    assert missing.json() == {"error": "no pending capture"}
     after = list(skills_root.rglob("SKILL.md")) if skills_root.exists() else []
     assert after == []
 
 
-def test_save_while_recording_is_409(client) -> None:
+def test_next_record_discards_pending_capture(client, tmp_path: Path) -> None:
+    _open_session(client)
+    client.post(f"/v1/agents/{SEED}/computer/record", headers=AUTH)
+    client.post(
+        f"/v1/agents/{SEED}/computer/pointer",
+        headers=AUTH,
+        json={"x": 10, "y": 20, "type": "click"},
+    )
+    client.delete(f"/v1/agents/{SEED}/computer/record", headers=AUTH)
+    client.post(f"/v1/agents/{SEED}/computer/record", headers=AUTH)
+    client.post(
+        f"/v1/agents/{SEED}/computer/pointer",
+        headers=AUTH,
+        json={"x": 200, "y": 90, "type": "click"},
+    )
+    client.delete(f"/v1/agents/{SEED}/computer/record", headers=AUTH)
+    saved = client.post(
+        f"/v1/agents/{SEED}/skills",
+        headers=AUTH,
+        json={"name": "Second take"},
+    )
+    assert saved.status_code == 201
+    assert saved.json() == {"id": "second-take", "name": "Second take"}
+    text = (tmp_path / "skills" / "second-take" / "SKILL.md").read_text(
+        encoding="utf-8"
+    )
+    assert "x=200" in text
+    assert "y=90" in text
+    assert "x=10" not in text
+
+
+def test_save_while_recording_is_422(client) -> None:
     _open_session(client)
     client.post(f"/v1/agents/{SEED}/computer/record", headers=AUTH)
     blocked = client.post(
@@ -188,8 +224,8 @@ def test_save_while_recording_is_409(client) -> None:
         headers=AUTH,
         json={"name": "Too soon"},
     )
-    assert blocked.status_code == 409
-    assert blocked.json() == {"error": "recording is active"}
+    assert blocked.status_code == 422
+    assert blocked.json() == {"error": "no pending capture"}
     client.delete(f"/v1/agents/{SEED}/computer/record", headers=AUTH)
     saved = client.post(
         f"/v1/agents/{SEED}/skills",
@@ -197,6 +233,22 @@ def test_save_while_recording_is_409(client) -> None:
         json={"name": "Now ok"},
     )
     assert saved.status_code == 201
+    assert saved.json() == {"id": "now-ok", "name": "Now ok"}
+
+
+def test_empty_name_is_422(client) -> None:
+    _open_session(client)
+    client.post(f"/v1/agents/{SEED}/computer/record", headers=AUTH)
+    client.delete(f"/v1/agents/{SEED}/computer/record", headers=AUTH)
+    for body in ({"name": ""}, {"name": "   "}, {}):
+        response = client.post(
+            f"/v1/agents/{SEED}/skills",
+            headers=AUTH,
+            json=body,
+        )
+        assert response.status_code == 422
+    listed = client.get(f"/v1/agents/{SEED}/skills", headers=AUTH)
+    assert listed.json() == []
 
 
 def test_channel_record_and_save_are_409(client) -> None:

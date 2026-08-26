@@ -120,6 +120,10 @@ def test_protocol_openapi_is_locked_v0_contract() -> None:
     assert "PointerEvent" in text
     assert "KeyEvent" in text
     assert "SkillCreate" in text
+    assert "    Skill:\n      type: object\n      required: [id, name]" in text
+    assert "already recording" in text
+    assert "no pending capture" in text
+    assert "201 Skill" in text
     assert "sessionId" in text
     assert "hasSandbox" in text
     assert "recording" in text

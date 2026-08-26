@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0
 from __future__ import annotations
 
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 
 class ErrorBody(BaseModel):
@@ -237,10 +237,10 @@ class ComputerPreview(BaseModel):
     recording: bool | None = Field(
         default=None,
         description=(
-            "Present while a takeover session exists. true while POST "
-            "/computer/record is capturing; false after DELETE /computer/record "
-            "or before Record. Omitted when no session (like recording only "
-            "inside takeover)."
+            "Present when hasSandbox is true. true while POST "
+            "/computer/record is capturing; false otherwise (idle, "
+            "session without Record, or after DELETE /computer/record). "
+            "Omitted when hasSandbox is false."
         ),
     )
 
@@ -366,8 +366,21 @@ class SkillInfo(BaseModel):
     path: str
 
 
+class Skill(BaseModel):
+    id: str
+    name: str
+
+
 class SkillCreate(BaseModel):
     name: str = Field(min_length=1, max_length=80)
+
+    @field_validator("name")
+    @classmethod
+    def name_not_blank(cls, value: str) -> str:
+        text = (value or "").strip()
+        if not text:
+            raise ValueError("name is required")
+        return text
 
 
 class Plugin(BaseModel):

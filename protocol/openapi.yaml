@@ -368,15 +368,20 @@ info:
     skill (v0.9 list, no extra chrome) and returns to takeover with
     `Record` muted again. Optional 1.5s 12px `Saved` on the bar.
     HTTP: Record only inside a takeover session.
-    `POST /v1/agents/{id}/computer/record` starts capture.
-    `DELETE /v1/agents/{id}/computer/record` stops (no file yet).
-    `POST /v1/agents/{id}/skills { name }` writes SKILL.md from that
-    capture (same v0.9 load path: workspace and/or
-    SNORLAX_DATA_DIR/skills). Discard is omit this POST.
-    GET computer can include `recording` (boolean) while a session
-    exists. Channel id → 409. No session + record → 409. Missing agent
-    404. Capture records pointer/key (and screenshot context) so the
-    skill is runnable later via v0.9 — not an empty stub SKILL.md.
+    `POST /v1/agents/{id}/computer/record` → 201 `{ recording: true }`.
+    409 without session / already recording.
+    `DELETE /v1/agents/{id}/computer/record` → 204 Stop. Does NOT write
+    SKILL.md. Capture stays pending until save or discard (next record
+    / session end discards).
+    `POST /v1/agents/{id}/skills { name }` → 201 Skill `{ id, name }`
+    writes SKILL.md under that agent's v0.9 skills dir from the pending
+    capture. 422 empty name / no pending capture. Discard is skip this
+    POST. GET /computer may include `recording` (boolean) when
+    hasSandbox. Channel 409. Missing agent 404. Capture records
+    pointer/key (and screenshot context) so the skill is runnable later
+    via v0.9 — not an empty stub SKILL.md. Keep pointer/key/session as
+    v0.15. Keep v0.9 skill load path. No marketplace, no markdown
+    editor API.
     Isolation, report-back, widgets, markdown, MCP, routines, seed
     DELETE 204, Mac oMLX, no Mac folder picker, workspaceTree.ts
     stand. Takeover session 201/204 and pointer/key routes stay.
@@ -853,14 +858,16 @@ paths:
       description: |
         Body `{ name }`. Writes SKILL.md from the capture stopped with
         DELETE `/computer/record` (same v0.9 load path:
-        SNORLAX_DATA_DIR/skills/<slug>/SKILL.md). 201 SkillInfo.
-        Discard is omit this POST — no SKILL.md. No capture (or session
-        closed without save) is 409. Still recording is 409. kind=channel
-        is 409. Missing agent is 404. Missing name is 422. Capture
-        includes pointer/key plus screenshot context so the skill is
-        runnable later via v0.9 (computer_click / computer_key). Not an
-        empty stub. Clients have no extra skills chrome this slice
-        (v0.9 list only). Desktop Save-as-skill sheet only.
+        SNORLAX_DATA_DIR/skills/<slug>/SKILL.md). 201 Skill `{ id, name }`.
+        Discard is skip this POST — no SKILL.md. Empty name or no pending
+        capture (still recording, never recorded, or discarded by next
+        record / session end) is 422 (`no pending capture` / name).
+        kind=channel is 409. Missing agent is 404. Capture includes
+        pointer/key plus screenshot context so the skill is runnable
+        later via v0.9 (computer_click / computer_key). Not an empty
+        stub. Clients have no extra skills chrome this slice (v0.9 list
+        only). Desktop Save-as-skill sheet only. No marketplace, no
+        markdown editor API.
       operationId: createSkill
       requestBody:
         required: true
@@ -870,11 +877,11 @@ paths:
               $ref: "#/components/schemas/SkillCreate"
       responses:
         "201":
-          description: Written skill
+          description: Written skill `{ id, name }`
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/SkillInfo"
+                $ref: "#/components/schemas/Skill"
         "401":
           $ref: "#/components/responses/Error"
         "404":
@@ -967,10 +974,11 @@ paths:
         (`No computer yet.`). Idle desktop still returns a 1280x800 shot
         (always on). When hasSandbox, GET may include `driving`: `user`
         (takeover session), `agent` (agent last drove the sandbox), or
-        `idle`. Omitted when hasSandbox is false. While a takeover
-        session exists, GET may include `recording` (boolean): true
-        after POST `/computer/record`, false after DELETE `/computer/record`
-        or before Record. Omitted when no session. Takeover is POST
+        `idle`. Omitted when hasSandbox is false. When hasSandbox, GET
+        may include `recording` (boolean): true after POST
+        `/computer/record`, false otherwise (idle, session without
+        Record, or after DELETE `/computer/record`). Omitted when
+        hasSandbox is false. Takeover is POST
         `/v1/agents/{id}/computer/session` (201 `{ sessionId }`) then
         pointer/key while the session exists. Workspace file-tree GETs
         are unchanged.
@@ -1149,10 +1157,12 @@ paths:
       summary: Start capture inside a takeover session
       description: |
         Record only inside a takeover session. 201 `{ recording: true }`.
-        Idempotent if already recording. kind=channel is 409. Missing
-        agent is 404. No session is 409 (`no computer session`). Desktop
-        only this slice; iOS does not POST this route. Capture records
-        pointer/key (and screenshot context) until DELETE this path.
+        409 without session (`no computer session`) / already recording
+        (`already recording`). kind=channel is 409. Missing agent is
+        404. Desktop only this slice; iOS does not POST this route.
+        Capture records pointer/key (and screenshot context) until
+        DELETE this path. A new POST while a stopped capture is pending
+        discards that pending capture.
       operationId: startComputerRecord
       responses:
         "201":
@@ -1170,10 +1180,11 @@ paths:
     delete:
       summary: Stop capture (no SKILL.md yet)
       description: |
-        204. Keeps the capture in memory. Discard is omit POST
-        `/v1/agents/{id}/skills`. Save is that POST `{ name }`.
-        kind=channel is 409. Missing agent is 404. No session is 409.
-        Idempotent if not recording while a session exists.
+        204. Does NOT write SKILL.md. Capture stays pending until POST
+        `/v1/agents/{id}/skills` (save) or discard (skip that POST;
+        next record or session end discards). kind=channel is 409.
+        Missing agent is 404. No session is 409. Idempotent if not
+        recording while a session exists.
       operationId: stopComputerRecord
       responses:
         "204":
@@ -1903,9 +1914,10 @@ components:
         recording:
           type: boolean
           description: |
-            Present while a takeover session exists. true while POST
-            `/computer/record` is capturing; false after DELETE
-            `/computer/record` or before Record. Omitted when no session.
+            Present when hasSandbox is true. true while POST
+            `/computer/record` is capturing; false otherwise (idle,
+            session without Record, or after DELETE `/computer/record`).
+            Omitted when hasSandbox is false.
 
     ComputerSession:
       type: object
@@ -2053,6 +2065,19 @@ components:
         path:
           type: string
           description: Path relative to the workspace or skills dir.
+
+    Skill:
+      type: object
+      required: [id, name]
+      properties:
+        id:
+          type: string
+          description: |
+            Directory slug under SNORLAX_DATA_DIR/skills/<id>/SKILL.md
+            (v0.9 load path).
+        name:
+          type: string
+          description: Frontmatter name (the POST body name).
 
     SkillCreate:
       type: object

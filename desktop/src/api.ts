@@ -461,7 +461,7 @@ export async function createSkill(
   session: Session,
   agentId: string,
   body: { name: string },
-): Promise<{ name: string; description: string; source: string; path: string }> {
+): Promise<{ id: string; name: string }> {
   const response = await fetch(
     `${session.baseUrl}/v1/agents/${encodeURIComponent(agentId)}/skills`,
     {

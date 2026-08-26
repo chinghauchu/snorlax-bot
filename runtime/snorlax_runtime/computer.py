@@ -445,8 +445,7 @@ class ComputerHub:
             "imageUrl": image_url(agent_id),
             "driving": self.driving(agent_id),
         }
-        if self.has_session(agent_id):
-            body["recording"] = self.is_recording(agent_id)
+        body["recording"] = self.is_recording(agent_id)
         return body
 
     def open_session(self, agent_id: str, name: str = "") -> dict[str, str] | None:
@@ -477,7 +476,7 @@ class ComputerHub:
         if not self.has_session(agent_id):
             raise ComputerError(409, "no computer session")
         if agent_id in self._recording:
-            return {"recording": True}
+            raise ComputerError(409, "already recording")
         capture = Capture()
         png = self._png_now(agent_id)
         capture.start_png = png
@@ -499,10 +498,10 @@ class ComputerHub:
 
     def take_capture(self, agent_id: str) -> Capture:
         if self.is_recording(agent_id):
-            raise ComputerError(409, "recording is active")
+            raise ComputerError(422, "no pending capture")
         capture = self._captures.pop(agent_id, None)
         if capture is None:
-            raise ComputerError(409, "no recording")
+            raise ComputerError(422, "no pending capture")
         capture.finish()
         return capture
 

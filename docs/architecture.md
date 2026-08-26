@@ -269,8 +269,8 @@ no Save-as-skill). Record only inside a takeover session.
 `POST /v1/agents/{id}/computer/record` starts capture;
 `DELETE .../record` stops (no file yet);
 `POST /v1/agents/{id}/skills { name }` writes SKILL.md from that
-capture (v0.9 load path). GET may include `recording` while a session
-exists. Channel 409. No session + record 409. Capture records
+capture (v0.9 load path; 201 Skill `{ id, name }`). GET may include `recording`
+when hasSandbox. Channel 409. No session / already recording 409. Capture records
 pointer/key plus screenshot context. Desktop 52px bar: 12px muted
 Record left of Done; recording is 12px `--danger` Stop + 6px danger
 dot (static if Reduce Motion); Done disabled while recording; Esc
