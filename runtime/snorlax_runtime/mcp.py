@@ -897,6 +897,13 @@ def _result_text(result: Any) -> str:
     return body
 
 
+def plugin_is_connected(name: str) -> bool:
+    manager = get_mcp_manager()
+    if manager is None or name not in manager.records:
+        return False
+    return manager.public_row(name).get("status") == STATUS_CONNECTED
+
+
 def is_mcp_tool(name: str) -> bool:
     manager = get_mcp_manager()
     return manager is not None and manager.has_tool(name)

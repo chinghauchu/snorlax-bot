@@ -386,6 +386,21 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 raise _error(422, "connect card not found")
             if target.get("connectStatus") != CONNECT_PENDING:
                 raise _error(422, "connect card is not pending")
+            if not payload.connectReply.dismissed:
+                body = target.get("connect") or {}
+                plugin_id = (
+                    str(body.get("pluginId") or "").strip()
+                    if isinstance(body, dict)
+                    else ""
+                )
+                manager = getattr(request.app.state, "mcp", None)
+                connected = bool(
+                    manager is not None
+                    and plugin_id in manager.records
+                    and manager.public_row(plugin_id).get("status") == "connected"
+                )
+                if not connected:
+                    raise _error(409, CONNECT_PENDING_ERROR)
         elif (payload.content or "").strip() and pending is not None:
             body = pending.get("widget") or {}
             if not body.get("dismissOnMoveOn"):

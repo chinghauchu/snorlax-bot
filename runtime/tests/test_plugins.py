@@ -220,6 +220,26 @@ def test_channel_connect_is_thread_only(tmp_path) -> None:
         del events
 
 
+def test_connect_reply_before_auth_stays_pending(tmp_path) -> None:
+    with _client_with_mcp(tmp_path, {"example": _disabled_stdio()}) as client:
+        _send(client, SEED, 'SNORLAX_TOOL example__echo {"text": "x"}')
+        card = next(
+            m
+            for m in client.get(f"/v1/agents/{SEED}/messages", headers=AUTH).json()
+            if m.get("kind") == "connect"
+        )
+        blocked = client.post(
+            f"/v1/agents/{SEED}/messages",
+            headers=AUTH,
+            json={"content": "", "connectReply": {"id": card["id"]}},
+        )
+        assert blocked.status_code == 409
+        listed = client.get(f"/v1/agents/{SEED}/messages", headers=AUTH).json()
+        updated = next(m for m in listed if m["id"] == card["id"])
+        assert updated["connectStatus"] == "pending"
+        assert client.get("/v1/plugins", headers=AUTH).json()[0]["status"] == "needsAuth"
+
+
 def test_unknown_plugin_auth_404(client) -> None:
     response = client.post("/v1/plugins/missing/auth", headers=AUTH)
     assert response.status_code == 404

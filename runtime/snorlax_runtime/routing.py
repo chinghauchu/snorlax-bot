@@ -17,6 +17,7 @@ from snorlax_runtime import (
     USER_SENDER_NAME,
 )
 from snorlax_runtime.db import Store, new_id
+from snorlax_runtime.mcp import plugin_is_connected
 from snorlax_runtime.handoff import (
     REPORT_MISS,
     report_pack,
@@ -445,6 +446,14 @@ async def run_user_turn(
                 raise ConnectAnswerError("connect card not found")
             yield "message.done", resolved_connect
         else:
+            body = target.get("connect") or {}
+            plugin_id = (
+                str(body.get("pluginId") or "").strip()
+                if isinstance(body, dict)
+                else ""
+            )
+            if not plugin_is_connected(plugin_id):
+                raise ConnectPendingError()
             resolved_connect = await store.resolve_connect(
                 target["id"], status=CONNECT_CONNECTED
             )
@@ -1094,7 +1103,10 @@ async def _generate(
             existing = await store.pending_widget(
                 conversation_id, thread_id=thread_id if is_group else None
             )
-            if existing is not None:
+            existing_connect = await store.pending_connect(
+                conversation_id, thread_id=thread_id if is_group else None
+            )
+            if existing is not None or existing_connect is not None:
                 persist_widget = False
         if persist_widget:
             saved_widget: dict[str, Any]
@@ -1165,7 +1177,10 @@ async def _generate(
             existing_connect = await store.pending_connect(
                 conversation_id, thread_id=thread_id if is_group else None
             )
-            if existing_connect is not None:
+            existing_widget = await store.pending_widget(
+                conversation_id, thread_id=thread_id if is_group else None
+            )
+            if existing_connect is not None or existing_widget is not None:
                 persist_connect = False
         if persist_connect:
             saved_connect: dict[str, Any]

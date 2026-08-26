@@ -890,13 +890,15 @@ class Store:
             from snorlax_runtime.widgets import WidgetPendingError
 
             existing = await self.pending_widget(agent_id, thread_id=reply_to)
-            if existing is not None:
+            existing_connect = await self.pending_connect(agent_id, thread_id=reply_to)
+            if existing is not None or existing_connect is not None:
                 raise WidgetPendingError()
         if kind == "connect":
             from snorlax_runtime.connect import ConnectPendingError
 
             existing_connect = await self.pending_connect(agent_id, thread_id=reply_to)
-            if existing_connect is not None:
+            existing_widget = await self.pending_widget(agent_id, thread_id=reply_to)
+            if existing_connect is not None or existing_widget is not None:
                 raise ConnectPendingError()
         stored_widget = (
             json.dumps(widget, ensure_ascii=False) if widget is not None else None
