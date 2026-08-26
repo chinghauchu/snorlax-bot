@@ -854,7 +854,8 @@ async def _generate(
             assistant_id=assistant_id,
             stream=stream,
             max_rounds=max_tool_rounds if max_tool_rounds is not None else MAX_TOOL_ROUNDS,
-            persist_tool=persist_tool,
+            persist_tool=None if report_back else persist_tool,
+            use_tools=not report_back,
         )
     except InferenceError as exc:
         if stream:

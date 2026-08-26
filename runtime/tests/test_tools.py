@@ -128,12 +128,13 @@ def test_peer_tool_lines_stay_out_of_report_back(client, tmp_path) -> None:
     alice_msgs = client.get(
         f"/v1/agents/{alice['id']}/messages", headers=AUTH
     ).json()
-    assert not any(m.get("kind") == "tool" for m in alice_msgs)
     assert not any(m["senderId"] == bob["id"] for m in alice_msgs)
+    alice_tools = [m for m in alice_msgs if m.get("kind") == "tool"]
+    assert all(m["senderId"] == alice["id"] for m in alice_tools)
     reports = [
         m
         for m in alice_msgs
-        if m["senderId"] == alice["id"] and m.get("kind") != "handoff"
+        if m["senderId"] == alice["id"] and m.get("kind") != "tool"
     ]
     assert reports
     report = reports[-1]

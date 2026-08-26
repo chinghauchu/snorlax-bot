@@ -736,6 +736,7 @@ async def run_tool_loop(
     stream: bool,
     max_rounds: int = MAX_TOOL_ROUNDS,
     persist_tool: PersistTool | None = None,
+    use_tools: bool = True,
 ) -> tuple[list[tuple[str, dict[str, Any]]], str]:
     """Execute OpenAI-compat tool rounds. Yields SSE-shaped (event, payload) list.
 
@@ -758,10 +759,12 @@ async def run_tool_loop(
         text_parts: list[str] = []
         tool_calls: list[ToolCall] = []
         try:
-            async for part in _generate_parts(backend, history):
+            async for part in _generate_parts(
+                backend, history, tools=TOOL_DEFINITIONS if use_tools else None
+            ):
                 if part.text:
                     text_parts.append(part.text)
-                if part.tool_calls:
+                if use_tools and part.tool_calls:
                     tool_calls.extend(part.tool_calls)
         except InferenceError:
             raise
@@ -876,10 +879,17 @@ def _tool_call_payload(call: ToolCall) -> dict[str, Any]:
     }
 
 
-async def _generate_parts(backend: Any, messages: list[dict[str, Any]]) -> AsyncIterator[StreamPart]:
+async def _generate_parts(
+    backend: Any,
+    messages: list[dict[str, Any]],
+    tools: list[dict[str, Any]] | None = None,
+) -> AsyncIterator[StreamPart]:
     generate = getattr(backend, "generate", None)
     if generate is not None:
-        async for part in generate(messages, tools=TOOL_DEFINITIONS):
+        kwargs: dict[str, Any] = {}
+        if tools:
+            kwargs["tools"] = tools
+        async for part in generate(messages, **kwargs):
             yield part
         return
     # Backends that only implement stream() (text).
