@@ -168,13 +168,39 @@ test("routines list is 44px rows with switch on the agent read pane", () => {
   assert.match(app, /role="switch"/);
   assert.match(app, /info-routines/);
   assert.match(app, /info-routine-hook-copy/);
+  assert.match(app, /AgentRoutineRow/);
+  assert.match(app, /Copied/);
+  assert.match(app, /WEBHOOK_COPY_FEEDBACK_MS/);
+  assert.match(app, /visiblePaneRoutines/);
+  assert.match(app, /showsWebhookCopy/);
+  assert.doesNotMatch(app, /\{routine\.webhookUrl\}/);
   assert.match(app, /profileEditing \?/);
   assert.doesNotMatch(app, /createRoutine/);
   assert.doesNotMatch(app, /deleteRoutine/);
   assert.doesNotMatch(app, /Teach a task/);
   assert.doesNotMatch(app, /marketplace/);
   assert.doesNotMatch(css, /info-routine-new/);
+  const pane = app.slice(
+    app.indexOf("info-routines"),
+    app.indexOf("<ComputerPane"),
+  );
+  assert.doesNotMatch(pane, /ConnectCard/);
+  assert.doesNotMatch(pane, /plugin-connect/);
+  assert.doesNotMatch(pane, />\s*Connect\s*</);
+  const rowSrc = app.slice(
+    app.indexOf("function AgentRoutineRow"),
+    app.indexOf("export function App"),
+  );
+  assert.match(rowSrc, /info-routine-hook-copy/);
+  assert.match(rowSrc, /info-routine-switch/);
+  assert.match(rowSrc, /Copied/);
+  assert.ok(
+    rowSrc.indexOf("info-routine-hook-copy") <
+      rowSrc.indexOf("info-routine-switch"),
+  );
   const hookCopy = block(".info-routine-hook-copy");
   assert.match(hookCopy, /font-size:\s*12px/);
   assert.match(hookCopy, /color:\s*var\(--text-muted\)/);
+  const toggleCss = block(".info-routine-switch");
+  assert.doesNotMatch(toggleCss, /margin-left:\s*auto/);
 });

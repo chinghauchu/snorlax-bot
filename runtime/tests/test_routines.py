@@ -625,6 +625,66 @@ def test_slack_github_201_when_plugin_connected(client, tmp_path: Path) -> None:
     assert github.json()["kind"] == "github"
     assert github.json()["label"] == "GitHub owner/repo"
     assert "webhookUrl" not in github.json()
+    client.app.state.mcp = _FakePlugins(
+        [
+            {"id": "slack", "name": "Slack", "status": "connected"},
+            {"id": "github", "name": "GitHub", "status": "connected"},
+        ]
+    )
+    listed = client.get(f"/v1/agents/{SEED}/routines", headers=AUTH)
+    assert listed.status_code == 200
+    kinds = {row["kind"] for row in listed.json()}
+    assert "slack" in kinds
+    assert "github" in kinds
+
+
+def test_get_omits_slack_github_when_plugin_not_connected(
+    client, tmp_path: Path
+) -> None:
+    _write_status_skill(tmp_path)
+    client.app.state.mcp = _FakePlugins(
+        [{"id": "slack", "name": "Slack", "status": "connected"}]
+    )
+    slack = client.post(
+        f"/v1/agents/{SEED}/routines",
+        headers=AUTH,
+        json={
+            "name": "Slack ping",
+            "skill": "status",
+            "trigger": {"type": "slack", "label": "Slack #eng"},
+        },
+    )
+    assert slack.status_code == 201
+    webhook = client.post(
+        f"/v1/agents/{SEED}/routines",
+        headers=AUTH,
+        json={
+            "name": "Inbox ping",
+            "skill": "status",
+            "trigger": {"type": "webhook"},
+        },
+    )
+    assert webhook.status_code == 201
+    cron = client.post(
+        f"/v1/agents/{SEED}/routines",
+        headers=AUTH,
+        json={
+            "name": "Morning status",
+            "skill": "status",
+            "schedule": "0 9 * * 1-5",
+        },
+    )
+    assert cron.status_code == 201
+    client.app.state.mcp = _FakePlugins([])
+    listed = client.get(f"/v1/agents/{SEED}/routines", headers=AUTH)
+    assert listed.status_code == 200
+    rows = listed.json()
+    kinds = {row["kind"] for row in rows}
+    assert "slack" not in kinds
+    assert "github" not in kinds
+    assert "webhook" in kinds
+    assert "cron" in kinds
+    assert all("webhookUrl" not in row or row["kind"] == "webhook" for row in rows)
 
 
 def test_plugin_delete_and_auth_unchanged_with_webhook(

@@ -1132,7 +1132,6 @@ button:disabled {
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
-  margin-left: auto;
 }
 
 .info-routine-switch input {

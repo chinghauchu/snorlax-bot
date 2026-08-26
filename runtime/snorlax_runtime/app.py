@@ -579,7 +579,16 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         store: Store = request.app.state.store
         conversation = await store.get_agent(id)
         _require_agent(conversation, id, channel_status=409)
-        return [_routine_out(r, _base_url(request)) for r in await store.list_routines(id)]
+        manager = getattr(request.app.state, "mcp", None)
+        visible = []
+        for row in await store.list_routines(id):
+            kind = str(row.get("triggerType") or "cron").strip().lower() or "cron"
+            if kind in {"slack", "github"} and not _plugin_kind_connected(
+                manager, kind
+            ):
+                continue
+            visible.append(_routine_out(row, _base_url(request)))
+        return visible
 
     @app.post(
         "/v1/agents/{id}/routines",

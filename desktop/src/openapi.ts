@@ -222,12 +222,16 @@ export interface paths {
          *     `scheduleLabel` (`Weekdays 9:00`). Webhook rows have
          *     `webhookUrl` (full URL with secret token in the path; Copy on
          *     the identity pane; clients must not paint it). Slack/GitHub
-         *     rows may have `label` (e.g. `Slack #eng`). Null fields are
+         *     rows are omitted unless GET /v1/plugins shows that plugin
+         *     status=connected; when present they may have `label`
+         *     (e.g. `Slack #eng`). Null fields are
          *     omitted (`webhookUrl` is absent on cron rows). Missing agent
          *     is 404. kind=channel is 409 (routines are agent-only). Used by
          *     the agent info pane (list + enable/pause + Copy for webhook
          *     URL). No New / create / edit / delete UI. Humanized trigger
-         *     line (`Webhook` / `Weekdays 9:00`) is a client concern. Do not
+         *     line (`Webhook` / `Weekdays 9:00`) is a client concern. Webhook
+         *     rows show 12px muted Copy left of the switch (`Copied` for 1.5s);
+         *     do not paint webhookUrl. Slack/GitHub rows have no Copy. Do not
          *     emit Connect cards from the pane.
          */
         get: operations["listRoutines"];

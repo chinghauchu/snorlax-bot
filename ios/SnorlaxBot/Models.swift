@@ -162,7 +162,28 @@ extension Message {
 
 extension Routine {
     var isWebhook: Bool {
-        kind == .webhook || !(webhookUrl ?? "").isEmpty
+        kind == .webhook
+    }
+
+    var showsWebhookCopy: Bool {
+        isWebhook && !(webhookUrl ?? "").trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
+    func visibleOnPane(plugins: [Plugin]) -> Bool {
+        switch kind {
+        case .slack:
+            return plugins.contains { row in
+                row.status == .connected &&
+                    "\(row.id) \(row.name)".localizedCaseInsensitiveContains("slack")
+            }
+        case .github:
+            return plugins.contains { row in
+                row.status == .connected &&
+                    "\(row.id) \(row.name)".localizedCaseInsensitiveContains("github")
+            }
+        default:
+            return true
+        }
     }
 
     var mutedLine: String {

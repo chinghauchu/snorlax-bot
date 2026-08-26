@@ -106,6 +106,7 @@ def test_protocol_openapi_is_locked_v0_contract() -> None:
     assert "trigger: { type: webhook }" in text or "type: webhook" in text
     assert "webhookUrl" in text
     assert "clients must not paint" in text.lower()
+    assert "Copied" in text or "1.5s" in text or "left of the switch" in text
     assert "does not go through SNORLAX_TOKEN" in text or "Does not use SNORLAX_TOKEN" in text or "not SNORLAX_TOKEN" in text
     assert "not rewrite" in text
     assert "contentType, mime, html, or blocks[]" in text

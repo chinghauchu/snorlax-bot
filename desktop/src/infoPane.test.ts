@@ -15,6 +15,9 @@ import {
   isWebhookRoutine,
   nextRosterSelection,
   routineMutedLine,
+  showsWebhookCopy,
+  visiblePaneRoutines,
+  WEBHOOK_COPY_FEEDBACK_MS,
   webhookCopyText,
 } from "./infoPane.ts";
 
@@ -180,4 +183,35 @@ test("humanizeTaipeiCron matches Weekdays 9:00", () => {
     }),
     "http://127.0.0.1:8787/v1/hooks/secret-token",
   );
+  const muted = routineMutedLine({
+    skill: "status",
+    kind: "webhook",
+    webhookUrl: "http://127.0.0.1:8787/v1/hooks/secret-token",
+  });
+  assert.equal(muted, "Webhook");
+  assert.equal(muted.includes("http"), false);
+  assert.equal(muted.includes("hooks"), false);
+  assert.equal(showsWebhookCopy({ kind: "webhook", webhookUrl: "http://x" }), true);
+  assert.equal(showsWebhookCopy({ kind: "cron", schedule: "0 9 * * 1-5" }), false);
+  assert.equal(showsWebhookCopy({ kind: "slack", label: "Slack #eng" }), false);
+  assert.deepEqual(
+    visiblePaneRoutines(
+      [
+        { kind: "cron", schedule: "0 9 * * 1-5" },
+        { kind: "webhook", webhookUrl: "http://x" },
+        { kind: "slack", label: "Slack #eng" },
+        { kind: "github", label: "GitHub owner/repo" },
+      ],
+      [{ id: "example", name: "Example", status: "connected" }],
+    ).map((row) => row.kind),
+    ["cron", "webhook"],
+  );
+  assert.deepEqual(
+    visiblePaneRoutines(
+      [{ kind: "slack", label: "Slack #eng" }],
+      [{ id: "slack", name: "Slack", status: "connected" }],
+    ).map((row) => row.kind),
+    ["slack"],
+  );
+  assert.equal(WEBHOOK_COPY_FEEDBACK_MS, 1500);
 });
