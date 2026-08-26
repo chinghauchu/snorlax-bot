@@ -334,7 +334,7 @@ private struct MessageBubble: View {
                                 .clipShape(RoundedRectangle(cornerRadius: 12))
                         }
                         if !message.content.isEmpty {
-                            MentionLabel(text: message.content, names: agents.filter { !$0.isChannel }.map(\.name))
+                            MentionLabel(text: message.displayContent, names: agents.filter { !$0.isChannel }.map(\.name))
                                 .font(.system(size: 14))
                                 .textSelection(.enabled)
                         }
@@ -353,7 +353,7 @@ private struct MessageBubble: View {
                     HStack(spacing: 0) {
                         Text("Also in ")
                             .foregroundStyle(.secondary)
-                        Text("Snorlax-Bot")
+                        Text(agents.first(where: { $0.id == jump.channelId })?.name ?? "Snorlax-Bot")
                             .foregroundStyle(Color.accentColor)
                     }
                     .font(.system(size: 12))

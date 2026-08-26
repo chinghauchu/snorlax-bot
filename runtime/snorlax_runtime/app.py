@@ -10,7 +10,7 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, Response, StreamingResponse
 
-from snorlax_runtime import KIND_CHANNEL, SEEDED_CHANNEL_ID, __version__
+from snorlax_runtime import KIND_AGENT, KIND_CHANNEL, SEEDED_CHANNEL_ID, __version__
 from snorlax_runtime.auth import require_bearer
 from snorlax_runtime.config import Settings
 from snorlax_runtime.db import Store, dump_json
@@ -117,6 +117,37 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         payload: AgentCreate = Body(default_factory=AgentCreate),
     ) -> Agent:
         store: Store = request.app.state.store
+        kind = (payload.kind or KIND_AGENT).strip().lower()
+        if kind not in {KIND_AGENT, KIND_CHANNEL}:
+            raise _error(422, "kind must be agent or channel")
+        if kind == KIND_CHANNEL:
+            name = payload.name
+            if name == "New agent":
+                name = "New channel"
+            roster = await store.list_agents()
+            agents = [a for a in roster if a.get("kind") != KIND_CHANNEL]
+            requested = list(payload.memberIds or [])
+            if not requested:
+                member_ids = [a["id"] for a in agents]
+            else:
+                index = {a["id"]: a for a in agents}
+                member_ids = []
+                seen: set[str] = set()
+                for raw_id in requested:
+                    if raw_id in seen:
+                        continue
+                    if raw_id not in index:
+                        raise _error(422, "Unknown member id")
+                    seen.add(raw_id)
+                    member_ids.append(raw_id)
+            row = await store.create_channel(
+                name,
+                payload.title,
+                payload.description,
+                payload.avatar,
+                member_ids,
+            )
+            return Agent.model_validate(row)
         row = await store.create_agent(
             payload.name, payload.title, payload.description, payload.avatar
         )
@@ -211,6 +242,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             raise _error(422, exc.message) from exc
         images = [img.model_dump() for img in payload.images]
         backend = request.app.state.backend
+        handoff_channel_id = payload.channelId
+        if handoff_channel_id:
+            channel = await store.get_agent(handoff_channel_id)
+            if channel is None or channel.get("kind") != KIND_CHANNEL:
+                raise _error(422, "Unknown channel")
 
         async def events() -> AsyncIterator[bytes]:
             async for event, data in run_user_turn(
@@ -221,6 +257,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 images=images,
                 mentions=mentions,
                 reply_to=payload.replyTo,
+                handoff_channel_id=handoff_channel_id,
             ):
                 yield _sse(event, data)
 

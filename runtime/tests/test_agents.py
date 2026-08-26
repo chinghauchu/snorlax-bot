@@ -153,6 +153,70 @@ def test_cannot_delete_seeded_channel(client) -> None:
     assert still.status_code == 200
 
 
+def test_create_and_delete_user_channel(client) -> None:
+    alice = client.post(
+        "/v1/agents", headers=AUTH, json={"name": "Alice"}
+    ).json()
+    created = client.post(
+        "/v1/agents",
+        headers=AUTH,
+        json={
+            "name": "Project",
+            "kind": "channel",
+            "memberIds": ["snorlax-bot", alice["id"]],
+        },
+    )
+    assert created.status_code == 201
+    body = created.json()
+    assert body["kind"] == "channel"
+    assert body["name"] == "Project"
+    assert body["id"] == "project"
+    assert body["memberIds"] == ["snorlax-bot", alice["id"]]
+    roster = client.get("/v1/agents", headers=AUTH).json()
+    channels = [a for a in roster if a["kind"] == "channel"]
+    assert {c["id"] for c in channels} == {"snorlax-bot-group", "project"}
+    seed = next(c for c in channels if c["id"] == "snorlax-bot-group")
+    assert alice["id"] in seed["memberIds"]
+
+    missing_member = client.post(
+        "/v1/agents",
+        headers=AUTH,
+        json={"name": "Ghost room", "kind": "channel", "memberIds": ["nope"]},
+    )
+    assert missing_member.status_code == 422
+
+    deleted = client.delete(f"/v1/agents/{body['id']}", headers=AUTH)
+    assert deleted.status_code == 204
+    missing = client.get(f"/v1/agents/{body['id']}", headers=AUTH)
+    assert missing.status_code == 404
+    seed_blocked = client.delete("/v1/agents/snorlax-bot-group", headers=AUTH)
+    assert seed_blocked.status_code == 409
+
+
+def test_create_channel_defaults_members_and_name(client) -> None:
+    created = client.post(
+        "/v1/agents",
+        headers=AUTH,
+        json={"kind": "channel"},
+    )
+    assert created.status_code == 201
+    body = created.json()
+    assert body["name"] == "New channel"
+    assert body["kind"] == "channel"
+    assert "snorlax-bot" in body["memberIds"]
+    assert body["id"] != "snorlax-bot-group"
+
+
+def test_unknown_channel_id_on_send_is_422(client) -> None:
+    response = client.post(
+        "/v1/agents/snorlax-bot/messages",
+        headers=AUTH,
+        json={"content": "hi @nope", "channelId": "not-a-channel"},
+    )
+    assert response.status_code == 422
+    assert "channel" in response.json()["error"].lower()
+
+
 def test_patch_avatar_null_clears(client) -> None:
     set_avatar = client.patch(
         "/v1/agents/snorlax-bot",

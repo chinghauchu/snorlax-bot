@@ -31,6 +31,8 @@ class AgentCreate(BaseModel):
     title: str = Field(default="", max_length=80)
     description: str = Field(default="", max_length=8000)
     avatar: str | None = None
+    kind: str = Field(default="agent")
+    memberIds: list[str] = Field(default_factory=list)
 
 
 class AgentPatch(BaseModel):
@@ -92,6 +94,7 @@ class MessageCreate(BaseModel):
     images: list[ImageIn] = Field(default_factory=list)
     mentions: list[str] = Field(default_factory=list)
     replyTo: str | None = None
+    channelId: str | None = None
 
 
 class MessageDelta(BaseModel):

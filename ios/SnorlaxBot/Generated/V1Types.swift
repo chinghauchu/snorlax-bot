@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 //
-// Generated from protocol/openapi.yaml (Snorlax-Bot 0.3.0).
+// Generated from protocol/openapi.yaml (Snorlax-Bot 0.4.0).
 // Do not edit by hand. Regenerate with:
 //   python3 ios/scripts/generate_v1_types.py
 //
@@ -92,19 +92,28 @@ struct Agent: Codable, Hashable, Identifiable, Sendable {
 }
 
 struct AgentCreate: Codable, Hashable, Sendable {
+    enum Kind: String, Codable, Hashable, Sendable {
+        case agent
+        case channel
+    }
+
     var name: String?
     var title: String?
     var description: String?
     var avatar: String?
+    var kind: Kind?
+    var memberIds: [String]?
 
-    init(name: String? = nil, title: String? = nil, description: String? = nil, avatar: String? = nil) {
+    init(name: String? = nil, title: String? = nil, description: String? = nil, avatar: String? = nil, kind: Kind? = nil, memberIds: [String]? = nil) {
         self.name = name
         self.title = title
         self.description = description
         self.avatar = avatar
+        self.kind = kind
+        self.memberIds = memberIds
     }
 
-    enum CodingKeys: String, CodingKey { case name, title, description, avatar }
+    enum CodingKeys: String, CodingKey { case name, title, description, avatar, kind, memberIds }
 
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
@@ -112,6 +121,8 @@ struct AgentCreate: Codable, Hashable, Sendable {
         title = try container.decodeIfPresent(String.self, forKey: .title)
         description = try container.decodeIfPresent(String.self, forKey: .description)
         avatar = try container.decodeIfPresent(String.self, forKey: .avatar)
+        kind = try container.decodeIfPresent(Kind.self, forKey: .kind)
+        memberIds = try container.decodeIfPresent([String].self, forKey: .memberIds)
     }
 
     func encode(to encoder: Encoder) throws {
@@ -120,6 +131,8 @@ struct AgentCreate: Codable, Hashable, Sendable {
         try container.encodeIfPresent(title, forKey: .title)
         try container.encodeIfPresent(description, forKey: .description)
         try container.encode(avatar, forKey: .avatar)
+        try container.encodeIfPresent(kind, forKey: .kind)
+        try container.encodeIfPresent(memberIds, forKey: .memberIds)
     }
 }
 
@@ -353,15 +366,17 @@ struct MessageCreate: Codable, Hashable, Sendable {
     var images: [ImageIn]?
     var mentions: [String]?
     var replyTo: String?
+    var channelId: String?
 
-    init(content: String, images: [ImageIn]? = nil, mentions: [String]? = nil, replyTo: String? = nil) {
+    init(content: String, images: [ImageIn]? = nil, mentions: [String]? = nil, replyTo: String? = nil, channelId: String? = nil) {
         self.content = content
         self.images = images
         self.mentions = mentions
         self.replyTo = replyTo
+        self.channelId = channelId
     }
 
-    enum CodingKeys: String, CodingKey { case content, images, mentions, replyTo }
+    enum CodingKeys: String, CodingKey { case content, images, mentions, replyTo, channelId }
 
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
@@ -369,6 +384,7 @@ struct MessageCreate: Codable, Hashable, Sendable {
         images = try container.decodeIfPresent([ImageIn].self, forKey: .images)
         mentions = try container.decodeIfPresent([String].self, forKey: .mentions)
         replyTo = try container.decodeIfPresent(String.self, forKey: .replyTo)
+        channelId = try container.decodeIfPresent(String.self, forKey: .channelId)
     }
 
     func encode(to encoder: Encoder) throws {
@@ -377,6 +393,7 @@ struct MessageCreate: Codable, Hashable, Sendable {
         try container.encodeIfPresent(images, forKey: .images)
         try container.encodeIfPresent(mentions, forKey: .mentions)
         try container.encode(replyTo, forKey: .replyTo)
+        try container.encode(channelId, forKey: .channelId)
     }
 }
 

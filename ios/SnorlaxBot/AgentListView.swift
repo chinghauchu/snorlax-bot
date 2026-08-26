@@ -4,19 +4,35 @@ import SwiftUI
 struct AgentListView: View {
     @Environment(AppModel.self) private var model
     @State private var pendingDelete: Agent?
+    @State private var showCreateChannel = false
+    @State private var channelName = "New channel"
 
     var body: some View {
         styledList
             .toolbar {
                 ToolbarItem(placement: .primaryAction) {
-                    Button {
-                        Task { await model.createAgent() }
+                    Menu {
+                        Button("New agent") {
+                            Task { await model.createAgent() }
+                        }
+                        Button("New channel") {
+                            channelName = "New channel"
+                            showCreateChannel = true
+                        }
                     } label: {
                         Image(systemName: "plus")
                     }
                     .disabled(!model.isConfigured)
-                    .accessibilityLabel("New agent")
+                    .accessibilityLabel("Create")
                 }
+            }
+            .alert("New channel", isPresented: $showCreateChannel) {
+                TextField("Name", text: $channelName)
+                Button("Create") {
+                    let name = channelName
+                    Task { await model.createChannel(name: name) }
+                }
+                Button("Cancel", role: .cancel) {}
             }
             .safeAreaInset(edge: .bottom, spacing: 0) {
                 AccountChip {
@@ -24,7 +40,10 @@ struct AgentListView: View {
                 }
             }
             .confirmationDialog(
-                pendingDelete.map { "Delete \($0.name)? This removes the agent and its chat." } ?? "",
+                pendingDelete.map {
+                    let kind = $0.isChannel ? "channel" : "agent"
+                    return "Delete \($0.name)? This removes the \(kind) and its chat."
+                } ?? "",
                 isPresented: deletePresented,
                 titleVisibility: .visible
             ) {
@@ -112,7 +131,7 @@ private struct AgentRow: View {
                 }
             }
             Spacer(minLength: 0)
-            if agent.isChannel, model.channelUnread {
+            if agent.isChannel, model.unreadChannelIDs.contains(agent.id) {
                 Circle()
                     .fill(Color.accentColor)
                     .frame(width: 6, height: 6)

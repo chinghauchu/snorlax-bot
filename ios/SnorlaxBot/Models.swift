@@ -8,7 +8,7 @@ extension Agent {
 
     var isSeed: Bool { id == Self.seedID }
     var isChannel: Bool { kind == .channel }
-    var isProtected: Bool { isChannel }
+    var isProtected: Bool { id == Self.channelID }
 
     var rosterSubtitle: String { isChannel ? "Channel" : title }
 
@@ -42,6 +42,23 @@ extension Message {
     var isHandoffRoot: Bool { kind == .handoff && replyTo == nil }
 
     var jump: HandoffRef? { handoff }
+
+    var displayContent: String {
+        let raw = content
+        let prefix = "from \(senderName):"
+        if raw.lowercased().hasPrefix(prefix.lowercased()) {
+            return String(raw.dropFirst(prefix.count)).trimmingCharacters(in: .whitespaces)
+        }
+        if raw.lowercased().hasPrefix("from "),
+           let colon = raw.firstIndex(of: ":")
+        {
+            let head = raw[..<colon]
+            if head.split(separator: " ").count <= 3 {
+                return String(raw[raw.index(after: colon)...]).trimmingCharacters(in: .whitespaces)
+            }
+        }
+        return raw
+    }
 
     static func optimisticUser(agentId: String, content: String) -> Message {
         Message(

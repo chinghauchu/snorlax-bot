@@ -35,7 +35,7 @@ final class AppModel {
     var navigationPath: [String] = []
     var messages: [Message] = []
     var threadID: String?
-    var channelUnread = false
+    var unreadChannelIDs: Set<String> = []
     var localPreviews: [String: [Data]] = [:]
     var draft = ""
     var pendingImage: PendingImage?
@@ -105,7 +105,7 @@ final class AppModel {
     }
 
     func openJump(channelId: String, threadId: String) async {
-        channelUnread = false
+        unreadChannelIDs.remove(channelId)
         await loadConversation(channelId, thread: threadId, push: true)
     }
 
@@ -124,7 +124,7 @@ final class AppModel {
             navigationPath = [id]
         }
         if visibleAgents.first(where: { $0.id == id })?.isChannel == true {
-            channelUnread = false
+            unreadChannelIDs.remove(id)
         }
         guard isConfigured, let client else {
             messages = []
@@ -155,8 +155,26 @@ final class AppModel {
         }
     }
 
+    func createChannel(name: String) async {
+        guard let client else {
+            showSettings = true
+            return
+        }
+        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        let label = trimmed.isEmpty ? "New channel" : trimmed
+        do {
+            let memberIds = agents.filter { !$0.isChannel }.map(\.id)
+            let channel = try await client.createChannel(name: label, memberIds: memberIds)
+            agents.append(channel)
+            await select(channel.id, push: true)
+            wantsComposerFocus = true
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+
     func delete(_ agent: Agent) async {
-        guard !agent.isChannel, let client else { return }
+        guard !agent.isProtected, let client else { return }
         do {
             try await client.deleteAgent(id: agent.id)
             agents.removeAll { $0.id == agent.id }
@@ -237,7 +255,11 @@ final class AppModel {
                 messages = try await client.listMessages(agentId: agent.id, threadId: threadID)
                 prunePreviews()
                 if !agent.isChannel, messages.contains(where: { $0.handoff != nil }) {
-                    channelUnread = true
+                    if let channelId = messages.compactMap(\.handoff?.channelId).last {
+                        unreadChannelIDs.insert(channelId)
+                    } else {
+                        unreadChannelIDs.insert(Agent.channelID)
+                    }
                 }
             }
         } catch is CancellationError {

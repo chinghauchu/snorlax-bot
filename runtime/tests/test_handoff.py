@@ -1,7 +1,14 @@
 # SPDX-License-Identifier: Apache-2.0
 from __future__ import annotations
 
-from snorlax_runtime.handoff import format_brief, wake_pack
+import pytest
+
+from snorlax_runtime.handoff import (
+    format_brief,
+    report_pack,
+    strip_involve_kicker,
+    wake_pack,
+)
 from tests.conftest import AUTH
 from tests.test_routing import CHANNEL, _create, _msgs, _send, _thread
 
@@ -42,11 +49,15 @@ def test_handoff_after_several_turns_wakes_b_with_brief(client) -> None:
     bob_reply = next(m for m in thread if m["senderId"] == bob["id"])
     assert bob_reply["replyTo"] == thread_id
     assert "Can you look at this" in bob_reply["content"]
-    assert "turn 0" in bob_reply["content"]
-    assert "userAsk" in bob_reply["content"]
-    assert "originating" in bob_reply["content"]
-    assert alice["id"] in bob_reply["content"]
+    assert "I can answer" not in bob_reply["content"].lower()
+    assert "I can collaborate" not in bob_reply["content"].lower()
     assert root["replyCount"] >= 1
+
+    alice_later = _msgs(client, alice["id"])
+    alice_replies = [m for m in alice_later if m["senderId"] == alice["id"]]
+    assert len(alice_replies) >= 2
+    assert "Can you look at this" in alice_replies[-1]["content"]
+    assert {m["senderId"] for m in alice_later} <= {"user", alice["id"]}
 
 
 def test_second_mention_reuses_thread(client) -> None:
@@ -146,3 +157,158 @@ def test_wake_pack_shape() -> None:
         "brief": "User: hi\nAlice: hello",
         "mentionedIds": ["bob"],
     }
+
+
+def test_report_pack_shape() -> None:
+    pack = report_pack(
+        from_agent={"id": "bob", "name": "Bob", "title": "Math"},
+        result="from Bob: 2",
+        thread_id="msg_thread",
+    )
+    assert pack == {
+        "from": {"id": "bob", "name": "Bob", "title": "Math"},
+        "result": "2",
+        "threadId": "msg_thread",
+    }
+
+
+def test_strip_involve_kicker() -> None:
+    assert strip_involve_kicker("from Mary: 2") == "2"
+    assert strip_involve_kicker("The answer is 2") == "The answer is 2"
+
+
+def test_one_plus_one_report_back_answers_user_in_a_one_to_one(client) -> None:
+    alice = _create(client, "Alice")
+    bob = _create(client, "Bob")
+    status, _ = _send(client, alice["id"], "@Bob answer 1+1")
+    assert status == 200
+
+    alice_msgs = _msgs(client, alice["id"])
+    assert {m["senderId"] for m in alice_msgs} <= {"user", alice["id"]}
+    assert not any(m["senderId"] == bob["id"] for m in alice_msgs)
+    assert _msgs(client, bob["id"]) == []
+
+    user = [m for m in alice_msgs if m["senderId"] == "user"][-1]
+    assert user["handoff"]
+    thread_id = user["handoff"]["threadId"]
+    thread = _thread(client, thread_id)
+    bob_reply = next(m for m in thread if m["senderId"] == bob["id"])
+    assert bob_reply["content"].strip() == "2"
+    assert "i can" not in bob_reply["content"].casefold()
+
+    alice_replies = [m for m in alice_msgs if m["senderId"] == alice["id"]]
+    assert len(alice_replies) >= 2
+    assert alice_replies[-1]["content"].strip() == "2"
+    assert alice_replies[-1]["senderId"] == alice["id"]
+    assert not alice_replies[-1]["content"].lower().startswith("from ")
+    # User does not need to GET the channel for the answer.
+    assert any(m["content"].strip() == "2" for m in alice_msgs)
+
+
+def test_report_back_copies_scripted_b_result(client) -> None:
+    """A mock B answer is copied into A's 1:1 report-back."""
+    alice = _create(client, "Alice")
+    bob = _create(client, "Bob")
+    status, _ = _send(client, alice["id"], "What is 3+4 @Bob?")
+    assert status == 200
+    alice_msgs = _msgs(client, alice["id"])
+    assert any(
+        m["senderId"] == alice["id"] and m["content"].strip() == "7"
+        for m in alice_msgs
+    )
+    thread = _thread(
+        client,
+        [m for m in alice_msgs if m["senderId"] == "user"][-1]["handoff"]["threadId"],
+    )
+    assert any(m["senderId"] == bob["id"] and m["content"].strip() == "7" for m in thread)
+    assert _msgs(client, bob["id"]) == []
+
+
+def test_report_back_hop_drop_keeps_thread_reply(client, monkeypatch) -> None:
+    monkeypatch.setattr("snorlax_runtime.routing.MAX_HOP", 1)
+    alice = _create(client, "Alice")
+    bob = _create(client, "Bob")
+    status, _ = _send(client, alice["id"], "@Bob answer 1+1")
+    assert status == 200
+    alice_msgs = _msgs(client, alice["id"])
+    user = [m for m in alice_msgs if m["senderId"] == "user"][-1]
+    thread = _thread(client, user["handoff"]["threadId"])
+    assert any(m["senderId"] == bob["id"] and m["content"].strip() == "2" for m in thread)
+    alice_replies = [m for m in alice_msgs if m["senderId"] == alice["id"]]
+    assert not any(m["content"].strip() == "2" for m in alice_replies)
+
+
+def test_handoff_channel_id_override(client) -> None:
+    alice = _create(client, "Alice")
+    bob = _create(client, "Bob")
+    created = client.post(
+        "/v1/agents",
+        headers=AUTH,
+        json={
+            "name": "Ops",
+            "kind": "channel",
+            "memberIds": [alice["id"], bob["id"]],
+        },
+    )
+    assert created.status_code == 201
+    channel_id = created.json()["id"]
+    with client.stream(
+        "POST",
+        f"/v1/agents/{alice['id']}/messages",
+        headers=AUTH,
+        json={"content": "@Bob answer 1+1", "channelId": channel_id},
+    ) as response:
+        assert response.status_code == 200
+        "".join(response.iter_text())
+    alice_msgs = _msgs(client, alice["id"])
+    user = [m for m in alice_msgs if m["senderId"] == "user"][-1]
+    assert user["handoff"]["channelId"] == channel_id
+    assert _msgs(client, CHANNEL) == []
+    thread = client.get(
+        f"/v1/agents/{channel_id}/messages",
+        headers=AUTH,
+        params={"threadId": user["handoff"]["threadId"]},
+    ).json()
+    assert any(m["senderId"] == bob["id"] for m in thread)
+
+
+@pytest.mark.asyncio
+async def test_wake_and_one_to_one_prompts(tmp_path) -> None:
+    from snorlax_runtime.db import Store
+
+    store = Store(tmp_path)
+    await store.connect()
+    alice = await store.create_agent("Alice", "", "", None)
+    pack = wake_pack(
+        originating=alice,
+        user_ask="@Bob answer 1+1",
+        brief="User: hi",
+        mentioned_ids=["bob"],
+    )
+    messages = await store.inference_transcript(
+        CHANNEL,
+        for_agent_id=alice["id"],
+        thread_id=None,
+        wake_pack=pack,
+    )
+    system = messages[0]["content"]
+    assert "DO the task" in system
+    assert "Do not acknowledge that you can" in system
+    assert "Do not ping-pong" in system
+    one_to_one = await store.inference_transcript(
+        alice["id"], for_agent_id=alice["id"]
+    )
+    assert "runtime already routes" in one_to_one[0]["content"]
+    report = report_pack(
+        from_agent={"id": "bob", "name": "Bob", "title": ""},
+        result="2",
+        thread_id="msg_1",
+    )
+    follow = await store.inference_transcript(
+        alice["id"],
+        for_agent_id=alice["id"],
+        wake_pack=report,
+    )
+    assert "report-back" in follow[0]["content"]
+    assert '"result": "2"' in follow[1]["content"]
+    await store.close()

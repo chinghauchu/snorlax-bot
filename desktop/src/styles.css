@@ -796,6 +796,16 @@ legend {
   background: var(--bg-hover);
 }
 
+.create-wrap {
+  position: relative;
+}
+
+.create-menu {
+  position: absolute;
+  top: 32px;
+  right: 0;
+}
+
 .unread-dot {
   width: 6px;
   height: 6px;

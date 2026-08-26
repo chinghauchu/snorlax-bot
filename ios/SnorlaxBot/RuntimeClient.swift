@@ -43,6 +43,15 @@ struct RuntimeClient: Sendable {
         try await send("v1/agents", method: "POST", body: AgentCreate(name: name), expected: 201)
     }
 
+    func createChannel(name: String, memberIds: [String]) async throws -> Agent {
+        try await send(
+            "v1/agents",
+            method: "POST",
+            body: AgentCreate(name: name, kind: .channel, memberIds: memberIds),
+            expected: 201
+        )
+    }
+
     func getAgent(id: String) async throws -> Agent {
         try await get("v1/agents/\(Self.encode(id))")
     }

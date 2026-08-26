@@ -14,6 +14,7 @@ import {
   SEED_AGENT_ID,
   SEED_CHANNEL_ID,
   createAgent,
+  createChannel,
   deleteAgent,
   listAgents,
   listMessages,
@@ -22,9 +23,10 @@ import {
   sendMessage,
 } from "./api";
 import {
-  CHANNEL_DISPLAY_NAME,
+  displayBody,
   fromLabel,
   isHandoffRoot,
+  jumpChannelName,
   messageHandoff,
   repliesLabel,
 } from "./handoff";
@@ -199,7 +201,10 @@ export function App() {
   const [agents, setAgents] = useState<Agent[]>([PLACEHOLDER_CHANNEL, PLACEHOLDER_SEED]);
   const [activeId, setActiveId] = useState<string | null>(SEED_CHANNEL_ID);
   const [threadId, setThreadId] = useState<string | null>(null);
-  const [channelUnread, setChannelUnread] = useState(false);
+  const [unreadIds, setUnreadIds] = useState<Set<string>>(() => new Set());
+  const [createMenuOpen, setCreateMenuOpen] = useState(false);
+  const [createChannelOpen, setCreateChannelOpen] = useState(false);
+  const [channelNameDraft, setChannelNameDraft] = useState("New channel");
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [draft, setDraft] = useState("");
   const [pendingImage, setPendingImage] = useState<PendingImage | null>(null);
@@ -319,8 +324,14 @@ export function App() {
     const onPointerDown = (event: PointerEvent) => {
       if (event.button !== 0) return;
       const target = event.target;
-      if (target instanceof Element && target.closest(".menu")) return;
+      if (
+        target instanceof Element &&
+        (target.closest(".menu") || target.closest(".create-wrap"))
+      ) {
+        return;
+      }
       setContextMenu(null);
+      setCreateMenuOpen(false);
     };
     const onKey = (event: globalThis.KeyboardEvent) => {
       if (event.key !== "Escape") return;
@@ -328,6 +339,8 @@ export function App() {
       setPendingDelete(null);
       setProfileOpen(false);
       setProfileEditing(false);
+      setCreateMenuOpen(false);
+      setCreateChannelOpen(false);
       if (settingsOpen) closeSettings();
     };
     window.addEventListener("pointerdown", onPointerDown);
@@ -389,7 +402,14 @@ export function App() {
     setProfileOpen(false);
     setProfileEditing(false);
     const agent = agents.find((a) => a.id === id);
-    if (agent?.kind === "channel") setChannelUnread(false);
+    if (agent?.kind === "channel") {
+      setUnreadIds((prev) => {
+        if (!prev.has(id)) return prev;
+        const next = new Set(prev);
+        next.delete(id);
+        return next;
+      });
+    }
     if (!session) {
       setMessages([]);
       return;
@@ -414,7 +434,12 @@ export function App() {
   }
 
   async function openJump(channelId: string, nextThread: string) {
-    setChannelUnread(false);
+    setUnreadIds((prev) => {
+      if (!prev.has(channelId)) return prev;
+      const next = new Set(prev);
+      next.delete(channelId);
+      return next;
+    });
     await loadConversation(channelId, nextThread);
   }
 
@@ -424,6 +449,37 @@ export function App() {
       const agent = await createAgent(session, "New agent");
       setAgents((prev) => [...prev, agent]);
       setActiveId(agent.id);
+      setThreadId(null);
+      setMessages([]);
+      setComposerError(null);
+      setProfileOpen(false);
+      setProfileEditing(false);
+      focusComposer();
+    } catch (err) {
+      setLoadError(describeError(err));
+    }
+  }
+
+  async function onCreateChannel() {
+    if (!session) return;
+    const name = channelNameDraft.trim() || "New channel";
+    try {
+      const memberIds = agents
+        .filter((a) => a.kind !== "channel")
+        .map((a) => a.id);
+      const channel = await createChannel(session, name, memberIds);
+      setAgents((prev) => {
+        const without = prev.filter((a) => a.id !== channel.id);
+        const channels = without.filter((a) => a.kind === "channel");
+        const people = without.filter((a) => a.kind !== "channel");
+        return [...channels, channel, ...people].filter(
+          (row, index, all) => all.findIndex((a) => a.id === row.id) === index,
+        );
+      });
+      setCreateChannelOpen(false);
+      setCreateMenuOpen(false);
+      setChannelNameDraft("New channel");
+      setActiveId(channel.id);
       setThreadId(null);
       setMessages([]);
       setComposerError(null);
@@ -624,7 +680,11 @@ export function App() {
         active.kind !== "channel" &&
         listed.some((message) => messageHandoff(message))
       ) {
-        setChannelUnread(true);
+        const channelId =
+          listed
+            .map((message) => messageHandoff(message)?.channelId)
+            .find((id): id is string => Boolean(id)) ?? SEED_CHANNEL_ID;
+        setUnreadIds((prev) => new Set(prev).add(channelId));
       }
       pickedMentions.current.clear();
     } catch (err) {
@@ -721,15 +781,42 @@ export function App() {
       <aside className="sidebar">
         <header className="sidebar-head">
           <span className="wordmark">Snorlax-Bot</span>
-          <button
-            type="button"
-            className="icon-btn"
-            aria-label="New agent"
-            disabled={!credsReady}
-            onClick={() => void onCreate()}
-          >
-            +
-          </button>
+          <div className="create-wrap">
+            <button
+              type="button"
+              className="icon-btn"
+              aria-label="Create"
+              disabled={!credsReady}
+              onClick={() => setCreateMenuOpen((open) => !open)}
+            >
+              +
+            </button>
+            {createMenuOpen ? (
+              <div className="menu create-menu" role="menu">
+                <button
+                  type="button"
+                  role="menuitem"
+                  onClick={() => {
+                    setCreateMenuOpen(false);
+                    void onCreate();
+                  }}
+                >
+                  New agent
+                </button>
+                <button
+                  type="button"
+                  role="menuitem"
+                  onClick={() => {
+                    setCreateMenuOpen(false);
+                    setChannelNameDraft("New channel");
+                    setCreateChannelOpen(true);
+                  }}
+                >
+                  New channel
+                </button>
+              </div>
+            ) : null}
+          </div>
         </header>
         <ul className="roster">
           {agents.map((agent) => (
@@ -752,7 +839,7 @@ export function App() {
                     <span className="row-title">{rosterSubtitle(agent)}</span>
                   ) : null}
                 </span>
-                {agent.kind === "channel" && channelUnread ? (
+                {agent.kind === "channel" && unreadIds.has(agent.id) ? (
                   <span className="unread-dot" aria-label="Unread" />
                 ) : null}
               </button>
@@ -911,7 +998,10 @@ export function App() {
                         {message.content ? (
                           <pre>
                             <MentionText
-                              text={message.content}
+                              text={displayBody(
+                                message.content,
+                                message.senderName,
+                              )}
                               knownNames={knownNames}
                             />
                           </pre>
@@ -925,7 +1015,9 @@ export function App() {
                         onClick={() => void openJump(jump.channelId, jump.threadId)}
                       >
                         Also in{" "}
-                        <span className="jump-name">{CHANNEL_DISPLAY_NAME}</span>
+                        <span className="jump-name">
+                          {jumpChannelName(jump.channelId, agents)}
+                        </span>
                       </button>
                     ) : null}
                   </article>
@@ -1301,7 +1393,9 @@ export function App() {
             onClick={(e) => e.stopPropagation()}
           >
             <p>
-              Delete {pendingDelete.name}? This removes the agent and its chat.
+              Delete {pendingDelete.name}? This removes the{" "}
+              {pendingDelete.kind === "channel" ? "channel" : "agent"} and its
+              chat.
             </p>
             <div className="confirm-actions">
               <button type="button" onClick={() => setPendingDelete(null)}>
@@ -1313,6 +1407,51 @@ export function App() {
                 onClick={() => void confirmDelete()}
               >
                 Delete
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {createChannelOpen ? (
+        <div
+          className="modal-backdrop"
+          onClick={() => setCreateChannelOpen(false)}
+        >
+          <div
+            className="modal confirm"
+            role="dialog"
+            aria-label="New channel"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <p>New channel</p>
+            <label>
+              Name
+              <input
+                value={channelNameDraft}
+                autoFocus
+                onChange={(e) => setChannelNameDraft(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    e.preventDefault();
+                    void onCreateChannel();
+                  }
+                }}
+              />
+            </label>
+            <div className="confirm-actions">
+              <button
+                type="button"
+                onClick={() => setCreateChannelOpen(false)}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="primary"
+                onClick={() => void onCreateChannel()}
+              >
+                Create
               </button>
             </div>
           </div>

@@ -94,6 +94,19 @@ export async function createAgent(
   return json<Agent>(response);
 }
 
+export async function createChannel(
+  session: Session,
+  name: string,
+  memberIds: string[],
+): Promise<Agent> {
+  const response = await fetch(`${session.baseUrl}/v1/agents`, {
+    method: "POST",
+    headers: headers(session, { "Content-Type": "application/json" }),
+    body: JSON.stringify({ name, kind: "channel", memberIds }),
+  });
+  return json<Agent>(response);
+}
+
 export async function patchAgent(
   session: Session,
   agentId: string,
