@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 import secrets
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
@@ -9,14 +10,19 @@ from contextlib import asynccontextmanager
 from fastapi import Body, Depends, FastAPI, HTTPException, Query, Request, status
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse, Response, StreamingResponse
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Response, StreamingResponse
 
 from snorlax_runtime import KIND_AGENT, KIND_CHANNEL, SEEDED_CHANNEL_ID, __version__
 from snorlax_runtime.auth import require_bearer
 from snorlax_runtime.config import Settings
 from snorlax_runtime.db import Store, dump_json
 from snorlax_runtime.inference import build_backend
-from snorlax_runtime.routing import MentionError, resolve_user_mentions, run_user_turn
+from snorlax_runtime.routing import (
+    MentionError,
+    resolve_user_mentions,
+    resume_after_connect,
+    run_user_turn,
+)
 from snorlax_runtime.schemas import (
     Agent,
     AgentCreate,
@@ -24,6 +30,8 @@ from snorlax_runtime.schemas import (
     Health,
     Message,
     MessageCreate,
+    Plugin,
+    PluginAuth,
     Routine,
     RoutineCreate,
     RoutinePatch,
@@ -32,8 +40,14 @@ from snorlax_runtime.schemas import (
     WorkspaceListing,
 )
 from snorlax_runtime.widgets import PENDING_ERROR, STATUS_PENDING, WidgetAnswerError, require_reply_values
+from snorlax_runtime.connect import (
+    CONNECT_KIND,
+    PENDING_ERROR as CONNECT_PENDING_ERROR,
+    STATUS_CONNECTED as CONNECT_CONNECTED,
+    STATUS_PENDING as CONNECT_PENDING,
+)
 from snorlax_runtime.token import resolve_token, write_token_file
-from snorlax_runtime.mcp import start_mcp, stop_mcp
+from snorlax_runtime.mcp import McpConfigError, start_mcp, stop_mcp
 from snorlax_runtime.tools import (
     BinaryFileError,
     PathJailError,
@@ -46,6 +60,59 @@ from snorlax_runtime.tools import (
 
 def _error(status_code: int, message: str) -> HTTPException:
     return HTTPException(status_code=status_code, detail=message)
+
+
+log = logging.getLogger("snorlax.app")
+
+
+def _connect_html() -> HTMLResponse:
+    html = (
+        "<!doctype html><title>Snorlax-Bot</title>"
+        "<p>Connected. You can close this window.</p>"
+    )
+    return HTMLResponse(html)
+
+
+async def _resume_connect_cards(request: Request, plugin_id: str) -> None:
+    store: Store = request.app.state.store
+    backend = request.app.state.backend
+    rounds = request.app.state.settings.tool_max_rounds
+    cards = await store.list_pending_connects(plugin_id)
+    for card in cards:
+        updated = await store.resolve_connect(card["id"], status=CONNECT_CONNECTED)
+        if updated is None:
+            continue
+        try:
+            await resume_after_connect(
+                store=store,
+                backend=backend,
+                card=updated,
+                max_tool_rounds=rounds,
+            )
+        except Exception as exc:  # noqa: BLE001 — callback must still return HTML
+            log.warning("resume after connect %s failed: %s", card["id"], extra)
+
+
+async def _finish_plugin_oauth(
+    request: Request,
+    *,
+    state: str,
+    code: str | None,
+    token: str | None,
+    access_token: str | None,
+) -> HTMLResponse:
+    manager = getattr(request.app.state, "mcp", None)
+    if manager is None:
+        raise _error(500, "MCP is not running")
+    secret = (token or access_token or code or "").strip() or "local"
+    try:
+        row = await manager.complete_auth(state, secret)
+    except McpConfigError as exc:
+        raise _error(exc.status, exc.message) from exc
+    plugin_id = str(row.get("id") or "")
+    if plugin_id:
+        await _resume_connect_cards(request, plugin_id)
+    return _connect_html()
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:
@@ -338,6 +405,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         pending = await store.pending_widget(
             id, thread_id=stored_reply_to if is_group else None
         )
+        pending_connect = await store.pending_connect(
+            id, thread_id=stored_reply_to if is_group else None
+        )
         if payload.widgetReply is not None:
             target = await store.get_message(payload.widgetReply.id)
             if target is None or target.get("agentId") != id:
@@ -358,10 +428,39 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     )
                 except WidgetAnswerError as exc:
                     raise _error(422, exc.message) from exc
+        elif payload.connectReply is not None:
+            target_id = (payload.connectReply.id or "").strip()
+            target = None
+            if target_id:
+                target = await store.get_message(target_id)
+            else:
+                target = pending_connect
+            if target is None or target.get("agentId") != id:
+                raise _error(422, "connect card not found")
+            if is_group:
+                target_thread = target.get("replyTo") or target["id"]
+                if stored_reply_to and target_thread != stored_reply_to:
+                    raise _error(422, "connect card not in this thread")
+            if target.get("kind") != CONNECT_KIND:
+                raise _error(422, "connect card not found")
+            if target.get("connectStatus") != CONNECT_PENDING:
+                raise _error(422, "connect card is not pending")
+            if not payload.connectReply.dismissed:
+                body = target.get("connect") or {}
+                plugin_id = (
+                    str(body.get("pluginId") or "").strip()
+                    if isinstance(body, dict)
+                    else ""
+                )
+                manager = getattr(request.app.state, "mcp", None)
+                if manager is None or plugin_id not in manager.records:
+                    raise _error(404, f"plugin {plugin_id!r} not found")
         elif (payload.content or "").strip() and pending is not None:
             body = pending.get("widget") or {}
             if not body.get("dismissOnMoveOn"):
                 raise _error(409, PENDING_ERROR)
+        elif (payload.content or "").strip() and pending_connect is not None:
+            raise _error(409, CONNECT_PENDING_ERROR)
 
         async def events() -> AsyncIterator[bytes]:
             async for event, data in run_user_turn(
@@ -379,6 +478,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     if payload.widgetReply is not None
                     else None
                 ),
+                connect_reply=(
+                    payload.connectReply.model_dump()
+                    if payload.connectReply is not None
+                    else None
+                ),
+                auth_base_url=str(request.base_url).rstrip("/"),
             ):
                 yield _sse(event, data)
 
@@ -526,6 +631,84 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             raise _error(404, "path not found") from None
         except IsADirectoryError:
             raise _error(422, "not a file") from None
+
+    @app.get("/v1/plugins", response_model=list[Plugin])
+    async def list_plugins(
+        request: Request, _: str = Depends(require_bearer)
+    ) -> list[Plugin]:
+        manager = getattr(request.app.state, "mcp", None)
+        if manager is None:
+            return []
+        return [Plugin.model_validate(row) for row in manager.list_public()]
+
+    @app.post("/v1/plugins/{id}/auth", response_model=PluginAuth)
+    async def start_plugin_auth(
+        id: str, request: Request, _: str = Depends(require_bearer)
+    ) -> PluginAuth:
+        manager = getattr(request.app.state, "mcp", None)
+        if manager is None:
+            raise _error(500, "MCP is not running")
+        try:
+            state = manager.begin_auth(id)
+        except McpConfigError as exc:
+            raise _error(exc.status, exc.message) from exc
+        base = str(request.base_url).rstrip("/")
+        authorization_url = f"{base}/v1/plugins/oauth/start/{id}?state={state}"
+        return PluginAuth(authorizationUrl=authorization_url)
+
+    @app.get("/v1/plugins/oauth/start/{id}")
+    async def plugin_oauth_start(
+        id: str, request: Request, state: str = Query(default="")
+    ) -> Response:
+        manager = getattr(request.app.state, "mcp", None)
+        if manager is None or not state or manager.plugin_for_state(state) != id:
+            raise _error(422, "invalid auth state")
+        base = str(request.base_url).rstrip("/")
+        callback = f"{base}/v1/plugins/oauth/callback?state={state}"
+        upstream = manager.upstream_authorize_url(id, callback)
+        target = upstream or f"{callback}&code=local"
+        return RedirectResponse(url=target, status_code=302)
+
+    @app.get("/v1/plugins/oauth/callback")
+    async def plugin_oauth_callback(
+        request: Request,
+        state: str = Query(default=""),
+        code: str | None = Query(default=None),
+        token: str | None = Query(default=None),
+        access_token: str | None = Query(default=None),
+    ) -> HTMLResponse:
+        return await _finish_plugin_oauth(
+            request,
+            state=state,
+            code=code,
+            token=token,
+            access_token=access_token,
+        )
+
+    @app.post("/v1/plugins/oauth/callback")
+    async def plugin_oauth_callback_post(request: Request) -> HTMLResponse:
+        state = str(request.query_params.get("state") or "")
+        code = request.query_params.get("code")
+        token = request.query_params.get("token")
+        access_token = request.query_params.get("access_token")
+        ctype = (request.headers.get("content-type") or "").split(";")[0].strip()
+        if ctype == "application/json":
+            body = await request.json()
+            if isinstance(body, dict):
+                state = str(body.get("state") or state)
+                if body.get("code") is not None:
+                    code = str(body.get("code") or "")
+                if body.get("token") is not None:
+                    token = str(body.get("token") or "")
+                if body.get("access_token") is not None:
+                    access_token = str(body.get("access_token") or "")
+        return await _finish_plugin_oauth(
+            request,
+            state=state,
+            code=code,
+            token=token,
+            access_token=access_token,
+        )
 
     @app.get("/v1/images/{id}")
     async def get_image(

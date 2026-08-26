@@ -12,6 +12,8 @@ export type RuntimeHealth = components["schemas"]["Health"];
 export type ErrorBody = components["schemas"]["ErrorBody"];
 export type Routine = components["schemas"]["Routine"];
 export type RoutinePatch = components["schemas"]["RoutinePatch"];
+export type Plugin = components["schemas"]["Plugin"];
+export type PluginAuth = components["schemas"]["PluginAuth"];
 
 export type Session = {
   baseUrl: string;

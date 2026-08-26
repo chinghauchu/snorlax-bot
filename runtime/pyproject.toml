@@ -1,7 +1,7 @@
 [project]
 name = "snorlax-runtime"
-version = "0.9.0"
-description = "Snorlax-Bot FastAPI runtime — agents, transcripts, LAN auth, built-in tools, MCP client, question widgets, skills, and cron routines in front of oMLX or vLLM."
+version = "0.10.0"
+description = "Snorlax-Bot FastAPI runtime — agents, transcripts, LAN auth, built-in tools, MCP client, plugins chrome, question widgets, skills, and cron routines in front of oMLX or vLLM."
 readme = "README.md"
 license = { text = "Apache-2.0" }
 authors = [{ name = "Chinghau Chu" }]

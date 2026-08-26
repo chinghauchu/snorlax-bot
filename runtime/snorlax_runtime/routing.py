@@ -17,6 +17,7 @@ from snorlax_runtime import (
     USER_SENDER_NAME,
 )
 from snorlax_runtime.db import Store, new_id
+from snorlax_runtime.mcp import get_mcp_manager, plugin_is_connected
 from snorlax_runtime.handoff import (
     REPORT_MISS,
     report_pack,
@@ -31,6 +32,14 @@ from snorlax_runtime.widgets import (
     WidgetAnswerError,
     WidgetPendingError,
     require_reply_values,
+)
+from snorlax_runtime.connect import (
+    CONNECT_KIND,
+    STATUS_CONNECTED as CONNECT_CONNECTED,
+    STATUS_DISMISSED as CONNECT_DISMISSED,
+    STATUS_PENDING as CONNECT_PENDING,
+    ConnectAnswerError,
+    ConnectPendingError,
 )
 
 log = logging.getLogger("snorlax.routing")
@@ -325,6 +334,31 @@ def looks_like_ask(content: str) -> bool:
     return any(marker in lowered for marker in ask_markers)
 
 
+async def resume_after_connect(
+    *,
+    store: Store,
+    backend: Any,
+    card: dict[str, Any],
+    max_tool_rounds: int | None = None,
+) -> None:
+    """Continue hop-0 after OAuth PATCHes a kind=connect row to connected."""
+    conversation = await store.get_agent(card["agentId"])
+    if conversation is None:
+        return
+    async for _event, _payload in run_user_turn(
+        store=store,
+        backend=backend,
+        conversation=conversation,
+        content="",
+        images=[],
+        mentions=[],
+        reply_to=card.get("replyTo"),
+        max_tool_rounds=max_tool_rounds,
+        resume_connect=card,
+    ):
+        pass
+
+
 async def run_user_turn(
     *,
     store: Store,
@@ -337,6 +371,9 @@ async def run_user_turn(
     preferred_channel_id: str | None = None,
     max_tool_rounds: int | None = None,
     widget_reply: dict[str, Any] | None = None,
+    connect_reply: dict[str, Any] | None = None,
+    resume_connect: dict[str, Any] | None = None,
+    auth_base_url: str | None = None,
 ) -> AsyncIterator[tuple[str, dict[str, Any]]]:
     """Persist the user message, then route hop-0 and peer work.
 
@@ -369,9 +406,20 @@ async def run_user_turn(
     pending = await store.pending_widget(
         origin_id, thread_id=stored_reply_to if is_group else None
     )
+    pending_connect_row = await store.pending_connect(
+        origin_id, thread_id=stored_reply_to if is_group else None
+    )
     persist_user = bool((content or "").strip())
     wake_agent = False
-    if widget_reply is not None:
+    resolved_connect: dict[str, Any] | None = None
+    if resume_connect is not None:
+        persist_user = False
+        wake_agent = True
+        resolved_connect = resume_connect
+        if is_group:
+            thread_id = resolved_connect.get("replyTo") or resolved_connect["id"]
+            stored_reply_to = thread_id
+    elif widget_reply is not None:
         target = await store.get_message(widget_reply["id"])
         if target is None or target.get("agentId") != origin_id:
             raise WidgetAnswerError("widget not found")
@@ -404,6 +452,62 @@ async def run_user_turn(
             yield "message.done", pending
             persist_user = False
             wake_agent = True
+    elif connect_reply is not None:
+        target_id = str(connect_reply.get("id") or "").strip()
+        target = None
+        if target_id:
+            target = await store.get_message(target_id)
+        else:
+            target = await store.pending_connect(
+                origin_id, thread_id=stored_reply_to if is_group else None
+            )
+        if target is None or target.get("agentId") != origin_id:
+            raise ConnectAnswerError("connect card not found")
+        if is_group:
+            target_thread = target.get("replyTo") or target["id"]
+            if stored_reply_to and target_thread != stored_reply_to:
+                raise ConnectAnswerError("connect card not in this thread")
+        if target.get("kind") != CONNECT_KIND:
+            raise ConnectAnswerError("connect card not found")
+        if target.get("connectStatus") != CONNECT_PENDING:
+            raise ConnectAnswerError("connect card is not pending")
+        persist_user = False
+        if connect_reply.get("dismissed"):
+            resolved_connect = await store.resolve_connect(
+                target["id"], status=CONNECT_DISMISSED
+            )
+            if resolved_connect is None:
+                raise ConnectAnswerError("connect card not found")
+            yield "message.done", resolved_connect
+        else:
+            body = target.get("connect") or {}
+            plugin_id = (
+                str(body.get("pluginId") or "").strip()
+                if isinstance(body, dict)
+                else ""
+            )
+            if plugin_is_connected(plugin_id):
+                resolved_connect = await store.resolve_connect(
+                    target["id"], status=CONNECT_CONNECTED
+                )
+                if resolved_connect is None:
+                    raise ConnectAnswerError("connect card not found")
+                yield "message.done", resolved_connect
+                wake_agent = True
+                if is_group and thread_id is None:
+                    thread_id = (
+                        resolved_connect.get("replyTo") or resolved_connect["id"]
+                    )
+            else:
+                manager = get_mcp_manager()
+                if manager is None or plugin_id not in manager.records:
+                    raise ConnectAnswerError("plugin not found")
+                state = manager.begin_auth(plugin_id)
+                base = (auth_base_url or "").rstrip("/")
+                url = f"{base}/v1/plugins/oauth/start/{plugin_id}?state={state}"
+                yield "connect.url", {"url": url, "pluginId": plugin_id}
+                yield "message.done", target
+                return
     elif persist_user and pending is not None:
         body = pending.get("widget") or {}
         if body.get("dismissOnMoveOn"):
@@ -414,6 +518,8 @@ async def run_user_turn(
                 yield "message.done", pending
         else:
             raise WidgetPendingError()
+    elif persist_user and pending_connect_row is not None:
+        raise ConnectPendingError()
     user_saved: dict[str, Any] | None = None
     if persist_user:
         user_saved = await store.add_message(
@@ -485,6 +591,26 @@ async def run_user_turn(
                 channel_id=origin_id,
             )
         )
+    elif (
+        wake_agent
+        and is_group
+        and resolved_connect is not None
+        and thread_id
+        and resolved_connect.get("senderId")
+        and resolved_connect["senderId"] != USER_SENDER_ID
+    ):
+        jobs.append(
+            _Job(
+                agent_id=resolved_connect["senderId"],
+                conversation_id=origin_id,
+                hop=0,
+                peer=False,
+                edge_from=USER_SENDER_ID,
+                edge_to=resolved_connect["senderId"],
+                thread_id=thread_id,
+                channel_id=origin_id,
+            )
+        )
 
     i = 0
     origin_open = True
@@ -519,7 +645,7 @@ async def run_user_turn(
                     if (
                         event == "message.done"
                         and isinstance(payload, dict)
-                        and payload.get("kind") == WIDGET_KIND
+                        and payload.get("kind") in {WIDGET_KIND, CONNECT_KIND}
                     ):
                         origin_open = False
             del saved
@@ -569,7 +695,7 @@ async def run_user_turn(
                 if (
                     event == "message.done"
                     and isinstance(payload, dict)
-                    and payload.get("kind") == WIDGET_KIND
+                    and payload.get("kind") in {WIDGET_KIND, CONNECT_KIND}
                 ):
                     origin_open = False
         if saved is None:
@@ -995,7 +1121,7 @@ async def _generate(
         )
 
     try:
-        events, raw, widget = await run_tool_loop(
+        events, raw, widget, connect = await run_tool_loop(
             backend,
             transcript,
             workspace=workspace,
@@ -1022,7 +1148,10 @@ async def _generate(
             existing = await store.pending_widget(
                 conversation_id, thread_id=thread_id if is_group else None
             )
-            if existing is not None:
+            existing_connect = await store.pending_connect(
+                conversation_id, thread_id=thread_id if is_group else None
+            )
+            if existing is not None or existing_connect is not None:
                 persist_widget = False
         if persist_widget:
             saved_widget: dict[str, Any]
@@ -1086,6 +1215,78 @@ async def _generate(
                 "senderId": agent["id"],
             }
             return events, None if persist else saved_widget
+
+    if connect is not None:
+        persist_connect = persist and not (is_group and not thread_id)
+        if persist_connect:
+            existing_connect = await store.pending_connect(
+                conversation_id, thread_id=thread_id if is_group else None
+            )
+            existing_widget = await store.pending_widget(
+                conversation_id, thread_id=thread_id if is_group else None
+            )
+            if existing_connect is not None or existing_widget is not None:
+                persist_connect = False
+        if persist_connect:
+            saved_connect: dict[str, Any]
+            if content.strip():
+                saved_text = await store.add_message(
+                    agent_id=conversation_id,
+                    role="assistant",
+                    content=content,
+                    message_id=assistant_id,
+                    sender_id=agent["id"],
+                    sender_name=agent["name"],
+                    sender_avatar=agent["avatar"],
+                    hop=hop,
+                    mentions=[],
+                    reply_to=thread_id if is_group else None,
+                    routine_name=routine_name,
+                )
+                if stream:
+                    events.append(("message.done", saved_text))
+                connect_id = new_id("msg")
+            else:
+                connect_id = assistant_id
+            try:
+                saved_connect = await store.add_message(
+                    agent_id=conversation_id,
+                    role="assistant",
+                    content=connect["prompt"],
+                    message_id=connect_id,
+                    sender_id=agent["id"],
+                    sender_name=agent["name"],
+                    sender_avatar=agent["avatar"],
+                    hop=hop,
+                    mentions=[],
+                    reply_to=thread_id if is_group else None,
+                    kind=CONNECT_KIND,
+                    connect=connect,
+                    routine_name=routine_name,
+                )
+            except ConnectPendingError:
+                persist_connect = False
+            else:
+                if stream:
+                    events.append(("message.done", saved_connect))
+                return events, saved_connect
+            if persist and content.strip():
+                pass
+            else:
+                return events, None
+        if persist and content.strip():
+            pass
+        else:
+            saved_connect = {
+                "id": assistant_id,
+                "content": connect["prompt"],
+                "mentions": [],
+                "replyTo": None,
+                "kind": CONNECT_KIND,
+                "connect": connect,
+                "senderId": agent["id"],
+            }
+            return events, None if persist else saved_connect
 
     mentions: list[dict[str, str]] = []
     if not report_back:

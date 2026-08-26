@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 //
-// Generated from protocol/openapi.yaml (Snorlax-Bot 0.9.0).
+// Generated from protocol/openapi.yaml (Snorlax-Bot 0.10.0).
 // Do not edit by hand. Regenerate with:
 //   python3 ios/scripts/generate_v1_types.py
 //
@@ -290,6 +290,12 @@ struct Message: Codable, Hashable, Identifiable, Sendable {
         case handoff
         case tool
         case widget
+        case connect
+    }
+    enum ConnectStatus: String, Codable, Hashable, Sendable {
+        case pending
+        case connected
+        case dismissed
     }
     enum WidgetStatus: String, Codable, Hashable, Sendable {
         case pending
@@ -315,11 +321,13 @@ struct Message: Codable, Hashable, Identifiable, Sendable {
     var brief: String?
     var replyCount: Int?
     var widget: Widget?
+    var connect: ConnectCard?
+    var connectStatus: ConnectStatus?
     var widgetStatus: WidgetStatus?
     var widgetValues: [String]?
     var routineName: String?
 
-    init(id: String, agentId: String, role: Role, content: String, images: [ImageOut], createdAt: Date, senderId: String, senderName: String, senderAvatar: String?, hop: Int, mentions: [Mention], kind: Kind? = nil, replyTo: String? = nil, handoff: HandoffRef? = nil, userAsk: String? = nil, brief: String? = nil, replyCount: Int? = nil, widget: Widget? = nil, widgetStatus: WidgetStatus? = nil, widgetValues: [String]? = nil, routineName: String? = nil) {
+    init(id: String, agentId: String, role: Role, content: String, images: [ImageOut], createdAt: Date, senderId: String, senderName: String, senderAvatar: String?, hop: Int, mentions: [Mention], kind: Kind? = nil, replyTo: String? = nil, handoff: HandoffRef? = nil, userAsk: String? = nil, brief: String? = nil, replyCount: Int? = nil, widget: Widget? = nil, connect: ConnectCard? = nil, connectStatus: ConnectStatus? = nil, widgetStatus: WidgetStatus? = nil, widgetValues: [String]? = nil, routineName: String? = nil) {
         self.id = id
         self.agentId = agentId
         self.role = role
@@ -338,12 +346,14 @@ struct Message: Codable, Hashable, Identifiable, Sendable {
         self.brief = brief
         self.replyCount = replyCount
         self.widget = widget
+        self.connect = connect
+        self.connectStatus = connectStatus
         self.widgetStatus = widgetStatus
         self.widgetValues = widgetValues
         self.routineName = routineName
     }
 
-    enum CodingKeys: String, CodingKey { case id, agentId, role, content, images, createdAt, senderId, senderName, senderAvatar, hop, mentions, kind, replyTo, handoff, userAsk, brief, replyCount, widget, widgetStatus, widgetValues, routineName }
+    enum CodingKeys: String, CodingKey { case id, agentId, role, content, images, createdAt, senderId, senderName, senderAvatar, hop, mentions, kind, replyTo, handoff, userAsk, brief, replyCount, widget, connect, connectStatus, widgetStatus, widgetValues, routineName }
 
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
@@ -365,6 +375,8 @@ struct Message: Codable, Hashable, Identifiable, Sendable {
         brief = try container.decodeIfPresent(String.self, forKey: .brief)
         replyCount = try container.decodeIfPresent(Int.self, forKey: .replyCount)
         widget = try container.decodeIfPresent(Widget.self, forKey: .widget)
+        connect = try container.decodeIfPresent(ConnectCard.self, forKey: .connect)
+        connectStatus = try container.decodeIfPresent(ConnectStatus.self, forKey: .connectStatus)
         widgetStatus = try container.decodeIfPresent(WidgetStatus.self, forKey: .widgetStatus)
         widgetValues = try container.decodeIfPresent([String].self, forKey: .widgetValues)
         routineName = try container.decodeIfPresent(String.self, forKey: .routineName)
@@ -390,6 +402,8 @@ struct Message: Codable, Hashable, Identifiable, Sendable {
         try container.encode(brief, forKey: .brief)
         try container.encodeIfPresent(replyCount, forKey: .replyCount)
         try container.encodeIfPresent(widget, forKey: .widget)
+        try container.encodeIfPresent(connect, forKey: .connect)
+        try container.encodeIfPresent(connectStatus, forKey: .connectStatus)
         try container.encodeIfPresent(widgetStatus, forKey: .widgetStatus)
         try container.encodeIfPresent(widgetValues, forKey: .widgetValues)
         try container.encode(routineName, forKey: .routineName)
@@ -502,6 +516,58 @@ struct WidgetReply: Codable, Hashable, Identifiable, Sendable {
     }
 }
 
+struct ConnectCard: Codable, Hashable, Sendable {
+    var prompt: String
+    var pluginId: String
+    var helpText: String?
+
+    init(prompt: String, pluginId: String, helpText: String? = nil) {
+        self.prompt = prompt
+        self.pluginId = pluginId
+        self.helpText = helpText
+    }
+
+    enum CodingKeys: String, CodingKey { case prompt, pluginId, helpText }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        prompt = try container.decode(String.self, forKey: .prompt)
+        pluginId = try container.decode(String.self, forKey: .pluginId)
+        helpText = try container.decodeIfPresent(String.self, forKey: .helpText)
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(prompt, forKey: .prompt)
+        try container.encode(pluginId, forKey: .pluginId)
+        try container.encode(helpText, forKey: .helpText)
+    }
+}
+
+struct ConnectReply: Codable, Hashable, Identifiable, Sendable {
+    var id: String?
+    var dismissed: Bool?
+
+    init(id: String? = nil, dismissed: Bool? = nil) {
+        self.id = id
+        self.dismissed = dismissed
+    }
+
+    enum CodingKeys: String, CodingKey { case id, dismissed }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decodeIfPresent(String.self, forKey: .id)
+        dismissed = try container.decodeIfPresent(Bool.self, forKey: .dismissed)
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encodeIfPresent(id, forKey: .id)
+        try container.encodeIfPresent(dismissed, forKey: .dismissed)
+    }
+}
+
 struct MessageCreate: Codable, Hashable, Sendable {
     var content: String?
     var images: [ImageIn]?
@@ -509,17 +575,19 @@ struct MessageCreate: Codable, Hashable, Sendable {
     var replyTo: String?
     var channelId: String?
     var widgetReply: WidgetReply?
+    var connectReply: ConnectReply?
 
-    init(content: String? = nil, images: [ImageIn]? = nil, mentions: [String]? = nil, replyTo: String? = nil, channelId: String? = nil, widgetReply: WidgetReply? = nil) {
+    init(content: String? = nil, images: [ImageIn]? = nil, mentions: [String]? = nil, replyTo: String? = nil, channelId: String? = nil, widgetReply: WidgetReply? = nil, connectReply: ConnectReply? = nil) {
         self.content = content
         self.images = images
         self.mentions = mentions
         self.replyTo = replyTo
         self.channelId = channelId
         self.widgetReply = widgetReply
+        self.connectReply = connectReply
     }
 
-    enum CodingKeys: String, CodingKey { case content, images, mentions, replyTo, channelId, widgetReply }
+    enum CodingKeys: String, CodingKey { case content, images, mentions, replyTo, channelId, widgetReply, connectReply }
 
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
@@ -529,6 +597,7 @@ struct MessageCreate: Codable, Hashable, Sendable {
         replyTo = try container.decodeIfPresent(String.self, forKey: .replyTo)
         channelId = try container.decodeIfPresent(String.self, forKey: .channelId)
         widgetReply = try container.decodeIfPresent(WidgetReply.self, forKey: .widgetReply)
+        connectReply = try container.decodeIfPresent(ConnectReply.self, forKey: .connectReply)
     }
 
     func encode(to encoder: Encoder) throws {
@@ -539,6 +608,7 @@ struct MessageCreate: Codable, Hashable, Sendable {
         try container.encode(replyTo, forKey: .replyTo)
         try container.encode(channelId, forKey: .channelId)
         try container.encodeIfPresent(widgetReply, forKey: .widgetReply)
+        try container.encodeIfPresent(connectReply, forKey: .connectReply)
     }
 }
 
@@ -833,6 +903,59 @@ struct SkillInfo: Codable, Hashable, Sendable {
         try container.encode(description, forKey: .description)
         try container.encode(source, forKey: .source)
         try container.encode(path, forKey: .path)
+    }
+}
+
+struct Plugin: Codable, Hashable, Identifiable, Sendable {
+    enum Status: String, Codable, Hashable, Sendable {
+        case connected
+        case needsAuth
+    }
+
+    var id: String
+    var name: String
+    var status: Status
+
+    init(id: String, name: String, status: Status) {
+        self.id = id
+        self.name = name
+        self.status = status
+    }
+
+    enum CodingKeys: String, CodingKey { case id, name, status }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(String.self, forKey: .id)
+        name = try container.decode(String.self, forKey: .name)
+        status = try container.decode(Status.self, forKey: .status)
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(id, forKey: .id)
+        try container.encode(name, forKey: .name)
+        try container.encode(status, forKey: .status)
+    }
+}
+
+struct PluginAuth: Codable, Hashable, Sendable {
+    var authorizationUrl: String
+
+    init(authorizationUrl: String) {
+        self.authorizationUrl = authorizationUrl
+    }
+
+    enum CodingKeys: String, CodingKey { case authorizationUrl }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        authorizationUrl = try container.decode(String.self, forKey: .authorizationUrl)
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(authorizationUrl, forKey: .authorizationUrl)
     }
 }
 

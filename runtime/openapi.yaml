@@ -1,9 +1,9 @@
 openapi: 3.1.0
 info:
   title: Snorlax-Bot
-  version: 0.9.0
+  version: 0.10.0
   description: |
-    Locked v0.9 LAN contract. Clients use SNORLAX_URL + SNORLAX_TOKEN.
+    Locked v0.10 LAN contract. Clients use SNORLAX_URL + SNORLAX_TOKEN.
     They never call vLLM, never call tools, never call MCP, and never read
     the Spark filesystem. Additive workspace GETs are runtime reads of the
     existing sandbox (same roots as the tool loop), not a second tool loop.
@@ -55,7 +55,9 @@ info:
     from mcp.json under SNORLAX_DATA_DIR); clients never speak MCP. No
     marketplace UI, no Settings picker, no browser-use GUI, no screenshot
     stream, no terminal GUI. Question widgets are v0.8. Skills and cron
-    routines are v0.9.
+    routines are v0.9. MCP connect chrome is v0.10 (GET /v1/plugins +
+    POST /v1/plugins/{id}/auth + kind=connect). No Add-custom UI; hand-edited
+    mcp.json still works. Plugins list is Settings only, not the agent pane.
 
     Images persist and are returned; they are never sent to the model. No mDNS.
 
@@ -186,6 +188,33 @@ info:
     marketplace UI, event listeners, computer pane changes, Mac folder
     picker. Do not reintroduce computerPane.ts (helpers stay
     workspaceTree.ts).
+
+    v0.10: MCP connect chrome. Runtime still owns MCP (v0.7 mcp.json stdio
+    + LAN). Clients never speak MCP or the model. GET /v1/plugins returns
+    a bare array `{ id, name, status: connected|needsAuth }` (catalog may
+    be empty). POST /v1/plugins/{id}/auth returns `{ authorizationUrl }`
+    for the OS browser (desktop system browser; iOS
+    ASWebAuthenticationSession); the OAuth callback hits the runtime.
+    No uninstall / delete / store / search API this slice. No Add-custom
+    UI (hand-edited mcp.json still works). Connect card is Message
+    `kind=connect` (widget chrome family, NOT kind=widget) with
+    `{ prompt, helpText?, pluginId }` plus `connectStatus`
+    pending|connected|dismissed. SSE: persist, then `message.done`, stream
+    ends. No `connect.*` event on the card emit. Unknown events remain
+    ignorable. Answer is POST `{ connectReply: { id } }` or
+    `{ dismissed: true }` — not a user-right bubble and not a new user
+    Message. Dismiss does not wake and does not return a URL. Connect
+    `{ id }` stays pending until auth finishes and emits `connect.url`
+    `{ url, pluginId }` then ends (clients open the OS browser). The
+    OAuth callback (GET on Spark :8787, or POST complete with code+state)
+    PATCHes that Message to connectStatus=connected and continues the
+    agent turn (tools auto-run, no approval widgets). Sending the card
+    ends the turn until connect or dismiss. Isolation matches widgets:
+    A's 1:1 only A's cards; channel thread only, never the timeline; B
+    never paints in A's 1:1.
+    Plugins list is Settings only (runtime-global), not the agent pane.
+    Isolation, report-back, widgets, cron, seed DELETE 204, Mac oMLX, and
+    no Mac folder picker stand. OpenAPI **0.10.0**.
   license:
     name: Apache-2.0
     identifier: Apache-2.0
@@ -433,15 +462,29 @@ paths:
         Report-back into A's 1:1 is a normal assistant `kind=message` as A
         and does not copy B's tool lines or B's widgets. A turn that ran tools always
         finishes with a normal assistant `kind=message` (streamed and
-        persisted) unless the model asked a question card — then the POST
+        persisted) unless the model asked a question card —         then the POST
         SSE ends on that `kind=widget` `message.done` (no `widget.*` event).
-        Answer with `{ widgetReply: { id, values?, dismissed? } }` on that
-        transcript; that is not a user Message. Dismiss does not wake the
-        agent. A pick continues this POST as hop-0 with the values. A
+        A Connect card for an unauthenticated MCP plugin is the same
+        persist-then-`message.done` shape with `kind=connect` (no
+        `connect.*` event on emit). Answer with `{ widgetReply: { id, values?, dismissed? } }` on that
+        transcript; that is not a user Message. Connect is
+        `{ connectReply: { id } }` or `{ dismissed: true }` — also not a
+        user Message. Dismiss does not wake the
+        agent and does not return a URL. `{ id }` while the plugin still
+        needs auth stays pending, emits `event: connect.url` data
+        `{ url, pluginId }`, then ends this POST; the client opens the OS
+        browser. When OAuth completes (runtime GET callback or POST
+        `{ code, state }`), the same Message is PATCHed to
+        connectStatus=connected and the agent turn continues (tools
+        auto-run). If the plugin is already connected, `{ id }` PATCHes
+        connected and continues this POST as hop-0. A pick continues this
+        POST as hop-0 with the values. A
         normal content send while a card is pending is 409 unless
         dismissOnMoveOn (then auto-dismiss, no wake for the widget, then
-        the new user message). One pending widget per transcript (409 if
-        the model emits a second). Unknown id or already closed is 422.
+        the new user message). Connect pending has no dismiss-on-move-on:
+        content is 409 until connect or dismiss. One pending widget per transcript (409 if
+        the model emits a second). One pending connect card per transcript.
+        Unknown id or already closed is 422.
         Empty model text or an inference error after tools still
         produce that follow-up; do not end on only a `kind=tool` line or
         `event:error` with no saved assistant message. Live `tool.start` /
@@ -662,6 +705,56 @@ paths:
         "404":
           $ref: "#/components/responses/Error"
         "422":
+          $ref: "#/components/responses/Error"
+
+  /v1/plugins:
+    get:
+      summary: List runtime-owned MCP plugins
+      description: |
+        JSON array of Plugin (not wrapped): `{ id, name, status }` where
+        status is `connected` or `needsAuth`. Catalog may be empty.
+        Runtime-global (not per-agent). Clients never speak MCP; this is
+        Settings chrome only, not the agent pane. No store / search /
+        uninstall this slice. Hand-edited mcp.json under SNORLAX_DATA_DIR
+        still loads stdio and LAN servers.
+      operationId: listPlugins
+      responses:
+        "200":
+          description: JSON array of Plugin
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Plugin"
+        "401":
+          $ref: "#/components/responses/Error"
+
+  /v1/plugins/{id}/auth:
+    parameters:
+      - $ref: "#/components/parameters/Id"
+    post:
+      summary: Start plugin browser auth
+      description: |
+        Returns `{ authorizationUrl }` for the OS browser (desktop system
+        browser; iOS ASWebAuthenticationSession). The OAuth callback hits
+        the runtime. Unknown id is 404. After the browser finishes,
+        GET /v1/plugins shows `connected` and tools auto-run (no approval
+        widgets). A pending kind=connect card for this plugin is PATCHed
+        to connected and that agent turn continues. Connect-card Connect
+        tap is POST connectReply, which emits `connect.url` when the
+        plugin still needs auth.
+      operationId: startPluginAuth
+      responses:
+        "200":
+          description: Browser URL
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PluginAuth"
+        "401":
+          $ref: "#/components/responses/Error"
+        "404":
           $ref: "#/components/responses/Error"
 
   /v1/images/{id}:
@@ -925,15 +1018,16 @@ components:
             $ref: "#/components/schemas/Mention"
         kind:
           type: string
-          enum: [message, handoff, tool, widget]
+          enum: [message, handoff, tool, widget, connect]
           description: |
             Channel handoff root is `handoff` (LEFT card authored as A).
             Tool activity is `tool` (LEFT 12px muted status, short content
             like `Read src/a.ts` / `Ran ls` / `Fetched …`, same senderId as
             the agent). Question card is `widget` (LEFT card under the
             speaking agent's 20px avatar + 13px name; not a user-right
-            bubble and not a token stream). Default `message`. Do not
-            drop kind=message|handoff|tool.
+            bubble and not a token stream). Connect card is `connect`
+            (same LEFT chrome family as widgets, NOT kind=widget). Default
+            `message`. Do not drop kind=message|handoff|tool.
         replyTo:
           type: [string, "null"]
           description: Channel thread id. Null on timeline roots and on 1:1s.
@@ -963,6 +1057,19 @@ components:
             are widgetStatus / widgetValues on this Message so GET can
             re-render the same card. Absent on other kinds. Never a
             user-right bubble.
+        connect:
+          $ref: "#/components/schemas/ConnectCard"
+          description: |
+            Set on kind=connect. Card fields only. Status lives on
+            connectStatus on this Message so GET can re-render the same
+            card. Absent on other kinds. Never a user-right bubble.
+        connectStatus:
+          type: string
+          enum: [pending, connected, dismissed]
+          description: |
+            Set on kind=connect. pending until auth finishes or dismiss;
+            connected after the OAuth callback PATCHes this row; dismissed
+            after `{ dismissed: true }`.
         widgetStatus:
           type: string
           enum: [pending, resolved, dismissed]
@@ -1051,6 +1158,41 @@ components:
             widgetStatus=dismissed. Does not create a user Message and
             does not wake the agent.
 
+    ConnectCard:
+      type: object
+      required: [prompt, pluginId]
+      properties:
+        prompt:
+          type: string
+          description: |
+            Natural prompt on the card, e.g. `Connect Slack to read your
+            channels.`
+        pluginId:
+          type: string
+          description: Plugin id from GET /v1/plugins.
+        helpText:
+          type: [string, "null"]
+          description: Optional 12px muted help, e.g. `Opens your browser to sign in.`
+
+    ConnectReply:
+      type: object
+      properties:
+        id:
+          type: string
+          description: |
+            Message id of the pending kind=connect row. Required unless
+            dismissed is true (then the latest pending card in this
+            transcript is used).
+        dismissed:
+          type: boolean
+          default: false
+          description: |
+            Decline the pending card. Updates that same Message to
+            connectStatus=dismissed. Does not create a user Message and
+            does not wake the agent. `{ dismissed: true }` is enough;
+            `{ id }` after the browser finishes sets connected and wakes
+            the agent so tools auto-run.
+
     MessageCreate:
       type: object
       properties:
@@ -1059,9 +1201,11 @@ components:
           minLength: 0
           maxLength: 32000
           description: |
-            User text. Required unless widgetReply. Empty is allowed only
-            for a widgetReply post. A normal send while a question is
-            pending is 409 unless dismissOnMoveOn.
+            User text. Required unless widgetReply or connectReply. Empty
+            is allowed only for a widgetReply or connectReply post. A
+            normal send while a question is pending is 409 unless
+            dismissOnMoveOn. A send while a connect card is pending is
+            409 until connect or dismiss.
         images:
           type: array
           items:
@@ -1097,6 +1241,13 @@ components:
             that same Message. `{ id, dismissed: true }` declines it and
             does not wake the agent. Not a user Message. Not a user-right
             bubble.
+        connectReply:
+          $ref: "#/components/schemas/ConnectReply"
+          description: |
+            Answer the pending connect card. `{ id }` marks that same
+            Message connected and wakes the agent. `{ dismissed: true }`
+            declines it and does not wake the agent. Not a user Message.
+            Not a user-right bubble.
 
     MessageDelta:
       type: object
@@ -1238,6 +1389,31 @@ components:
         path:
           type: string
           description: Path relative to the workspace or skills dir.
+
+    Plugin:
+      type: object
+      required: [id, name, status]
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        status:
+          type: string
+          enum: [connected, needsAuth]
+          description: |
+            `connected` when the runtime has a live MCP session.
+            `needsAuth` otherwise (including disabled / not signed in).
+
+    PluginAuth:
+      type: object
+      required: [authorizationUrl]
+      properties:
+        authorizationUrl:
+          type: string
+          description: |
+            URL for the OS browser. OAuth callback hits the runtime.
+            Clients never speak MCP.
 
     ErrorBody:
       type: object

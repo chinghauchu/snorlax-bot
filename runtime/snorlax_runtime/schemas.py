@@ -106,6 +106,25 @@ class WidgetReply(BaseModel):
     dismissed: bool = False
 
 
+class ConnectCard(BaseModel):
+    prompt: str
+    pluginId: str
+    helpText: str | None = None
+
+
+class ConnectReply(BaseModel):
+    id: str | None = None
+    dismissed: bool = False
+
+    @model_validator(mode="after")
+    def id_or_dismissed(self) -> ConnectReply:
+        if self.dismissed:
+            return self
+        if not (self.id or "").strip():
+            raise ValueError("id required")
+        return self
+
+
 class Message(BaseModel):
     id: str
     agentId: str
@@ -127,6 +146,8 @@ class Message(BaseModel):
     widget: Widget | None = None
     widgetStatus: str | None = None
     widgetValues: list[str] = Field(default_factory=list)
+    connect: ConnectCard | None = None
+    connectStatus: str | None = None
     routineName: str | None = None
 
 
@@ -146,10 +167,11 @@ class MessageCreate(BaseModel):
         ),
     )
     widgetReply: WidgetReply | None = None
+    connectReply: ConnectReply | None = None
 
     @model_validator(mode="after")
     def content_or_widget_answer(self) -> MessageCreate:
-        if self.widgetReply is not None:
+        if self.widgetReply is not None or self.connectReply is not None:
             return self
         if not (self.content or "").strip():
             raise ValueError("content must not be empty")
@@ -223,3 +245,13 @@ class SkillInfo(BaseModel):
     description: str
     source: str
     path: str
+
+
+class Plugin(BaseModel):
+    id: str
+    name: str
+    status: str
+
+
+class PluginAuth(BaseModel):
+    authorizationUrl: str

@@ -70,6 +70,19 @@ struct RuntimeClient: Sendable {
         try await get("v1/agents/\(Self.encode(agentId))/routines")
     }
 
+    func listPlugins() async throws -> [Plugin] {
+        try await get("v1/plugins")
+    }
+
+    func startPluginAuth(id: String) async throws -> PluginAuth {
+        try await send(
+            "v1/plugins/\(Self.encode(id))/auth",
+            method: "POST",
+            body: [String: String](),
+            expected: 200
+        )
+    }
+
     func patchRoutine(agentId: String, routineId: String, enabled: Bool) async throws -> Routine {
         try await send(
             "v1/agents/\(Self.encode(agentId))/routines/\(Self.encode(routineId))",
@@ -98,6 +111,7 @@ struct RuntimeClient: Sendable {
         replyTo: String? = nil,
         channelId: String? = nil,
         widgetReply: WidgetReply? = nil,
+        connectReply: ConnectReply? = nil,
         onEvent: @escaping @Sendable (StreamEvent) -> Void
     ) async throws {
         var request = try makeRequest(
@@ -109,7 +123,8 @@ struct RuntimeClient: Sendable {
                 mentions: mentions.isEmpty ? nil : mentions,
                 replyTo: replyTo,
                 channelId: channelId,
-                widgetReply: widgetReply
+                widgetReply: widgetReply,
+                connectReply: connectReply
             )
         )
         request.setValue("text/event-stream", forHTTPHeaderField: "Accept")
@@ -177,7 +192,13 @@ struct RuntimeClient: Sendable {
         case delta(id: String, text: String, senderId: String?, senderName: String?, senderAvatar: String?)
         case done(Message)
         case tool(id: String, summary: String, done: Bool, senderId: String?, senderName: String?)
+        case connectUrl(url: String, pluginId: String)
         case error(String)
+
+        private struct ConnectUrl: Decodable, Sendable {
+            var url: String
+            var pluginId: String
+        }
 
         static func parse(name: String, data: String) -> StreamEvent? {
             guard let payload = data.data(using: .utf8) else { return nil }
@@ -205,6 +226,9 @@ struct RuntimeClient: Sendable {
                     senderId: body.senderId,
                     senderName: body.senderName
                 )
+            case "connect.url":
+                guard let body = try? decoder.decode(ConnectUrl.self, from: payload) else { return nil }
+                return .connectUrl(url: body.url, pluginId: body.pluginId)
             case "error":
                 let message = (try? decoder.decode(ErrorBody.self, from: payload))?.error ?? data
                 return .error(message)

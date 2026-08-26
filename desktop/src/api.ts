@@ -4,6 +4,8 @@ import type {
   ChatMessage,
   ImageIn,
   MessageDelta,
+  Plugin,
+  PluginAuth,
   Routine,
   RoutinePatch,
   RuntimeHealth,
@@ -195,6 +197,7 @@ export type StreamHandlers = {
     senderId?: string;
     senderName?: string;
   }) => void;
+  onConnectUrl?: (url: string, pluginId: string) => void;
 };
 
 export async function sendMessage(
@@ -208,6 +211,7 @@ export async function sendMessage(
   channelId?: string | null,
   extra?: {
     widgetReply?: { id: string; values?: string[]; dismissed?: boolean };
+    connectReply?: { id?: string; dismissed?: boolean };
   },
 ): Promise<void> {
   const body: {
@@ -217,6 +221,7 @@ export async function sendMessage(
     replyTo?: string;
     channelId?: string;
     widgetReply?: { id: string; values?: string[]; dismissed?: boolean };
+    connectReply?: { id?: string; dismissed?: boolean };
   } = {
     content,
     images,
@@ -225,6 +230,7 @@ export async function sendMessage(
   if (replyTo) body.replyTo = replyTo;
   if (channelId) body.channelId = channelId;
   if (extra?.widgetReply) body.widgetReply = extra.widgetReply;
+  if (extra?.connectReply) body.connectReply = extra.connectReply;
   const response = await fetch(
     `${session.baseUrl}/v1/agents/${encodeURIComponent(agentId)}/messages`,
     {
@@ -292,6 +298,10 @@ function dispatchSse(raw: string, handlers: StreamHandlers): void {
       senderId: typeof record.senderId === "string" ? record.senderId : undefined,
       senderName: typeof record.senderName === "string" ? record.senderName : undefined,
     });
+  } else if (event === "connect.url") {
+    const url = typeof record.url === "string" ? record.url : "";
+    const pluginId = typeof record.pluginId === "string" ? record.pluginId : "";
+    if (url) handlers.onConnectUrl?.(url, pluginId);
   }
 }
 
@@ -350,4 +360,39 @@ export async function readWorkspaceFile(
     { headers: headers(session) },
   );
   return json<WorkspaceFile>(response);
+}
+
+export async function listPlugins(session: Session): Promise<Plugin[]> {
+  const response = await fetch(`${session.baseUrl}/v1/plugins`, {
+    headers: headers(session),
+  });
+  return asList<Plugin>(await json<unknown>(response), "plugins");
+}
+
+export async function startPluginAuth(
+  session: Session,
+  pluginId: string,
+): Promise<PluginAuth> {
+  const response = await fetch(
+    `${session.baseUrl}/v1/plugins/${encodeURIComponent(pluginId)}/auth`,
+    { method: "POST", headers: headers(session) },
+  );
+  return json<PluginAuth>(response);
+}
+
+export async function waitUntilPluginConnected(
+  session: Session,
+  pluginId: string,
+  opts?: { timeoutMs?: number; intervalMs?: number },
+): Promise<boolean> {
+  const timeout = opts?.timeoutMs ?? 60_000;
+  const interval = opts?.intervalMs ?? 400;
+  const start = Date.now();
+  while (Date.now() - start < timeout) {
+    const rows = await listPlugins(session);
+    const row = rows.find((item) => item.id === pluginId);
+    if (row?.status === "connected") return true;
+    await new Promise((resolve) => setTimeout(resolve, interval));
+  }
+  return false;
 }

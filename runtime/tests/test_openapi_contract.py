@@ -54,8 +54,17 @@ def test_protocol_openapi_is_locked_v0_contract() -> None:
     assert "SNORLAX_SEARCH_PROVIDER" in text
     assert "sharedProject" in text
     assert "kind=tool" in text
-    assert "enum: [message, handoff, tool, widget]" in text
+    assert "enum: [message, handoff, tool, widget, connect]" in text
     assert "kind=widget" in text
+    assert "kind=connect" in text
+    assert "connectReply" in text
+    assert "connectStatus" in text
+    assert "/v1/plugins" in text
+    assert "/v1/plugins/{id}/auth" in text
+    assert "connect.url" in text
+    assert "authorizationUrl" in text
+    assert "needsAuth" in text
+    assert "NOT kind=widget" in text or "not kind=widget" in text.lower()
     assert "widgetStatus" in text
     assert "widgetValues" in text
     assert "ask_user_question" in text
@@ -79,7 +88,7 @@ def test_protocol_openapi_is_locked_v0_contract() -> None:
     assert "never call MCP" in text
     assert "SNORLAX_DATA_DIR" in text
     assert "No MCP, no browser-use GUI" not in text
-    assert "0.9.0" in text
+    assert "0.10.0" in text
     assert "/v1/agents/{id}/routines" in text
     assert "/v1/agents/{id}/skills" in text
     assert "SKILL.md" in text

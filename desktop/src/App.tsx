@@ -18,11 +18,14 @@ import {
   deleteAgent,
   listAgents,
   listMessages,
+  listPlugins,
   listRoutines,
   patchAgent,
   patchRoutine,
   resolveMediaUrl,
   sendMessage,
+  startPluginAuth,
+  waitUntilPluginConnected,
   type StreamHandlers,
 } from "./api";
 import {
@@ -66,11 +69,15 @@ import {
 import { showThinkingLine, THINKING_LABEL } from "./thinking";
 import { ComputerPane } from "./ComputerPane";
 import { WidgetCard } from "./WidgetCard";
+import { ConnectCard } from "./ConnectCard";
+import { isConnect, pluginStatusLabel } from "./connect";
 import { isWidget } from "./widget";
+import { openOsBrowser } from "./openUrl";
 import type {
   Agent,
   ChatMessage,
   ImageIn,
+  Plugin,
   Routine,
   Session,
   ThemePref,
@@ -248,6 +255,7 @@ export function App() {
   const [profileSharedProject, setProfileSharedProject] = useState(false);
   const [profileSaving, setProfileSaving] = useState(false);
   const [routines, setRoutines] = useState<Routine[]>([]);
+  const [plugins, setPlugins] = useState<Plugin[]>([]);
   const [computerOpen, setComputerOpen] = useState(true);
   const [workspaceTick, setWorkspaceTick] = useState(0);
 
@@ -417,6 +425,24 @@ export function App() {
     }
     void loadRoster(session);
   }, [session, loadRoster]);
+
+  useEffect(() => {
+    if (!session) {
+      setPlugins([]);
+      return;
+    }
+    let cancelled = false;
+    void listPlugins(session)
+      .then((rows) => {
+        if (!cancelled) setPlugins(rows);
+      })
+      .catch(() => {
+        if (!cancelled) setPlugins([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [session, settingsOpen]);
 
   async function loadConversation(id: string, thread: string | null) {
     setActiveId(id);
@@ -669,7 +695,10 @@ export function App() {
     localImages?: ChatMessage["images"];
     mentionIds?: string[];
     optimisticUser?: boolean;
-  extra?: { widgetReply?: { id: string; values?: string[]; dismissed?: boolean } };
+  extra?: {
+    widgetReply?: { id: string; values?: string[]; dismissed?: boolean };
+    connectReply?: { id?: string; dismissed?: boolean };
+  };
   }) {
     if (!session || !active || busy) return;
     const content = opts.content;
@@ -677,6 +706,7 @@ export function App() {
     const localImages = opts.localImages ?? [];
     const mentionIds = opts.mentionIds ?? [];
     const extra = opts.extra;
+    let openedPluginId: string | null = null;
     let userMsg: ChatMessage | null = null;
     if (opts.optimisticUser) {
       userMsg = {
@@ -759,6 +789,10 @@ export function App() {
           setWorkspaceTick((n) => n + 1);
         }
       },
+      onConnectUrl(url, pluginId) {
+        openedPluginId = pluginId;
+        void openOsBrowser(url);
+      },
     };
     try {
       await sendMessage(
@@ -772,6 +806,10 @@ export function App() {
         active.kind === "channel" ? undefined : lastExtraChannelId.current,
         extra,
       );
+      if (openedPluginId) {
+        await waitUntilPluginConnected(session, openedPluginId);
+        await refreshPlugins();
+      }
       const listed = await listMessages(
         session,
         active.id,
@@ -847,6 +885,48 @@ export function App() {
     await submitTurn({
       content: "",
       extra: { widgetReply: { id, dismissed: true } },
+    });
+  }
+
+  async function refreshPlugins(next: Session | null = session) {
+    if (!next) {
+      setPlugins([]);
+      return;
+    }
+    try {
+      setPlugins(await listPlugins(next));
+    } catch {
+      setPlugins([]);
+    }
+  }
+
+  async function connectPlugin(pluginId: string): Promise<boolean> {
+    if (!session) return false;
+    try {
+      const started = await startPluginAuth(session, pluginId);
+      await openOsBrowser(started.authorizationUrl);
+      const ok = await waitUntilPluginConnected(session, pluginId);
+      await refreshPlugins();
+      return ok;
+    } catch (err) {
+      setComposerError(describeError(err));
+      return false;
+    }
+  }
+
+  async function answerConnect(id: string, _pluginId: string) {
+    setComposerError(null);
+    await submitTurn({
+      content: "",
+      extra: { connectReply: { id } },
+    });
+  }
+
+  async function dismissConnect(id: string) {
+    setComposerError(null);
+    await submitTurn({
+      content: "",
+      extra: { connectReply: { id, dismissed: true } },
     });
   }
 
@@ -940,7 +1020,9 @@ export function App() {
       index > lastUserIdx &&
       message.role === "assistant" &&
       !isHandoffRoot(message) &&
-      !isToolLine(message),
+      !isToolLine(message) &&
+      !isWidget(message) &&
+      !isConnect(message),
   );
   const showStandaloneTraces =
     liveTraces.length > 0 && liveAssistantIdx < 0;
@@ -1201,6 +1283,15 @@ export function App() {
                         disabled={busy}
                         onReply={(id, values) => void answerWidget(id, values)}
                         onDismiss={(id) => void dismissWidget(id)}
+                      />
+                    ) : isConnect(message) && message.connect ? (
+                      <ConnectCard
+                        messageId={message.id}
+                        card={message.connect}
+                        status={message.connectStatus}
+                        disabled={busy}
+                        onConnect={(id, pluginId) => void answerConnect(id, pluginId)}
+                        onDismiss={(id) => void dismissConnect(id)}
                       />
                     ) : (
                       <div className={`bubble ${mine ? "user" : "agent"}`}>
@@ -1738,6 +1829,30 @@ export function App() {
                   </button>
                 </span>
               </label>
+              <section className="settings-plugins" aria-label="Plugins">
+                <p className="settings-plugins-header">Plugins</p>
+                {plugins.length === 0 ? (
+                  <p className="plugins-empty">No plugins yet.</p>
+                ) : (
+                  plugins.map((plugin) => (
+                    <div key={plugin.id} className="plugin-row">
+                      <span className="plugin-name">{plugin.name}</span>
+                      <span className="plugin-status">
+                        {pluginStatusLabel(plugin.status)}
+                      </span>
+                      {plugin.status !== "connected" ? (
+                        <button
+                          type="button"
+                          className="plugin-connect"
+                          onClick={() => void connectPlugin(plugin.id)}
+                        >
+                          Connect
+                        </button>
+                      ) : null}
+                    </div>
+                  ))
+                )}
+              </section>
             </div>
           </div>
         </div>

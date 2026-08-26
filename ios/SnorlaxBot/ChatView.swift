@@ -102,6 +102,7 @@ struct ChatView: View {
                                 && !message.isHandoffRoot
                                 && !message.isToolLine
                                 && !message.isWidget
+                                && !message.isConnect
                         }
                         let toolThisTurn: Bool = {
                             guard let lastUserIdx else { return false }
@@ -426,6 +427,9 @@ private struct MessageBubble: View {
                     .padding(.horizontal, 12)
             } else if message.isWidget, message.widget != nil {
                 WidgetCardView(message: message)
+                    .padding(.horizontal, 12)
+            } else if message.isConnect, message.connect != nil {
+                ConnectCardView(message: message)
                     .padding(.horizontal, 12)
             } else {
             HStack(alignment: .top, spacing: 0) {

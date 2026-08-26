@@ -87,6 +87,7 @@ extension Message {
     var isHandoffRoot: Bool { kind == .handoff && replyTo == nil }
     var isToolLine: Bool { kind == .tool }
     var isWidget: Bool { kind == .widget || widget != nil }
+    var isConnect: Bool { kind == .connect || connect != nil }
     var hasRoutineKicker: Bool {
         guard let routineName, !routineName.isEmpty else { return false }
         return true
