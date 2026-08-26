@@ -215,23 +215,40 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * List cron routines assigned to this agent
-         * @description JSON array of Routine (not wrapped): `{ id, name, skill, schedule,
-         *     enabled }`. Missing agent is 404. kind=channel is 409 (routines
-         *     are agent-only). Used by the agent info pane (list + enable/pause
-         *     only). schedule is 5-field cron in Asia/Taipei. Optional
-         *     scheduleLabel is a display string. Humanized
-         *     `{skill} · {Weekdays 9:00}` is a client concern.
+         * List routines assigned to this agent
+         * @description JSON array of Routine (not wrapped). A routine is cron XOR
+         *     trigger. `kind` is `cron` | `webhook` | `slack` | `github`.
+         *     Cron rows have `schedule` (5-field, Asia/Taipei) and optional
+         *     `scheduleLabel` (`Weekdays 9:00`). Webhook rows have
+         *     `webhookUrl` (full URL with secret token in the path; Copy on
+         *     the identity pane; clients must not paint it). Slack/GitHub
+         *     rows are omitted unless GET /v1/plugins shows that plugin
+         *     status=connected; when present they may have `label`
+         *     (e.g. `Slack #eng`). Null fields are
+         *     omitted (`webhookUrl` is absent on cron rows). Missing agent
+         *     is 404. kind=channel is 409 (routines are agent-only). Used by
+         *     the agent info pane (list + enable/pause + Copy for webhook
+         *     URL). No New / create / edit / delete UI. Humanized trigger
+         *     line (`Webhook` / `Weekdays 9:00`) is a client concern. Webhook
+         *     rows show 12px muted Copy left of the switch (`Copied` for 1.5s);
+         *     do not paint webhookUrl. Slack/GitHub rows have no Copy. Do not
+         *     emit Connect cards from the pane.
          */
         get: operations["listRoutines"];
         put?: never;
         /**
-         * Seed a cron routine for this agent
-         * @description Test/runtime seed. Body `{ name, skill, schedule }`. One routine
-         *     = one agent + one SKILL.md slug. schedule is 5-field cron or a
-         *     named hour (weekdays at 9am), Asia/Taipei. Clients have no create
-         *     UI this slice. 422 unknown skill / bad cron / channel id.
-         *     Missing agent is 404. No DELETE this slice.
+         * Seed a routine for this agent
+         * @description Test/runtime seed. Body is cron XOR trigger. Cron:
+         *     `{ name, skill, schedule }` (5-field or named hour, Asia/Taipei).
+         *     Webhook: `{ name, skill, trigger: { type: webhook } }` — 201
+         *     with `webhookUrl` (token in the path). POST of an event routine
+         *     without a trigger is 422. POST with both schedule and trigger is
+         *     422. Slack/GitHub `{ type: slack|github, label? }` is 422 unless
+         *     GET /v1/plugins shows that plugin status=connected; inbound
+         *     Slack/GitHub is not in this slice (use webhook). Webhook works
+         *     with zero plugins. Clients have no create UI this slice. 422
+         *     unknown skill / bad cron / channel id. Missing agent is 404.
+         *     No DELETE this slice.
          */
         post: operations["createRoutine"];
         delete?: never;
@@ -263,6 +280,35 @@ export interface paths {
          *     Unknown routine is 404. kind=channel is 409.
          */
         patch: operations["patchRoutine"];
+        trace?: never;
+    };
+    "/v1/hooks/{token}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Secret token minted into webhookUrl. Not the routine id. */
+                token: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Fire a webhook routine
+         * @description POST the minted webhookUrl. Does not use SNORLAX_TOKEN. The
+         *     secret is the path token, not a query string and not a header.
+         *     Unknown token, a non-webhook routine, or a paused webhook is
+         *     404 and does not run. Success is 204, then the runtime runs
+         *     that agent's SKILL.md into that agent's 1:1 as LEFT kind=message
+         *     senderId=A with routineName. No catch-up. Isolation stands:
+         *     never paint B in A's 1:1.
+         */
+        post: operations["fireWebhook"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
         trace?: never;
     };
     "/v1/agents/{id}/skills": {
@@ -653,7 +699,8 @@ export interface components {
              */
             widgetValues?: string[];
             /**
-             * @description Set when this assistant Message is a cron-routine result.
+             * @description Set when this assistant Message is a routine result
+             *     (cron or webhook). 12px kicker under the sender name.
              *     12px muted kicker under the sender name. Absent on ordinary
              *     turns. Not a channel post.
              */
@@ -829,18 +876,34 @@ export interface components {
             name: string;
             /** @description SKILL.md slug this routine fires. */
             skill: string;
-            /** @description 5-field cron. Interpreted in Asia/Taipei. */
-            schedule: string;
+            /**
+             * @description cron XOR webhook / slack / github.
+             * @enum {string}
+             */
+            kind: "cron" | "webhook" | "slack" | "github";
+            /** @description Cron only. 5-field cron in Asia/Taipei. Present only for kind=cron. Omitted otherwise. */
+            schedule?: string;
             /** @description false is paused. Resume is enabled true. */
             enabled: boolean;
-            /** @description Optional display string (Weekdays 9:00). */
+            /** @description Cron display (`Weekdays 9:00`). Present only for kind=cron. */
             scheduleLabel?: string;
+            /** @description Present only for kind=webhook. Full POST URL with the secret token in the path (`/v1/hooks/{token}`), not query. Copy this from the identity pane. Clients must not paint it as the muted line. */
+            webhookUrl?: string;
+            /** @description Optional Slack/GitHub display (e.g. `Slack #eng`, `GitHub owner/repo`). Omitted for cron and webhook. */
+            label?: string;
+        };
+        RoutineTrigger: {
+            /** @description webhook, slack, or github. webhook always works (zero plugins). slack/github 422 unless GET /v1/plugins shows that plugin status=connected; inbound Slack/GitHub delivery is not in this slice. */
+            type: string;
+            /** @description Optional Slack/GitHub display, e.g. Slack */
+            label?: string;
         };
         RoutineCreate: {
             name: string;
             skill: string;
-            /** @description 5-field cron or a named hour (weekdays at 9am). */
-            schedule: string;
+            /** @description Cron XOR trigger. 5-field cron or a named hour (weekdays at 9am). Asia/Taipei. */
+            schedule?: string;
+            trigger?: components["schemas"]["RoutineTrigger"];
         };
         RoutinePatch: {
             /** @description true = enable/resume. false = pause. */
@@ -1216,6 +1279,28 @@ export interface operations {
             404: components["responses"]["Error"];
             409: components["responses"]["Error"];
             422: components["responses"]["Error"];
+        };
+    };
+    fireWebhook: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Secret token minted into webhookUrl. Not the routine id. */
+                token: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Fired; no body */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            404: components["responses"]["Error"];
         };
     };
     listSkills: {

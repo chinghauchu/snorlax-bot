@@ -148,8 +148,13 @@ CREATE TABLE IF NOT EXISTS routines (
     last_run_at TEXT,
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL,
+    trigger_type TEXT NOT NULL DEFAULT 'cron',
+    webhook_key TEXT,
     FOREIGN KEY (agent_id) REFERENCES agents(id) ON DELETE CASCADE
 );
+
+CREATE UNIQUE INDEX IF NOT EXISTS routines_webhook_key
+ON routines(webhook_key) WHERE webhook_key IS NOT NULL;
 """
 
 ROSTER_SEEDED_KEY = "roster_seeded"
@@ -237,6 +242,20 @@ class Store:
             "  SELECT name FROM agents WHERE agents.id = messages.sender_id"
             ") WHERE role = 'assistant' AND (sender_name IS NULL OR sender_name = '' "
             "OR sender_name = 'User')"
+        )
+        routine_cols = await self._columns("routines")
+        if "trigger_type" not in routine_cols:
+            await self.conn.execute(
+                "ALTER TABLE routines ADD COLUMN trigger_type "
+                "TEXT NOT NULL DEFAULT 'cron'"
+            )
+        if "webhook_key" not in routine_cols:
+            await self.conn.execute(
+                "ALTER TABLE routines ADD COLUMN webhook_key TEXT"
+            )
+        await self.conn.execute(
+            "CREATE UNIQUE INDEX IF NOT EXISTS routines_webhook_key "
+            "ON routines(webhook_key) WHERE webhook_key IS NOT NULL"
         )
         await self.conn.commit()
 
@@ -516,15 +535,24 @@ class Store:
         return cur.rowcount > 0
 
     def _routine_public(self, row: Any) -> dict[str, Any]:
+        keys = set(row.keys())
+        trigger_type = "cron"
+        if "trigger_type" in keys and row["trigger_type"]:
+            trigger_type = str(row["trigger_type"])
+        webhook_key = None
+        if "webhook_key" in keys and row["webhook_key"]:
+            webhook_key = str(row["webhook_key"])
         return {
             "id": row["id"],
             "name": row["name"],
             "skill": row["skill"],
-            "schedule": row["cron"],
+            "schedule": row["cron"] or None,
             "enabled": bool(row["enabled"]),
-            "scheduleLabel": row["schedule_label"],
+            "scheduleLabel": row["schedule_label"] or None,
             "agentId": row["agent_id"],
             "lastRunAt": row["last_run_at"],
+            "triggerType": trigger_type,
+            "webhookKey": webhook_key,
         }
 
     async def list_routines(self, agent_id: str) -> list[dict[str, Any]]:
@@ -567,14 +595,17 @@ class Store:
         cron: str,
         schedule_label: str,
         enabled: bool = True,
+        trigger_type: str = "cron",
+        webhook_key: str | None = None,
     ) -> dict[str, Any]:
         routine_id = new_id("rtn")
         now = utcnow()
+        kind = (trigger_type or "cron").strip().lower() or "cron"
         await self.conn.execute(
             "INSERT INTO routines "
             "(id, agent_id, name, skill, cron, schedule_label, enabled, "
-            "last_run_at, created_at, updated_at) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, NULL, ?, ?)",
+            "last_run_at, created_at, updated_at, trigger_type, webhook_key) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, NULL, ?, ?, ?, ?)",
             (
                 routine_id,
                 agent_id,
@@ -585,6 +616,8 @@ class Store:
                 1 if enabled else 0,
                 now,
                 now,
+                kind,
+                webhook_key,
             ),
         )
         await self.conn.commit()
@@ -631,6 +664,22 @@ class Store:
             (when, utcnow(), routine_id),
         )
         await self.conn.commit()
+
+    async def get_routine_by_webhook_token(
+        self, token: str
+    ) -> dict[str, Any] | None:
+        offered = (token or "").strip()
+        if not offered:
+            return None
+        cur = await self.conn.execute(
+            "SELECT * FROM routines WHERE webhook_key = ? "
+            "AND trigger_type = 'webhook'",
+            (offered,),
+        )
+        row = await cur.fetchone()
+        if row is None:
+            return None
+        return self._routine_public(row)
 
     async def list_messages(
         self,

@@ -65,6 +65,64 @@ def _error(status_code: int, message: str) -> HTTPException:
 
 log = logging.getLogger("snorlax.app")
 
+PLUGIN_CONNECTED = "connected"
+
+
+def _base_url(request: Request) -> str:
+    return str(request.base_url).rstrip("/")
+
+
+def _routine_out(row: dict, base_url: str) -> Routine:
+    kind = str(row.get("triggerType") or "cron").strip().lower() or "cron"
+    if kind not in {"cron", "webhook", "slack", "github"}:
+        kind = "cron"
+    schedule = row.get("schedule") or None
+    stored_label = row.get("scheduleLabel") or None
+    webhook_url = None
+    label = None
+    schedule_label = None
+    if kind == "webhook":
+        token = row.get("webhookKey") or ""
+        if token:
+            webhook_url = f"{base_url}/v1/hooks/{token}"
+        schedule = None
+    elif kind in {"slack", "github"}:
+        schedule = None
+        label = stored_label
+        if not label:
+            label = "Slack" if kind == "slack" else "GitHub"
+    else:
+        schedule_label = stored_label
+    return Routine(
+        id=row["id"],
+        name=row["name"],
+        skill=row["skill"],
+        enabled=bool(row.get("enabled", True)),
+        kind=kind,
+        schedule=schedule,
+        scheduleLabel=schedule_label,
+        webhookUrl=webhook_url,
+        label=label,
+    )
+
+
+def _plugin_kind_connected(manager: object | None, kind: str) -> bool:
+    if manager is None:
+        return False
+    listed = getattr(manager, "list_public", None)
+    if not callable(listed):
+        return False
+    needle = kind.strip().lower()
+    for row in listed() or []:
+        if not isinstance(row, dict):
+            continue
+        if str(row.get("status") or "") != PLUGIN_CONNECTED:
+            continue
+        blob = f"{row.get('id', '')} {row.get('name', '')}".lower()
+        if needle in blob:
+            return True
+    return False
+
 
 def _connect_html() -> HTMLResponse:
     html = (
@@ -510,18 +568,32 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             raise _error(channel_status, "routines are assigned to an agent")
         return conversation
 
-    @app.get("/v1/agents/{id}/routines", response_model=list[Routine])
+    @app.get(
+        "/v1/agents/{id}/routines",
+        response_model=list[Routine],
+        response_model_exclude_none=True,
+    )
     async def list_routines(
         id: str, request: Request, _: str = Depends(require_bearer)
     ) -> list[Routine]:
         store: Store = request.app.state.store
         conversation = await store.get_agent(id)
         _require_agent(conversation, id, channel_status=409)
-        return [Routine.model_validate(r) for r in await store.list_routines(id)]
+        manager = getattr(request.app.state, "mcp", None)
+        visible = []
+        for row in await store.list_routines(id):
+            kind = str(row.get("triggerType") or "cron").strip().lower() or "cron"
+            if kind in {"slack", "github"} and not _plugin_kind_connected(
+                manager, kind
+            ):
+                continue
+            visible.append(_routine_out(row, _base_url(request)))
+        return visible
 
     @app.post(
         "/v1/agents/{id}/routines",
         response_model=Routine,
+        response_model_exclude_none=True,
         status_code=status.HTTP_201_CREATED,
     )
     async def create_routine(
@@ -536,14 +608,47 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         store: Store = request.app.state.store
         conversation = await store.get_agent(id)
         _require_agent(conversation, id, channel_status=422)
-        try:
-            cron, label = parse_schedule(payload.schedule)
-        except CronError as exc:
-            raise _error(422, exc.message) from exc
         skill_name = payload.skill.strip()
         matched = find_skill(load_skills(store.data_dir), skill_name)
         if matched is None:
             raise _error(422, "unknown skill")
+        trigger = payload.trigger
+        if trigger is not None:
+            kind = trigger.type
+            if kind in {"slack", "github"}:
+                manager = getattr(request.app.state, "mcp", None)
+                if not _plugin_kind_connected(manager, kind):
+                    raise _error(
+                        422,
+                        f"{kind} trigger requires a connected {kind} MCP plugin",
+                    )
+                display = trigger.label or (
+                    "Slack" if kind == "slack" else "GitHub"
+                )
+                row = await store.create_routine(
+                    agent_id=id,
+                    name=payload.name.strip(),
+                    skill=skill_slug(matched),
+                    cron="",
+                    schedule_label=display,
+                    trigger_type=kind,
+                )
+                return _routine_out(row, _base_url(request))
+            key = secrets.token_urlsafe(32)
+            row = await store.create_routine(
+                agent_id=id,
+                name=payload.name.strip(),
+                skill=skill_slug(matched),
+                cron="",
+                schedule_label="",
+                trigger_type="webhook",
+                webhook_key=key,
+            )
+            return _routine_out(row, _base_url(request))
+        try:
+            cron, label = parse_schedule(payload.schedule or "")
+        except CronError as exc:
+            raise _error(422, exc.message) from exc
         row = await store.create_routine(
             agent_id=id,
             name=payload.name.strip(),
@@ -551,9 +656,13 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             cron=cron,
             schedule_label=label,
         )
-        return Routine.model_validate(row)
+        return _routine_out(row, _base_url(request))
 
-    @app.patch("/v1/agents/{id}/routines/{routineId}", response_model=Routine)
+    @app.patch(
+        "/v1/agents/{id}/routines/{routineId}",
+        response_model=Routine,
+        response_model_exclude_none=True,
+    )
     async def patch_routine(
         id: str,
         routineId: str,
@@ -571,7 +680,33 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         )
         if row is None:
             raise _error(404, f"Routine {routineId!r} not found")
-        return Routine.model_validate(row)
+        return _routine_out(row, _base_url(request))
+
+    @app.post("/v1/hooks/{token}", status_code=status.HTTP_204_NO_CONTENT)
+    async def fire_webhook(token: str, request: Request) -> Response:
+        """POST the minted webhookUrl. Token is in the path. No Bearer."""
+        from snorlax_runtime.scheduler import fire_routine_now
+
+        store: Store = request.app.state.store
+        row = await store.get_routine_by_webhook_token(token)
+        if (
+            row is None
+            or str(row.get("triggerType") or "") != "webhook"
+            or not row.get("enabled")
+        ):
+            raise _error(404, "Not found")
+        try:
+            await fire_routine_now(
+                store,
+                request.app.state.backend,
+                row,
+                max_tool_rounds=getattr(
+                    request.app.state.settings, "tool_max_rounds", None
+                ),
+            )
+        except Exception:
+            log.exception("webhook routine %s failed", row.get("id"))
+        return Response(status_code=status.HTTP_204_NO_CONTENT)
 
     @app.get("/v1/agents/{id}/skills", response_model=list[SkillInfo])
     async def list_skills(

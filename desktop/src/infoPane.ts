@@ -88,6 +88,22 @@ export function nextRosterSelection<T extends { id: string; kind: string }>(
 }
 
 export const EMPTY_ROUTINES = "No routines yet.";
+export const WEBHOOK_COPY_FEEDBACK_MS = 1500;
+
+export type RoutineTriggerLine = {
+  kind?: string | null;
+  skill?: string;
+  schedule?: string | null;
+  scheduleLabel?: string | null;
+  label?: string | null;
+  webhookUrl?: string | null;
+};
+
+export type PluginConnectedHint = {
+  id?: string | null;
+  name?: string | null;
+  status?: string | null;
+};
 
 /** Humanized Asia/Taipei cron for the muted routine line. Client concern. */
 export function humanizeTaipeiCron(cron: string): string {
@@ -106,11 +122,54 @@ export function humanizeTaipeiCron(cron: string): string {
   return cron;
 }
 
-export function routineMutedLine(routine: {
-  skill: string;
-  schedule: string;
-  scheduleLabel?: string | null;
+export function isWebhookRoutine(routine: RoutineTriggerLine): boolean {
+  return (routine.kind || "").trim().toLowerCase() === "webhook";
+}
+
+export function showsWebhookCopy(routine: RoutineTriggerLine): boolean {
+  return isWebhookRoutine(routine) && Boolean((routine.webhookUrl || "").trim());
+}
+
+function pluginKindConnected(
+  plugins: PluginConnectedHint[],
+  kind: string,
+): boolean {
+  const needle = kind.trim().toLowerCase();
+  return plugins.some((row) => {
+    if ((row.status || "") !== "connected") return false;
+    const blob = `${row.id || ""} ${row.name || ""}`.toLowerCase();
+    return blob.includes(needle);
+  });
+}
+
+/** Slack/GitHub rows only when that MCP plugin is already connected. */
+export function visiblePaneRoutines<T extends RoutineTriggerLine>(
+  routines: T[],
+  plugins: PluginConnectedHint[],
+): T[] {
+  return routines.filter((row) => {
+    const kind = (row.kind || "").trim().toLowerCase();
+    if (kind === "slack" || kind === "github") {
+      return pluginKindConnected(plugins, kind);
+    }
+    return true;
+  });
+}
+
+/** Muted identity-pane line: trigger only (`Webhook` / `Weekdays 9:00`). Never the URL. */
+export function routineMutedLine(routine: RoutineTriggerLine): string {
+  const kind = (routine.kind || "").trim().toLowerCase();
+  if (kind === "webhook" || isWebhookRoutine(routine)) return "Webhook";
+  if (kind === "slack") return (routine.label || "").trim() || "Slack";
+  if (kind === "github") return (routine.label || "").trim() || "GitHub";
+  const when =
+    (routine.scheduleLabel || "").trim() ||
+    humanizeTaipeiCron(routine.schedule || "");
+  return when;
+}
+
+export function webhookCopyText(routine: {
+  webhookUrl?: string | null;
 }): string {
-  const when = (routine.scheduleLabel || "").trim() || humanizeTaipeiCron(routine.schedule);
-  return `${routine.skill} · ${when}`;
+  return (routine.webhookUrl || "").trim();
 }

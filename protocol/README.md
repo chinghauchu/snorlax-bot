@@ -46,6 +46,17 @@ separate disconnect endpoint. Do not auto-open a connect card. GET and
 `POST .../auth` stay v0.10. No store / search catalog. Plugins list is
 Settings only.
 
+v0.13 event listeners, webhook first: a routine is cron XOR trigger.
+GET adds `kind`; `schedule` only for cron; `webhookUrl` only for
+kind=webhook (token in the path; Copy; clients must not paint it);
+optional `label` for Slack/GitHub. POST `{ name, skill, trigger: { type:
+webhook } }` → 201 with `webhookUrl`. Incoming fire is `POST
+{webhookUrl}` (no Bearer). 204 then the skill into that agent's 1:1.
+Paused or unknown token 404 and does not run. Slack/GitHub
+`trigger.type` 422 unless GET `/v1/plugins` shows that plugin
+status=connected. Chrome: muted `Webhook` / `Weekdays 9:00` plus Copy
+for the URL. No New routine button.
+
 A copy is also kept at `runtime/openapi.yaml` and `desktop/openapi.yaml`
 so those trees are self-contained. Do not let the files diverge.
 

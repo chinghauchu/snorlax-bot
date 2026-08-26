@@ -46,11 +46,15 @@ import {
   channelMembers,
   displayInitials,
   EMPTY_ROUTINES,
+  WEBHOOK_COPY_FEEDBACK_MS,
   fallbackRosterSelection,
   infoPaneKind,
   nextRosterSelection,
   routineMutedLine,
   SHARED_PROJECT_HINT,
+  showsWebhookCopy,
+  visiblePaneRoutines,
+  webhookCopyText,
 } from "./infoPane";
 import {
   USER_SENDER_ID,
@@ -73,6 +77,7 @@ import { ComputerPane } from "./ComputerPane";
 import { WidgetCard } from "./WidgetCard";
 import { ConnectCard } from "./ConnectCard";
 import { HttpsText, MarkdownBody } from "./MarkdownBody";
+import { copyText } from "./markdown";
 import { isConnect, parsePluginArgs, pluginStatusLabel } from "./connect";
 import { isWidget } from "./widget";
 import { openOsBrowser } from "./openUrl";
@@ -202,6 +207,64 @@ function fileToDataUrl(file: File): Promise<string> {
     reader.onload = () => resolve(String(reader.result ?? ""));
     reader.readAsDataURL(file);
   });
+}
+
+function AgentRoutineRow({
+  routine,
+  onToggle,
+}: {
+  routine: Routine;
+  onToggle: (routine: Routine, enabled: boolean) => void;
+}) {
+  const [copied, setCopied] = useState(false);
+  const timer = useRef<number | null>(null);
+  useEffect(() => {
+    return () => {
+      if (timer.current != null) window.clearTimeout(timer.current);
+    };
+  }, []);
+  async function onCopy() {
+    await copyText(webhookCopyText(routine));
+    setCopied(true);
+    if (timer.current != null) window.clearTimeout(timer.current);
+    timer.current = window.setTimeout(() => {
+      setCopied(false);
+      timer.current = null;
+    }, WEBHOOK_COPY_FEEDBACK_MS);
+  }
+  return (
+    <div
+      className={routine.enabled ? "info-routine" : "info-routine paused"}
+    >
+      <div className="info-routine-copy">
+        <p className="info-routine-name">{routine.name}</p>
+        <p className="info-routine-meta">{routineMutedLine(routine)}</p>
+      </div>
+      {showsWebhookCopy(routine) ? (
+        <button
+          type="button"
+          className="info-routine-hook-copy"
+          aria-label={`Copy webhook URL for ${routine.name}`}
+          onClick={() => void onCopy()}
+        >
+          {copied ? "Copied" : "Copy"}
+        </button>
+      ) : null}
+      <label className="info-routine-switch">
+        <input
+          type="checkbox"
+          role="switch"
+          checked={routine.enabled}
+          aria-label={
+            routine.enabled
+              ? `Pause ${routine.name}`
+              : `Enable ${routine.name}`
+          }
+          onChange={(e) => onToggle(routine, e.target.checked)}
+        />
+      </label>
+    </div>
+  );
 }
 
 export function App() {
@@ -1772,40 +1835,15 @@ export function App() {
             </div>
             <section className="info-routines" aria-label="Routines">
               <p className="info-routines-header">Routines</p>
-              {routines.length === 0 ? (
+              {visiblePaneRoutines(routines, plugins).length === 0 ? (
                 <p className="info-routine-empty">{EMPTY_ROUTINES}</p>
               ) : (
-                routines.map((routine) => (
-                  <div
-                    className={
-                      routine.enabled
-                        ? "info-routine"
-                        : "info-routine paused"
-                    }
+                visiblePaneRoutines(routines, plugins).map((routine) => (
+                  <AgentRoutineRow
                     key={routine.id}
-                  >
-                    <div className="info-routine-copy">
-                      <p className="info-routine-name">{routine.name}</p>
-                      <p className="info-routine-meta">
-                        {routineMutedLine(routine)}
-                      </p>
-                    </div>
-                    <label className="info-routine-switch">
-                      <input
-                        type="checkbox"
-                        role="switch"
-                        checked={routine.enabled}
-                        aria-label={
-                          routine.enabled
-                            ? `Pause ${routine.name}`
-                            : `Enable ${routine.name}`
-                        }
-                        onChange={(e) =>
-                          void toggleRoutine(routine, e.target.checked)
-                        }
-                      />
-                    </label>
-                  </div>
+                    routine={routine}
+                    onToggle={(row, enabled) => void toggleRoutine(row, enabled)}
+                  />
                 ))
               )}
             </section>

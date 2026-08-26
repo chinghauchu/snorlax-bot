@@ -161,12 +161,47 @@ extension Message {
 }
 
 extension Routine {
+    var isWebhook: Bool {
+        kind == .webhook
+    }
+
+    var showsWebhookCopy: Bool {
+        isWebhook && !(webhookUrl ?? "").trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
+    func visibleOnPane(plugins: [Plugin]) -> Bool {
+        switch kind {
+        case .slack:
+            return plugins.contains { row in
+                row.status == .connected &&
+                    "\(row.id) \(row.name)".localizedCaseInsensitiveContains("slack")
+            }
+        case .github:
+            return plugins.contains { row in
+                row.status == .connected &&
+                    "\(row.id) \(row.name)".localizedCaseInsensitiveContains("github")
+            }
+        default:
+            return true
+        }
+    }
+
     var mutedLine: String {
-        let when: String = {
-            if let label = scheduleLabel, !label.isEmpty { return label }
-            return Self.humanizeTaipeiCron(schedule)
-        }()
-        return "\(skill) · \(when)"
+        if isWebhook { return "Webhook" }
+        if kind == .slack {
+            if let label, !label.isEmpty { return label }
+            return "Slack"
+        }
+        if kind == .github {
+            if let label, !label.isEmpty { return label }
+            return "GitHub"
+        }
+        if let scheduleLabel, !scheduleLabel.isEmpty { return scheduleLabel }
+        return Self.humanizeTaipeiCron(schedule ?? "")
+    }
+
+    var copyPayload: String {
+        (webhookUrl ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
     static func humanizeTaipeiCron(_ cron: String) -> String {

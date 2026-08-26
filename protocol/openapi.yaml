@@ -1,9 +1,9 @@
 openapi: 3.1.0
 info:
   title: Snorlax-Bot
-  version: 0.12.0
+  version: 0.13.0
   description: |
-    Locked v0.12 LAN contract. Clients use SNORLAX_URL + SNORLAX_TOKEN.
+    Locked v0.13 LAN contract. Clients use SNORLAX_URL + SNORLAX_TOKEN.
     They never call vLLM, never call tools, never call MCP, and never read
     the Spark filesystem. Additive workspace GETs are runtime reads of the
     existing sandbox (same roots as the tool loop), not a second tool loop.
@@ -260,6 +260,42 @@ info:
     picker, and workspaceTree.ts (never reintroduce computerPane.ts)
     stand. Out of scope: full Box/VNC, teach-a-task, event listeners,
     marketplace catalog. OpenAPI **0.12.0**.
+
+    v0.13: event listeners, webhook first. Runtime-owned. A routine has
+    either cron or a trigger, never both. Result still fires as that
+    agent's 1:1 LEFT kind=message as A, with routineName kicker (same as
+    v0.9 cron). Isolation + report-back stand. B never paints in A's 1:1.
+    Channel thread only if that's how cron already works — keep existing
+    1:1-as-A behavior. Every event-trigger routine has a URL + Copy in
+    the agent identity pane row. HTTP POST to that URL fires the routine
+    (same SKILL.md / prompt path as cron). Slack/GitHub listeners only if
+    that MCP plugin is already connected. Do not block this slice on
+    Slack/GitHub. No new OAuth / connect chrome. If a plugin isn't
+    connected, omit those trigger types or 422 — webhook must still work
+    with zero plugins. Chrome: muted line shows the trigger (`Webhook` /
+    `Weekdays 9:00`). Pause still works (PATCH enabled). No New routine
+    button in chrome. Seed/API-created routines are enough; pane gets
+    Copy for webhook URL. Out: full Box/VNC, teach-a-task, marketplace
+    catalog. Desktop first, iOS match.
+
+    GET /v1/agents/{id}/routines and PATCH `{ enabled }` stand. POST
+    `{ name, skill, schedule }` remains cron. POST `{ name, skill,
+    trigger: { type: webhook } }` mints a webhook and returns
+    `webhookUrl` (secret token in the path, not query). POST of an event
+    routine without a trigger is 422. POST with both schedule and trigger
+    is 422. Incoming fire is POST `{webhookUrl}` (`/v1/hooks/{token}`).
+    No Bearer; the token is in the URL. Success 204 then run the skill
+    into that agent's 1:1. Paused or unknown token is 404 and does not
+    run. GET adds `kind` (`cron` | `webhook` | `slack` | `github`);
+    `schedule` only for cron; `webhookUrl` only for kind=webhook (Copy;
+    clients must not paint it); optional `label` for Slack/GitHub.
+    Null fields are omitted. Slack/GitHub `trigger.type` is 422 unless
+    GET /v1/plugins shows that plugin status=connected; inbound
+    Slack/GitHub delivery is not in this slice — use webhook. Do not
+    emit Connect cards from the pane. OpenAPI **0.13.0**. Isolation,
+    report-back, widgets, markdown, MCP connect + Add custom, seed DELETE
+    204, Mac oMLX, no Mac folder picker, workspaceTree.ts (never
+    reintroduce computerPane.ts) stand.
   license:
     name: Apache-2.0
     identifier: Apache-2.0
@@ -566,14 +602,25 @@ paths:
     parameters:
       - $ref: "#/components/parameters/Id"
     get:
-      summary: List cron routines assigned to this agent
+      summary: List routines assigned to this agent
       description: |
-        JSON array of Routine (not wrapped): `{ id, name, skill, schedule,
-        enabled }`. Missing agent is 404. kind=channel is 409 (routines
-        are agent-only). Used by the agent info pane (list + enable/pause
-        only). schedule is 5-field cron in Asia/Taipei. Optional
-        scheduleLabel is a display string. Humanized
-        `{skill} · {Weekdays 9:00}` is a client concern.
+        JSON array of Routine (not wrapped). A routine is cron XOR
+        trigger. `kind` is `cron` | `webhook` | `slack` | `github`.
+        Cron rows have `schedule` (5-field, Asia/Taipei) and optional
+        `scheduleLabel` (`Weekdays 9:00`). Webhook rows have
+        `webhookUrl` (full URL with secret token in the path; Copy on
+        the identity pane; clients must not paint it). Slack/GitHub
+        rows are omitted unless GET /v1/plugins shows that plugin
+        status=connected; when present they may have `label`
+        (e.g. `Slack #eng`). Null fields are
+        omitted (`webhookUrl` is absent on cron rows). Missing agent
+        is 404. kind=channel is 409 (routines are agent-only). Used by
+        the agent info pane (list + enable/pause + Copy for webhook
+        URL). No New / create / edit / delete UI. Humanized trigger
+        line (`Webhook` / `Weekdays 9:00`) is a client concern. Webhook
+        rows show 12px muted Copy left of the switch (`Copied` for 1.5s);
+        do not paint webhookUrl. Slack/GitHub rows have no Copy. Do not
+        emit Connect cards from the pane.
       operationId: listRoutines
       responses:
         "200":
@@ -591,13 +638,19 @@ paths:
         "409":
           $ref: "#/components/responses/Error"
     post:
-      summary: Seed a cron routine for this agent
+      summary: Seed a routine for this agent
       description: |
-        Test/runtime seed. Body `{ name, skill, schedule }`. One routine
-        = one agent + one SKILL.md slug. schedule is 5-field cron or a
-        named hour (weekdays at 9am), Asia/Taipei. Clients have no create
-        UI this slice. 422 unknown skill / bad cron / channel id.
-        Missing agent is 404. No DELETE this slice.
+        Test/runtime seed. Body is cron XOR trigger. Cron:
+        `{ name, skill, schedule }` (5-field or named hour, Asia/Taipei).
+        Webhook: `{ name, skill, trigger: { type: webhook } }` — 201
+        with `webhookUrl` (token in the path). POST of an event routine
+        without a trigger is 422. POST with both schedule and trigger is
+        422. Slack/GitHub `{ type: slack|github, label? }` is 422 unless
+        GET /v1/plugins shows that plugin status=connected; inbound
+        Slack/GitHub is not in this slice (use webhook). Webhook works
+        with zero plugins. Clients have no create UI this slice. 422
+        unknown skill / bad cron / channel id. Missing agent is 404.
+        No DELETE this slice.
       operationId: createRoutine
       requestBody:
         required: true
@@ -654,6 +707,32 @@ paths:
         "409":
           $ref: "#/components/responses/Error"
         "422":
+          $ref: "#/components/responses/Error"
+
+  /v1/hooks/{token}:
+    parameters:
+      - name: token
+        in: path
+        required: true
+        schema:
+          type: string
+        description: Secret token minted into webhookUrl. Not the routine id.
+    post:
+      summary: Fire a webhook routine
+      description: |
+        POST the minted webhookUrl. Does not use SNORLAX_TOKEN. The
+        secret is the path token, not a query string and not a header.
+        Unknown token, a non-webhook routine, or a paused webhook is
+        404 and does not run. Success is 204, then the runtime runs
+        that agent's SKILL.md into that agent's 1:1 as LEFT kind=message
+        senderId=A with routineName. No catch-up. Isolation stands:
+        never paint B in A's 1:1.
+      operationId: fireWebhook
+      security: []
+      responses:
+        "204":
+          description: Fired; no body
+        "404":
           $ref: "#/components/responses/Error"
 
   /v1/agents/{id}/skills:
@@ -1188,7 +1267,8 @@ components:
         routineName:
           type: [string, "null"]
           description: |
-            Set when this assistant Message is a cron-routine result.
+            Set when this assistant Message is a routine result
+            (cron or webhook). 12px kicker under the sender name.
             12px muted kicker under the sender name. Absent on ordinary
             turns. Not a channel post.
 
@@ -1436,7 +1516,7 @@ components:
 
     Routine:
       type: object
-      required: [id, name, skill, schedule, enabled]
+      required: [id, name, skill, enabled, kind]
       properties:
         id:
           type: string
@@ -1445,19 +1525,54 @@ components:
         skill:
           type: string
           description: SKILL.md slug this routine fires.
+        kind:
+          type: string
+          enum: [cron, webhook, slack, github]
+          description: cron XOR webhook / slack / github.
         schedule:
           type: string
-          description: 5-field cron. Interpreted in Asia/Taipei.
+          description: >
+            Cron only. 5-field cron in Asia/Taipei. Present only for
+            kind=cron. Omitted otherwise.
         enabled:
           type: boolean
           description: false is paused. Resume is enabled true.
         scheduleLabel:
           type: string
-          description: Optional display string (Weekdays 9:00).
+          description: >
+            Cron display (`Weekdays 9:00`). Present only for kind=cron.
+        webhookUrl:
+          type: string
+          description: >
+            Present only for kind=webhook. Full POST URL with the secret
+            token in the path (`/v1/hooks/{token}`), not query. Copy
+            this from the identity pane. Clients must not paint it as
+            the muted line.
+        label:
+          type: string
+          description: >
+            Optional Slack/GitHub display (e.g. `Slack #eng`,
+            `GitHub owner/repo`). Omitted for cron and webhook.
+
+    RoutineTrigger:
+      type: object
+      required: [type]
+      properties:
+        type:
+          type: string
+          description: >
+            webhook, slack, or github. webhook always works (zero
+            plugins). slack/github 422 unless GET /v1/plugins shows
+            that plugin status=connected; inbound Slack/GitHub
+            delivery is not in this slice.
+        label:
+          type: string
+          maxLength: 80
+          description: Optional Slack/GitHub display, e.g. Slack #eng.
 
     RoutineCreate:
       type: object
-      required: [name, skill, schedule]
+      required: [name, skill]
       properties:
         name:
           type: string
@@ -1471,7 +1586,11 @@ components:
           type: string
           minLength: 1
           maxLength: 80
-          description: 5-field cron or a named hour (weekdays at 9am).
+          description: >
+            Cron XOR trigger. 5-field cron or a named hour (weekdays at
+            9am). Asia/Taipei.
+        trigger:
+          $ref: "#/components/schemas/RoutineTrigger"
 
     RoutinePatch:
       type: object

@@ -16,7 +16,7 @@ From public Grok Bot docs and the Aug 2026 launch:
 | Message a bot like a coworker | `POST /v1/agents/{id}/messages` (SSE) |
 | Files, shell, web on a computer | v0.5: runtime tools in a workspace jail; v0.6: thin file-tree pane |
 | One user-scoped computer shared by all bots | Later: one sandbox on the Spark, shared files/logins, per-bot screen |
-| Skills (how) and routines (when) | v0.9: SKILL.md + cron (Asia/Taipei); list + enable/pause; fire LEFT 1:1 |
+| Skills (how) and routines (when) | v0.9: SKILL.md + cron (Asia/Taipei); v0.13: cron XOR webhook; list + enable/pause + Copy; fire LEFT 1:1 |
 | MCP + computer-use for sites without an API | v0.7: local/LAN MCP client; v0.10: connect chrome (`GET /v1/plugins` + `kind=connect`); v0.12: Settings Add custom; later: sandbox browser |
 | Question / approval moments | v0.8: question widgets (`kind=widget`); tools stay auto-run (no approval card) |
 | Desktop + iOS, same bots | Tauri desktop now; Swift iOS companion on the LAN |
@@ -145,12 +145,13 @@ SQLite file `~/.snorlax-bot/snorlax.db` (override with `SNORLAX_DATA_DIR`):
   Answer is POST `widgetReply: { id, values?, dismissed? }` on the same
   transcript; not a new user row. Clients render the card; they never invent
   fields.
-- Skills and routines (v0.9) — `SKILL.md` under
+- Skills and routines (v0.9 / v0.13) — `SKILL.md` under
   `SNORLAX_DATA_DIR/skills/<slug>/SKILL.md`. Table `routines` (agent,
-  skill slug, 5-field cron, enabled). Scheduler ticks inside the FastAPI
-  process (Asia/Taipei). A due run persists a normal assistant Message in
-  that agent's 1:1 with optional `routineName`. Channel GET/PATCH routines
-  are 409. Missed ticks are skipped.
+  skill slug, cron XOR trigger, enabled). Scheduler ticks inside the FastAPI
+  process (Asia/Taipei). A due cron or a webhook POST persists a normal
+  assistant Message in that agent's 1:1 with optional `routineName`. Channel
+  GET/PATCH routines are 409. Missed ticks are skipped. Webhook fire is
+  `POST {webhookUrl}` (`/v1/hooks/{token}` in the path, no Bearer).
 
 v0.1 keeps one transcript per agent (the 1:1) plus one seeded group channel
 and extra user-created channels (v0.4).
@@ -227,6 +228,16 @@ command?, args?, url? }` → 201. `DELETE /v1/plugins/{id}` uninstalls
 (204; disconnect + drop from catalog). No separate disconnect endpoint.
 Do not auto-open a connect card. GET and `POST .../auth` stay v0.10.
 Settings-only; no store. Clients never speak MCP.
+
+v0.13: event listeners, webhook first. A routine is cron XOR trigger.
+`POST {webhookUrl}` (`/v1/hooks/{token}` in the path, no Bearer) fires
+the skill into that agent's 1:1 (same path as cron). Success 204.
+Paused or unknown token 404. GET returns `kind`; `schedule` only for
+cron; `webhookUrl` only for kind=webhook (Copy; clients must not paint
+it); optional `label` for Slack/GitHub. Slack/GitHub `trigger.type` 422
+unless GET `/v1/plugins` shows that plugin status=connected; inbound
+Slack/GitHub is not this slice. Pause still PATCH `{ enabled }`. No New
+routine button.
 
 ## Inference interface
 

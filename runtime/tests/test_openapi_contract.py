@@ -94,9 +94,20 @@ def test_protocol_openapi_is_locked_v0_contract() -> None:
     assert "never call MCP" in text
     assert "SNORLAX_DATA_DIR" in text
     assert "No MCP, no browser-use GUI" not in text
-    assert "0.12.0" in text
+    assert "0.13.0" in text
     assert "assistant markdown" in text.lower() or "v0.11" in text
     assert "v0.12" in text
+    assert "v0.13" in text
+    assert "/v1/hooks/{token}" in text
+    assert "/v1/hooks/{routineId}" not in text
+    assert "X-Snorlax-Hook-Key" not in text
+    assert "webhookKey" not in text
+    assert "cron XOR trigger" in text or "cron XOR" in text
+    assert "trigger: { type: webhook }" in text or "type: webhook" in text
+    assert "webhookUrl" in text
+    assert "clients must not paint" in text.lower()
+    assert "Copied" in text or "1.5s" in text or "left of the switch" in text
+    assert "does not go through SNORLAX_TOKEN" in text or "Does not use SNORLAX_TOKEN" in text or "not SNORLAX_TOKEN" in text
     assert "not rewrite" in text
     assert "contentType, mime, html, or blocks[]" in text
     assert "split one message into" in text

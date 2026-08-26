@@ -214,26 +214,64 @@ class WorkspaceFile(BaseModel):
     truncated: bool = False
 
 
+class RoutineTrigger(BaseModel):
+    type: str = Field(description="webhook, slack, or github.")
+    label: str | None = Field(
+        default=None,
+        description='Optional Slack/GitHub display, e.g. "Slack #eng".',
+        max_length=80,
+    )
+
+    @model_validator(mode="after")
+    def known_type(self) -> RoutineTrigger:
+        kind = (self.type or "").strip().lower()
+        if kind not in {"webhook", "slack", "github"}:
+            raise ValueError("trigger.type must be webhook, slack, or github")
+        self.type = kind
+        if self.label is not None:
+            self.label = self.label.strip() or None
+        return self
+
+
 class Routine(BaseModel):
     id: str
     name: str
     skill: str
-    schedule: str
     enabled: bool = True
+    kind: str = "cron"
+    schedule: str | None = None
     scheduleLabel: str | None = None
+    webhookUrl: str | None = None
+    label: str | None = None
 
 
 class RoutineCreate(BaseModel):
     name: str = Field(min_length=1, max_length=80)
     skill: str = Field(min_length=1, max_length=80)
-    schedule: str = Field(
-        min_length=1,
+    schedule: str | None = Field(
+        default=None,
         max_length=80,
         description=(
-            "5-field cron or a named hour (8am / weekdays at 9am). "
-            "Interpreted in Asia/Taipei."
+            "Cron only. 5-field cron or a named hour (8am / weekdays at 9am). "
+            "Interpreted in Asia/Taipei. XOR with trigger."
         ),
     )
+    trigger: RoutineTrigger | None = Field(
+        default=None,
+        description="Event trigger. XOR with schedule. webhook always works.",
+    )
+
+    @model_validator(mode="after")
+    def cron_xor_trigger(self) -> RoutineCreate:
+        has_schedule = bool((self.schedule or "").strip())
+        has_trigger = self.trigger is not None
+        if has_schedule and has_trigger:
+            raise ValueError("routine is cron XOR trigger")
+        if not has_schedule and not has_trigger:
+            raise ValueError("schedule or trigger is required")
+        if has_schedule:
+            self.schedule = (self.schedule or "").strip()
+        return self
 
 
 class RoutinePatch(BaseModel):

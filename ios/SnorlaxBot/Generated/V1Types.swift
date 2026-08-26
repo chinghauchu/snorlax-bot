@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 //
-// Generated from protocol/openapi.yaml (Snorlax-Bot 0.12.0).
+// Generated from protocol/openapi.yaml (Snorlax-Bot 0.13.0).
 // Do not edit by hand. Regenerate with:
 //   python3 ios/scripts/generate_v1_types.py
 //
@@ -782,32 +782,48 @@ struct WorkspaceFile: Codable, Hashable, Sendable {
 }
 
 struct Routine: Codable, Hashable, Identifiable, Sendable {
+    enum Kind: String, Codable, Hashable, Sendable {
+        case cron
+        case webhook
+        case slack
+        case github
+    }
+
     var id: String
     var name: String
     var skill: String
-    var schedule: String
+    var kind: Kind
+    var schedule: String?
     var enabled: Bool
     var scheduleLabel: String?
+    var webhookUrl: String?
+    var label: String?
 
-    init(id: String, name: String, skill: String, schedule: String, enabled: Bool, scheduleLabel: String? = nil) {
+    init(id: String, name: String, skill: String, kind: Kind, schedule: String? = nil, enabled: Bool, scheduleLabel: String? = nil, webhookUrl: String? = nil, label: String? = nil) {
         self.id = id
         self.name = name
         self.skill = skill
+        self.kind = kind
         self.schedule = schedule
         self.enabled = enabled
         self.scheduleLabel = scheduleLabel
+        self.webhookUrl = webhookUrl
+        self.label = label
     }
 
-    enum CodingKeys: String, CodingKey { case id, name, skill, schedule, enabled, scheduleLabel }
+    enum CodingKeys: String, CodingKey { case id, name, skill, kind, schedule, enabled, scheduleLabel, webhookUrl, label }
 
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         id = try container.decode(String.self, forKey: .id)
         name = try container.decode(String.self, forKey: .name)
         skill = try container.decode(String.self, forKey: .skill)
-        schedule = try container.decode(String.self, forKey: .schedule)
+        kind = try container.decode(Kind.self, forKey: .kind)
+        schedule = try container.decodeIfPresent(String.self, forKey: .schedule)
         enabled = try container.decode(Bool.self, forKey: .enabled)
         scheduleLabel = try container.decodeIfPresent(String.self, forKey: .scheduleLabel)
+        webhookUrl = try container.decodeIfPresent(String.self, forKey: .webhookUrl)
+        label = try container.decodeIfPresent(String.self, forKey: .label)
     }
 
     func encode(to encoder: Encoder) throws {
@@ -815,37 +831,68 @@ struct Routine: Codable, Hashable, Identifiable, Sendable {
         try container.encode(id, forKey: .id)
         try container.encode(name, forKey: .name)
         try container.encode(skill, forKey: .skill)
-        try container.encode(schedule, forKey: .schedule)
+        try container.encode(kind, forKey: .kind)
+        try container.encodeIfPresent(schedule, forKey: .schedule)
         try container.encode(enabled, forKey: .enabled)
         try container.encodeIfPresent(scheduleLabel, forKey: .scheduleLabel)
+        try container.encodeIfPresent(webhookUrl, forKey: .webhookUrl)
+        try container.encodeIfPresent(label, forKey: .label)
+    }
+}
+
+struct RoutineTrigger: Codable, Hashable, Sendable {
+    var type: String
+    var label: String?
+
+    init(type: String, label: String? = nil) {
+        self.type = type
+        self.label = label
+    }
+
+    enum CodingKeys: String, CodingKey { case type, label }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        type = try container.decode(String.self, forKey: .type)
+        label = try container.decodeIfPresent(String.self, forKey: .label)
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(type, forKey: .type)
+        try container.encodeIfPresent(label, forKey: .label)
     }
 }
 
 struct RoutineCreate: Codable, Hashable, Sendable {
     var name: String
     var skill: String
-    var schedule: String
+    var schedule: String?
+    var trigger: RoutineTrigger?
 
-    init(name: String, skill: String, schedule: String) {
+    init(name: String, skill: String, schedule: String? = nil, trigger: RoutineTrigger? = nil) {
         self.name = name
         self.skill = skill
         self.schedule = schedule
+        self.trigger = trigger
     }
 
-    enum CodingKeys: String, CodingKey { case name, skill, schedule }
+    enum CodingKeys: String, CodingKey { case name, skill, schedule, trigger }
 
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         name = try container.decode(String.self, forKey: .name)
         skill = try container.decode(String.self, forKey: .skill)
-        schedule = try container.decode(String.self, forKey: .schedule)
+        schedule = try container.decodeIfPresent(String.self, forKey: .schedule)
+        trigger = try container.decodeIfPresent(RoutineTrigger.self, forKey: .trigger)
     }
 
     func encode(to encoder: Encoder) throws {
         var container = encoder.container(keyedBy: CodingKeys.self)
         try container.encode(name, forKey: .name)
         try container.encode(skill, forKey: .skill)
-        try container.encode(schedule, forKey: .schedule)
+        try container.encodeIfPresent(schedule, forKey: .schedule)
+        try container.encodeIfPresent(trigger, forKey: .trigger)
     }
 }
 

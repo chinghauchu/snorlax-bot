@@ -62,11 +62,13 @@ workspace dir.
 YAML frontmatter `name` + `description`, then markdown body.
 A skill has no trigger of its own. No marketplace / client picker.
 
-Routines are cron jobs on an agent (`GET /v1/agents/{id}/routines`,
-`PATCH .../routines/{id}` `{ enabled }`). The scheduler runs in this
-process (Asia/Taipei). A due run writes a normal assistant Message in
-that agent's 1:1 with optional `routineName`. Clients list and
-enable/pause only this slice.
+Routines are cron XOR webhook on an agent (`GET /v1/agents/{id}/routines`,
+`PATCH .../routines/{id}` `{ enabled }`). Cron scheduler runs in this
+process (Asia/Taipei). Webhook fire is `POST` the minted `webhookUrl`
+(`/v1/hooks/{token}` in the path, no Bearer). Enabled → 204 and a
+normal assistant Message in that agent's 1:1 with optional
+`routineName`. Paused or unknown token → 404, do not run.
+Clients list, enable/pause, and Copy the webhook URL this slice.
 
 ## MCP (`mcp.json`)
 
