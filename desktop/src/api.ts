@@ -4,6 +4,8 @@ import type {
   ChatMessage,
   ImageIn,
   MessageDelta,
+  Routine,
+  RoutinePatch,
   RuntimeHealth,
   Session,
 } from "./types";
@@ -132,6 +134,34 @@ export async function deleteAgent(
     { method: "DELETE", headers: headers(session) },
   );
   if (!response.ok) throw await parseError(response);
+}
+
+export async function listRoutines(
+  session: Session,
+  agentId: string,
+): Promise<Routine[]> {
+  const response = await fetch(
+    `${session.baseUrl}/v1/agents/${encodeURIComponent(agentId)}/routines`,
+    { headers: headers(session) },
+  );
+  return asList<Routine>(await json<unknown>(response), "routines");
+}
+
+export async function patchRoutine(
+  session: Session,
+  agentId: string,
+  routineId: string,
+  patch: RoutinePatch,
+): Promise<Routine> {
+  const response = await fetch(
+    `${session.baseUrl}/v1/agents/${encodeURIComponent(agentId)}/routines/${encodeURIComponent(routineId)}`,
+    {
+      method: "PATCH",
+      headers: headers(session, { "Content-Type": "application/json" }),
+      body: JSON.stringify(patch),
+    },
+  );
+  return json<Routine>(response);
 }
 
 export async function listMessages(

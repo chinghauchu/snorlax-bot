@@ -80,10 +80,57 @@ struct ProfileSheet: View {
                     .font(.system(size: 13))
                     .foregroundStyle(.secondary)
             }
+            routinesList
             Spacer(minLength: 0)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(16)
+        .task(id: live.id) {
+            await model.loadRoutines(for: live.id)
+        }
+    }
+
+    private var routinesList: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            Text("Routines")
+                .font(.system(size: 12))
+                .foregroundStyle(.secondary)
+                .padding(.top, 12)
+                .padding(.bottom, 8)
+            if model.routines.isEmpty {
+                Text("No routines yet.")
+                    .font(.system(size: 12))
+                    .foregroundStyle(.secondary)
+            } else {
+                ForEach(model.routines) { routine in
+                    Toggle(isOn: Binding(
+                        get: { routine.enabled },
+                        set: { on in
+                            Task {
+                                await model.setRoutineEnabled(
+                                    agentId: live.id,
+                                    id: routine.id,
+                                    enabled: on
+                                )
+                            }
+                        }
+                    )) {
+                        VStack(alignment: .leading, spacing: 1) {
+                            Text(routine.name)
+                                .font(.system(size: 14, weight: .medium))
+                                .opacity(routine.enabled ? 1 : 0.5)
+                            Text(routine.mutedLine)
+                                .font(.system(size: 12))
+                                .foregroundStyle(.secondary)
+                                .lineLimit(1)
+                        }
+                    }
+                    .frame(minHeight: 44)
+                    .disabled(!model.isConfigured)
+                    .accessibilityLabel(routine.enabled ? "Pause \(routine.name)" : "Enable \(routine.name)")
+                }
+            }
+        }
     }
 
     private var channelPane: some View {

@@ -47,6 +47,7 @@ final class AppModel {
     var wantsComposerFocus = false
     var showSettings = false
     var showProfile = false
+    var routines: [Routine] = []
 
     init() {
         runtimeURL = UserDefaults.standard.string(forKey: Keys.runtimeURL) ?? ""
@@ -255,6 +256,40 @@ final class AppModel {
             )
             if let index = agents.firstIndex(where: { $0.id == updated.id }) {
                 agents[index] = updated
+            }
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    func loadRoutines(for agentId: String) async {
+        guard let client,
+              let agent = agents.first(where: { $0.id == agentId }),
+              !agent.isChannel
+        else {
+            routines = []
+            return
+        }
+        do {
+            routines = try await client.listRoutines(agentId: agentId)
+        } catch {
+            routines = []
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    func setRoutineEnabled(agentId: String, id: String, enabled: Bool) async {
+        guard let client else { return }
+        do {
+            let updated = try await client.patchRoutine(
+                agentId: agentId,
+                routineId: id,
+                enabled: enabled
+            )
+            if let index = routines.firstIndex(where: { $0.id == updated.id }) {
+                routines[index] = updated
+            } else {
+                routines.append(updated)
             }
         } catch {
             errorMessage = error.localizedDescription

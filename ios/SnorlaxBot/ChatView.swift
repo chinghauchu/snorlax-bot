@@ -222,7 +222,7 @@ struct ChatView: View {
                 message: message,
                 agents: model.visibleAgents,
                 localPreviews: model.localPreviews[message.id] ?? [],
-                sameSender: !message.isHandoffRoot && sameSender(at: index, in: messages),
+                sameSender: !message.isHandoffRoot && !message.hasRoutineKicker && sameSender(at: index, in: messages),
                 threadRoot: agent.isChannel && model.threadID != nil && message.isHandoffRoot,
                 toolTraces: toolTraces
             ) { jump in
@@ -237,6 +237,7 @@ struct ChatView: View {
 
     private func sameSender(at index: Int, in messages: [Message]) -> Bool {
         guard index > 0 else { return false }
+        if messages[index].hasRoutineKicker { return false }
         return senderKey(messages[index - 1]) == senderKey(messages[index])
     }
 
@@ -399,9 +400,16 @@ private struct MessageBubble: View {
                         ),
                         size: 20
                     )
-                    Text(message.senderName)
-                        .font(.system(size: 13, weight: .medium))
-                        .foregroundStyle(.secondary)
+                    VStack(alignment: .leading, spacing: 1) {
+                        Text(message.senderName)
+                            .font(.system(size: 13, weight: .medium))
+                            .foregroundStyle(.secondary)
+                        if let kicker = message.routineName, !kicker.isEmpty {
+                            Text(kicker)
+                                .font(.system(size: 12))
+                                .foregroundStyle(.secondary)
+                        }
+                    }
                 }
                 .padding(.horizontal, 12)
             }

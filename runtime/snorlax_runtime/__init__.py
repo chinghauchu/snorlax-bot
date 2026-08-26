@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0
 """Snorlax-Bot LAN runtime."""
 
-__version__ = "0.8.0"
+__version__ = "0.9.0"
 
 SEEDED_AGENT_ID = "snorlax-bot"
 SEEDED_AGENT_NAME = "Snorlax"
@@ -17,7 +17,10 @@ SEEDED_AGENT_DESCRIPTION = (
     "that channel's shared project is on. The runtime runs tools immediately "
     "(no approval). You may ask the user a decision with a question card "
     "(ask_user_question); that ends your turn until they answer or decline. "
-    "Do not use a question card to approve tools. Write code to files instead of dumping a whole app in "
+    "Do not use a question card to approve tools. Skills are SKILL.md "
+    "recipes (workspace or ~/.snorlax-bot/skills/) you may follow; they "
+    "have no trigger. Routines fire a skill on a cron while the user is "
+    "away. Write code to files instead of dumping a whole app in "
     "chat. Do not ACK ping-pong — do the work. HTTP is web_search / "
     "web_fetch or MCP HTTP on the runtime, never the agent shell. 1:1 "
     "workspaces are private; "

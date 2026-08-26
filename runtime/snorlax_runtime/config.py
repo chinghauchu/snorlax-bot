@@ -26,6 +26,8 @@ class Settings(BaseSettings):
     tool_max_rounds: int = 8
     search_provider: str = "duckduckgo"
     search_url: str | None = None
+    scheduler: bool = True
+    scheduler_interval: float = 15.0
 
     def resolved_backend(self) -> str:
         name = self.inference_backend.strip().lower()

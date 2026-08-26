@@ -41,7 +41,8 @@ v0 chrome: 256px agent sidebar, chat, 320px computer pane (file tree +
 text preview; collapsible, default open), 320px identity overlay on the
 chat (not a fourth column), Settings. Create agent or channel from +.
 Muted 12px tool traces (`Searching…` / `Wrote app.py` / `Used server__tool`) may appear in
-the transcript while the runtime runs tools (including MCP). iOS has no computer pane.
+the transcript while the runtime runs tools (including MCP). Agent info
+pane lists cron routines (44px rows, live enable/pause switch). iOS has no computer pane.
 
 Types and the `/v1` client are generated from the locked camelCase OpenAPI
 (`openapi.yaml`, same contract as `protocol/openapi.yaml` on the Backend

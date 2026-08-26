@@ -10,6 +10,8 @@ export type MessageDelta = components["schemas"]["MessageDelta"];
 export type ToolTrace = components["schemas"]["ToolTrace"];
 export type RuntimeHealth = components["schemas"]["Health"];
 export type ErrorBody = components["schemas"]["ErrorBody"];
+export type Routine = components["schemas"]["Routine"];
+export type RoutinePatch = components["schemas"]["RoutinePatch"];
 
 export type Session = {
   baseUrl: string;

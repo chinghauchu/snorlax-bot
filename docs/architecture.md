@@ -16,7 +16,7 @@ From public Grok Bot docs and the Aug 2026 launch:
 | Message a bot like a coworker | `POST /v1/agents/{id}/messages` (SSE) |
 | Files, shell, web on a computer | v0.5: runtime tools in a workspace jail; v0.6: thin file-tree pane |
 | One user-scoped computer shared by all bots | Later: one sandbox on the Spark, shared files/logins, per-bot screen |
-| Skills (how) and routines (when) | Later: stored on the runtime, executed locally |
+| Skills (how) and routines (when) | v0.9: SKILL.md + cron (Asia/Taipei); list + enable/pause; fire LEFT 1:1 |
 | MCP + computer-use for sites without an API | v0.7: local/LAN MCP client; later: sandbox browser |
 | Question / approval moments | v0.8: question widgets (`kind=widget`); tools stay auto-run (no approval card) |
 | Desktop + iOS, same bots | Tauri desktop now; Swift iOS companion on the LAN |
@@ -142,6 +142,11 @@ SQLite file `~/.snorlax-bot/snorlax.db` (override with `SNORLAX_DATA_DIR`):
   Answer is POST `widgetReply: { id, values?, dismissed? }` on the same
   transcript; not a new user row. Clients render the card; they never invent
   fields.
+- Skills and routines (v0.9) — `SKILL.md` under the speaking agent's
+  workspace and/or `SNORLAX_DATA_DIR/skills/`. Table `routines` (agent,
+  skill name, 5-field cron, enabled). Scheduler ticks inside the FastAPI
+  process (Asia/Taipei). A due run persists a normal assistant Message in
+  that agent's 1:1 with optional `routineName`.
 
 v0.1 keeps one transcript per agent (the 1:1) plus one seeded group channel
 and extra user-created channels (v0.4).
@@ -192,6 +197,15 @@ v0.7: the FastAPI runtime is the MCP client. Config is `mcp.json` under
 `SNORLAX_DATA_DIR`. Tools are namespaced `server__tool`; built-in names win.
 Clients never call MCP. A failed MCP server does not prevent boot.
 
+v0.8: `ask_user_question` persists `kind=widget` LEFT. Answer is POST
+`widgetReply` on the same transcript, not a user bubble.
+
+v0.9: skills (`SKILL.md`) plus cron routines in Asia/Taipei. The FastAPI
+process owns the scheduler. A due run is a normal assistant Message in
+that agent's 1:1 with optional `routineName`. Agent info pane lists
+routines with a live enable/pause switch. Channel pane and Computer pane
+unchanged.
+
 ## Inference interface
 
 ```text
@@ -219,7 +233,7 @@ Snorlax-Bot:
 
 - The **Spark stays powered**. Closing the Tauri window does not unload
   vLLM (separate process) and does not delete transcripts.
-- Later, routines fire inside the runtime’s scheduler, not inside the GUI.
+- Routines fire inside the runtime’s scheduler (v0.9), not inside the GUI.
 - Later, multiple bots share one sandbox so a “chief of staff” bot can hand
   a file to an “inbox” bot without the human pasting.
 

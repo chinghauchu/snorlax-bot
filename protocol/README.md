@@ -14,6 +14,12 @@ v0.8 question widgets: Message `kind=widget` plus `widget`,
 `{ widgetReply: { id, values?, dismissed? } }`. No `widget.*` SSE event.
 Clients render only.
 
+v0.9 skills and cron routines: `GET /v1/agents/{id}/routines` lists
+`{ id, name, skill, schedule, enabled }`. Pause/enable is
+`PATCH .../routines/{rid}` `{ enabled }`. A due cron writes a normal
+assistant Message in that agent's 1:1 with optional `routineName`.
+Chrome is list + enable/pause only.
+
 A copy is also kept at `runtime/openapi.yaml` and `desktop/openapi.yaml`
 so those trees are self-contained. Do not let the files diverge.
 

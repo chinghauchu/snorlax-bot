@@ -66,6 +66,19 @@ struct RuntimeClient: Sendable {
         try Self.throwIfNeeded(data: data, response: response, allowed: [204])
     }
 
+    func listRoutines(agentId: String) async throws -> [Routine] {
+        try await get("v1/agents/\(Self.encode(agentId))/routines")
+    }
+
+    func patchRoutine(agentId: String, routineId: String, enabled: Bool) async throws -> Routine {
+        try await send(
+            "v1/agents/\(Self.encode(agentId))/routines/\(Self.encode(routineId))",
+            method: "PATCH",
+            body: RoutinePatch(enabled: enabled),
+            expected: 200
+        )
+    }
+
     func listMessages(agentId: String, limit: Int = 100, before: String? = nil, threadId: String? = nil) async throws -> [Message] {
         var items: [URLQueryItem] = [URLQueryItem(name: "limit", value: String(limit))]
         if let before {

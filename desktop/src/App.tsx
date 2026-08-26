@@ -18,7 +18,9 @@ import {
   deleteAgent,
   listAgents,
   listMessages,
+  listRoutines,
   patchAgent,
+  patchRoutine,
   resolveMediaUrl,
   sendMessage,
   type StreamHandlers,
@@ -38,9 +40,11 @@ import {
   canToggleSharedProject,
   channelMembers,
   displayInitials,
+  EMPTY_ROUTINES,
   fallbackRosterSelection,
   infoPaneKind,
   nextRosterSelection,
+  routineMutedLine,
   SHARED_PROJECT_HINT,
 } from "./infoPane";
 import {
@@ -67,6 +71,7 @@ import type {
   Agent,
   ChatMessage,
   ImageIn,
+  Routine,
   Session,
   ThemePref,
 } from "./types";
@@ -242,6 +247,7 @@ export function App() {
   const [profileMemberIds, setProfileMemberIds] = useState<string[]>([]);
   const [profileSharedProject, setProfileSharedProject] = useState(false);
   const [profileSaving, setProfileSaving] = useState(false);
+  const [routines, setRoutines] = useState<Routine[]>([]);
   const [computerOpen, setComputerOpen] = useState(true);
   const [workspaceTick, setWorkspaceTick] = useState(0);
 
@@ -515,14 +521,45 @@ export function App() {
 
   function openInfo() {
     if (!active) return;
-    setProfileName(active.name);
-    setProfileTitle(active.title);
-    setProfileDescription(active.description);
-    setProfileAvatar(active.avatar);
-    setProfileMemberIds([...active.memberIds]);
-    setProfileSharedProject(Boolean(active.sharedProject));
+    beginInfo(active);
+  }
+
+  async function loadRoutines(agent: Agent) {
+    if (!session || agent.kind === "channel") {
+      setRoutines([]);
+      return;
+    }
+    try {
+      setRoutines(await listRoutines(session, agent.id));
+    } catch {
+      setRoutines([]);
+    }
+  }
+
+  function beginInfo(agent: Agent) {
+    setProfileName(agent.name);
+    setProfileTitle(agent.title);
+    setProfileDescription(agent.description);
+    setProfileAvatar(agent.avatar);
+    setProfileMemberIds([...agent.memberIds]);
+    setProfileSharedProject(Boolean(agent.sharedProject));
     setProfileEditing(false);
     setProfileOpen(true);
+    void loadRoutines(agent);
+  }
+
+  async function toggleRoutine(routine: Routine, enabled: boolean) {
+    if (!session || !active) return;
+    try {
+      const updated = await patchRoutine(session, active.id, routine.id, {
+        enabled,
+      });
+      setRoutines((prev) =>
+        prev.map((row) => (row.id === updated.id ? updated : row)),
+      );
+    } catch (err) {
+      setComposerError(describeError(err));
+    }
   }
 
   useEffect(() => {
@@ -534,19 +571,12 @@ export function App() {
       ) {
         event.preventDefault();
         if (!active) return;
-        setProfileName(active.name);
-        setProfileTitle(active.title);
-        setProfileDescription(active.description);
-        setProfileAvatar(active.avatar);
-        setProfileMemberIds([...active.memberIds]);
-        setProfileSharedProject(Boolean(active.sharedProject));
-        setProfileEditing(false);
-        setProfileOpen(true);
+        beginInfo(active);
       }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [active]);
+  }, [active, session]);
 
   async function saveProfile(event: FormEvent) {
     event.preventDefault();
@@ -1058,6 +1088,7 @@ export function App() {
                 const mine = isUserSender(message.senderId, message.role);
                 const sameSender =
                   prev != null &&
+                  !message.routineName &&
                   senderKey(prev.senderId, prev.role) ===
                     senderKey(message.senderId, message.role);
                 const knownNames = [
@@ -1125,8 +1156,15 @@ export function App() {
                           size={20}
                           session={session}
                         />
-                        <span className="sender-name">
-                          {message.senderName || "Agent"}
+                        <span className="sender-meta">
+                          <span className="sender-name">
+                            {message.senderName || "Agent"}
+                          </span>
+                          {message.routineName ? (
+                            <span className="routine-kicker">
+                              {message.routineName}
+                            </span>
+                          ) : null}
                         </span>
                       </div>
                     ) : null}
@@ -1537,6 +1575,7 @@ export function App() {
               </button>
             </form>
           ) : (
+            <>
             <div className="info-identity">
               <Avatar
                 src={active.avatar}
@@ -1552,6 +1591,46 @@ export function App() {
                 <p className="info-muted">{active.description}</p>
               ) : null}
             </div>
+            <section className="info-routines" aria-label="Routines">
+              <p className="info-routines-header">Routines</p>
+              {routines.length === 0 ? (
+                <p className="info-routine-empty">{EMPTY_ROUTINES}</p>
+              ) : (
+                routines.map((routine) => (
+                  <div
+                    className={
+                      routine.enabled
+                        ? "info-routine"
+                        : "info-routine paused"
+                    }
+                    key={routine.id}
+                  >
+                    <div className="info-routine-copy">
+                      <p className="info-routine-name">{routine.name}</p>
+                      <p className="info-routine-meta">
+                        {routineMutedLine(routine)}
+                      </p>
+                    </div>
+                    <label className="info-routine-switch">
+                      <input
+                        type="checkbox"
+                        role="switch"
+                        checked={routine.enabled}
+                        aria-label={
+                          routine.enabled
+                            ? `Pause ${routine.name}`
+                            : `Enable ${routine.name}`
+                        }
+                        onChange={(e) =>
+                          void toggleRoutine(routine, e.target.checked)
+                        }
+                      />
+                    </label>
+                  </div>
+                ))
+              )}
+            </section>
+            </>
           )}
         </aside>
       ) : null}

@@ -29,6 +29,7 @@ def client(tmp_path):
         bind="127.0.0.1",
         inference_backend="mock",
         port=8787,
+        scheduler=False,
     )
     app = create_app(settings)
     with TestClient(app) as test_client:

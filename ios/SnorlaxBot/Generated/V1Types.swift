@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 //
-// Generated from protocol/openapi.yaml (Snorlax-Bot 0.8.0).
+// Generated from protocol/openapi.yaml (Snorlax-Bot 0.9.0).
 // Do not edit by hand. Regenerate with:
 //   python3 ios/scripts/generate_v1_types.py
 //
@@ -317,8 +317,9 @@ struct Message: Codable, Hashable, Identifiable, Sendable {
     var widget: Widget?
     var widgetStatus: WidgetStatus?
     var widgetValues: [String]?
+    var routineName: String?
 
-    init(id: String, agentId: String, role: Role, content: String, images: [ImageOut], createdAt: Date, senderId: String, senderName: String, senderAvatar: String?, hop: Int, mentions: [Mention], kind: Kind? = nil, replyTo: String? = nil, handoff: HandoffRef? = nil, userAsk: String? = nil, brief: String? = nil, replyCount: Int? = nil, widget: Widget? = nil, widgetStatus: WidgetStatus? = nil, widgetValues: [String]? = nil) {
+    init(id: String, agentId: String, role: Role, content: String, images: [ImageOut], createdAt: Date, senderId: String, senderName: String, senderAvatar: String?, hop: Int, mentions: [Mention], kind: Kind? = nil, replyTo: String? = nil, handoff: HandoffRef? = nil, userAsk: String? = nil, brief: String? = nil, replyCount: Int? = nil, widget: Widget? = nil, widgetStatus: WidgetStatus? = nil, widgetValues: [String]? = nil, routineName: String? = nil) {
         self.id = id
         self.agentId = agentId
         self.role = role
@@ -339,9 +340,10 @@ struct Message: Codable, Hashable, Identifiable, Sendable {
         self.widget = widget
         self.widgetStatus = widgetStatus
         self.widgetValues = widgetValues
+        self.routineName = routineName
     }
 
-    enum CodingKeys: String, CodingKey { case id, agentId, role, content, images, createdAt, senderId, senderName, senderAvatar, hop, mentions, kind, replyTo, handoff, userAsk, brief, replyCount, widget, widgetStatus, widgetValues }
+    enum CodingKeys: String, CodingKey { case id, agentId, role, content, images, createdAt, senderId, senderName, senderAvatar, hop, mentions, kind, replyTo, handoff, userAsk, brief, replyCount, widget, widgetStatus, widgetValues, routineName }
 
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
@@ -365,6 +367,7 @@ struct Message: Codable, Hashable, Identifiable, Sendable {
         widget = try container.decodeIfPresent(Widget.self, forKey: .widget)
         widgetStatus = try container.decodeIfPresent(WidgetStatus.self, forKey: .widgetStatus)
         widgetValues = try container.decodeIfPresent([String].self, forKey: .widgetValues)
+        routineName = try container.decodeIfPresent(String.self, forKey: .routineName)
     }
 
     func encode(to encoder: Encoder) throws {
@@ -389,6 +392,7 @@ struct Message: Codable, Hashable, Identifiable, Sendable {
         try container.encodeIfPresent(widget, forKey: .widget)
         try container.encodeIfPresent(widgetStatus, forKey: .widgetStatus)
         try container.encodeIfPresent(widgetValues, forKey: .widgetValues)
+        try container.encode(routineName, forKey: .routineName)
     }
 }
 
@@ -704,6 +708,131 @@ struct WorkspaceFile: Codable, Hashable, Sendable {
         try container.encode(path, forKey: .path)
         try container.encode(content, forKey: .content)
         try container.encodeIfPresent(truncated, forKey: .truncated)
+    }
+}
+
+struct Routine: Codable, Hashable, Identifiable, Sendable {
+    var id: String
+    var name: String
+    var skill: String
+    var schedule: String
+    var enabled: Bool
+    var scheduleLabel: String?
+
+    init(id: String, name: String, skill: String, schedule: String, enabled: Bool, scheduleLabel: String? = nil) {
+        self.id = id
+        self.name = name
+        self.skill = skill
+        self.schedule = schedule
+        self.enabled = enabled
+        self.scheduleLabel = scheduleLabel
+    }
+
+    enum CodingKeys: String, CodingKey { case id, name, skill, schedule, enabled, scheduleLabel }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(String.self, forKey: .id)
+        name = try container.decode(String.self, forKey: .name)
+        skill = try container.decode(String.self, forKey: .skill)
+        schedule = try container.decode(String.self, forKey: .schedule)
+        enabled = try container.decode(Bool.self, forKey: .enabled)
+        scheduleLabel = try container.decodeIfPresent(String.self, forKey: .scheduleLabel)
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(id, forKey: .id)
+        try container.encode(name, forKey: .name)
+        try container.encode(skill, forKey: .skill)
+        try container.encode(schedule, forKey: .schedule)
+        try container.encode(enabled, forKey: .enabled)
+        try container.encodeIfPresent(scheduleLabel, forKey: .scheduleLabel)
+    }
+}
+
+struct RoutineCreate: Codable, Hashable, Sendable {
+    var name: String
+    var skill: String
+    var schedule: String
+
+    init(name: String, skill: String, schedule: String) {
+        self.name = name
+        self.skill = skill
+        self.schedule = schedule
+    }
+
+    enum CodingKeys: String, CodingKey { case name, skill, schedule }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        name = try container.decode(String.self, forKey: .name)
+        skill = try container.decode(String.self, forKey: .skill)
+        schedule = try container.decode(String.self, forKey: .schedule)
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(name, forKey: .name)
+        try container.encode(skill, forKey: .skill)
+        try container.encode(schedule, forKey: .schedule)
+    }
+}
+
+struct RoutinePatch: Codable, Hashable, Sendable {
+    var enabled: Bool
+
+    init(enabled: Bool) {
+        self.enabled = enabled
+    }
+
+    enum CodingKeys: String, CodingKey { case enabled }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        enabled = try container.decode(Bool.self, forKey: .enabled)
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(enabled, forKey: .enabled)
+    }
+}
+
+struct SkillInfo: Codable, Hashable, Sendable {
+    enum Source: String, Codable, Hashable, Sendable {
+        case workspace
+        case skillsDir
+    }
+
+    var name: String
+    var description: String
+    var source: Source
+    var path: String
+
+    init(name: String, description: String, source: Source, path: String) {
+        self.name = name
+        self.description = description
+        self.source = source
+        self.path = path
+    }
+
+    enum CodingKeys: String, CodingKey { case name, description, source, path }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        name = try container.decode(String.self, forKey: .name)
+        description = try container.decode(String.self, forKey: .description)
+        source = try container.decode(Source.self, forKey: .source)
+        path = try container.decode(String.self, forKey: .path)
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(name, forKey: .name)
+        try container.encode(description, forKey: .description)
+        try container.encode(source, forKey: .source)
+        try container.encode(path, forKey: .path)
     }
 }
 
