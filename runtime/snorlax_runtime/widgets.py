@@ -214,6 +214,20 @@ def parse_widget_args(raw: Any) -> dict[str, Any] | None:
     }
 
 
+def card_body(widget: dict[str, Any] | None) -> dict[str, Any] | None:
+    """Public Widget object: card fields only. Status/values live on Message."""
+    if not widget:
+        return None
+    return {
+        "prompt": widget["prompt"],
+        "options": widget["options"],
+        "allowCustom": bool(widget.get("allowCustom")),
+        "multiSelect": bool(widget.get("multiSelect")),
+        "helpText": widget.get("helpText"),
+        "dismissOnMoveOn": bool(widget.get("dismissOnMoveOn")),
+    }
+
+
 def public_widget(raw: Any) -> dict[str, Any] | None:
     if raw is None or raw == "":
         return None
@@ -253,7 +267,10 @@ def public_widget(raw: Any) -> dict[str, Any] | None:
 def require_reply_values(
     raw_values: list[str], widget: dict[str, Any] | None
 ) -> list[str]:
-    values = reply_values(raw_values, widget)
+    stripped = [str(item).strip() for item in raw_values if str(item).strip()]
+    if len(stripped) > 1 and not (widget or {}).get("multiSelect"):
+        raise WidgetAnswerError("multiple values require multiSelect")
+    values = reply_values(stripped, widget)
     if not values:
         raise WidgetAnswerError("values required")
     return values

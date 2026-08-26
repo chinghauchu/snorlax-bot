@@ -6,7 +6,7 @@ Concrete follow-ups after v0. Filed on GitHub against
 ## Product
 
 - [P1 — First-run roster roles without a workflow builder](https://github.com/chinghauchu/snorlax-bot/issues/2)
-- [P2 — Question widgets: approve, pick, short answer](https://github.com/chinghauchu/snorlax-bot/issues/3) — **v0.8:** runtime-owned `kind=widget` LEFT card; POST `widgetReply` / `dismissed` (not a user bubble); 409 unless `dismissOnMoveOn`; thread-only in channels. Not a tool-approval card.
+- [P2 — Question widgets: approve, pick, short answer](https://github.com/chinghauchu/snorlax-bot/issues/3) — **v0.8:** runtime-owned `kind=widget` LEFT card; POST `widgetReply: { id, values?, dismissed? }` (not a user bubble); dismiss does not wake; 409 unless `dismissOnMoveOn`; thread-only in channels. Not a tool-approval card.
 - [P3 — Skills vs routines object model](https://github.com/chinghauchu/snorlax-bot/issues/4)
 - [P4 — Shared sandbox computer threat model](https://github.com/chinghauchu/snorlax-bot/issues/5)
 

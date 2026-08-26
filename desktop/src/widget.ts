@@ -14,9 +14,9 @@ export type QuestionWidget = {
   multiSelect?: boolean;
   helpText?: string | null;
   dismissOnMoveOn?: boolean;
-  status?: "pending" | "resolved" | "dismissed" | string;
-  values?: string[];
 };
+
+export type WidgetStatus = "pending" | "resolved" | "dismissed" | string;
 
 export function isWidget(message: {
   kind?: string;
@@ -39,18 +39,35 @@ export function widgetOf(message: {
   return raw;
 }
 
+export function widgetStatusOf(message: {
+  widgetStatus?: WidgetStatus | null;
+}): WidgetStatus {
+  return message.widgetStatus || "pending";
+}
+
+export function widgetValuesOf(message: {
+  widgetValues?: string[] | null;
+}): string[] {
+  return Array.isArray(message.widgetValues) ? message.widgetValues : [];
+}
+
 export function isPendingWidget(message: {
   kind?: string;
   widget?: QuestionWidget | null;
+  widgetStatus?: WidgetStatus | null;
 }): boolean {
-  const widget = widgetOf(message);
-  if (!widget) return false;
-  return isWidget(message) && (widget.status || "pending") === "pending";
+  if (!isWidget(message) || !widgetOf(message)) return false;
+  return widgetStatusOf(message) === "pending";
 }
 
 /** Latest pending card in this transcript. Clients render; they do not invent fields. */
 export function pendingWidgetMessage(
-  messages: { kind?: string; widget?: QuestionWidget | null; id?: string }[],
+  messages: {
+    kind?: string;
+    widget?: QuestionWidget | null;
+    widgetStatus?: WidgetStatus | null;
+    id?: string;
+  }[],
 ): { id: string; widget: QuestionWidget } | null {
   for (let i = messages.length - 1; i >= 0; i--) {
     const message = messages[i];
@@ -61,10 +78,6 @@ export function pendingWidgetMessage(
   return null;
 }
 
-export function isPickedValue(
-  widget: QuestionWidget,
-  value: string,
-): boolean {
-  const picked = widget.values || [];
-  return picked.includes(value);
+export function isPickedValue(values: string[] | null | undefined, value: string): boolean {
+  return (values || []).includes(value);
 }

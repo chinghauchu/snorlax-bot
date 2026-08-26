@@ -337,7 +337,6 @@ async def run_user_turn(
     preferred_channel_id: str | None = None,
     max_tool_rounds: int | None = None,
     widget_reply: dict[str, Any] | None = None,
-    dismissed: bool = False,
 ) -> AsyncIterator[tuple[str, dict[str, Any]]]:
     """Persist the user message, then route hop-0 and peer work.
 
@@ -347,9 +346,10 @@ async def run_user_turn(
     threads on the seed channel when it exists; otherwise on body
     `channelId` if that row is an existing channel; otherwise no channel
     log (B still wakes). A pending question card is answered by
-    `widgetReply` or `dismissed` on this POST — not a new user Message.
-    After a widget is sent, this generator ends the origin SSE (remaining
-    peer jobs still run off-stream).
+    `widgetReply` on this POST — not a new user Message. Dismiss does not
+    wake the agent. A pick continues this POST as hop-0. After a widget is
+    sent, this generator ends the origin SSE (remaining peer jobs still
+    run off-stream).
     """
     origin_id = conversation["id"]
     is_group = conversation.get("kind") == KIND_CHANNEL
@@ -370,6 +370,7 @@ async def run_user_turn(
         origin_id, thread_id=stored_reply_to if is_group else None
     )
     persist_user = bool((content or "").strip())
+    wake_agent = False
     if widget_reply is not None:
         target = await store.get_message(widget_reply["id"])
         if target is None or target.get("agentId") != origin_id:
@@ -378,29 +379,31 @@ async def run_user_turn(
             target_thread = target.get("replyTo") or target["id"]
             if stored_reply_to and target_thread != stored_reply_to:
                 raise WidgetAnswerError("widget not in this thread")
-        body = target.get("widget") or {}
-        if body.get("status") != STATUS_PENDING:
-            raise WidgetAnswerError("widget is not pending")
-        values = require_reply_values(
-            list(widget_reply.get("values") or []), body
-        )
-        pending = await store.resolve_widget(
-            target["id"], status=STATUS_RESOLVED, values=values
-        )
-        if pending is None:
+        if target.get("kind") != WIDGET_KIND:
             raise WidgetAnswerError("widget not found")
-        yield "message.done", pending
-        persist_user = False
-    elif dismissed:
-        if pending is None:
-            raise WidgetAnswerError("no pending widget")
-        pending = await store.resolve_widget(
-            pending["id"], status=STATUS_DISMISSED
-        )
-        if pending is None:
-            raise WidgetAnswerError("no pending widget")
-        yield "message.done", pending
-        persist_user = False
+        if target.get("widgetStatus") != STATUS_PENDING:
+            raise WidgetAnswerError("widget is not pending")
+        body = target.get("widget") or {}
+        if widget_reply.get("dismissed"):
+            pending = await store.resolve_widget(
+                target["id"], status=STATUS_DISMISSED
+            )
+            if pending is None:
+                raise WidgetAnswerError("widget not found")
+            yield "message.done", pending
+            persist_user = False
+        else:
+            values = require_reply_values(
+                list(widget_reply.get("values") or []), body
+            )
+            pending = await store.resolve_widget(
+                target["id"], status=STATUS_RESOLVED, values=values
+            )
+            if pending is None:
+                raise WidgetAnswerError("widget not found")
+            yield "message.done", pending
+            persist_user = False
+            wake_agent = True
     elif persist_user and pending is not None:
         body = pending.get("widget") or {}
         if body.get("dismissOnMoveOn"):
@@ -430,7 +433,7 @@ async def run_user_turn(
     turn = TurnState()
     jobs: list[_Job] = []
 
-    if not is_group:
+    if not is_group and (persist_user or wake_agent):
         jobs.append(
             _Job(
                 agent_id=origin_id,
@@ -463,7 +466,8 @@ async def run_user_turn(
             handoff_channel_id=log_channel_id,
         )
     elif (
-        is_group
+        wake_agent
+        and is_group
         and pending is not None
         and thread_id
         and pending.get("senderId")
@@ -964,6 +968,12 @@ async def _generate(
     if widget is not None:
         persist_widget = persist and not (is_group and not thread_id)
         if persist_widget:
+            existing = await store.pending_widget(
+                conversation_id, thread_id=thread_id if is_group else None
+            )
+            if existing is not None:
+                persist_widget = False
+        if persist_widget:
             saved_widget: dict[str, Any]
             if content.strip():
                 saved_text = await store.add_message(
@@ -983,28 +993,31 @@ async def _generate(
                 widget_id = new_id("msg")
             else:
                 widget_id = assistant_id
-            await store.decline_other_pending_widgets(
-                conversation_id,
-                keep_id=widget_id,
-                thread_id=thread_id if is_group else None,
-            )
-            saved_widget = await store.add_message(
-                agent_id=conversation_id,
-                role="assistant",
-                content=widget["prompt"],
-                message_id=widget_id,
-                sender_id=agent["id"],
-                sender_name=agent["name"],
-                sender_avatar=agent["avatar"],
-                hop=hop,
-                mentions=[],
-                reply_to=thread_id if is_group else None,
-                kind="widget",
-                widget=widget,
-            )
-            if stream:
-                events.append(("message.done", saved_widget))
-            return events, saved_widget
+            try:
+                saved_widget = await store.add_message(
+                    agent_id=conversation_id,
+                    role="assistant",
+                    content=widget["prompt"],
+                    message_id=widget_id,
+                    sender_id=agent["id"],
+                    sender_name=agent["name"],
+                    sender_avatar=agent["avatar"],
+                    hop=hop,
+                    mentions=[],
+                    reply_to=thread_id if is_group else None,
+                    kind="widget",
+                    widget=widget,
+                )
+            except WidgetPendingError:
+                persist_widget = False
+            else:
+                if stream:
+                    events.append(("message.done", saved_widget))
+                return events, saved_widget
+            if persist and content.strip():
+                pass
+            else:
+                return events, None
         # Channel timeline: never persist a card. persist=False: never
         # write B's card into B's 1:1.
         if persist and content.strip():

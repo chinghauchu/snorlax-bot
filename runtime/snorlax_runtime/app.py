@@ -323,18 +323,18 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 target_thread = target.get("replyTo") or target["id"]
                 if stored_reply_to and target_thread != stored_reply_to:
                     raise _error(422, "widget not in this thread")
-            body = target.get("widget") or {}
-            if body.get("status") != STATUS_PENDING:
+            if target.get("kind") != "widget":
+                raise _error(422, "widget not found")
+            if target.get("widgetStatus") != STATUS_PENDING:
                 raise _error(422, "widget is not pending")
-            try:
-                require_reply_values(
-                    list(payload.widgetReply.values or []), body
-                )
-            except WidgetAnswerError as exc:
-                raise _error(422, exc.message) from exc
-        elif payload.dismissed:
-            if pending is None:
-                raise _error(422, "no pending widget")
+            if not payload.widgetReply.dismissed:
+                try:
+                    require_reply_values(
+                        list(payload.widgetReply.values or []),
+                        target.get("widget") or {},
+                    )
+                except WidgetAnswerError as exc:
+                    raise _error(422, exc.message) from exc
         elif (payload.content or "").strip() and pending is not None:
             body = pending.get("widget") or {}
             if not body.get("dismissOnMoveOn"):
@@ -345,7 +345,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 store=store,
                 backend=backend,
                 conversation=conversation,
-                content=payload.content,
+                content=payload.content or "",
                 images=images,
                 mentions=mentions,
                 reply_to=payload.replyTo,
@@ -356,7 +356,6 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     if payload.widgetReply is not None
                     else None
                 ),
-                dismissed=payload.dismissed,
             ):
                 yield _sse(event, data)
 

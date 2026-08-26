@@ -56,6 +56,8 @@ def test_protocol_openapi_is_locked_v0_contract() -> None:
     assert "kind=tool" in text
     assert "enum: [message, handoff, tool, widget]" in text
     assert "kind=widget" in text
+    assert "widgetStatus" in text
+    assert "widgetValues" in text
     assert "ask_user_question" in text
     assert "dismissOnMoveOn" in text
     assert "allowCustom" in text

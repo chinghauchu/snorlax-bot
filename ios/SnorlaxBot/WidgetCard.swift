@@ -2,15 +2,16 @@
 import SwiftUI
 
 struct WidgetCardView: View {
-    let messageId: String
-    let widget: Widget
+    let message: Message
     @Environment(AppModel.self) private var model
     @State private var checked: Set<String> = []
     @State private var custom = ""
 
-    private var pending: Bool { widget.status == .pending }
-    private var resolved: Bool { widget.status == .resolved }
-    private var dismissed: Bool { widget.status == .dismissed }
+    private var widget: Widget { message.widget! }
+    private var pending: Bool { message.widgetStatus == .pending }
+    private var resolved: Bool { message.widgetStatus == .resolved }
+    private var dismissed: Bool { message.widgetStatus == .dismissed }
+    private var pickedValues: [String] { message.widgetValues ?? [] }
     private var multi: Bool { widget.multiSelect == true }
     private var interactive: Bool { pending && !model.isSending }
 
@@ -20,7 +21,6 @@ struct WidgetCardView: View {
                 VStack(alignment: .leading, spacing: 4) {
                     Text(widget.prompt)
                         .font(.system(size: 14))
-                        .lineSpacing(1.4 * 14 - 14)
                         .fixedSize(horizontal: false, vertical: true)
                     if let help = widget.helpText, !help.isEmpty {
                         Text(help)
@@ -37,7 +37,7 @@ struct WidgetCardView: View {
                 .padding(.trailing, interactive ? 22 : 0)
                 if interactive {
                     Button {
-                        Task { await model.dismissWidget() }
+                        Task { await model.dismissWidget(id: message.id) }
                     } label: {
                         Text("×")
                             .font(.system(size: 16))
@@ -90,7 +90,7 @@ struct WidgetCardView: View {
     @ViewBuilder
     private func optionRow(_ option: WidgetOption) -> some View {
         let value = option.resolvedValue
-        let picked = resolved && (widget.values ?? []).contains(value)
+        let picked = resolved && pickedValues.contains(value)
         let muted = resolved && !picked
         if multi, interactive {
             Button {
@@ -113,7 +113,7 @@ struct WidgetCardView: View {
         } else {
             Button {
                 guard interactive, !multi else { return }
-                Task { await model.answerWidget(id: messageId, values: [value]) }
+                Task { await model.answerWidget(id: message.id, values: [value]) }
             } label: {
                 HStack(alignment: .center, spacing: 8) {
                     optionCopy(option)
@@ -169,7 +169,7 @@ struct WidgetCardView: View {
             custom = ""
             return
         }
-        Task { await model.answerWidget(id: messageId, values: [value]) }
+        Task { await model.answerWidget(id: message.id, values: [value]) }
     }
 
     private func submitMulti() {
@@ -180,7 +180,7 @@ struct WidgetCardView: View {
         let extra = custom.trimmingCharacters(in: .whitespacesAndNewlines)
         if !extra.isEmpty, !values.contains(extra) { values.append(extra) }
         guard !values.isEmpty else { return }
-        Task { await model.answerWidget(id: messageId, values: values) }
+        Task { await model.answerWidget(id: message.id, values: values) }
     }
 }
 

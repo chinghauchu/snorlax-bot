@@ -291,6 +291,11 @@ struct Message: Codable, Hashable, Identifiable, Sendable {
         case tool
         case widget
     }
+    enum WidgetStatus: String, Codable, Hashable, Sendable {
+        case pending
+        case resolved
+        case dismissed
+    }
 
     var id: String
     var agentId: String
@@ -310,8 +315,10 @@ struct Message: Codable, Hashable, Identifiable, Sendable {
     var brief: String?
     var replyCount: Int?
     var widget: Widget?
+    var widgetStatus: WidgetStatus?
+    var widgetValues: [String]?
 
-    init(id: String, agentId: String, role: Role, content: String, images: [ImageOut], createdAt: Date, senderId: String, senderName: String, senderAvatar: String?, hop: Int, mentions: [Mention], kind: Kind? = nil, replyTo: String? = nil, handoff: HandoffRef? = nil, userAsk: String? = nil, brief: String? = nil, replyCount: Int? = nil, widget: Widget? = nil) {
+    init(id: String, agentId: String, role: Role, content: String, images: [ImageOut], createdAt: Date, senderId: String, senderName: String, senderAvatar: String?, hop: Int, mentions: [Mention], kind: Kind? = nil, replyTo: String? = nil, handoff: HandoffRef? = nil, userAsk: String? = nil, brief: String? = nil, replyCount: Int? = nil, widget: Widget? = nil, widgetStatus: WidgetStatus? = nil, widgetValues: [String]? = nil) {
         self.id = id
         self.agentId = agentId
         self.role = role
@@ -330,9 +337,11 @@ struct Message: Codable, Hashable, Identifiable, Sendable {
         self.brief = brief
         self.replyCount = replyCount
         self.widget = widget
+        self.widgetStatus = widgetStatus
+        self.widgetValues = widgetValues
     }
 
-    enum CodingKeys: String, CodingKey { case id, agentId, role, content, images, createdAt, senderId, senderName, senderAvatar, hop, mentions, kind, replyTo, handoff, userAsk, brief, replyCount, widget }
+    enum CodingKeys: String, CodingKey { case id, agentId, role, content, images, createdAt, senderId, senderName, senderAvatar, hop, mentions, kind, replyTo, handoff, userAsk, brief, replyCount, widget, widgetStatus, widgetValues }
 
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
@@ -354,6 +363,8 @@ struct Message: Codable, Hashable, Identifiable, Sendable {
         brief = try container.decodeIfPresent(String.self, forKey: .brief)
         replyCount = try container.decodeIfPresent(Int.self, forKey: .replyCount)
         widget = try container.decodeIfPresent(Widget.self, forKey: .widget)
+        widgetStatus = try container.decodeIfPresent(WidgetStatus.self, forKey: .widgetStatus)
+        widgetValues = try container.decodeIfPresent([String].self, forKey: .widgetValues)
     }
 
     func encode(to encoder: Encoder) throws {
@@ -376,6 +387,8 @@ struct Message: Codable, Hashable, Identifiable, Sendable {
         try container.encode(brief, forKey: .brief)
         try container.encodeIfPresent(replyCount, forKey: .replyCount)
         try container.encodeIfPresent(widget, forKey: .widget)
+        try container.encodeIfPresent(widgetStatus, forKey: .widgetStatus)
+        try container.encodeIfPresent(widgetValues, forKey: .widgetValues)
     }
 }
 
@@ -418,33 +431,23 @@ struct WidgetOption: Codable, Hashable, Sendable {
 }
 
 struct Widget: Codable, Hashable, Sendable {
-    enum Status: String, Codable, Hashable, Sendable {
-        case pending
-        case resolved
-        case dismissed
-    }
-
     var prompt: String
     var helpText: String?
     var options: [WidgetOption]
     var allowCustom: Bool?
     var multiSelect: Bool?
     var dismissOnMoveOn: Bool?
-    var status: Status
-    var values: [String]?
 
-    init(prompt: String, helpText: String? = nil, options: [WidgetOption], allowCustom: Bool? = nil, multiSelect: Bool? = nil, dismissOnMoveOn: Bool? = nil, status: Status, values: [String]? = nil) {
+    init(prompt: String, helpText: String? = nil, options: [WidgetOption], allowCustom: Bool? = nil, multiSelect: Bool? = nil, dismissOnMoveOn: Bool? = nil) {
         self.prompt = prompt
         self.helpText = helpText
         self.options = options
         self.allowCustom = allowCustom
         self.multiSelect = multiSelect
         self.dismissOnMoveOn = dismissOnMoveOn
-        self.status = status
-        self.values = values
     }
 
-    enum CodingKeys: String, CodingKey { case prompt, helpText, options, allowCustom, multiSelect, dismissOnMoveOn, status, values }
+    enum CodingKeys: String, CodingKey { case prompt, helpText, options, allowCustom, multiSelect, dismissOnMoveOn }
 
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
@@ -454,8 +457,6 @@ struct Widget: Codable, Hashable, Sendable {
         allowCustom = try container.decodeIfPresent(Bool.self, forKey: .allowCustom)
         multiSelect = try container.decodeIfPresent(Bool.self, forKey: .multiSelect)
         dismissOnMoveOn = try container.decodeIfPresent(Bool.self, forKey: .dismissOnMoveOn)
-        status = try container.decode(Status.self, forKey: .status)
-        values = try container.decodeIfPresent([String].self, forKey: .values)
     }
 
     func encode(to encoder: Encoder) throws {
@@ -466,32 +467,34 @@ struct Widget: Codable, Hashable, Sendable {
         try container.encodeIfPresent(allowCustom, forKey: .allowCustom)
         try container.encodeIfPresent(multiSelect, forKey: .multiSelect)
         try container.encodeIfPresent(dismissOnMoveOn, forKey: .dismissOnMoveOn)
-        try container.encode(status, forKey: .status)
-        try container.encodeIfPresent(values, forKey: .values)
     }
 }
 
 struct WidgetReply: Codable, Hashable, Identifiable, Sendable {
     var id: String
-    var values: [String]
+    var values: [String]?
+    var dismissed: Bool?
 
-    init(id: String, values: [String]) {
+    init(id: String, values: [String]? = nil, dismissed: Bool? = nil) {
         self.id = id
         self.values = values
+        self.dismissed = dismissed
     }
 
-    enum CodingKeys: String, CodingKey { case id, values }
+    enum CodingKeys: String, CodingKey { case id, values, dismissed }
 
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         id = try container.decode(String.self, forKey: .id)
-        values = try container.decode([String].self, forKey: .values)
+        values = try container.decodeIfPresent([String].self, forKey: .values)
+        dismissed = try container.decodeIfPresent(Bool.self, forKey: .dismissed)
     }
 
     func encode(to encoder: Encoder) throws {
         var container = encoder.container(keyedBy: CodingKeys.self)
         try container.encode(id, forKey: .id)
-        try container.encode(values, forKey: .values)
+        try container.encodeIfPresent(values, forKey: .values)
+        try container.encodeIfPresent(dismissed, forKey: .dismissed)
     }
 }
 
@@ -502,19 +505,17 @@ struct MessageCreate: Codable, Hashable, Sendable {
     var replyTo: String?
     var channelId: String?
     var widgetReply: WidgetReply?
-    var dismissed: Bool?
 
-    init(content: String? = nil, images: [ImageIn]? = nil, mentions: [String]? = nil, replyTo: String? = nil, channelId: String? = nil, widgetReply: WidgetReply? = nil, dismissed: Bool? = nil) {
+    init(content: String? = nil, images: [ImageIn]? = nil, mentions: [String]? = nil, replyTo: String? = nil, channelId: String? = nil, widgetReply: WidgetReply? = nil) {
         self.content = content
         self.images = images
         self.mentions = mentions
         self.replyTo = replyTo
         self.channelId = channelId
         self.widgetReply = widgetReply
-        self.dismissed = dismissed
     }
 
-    enum CodingKeys: String, CodingKey { case content, images, mentions, replyTo, channelId, widgetReply, dismissed }
+    enum CodingKeys: String, CodingKey { case content, images, mentions, replyTo, channelId, widgetReply }
 
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
@@ -524,7 +525,6 @@ struct MessageCreate: Codable, Hashable, Sendable {
         replyTo = try container.decodeIfPresent(String.self, forKey: .replyTo)
         channelId = try container.decodeIfPresent(String.self, forKey: .channelId)
         widgetReply = try container.decodeIfPresent(WidgetReply.self, forKey: .widgetReply)
-        dismissed = try container.decodeIfPresent(Bool.self, forKey: .dismissed)
     }
 
     func encode(to encoder: Encoder) throws {
@@ -535,7 +535,6 @@ struct MessageCreate: Codable, Hashable, Sendable {
         try container.encode(replyTo, forKey: .replyTo)
         try container.encode(channelId, forKey: .channelId)
         try container.encodeIfPresent(widgetReply, forKey: .widgetReply)
-        try container.encodeIfPresent(dismissed, forKey: .dismissed)
     }
 }
 

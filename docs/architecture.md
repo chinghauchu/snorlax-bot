@@ -139,8 +139,9 @@ SQLite file `~/.snorlax-bot/snorlax.db` (override with `SNORLAX_DATA_DIR`):
   listing stdio and LAN MCP servers. Desktop/iOS never read it. Empty or
   missing = no MCP; built-ins still work.
 - Question widgets (v0.8) — `messages.widget` JSON on `kind=widget` rows.
-  Answer is POST `widgetReply` / `dismissed` on the same transcript; not a
-  new user row. Clients render the card; they never invent fields.
+  Answer is POST `widgetReply: { id, values?, dismissed? }` on the same
+  transcript; not a new user row. Clients render the card; they never invent
+  fields.
 
 v0.1 keeps one transcript per agent (the 1:1) plus one seeded group channel
 and extra user-created channels (v0.4).

@@ -167,9 +167,13 @@ export interface paths {
          *     finishes with a normal assistant `kind=message` (streamed and
          *     persisted) unless the model asked a question card — then the POST
          *     SSE ends on that `kind=widget` `message.done` (no `widget.*` event).
-         *     Answer with `{ widgetReply: { id, values } }` or `{ dismissed: true }`;
-         *     that is not a user Message. A normal content send while a card is
-         *     pending is 409 unless dismissOnMoveOn (then auto-dismiss and proceed).
+         *     Answer with `{ widgetReply: { id, values?, dismissed? } }` on that
+         *     transcript; that is not a user Message. Dismiss does not wake the
+         *     agent. A pick continues this POST as hop-0 with the values. A
+         *     normal content send while a card is pending is 409 unless
+         *     dismissOnMoveOn (then auto-dismiss, no wake for the widget, then
+         *     the new user message). One pending widget per transcript (409 if
+         *     the model emits a second). Unknown id or already closed is 422.
          *     Empty model text or an inference error after tools still
          *     produce that follow-up; do not end on only a `kind=tool` line or
          *     `event:error` with no saved assistant message. Live `tool.start` /
@@ -418,11 +422,23 @@ export interface components {
             /** @description Count of thread replies under a timeline root. */
             replyCount?: number;
             /**
-             * @description Set on kind=widget. Pending, resolved, or dismissed so GET can
+             * @description Set on kind=widget. Card fields only. Status and picked values
+             *     are widgetStatus / widgetValues on this Message so GET can
              *     re-render the same card. Absent on other kinds. Never a
              *     user-right bubble.
              */
             widget?: components["schemas"]["Widget"];
+            /**
+             * @description Set on kind=widget. pending until a widgetReply; resolved after
+             *     a pick; dismissed after decline or dismissOnMoveOn.
+             * @enum {string}
+             */
+            widgetStatus?: "pending" | "resolved" | "dismissed";
+            /**
+             * @description Chosen option values (or custom text) after a pick. Empty while
+             *     pending or dismissed.
+             */
+            widgetValues?: string[];
         };
         WidgetOption: {
             label: string;
@@ -445,30 +461,35 @@ export interface components {
             /** @default false */
             multiSelect: boolean;
             /**
-             * @description If true, a normal content send auto-dismisses this card and
-             *     proceeds. If false, that send is 409 while the card is pending.
+             * @description If true, a normal content send auto-dismisses this card (no
+             *     agent wake for the widget) and proceeds. If false, that send
+             *     is 409 while the card is pending.
              * @default false
              */
             dismissOnMoveOn: boolean;
-            /** @enum {string} */
-            status: "pending" | "resolved" | "dismissed";
-            /** @description Chosen option values after a pick. Empty when pending or dismissed. */
-            values?: string[];
         };
         WidgetReply: {
             /** @description Message id of the pending kind=widget row. */
             id: string;
             /**
-             * @description Option values (default label). multiSelect is an array.
+             * @description Option values (default label) or custom text if allowCustom.
+             *     multiSelect is several values; otherwise more than one is 422.
              *     Not persisted as a user Message.
              */
-            values: string[];
+            values?: string[];
+            /**
+             * @description Decline the pending card. Updates that same Message to
+             *     widgetStatus=dismissed. Does not create a user Message and
+             *     does not wake the agent.
+             * @default false
+             */
+            dismissed: boolean;
         };
         MessageCreate: {
             /**
-             * @description User text. Required unless widgetReply or dismissed. Empty is
-             *     allowed only for those answer posts. A normal send while a
-             *     question is pending is 409 unless dismissOnMoveOn.
+             * @description User text. Required unless widgetReply. Empty is allowed only
+             *     for a widgetReply post. A normal send while a question is
+             *     pending is 409 unless dismissOnMoveOn.
              */
             content?: string;
             images?: components["schemas"]["ImageIn"][];
@@ -494,16 +515,12 @@ export interface components {
              */
             channelId?: string | null;
             /**
-             * @description Answer the pending question card. Not a user Message. Not a
-             *     user-right bubble.
+             * @description Answer the pending question card. `{ id, values }` resolves
+             *     that same Message. `{ id, dismissed: true }` declines it and
+             *     does not wake the agent. Not a user Message. Not a user-right
+             *     bubble.
              */
             widgetReply?: components["schemas"]["WidgetReply"];
-            /**
-             * @description Decline the pending question card. The card stays on the
-             *     LEFT row as status=dismissed. Does not create a user Message.
-             * @default false
-             */
-            dismissed: boolean;
         };
         MessageDelta: {
             id: string;

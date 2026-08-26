@@ -319,14 +319,14 @@ final class AppModel {
     }
 
     func answerWidget(id: String, values: [String]) async {
-        await streamAnswer(widgetReply: WidgetReply(id: id, values: values), dismissed: false)
+        await streamAnswer(widgetReply: WidgetReply(id: id, values: values))
     }
 
-    func dismissWidget() async {
-        await streamAnswer(widgetReply: nil, dismissed: true)
+    func dismissWidget(id: String) async {
+        await streamAnswer(widgetReply: WidgetReply(id: id, dismissed: true))
     }
 
-    private func streamAnswer(widgetReply: WidgetReply?, dismissed: Bool) async {
+    private func streamAnswer(widgetReply: WidgetReply) async {
         guard let client, let agent = selectedAgent, !isSending else { return }
         composerError = nil
         toolTraces = []
@@ -339,8 +339,7 @@ final class AppModel {
                 images: [],
                 replyTo: agent.isChannel ? threadID : nil,
                 channelId: agent.isChannel ? nil : lastExtraChannelID,
-                widgetReply: widgetReply,
-                dismissed: dismissed
+                widgetReply: widgetReply
             ) { [weak self] event in
                 Task { @MainActor in
                     self?.handle(event, agentId: agent.id)

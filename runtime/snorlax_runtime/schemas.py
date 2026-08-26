@@ -98,13 +98,12 @@ class Widget(BaseModel):
     allowCustom: bool = False
     multiSelect: bool = False
     dismissOnMoveOn: bool = False
-    status: str = "pending"
-    values: list[str] = Field(default_factory=list)
 
 
 class WidgetReply(BaseModel):
     id: str
-    values: list[str] = Field(default_factory=list)
+    values: list[str] | None = None
+    dismissed: bool = False
 
 
 class Message(BaseModel):
@@ -126,6 +125,8 @@ class Message(BaseModel):
     brief: str | None = None
     replyCount: int = 0
     widget: Widget | None = None
+    widgetStatus: str | None = None
+    widgetValues: list[str] = Field(default_factory=list)
 
 
 class MessageCreate(BaseModel):
@@ -144,11 +145,10 @@ class MessageCreate(BaseModel):
         ),
     )
     widgetReply: WidgetReply | None = None
-    dismissed: bool = False
 
     @model_validator(mode="after")
     def content_or_widget_answer(self) -> MessageCreate:
-        if self.dismissed or self.widgetReply is not None:
+        if self.widgetReply is not None:
             return self
         if not (self.content or "").strip():
             raise ValueError("content must not be empty")

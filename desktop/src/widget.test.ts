@@ -27,15 +27,15 @@ function block(selector: string): string {
   return css.slice(start, end + 1);
 }
 
-test("widget helpers lock kind=widget status and values", () => {
+test("widget helpers lock kind=widget status and values on the Message", () => {
   const pending = {
     id: "msg_w",
     kind: "widget" as const,
+    widgetStatus: "pending" as const,
+    widgetValues: [] as string[],
     widget: {
       prompt: "Ship it?",
       options: [{ label: "Yes", value: "Ship it" }],
-      status: "pending" as const,
-      values: [],
     },
   };
   assert.equal(isWidget(pending), true);
@@ -46,13 +46,15 @@ test("widget helpers lock kind=widget status and values", () => {
 
   const resolved = {
     ...pending,
-    widget: { ...pending.widget, status: "resolved", values: ["Ship it"] },
+    widgetStatus: "resolved",
+    widgetValues: ["Ship it"],
   };
   assert.equal(isPendingWidget(resolved), false);
 
   const dismissed = {
     ...pending,
-    widget: { ...pending.widget, status: "dismissed", values: [] },
+    widgetStatus: "dismissed",
+    widgetValues: [],
   };
   assert.equal(isPendingWidget(dismissed), false);
 });

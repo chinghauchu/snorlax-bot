@@ -10,6 +10,8 @@ import {
 type Props = {
   messageId: string;
   widget: QuestionWidget;
+  status?: string | null;
+  values?: string[] | null;
   disabled?: boolean;
   onReply: (id: string, values: string[]) => void;
   onDismiss: (id: string) => void;
@@ -18,13 +20,16 @@ type Props = {
 export function WidgetCard({
   messageId,
   widget,
+  status,
+  values,
   disabled = false,
   onReply,
   onDismiss,
 }: Props) {
-  const pending = (widget.status || "pending") === "pending";
-  const resolved = widget.status === "resolved";
-  const dismissed = widget.status === "dismissed";
+  const pending = (status || "pending") === "pending";
+  const resolved = status === "resolved";
+  const dismissed = status === "dismissed";
+  const pickedValues = values || [];
   const multi = Boolean(widget.multiSelect);
   const [checked, setChecked] = useState<string[]>([]);
   const [custom, setCustom] = useState("");
@@ -73,7 +78,7 @@ export function WidgetCard({
       <div className="widget-options">
         {options.map((option) => {
           const value = optionValue(option);
-          const picked = resolved && isPickedValue(widget, value);
+          const picked = resolved && isPickedValue(pickedValues, value);
           const muted = resolved && !picked;
           if (multi && interactive) {
             return (

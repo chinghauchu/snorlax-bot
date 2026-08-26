@@ -416,8 +416,8 @@ private struct MessageBubble: View {
                     .font(.system(size: 12))
                     .foregroundStyle(.secondary)
                     .padding(.horizontal, 12)
-            } else if message.isWidget, let widget = message.widget {
-                WidgetCardView(messageId: message.id, widget: widget)
+            } else if message.isWidget, message.widget != nil {
+                WidgetCardView(message: message)
                     .padding(.horizontal, 12)
             } else {
             HStack(alignment: .top, spacing: 0) {

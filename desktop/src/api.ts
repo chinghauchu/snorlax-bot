@@ -177,8 +177,7 @@ export async function sendMessage(
   replyTo?: string | null,
   channelId?: string | null,
   extra?: {
-    widgetReply?: { id: string; values: string[] };
-    dismissed?: boolean;
+    widgetReply?: { id: string; values?: string[]; dismissed?: boolean };
   },
 ): Promise<void> {
   const body: {
@@ -187,8 +186,7 @@ export async function sendMessage(
     mentions?: string[];
     replyTo?: string;
     channelId?: string;
-    widgetReply?: { id: string; values: string[] };
-    dismissed?: boolean;
+    widgetReply?: { id: string; values?: string[]; dismissed?: boolean };
   } = {
     content,
     images,
@@ -197,7 +195,6 @@ export async function sendMessage(
   if (replyTo) body.replyTo = replyTo;
   if (channelId) body.channelId = channelId;
   if (extra?.widgetReply) body.widgetReply = extra.widgetReply;
-  if (extra?.dismissed) body.dismissed = true;
   const response = await fetch(
     `${session.baseUrl}/v1/agents/${encodeURIComponent(agentId)}/messages`,
     {

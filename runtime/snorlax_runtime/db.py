@@ -645,10 +645,17 @@ class Store:
         if not reply_to:
             reply_count = await self._reply_count(message["id"])
         widget = None
+        widget_status = None
+        widget_values: list[str] = []
         if kind == "widget":
-            from snorlax_runtime.widgets import public_widget
+            from snorlax_runtime.widgets import card_body, public_widget
 
-            widget = public_widget(message.get("widget"))
+            stored = public_widget(message.get("widget"))
+            if stored is not None:
+                widget_status = stored.get("status") or "pending"
+                raw_values = stored.get("values") or []
+                widget_values = [str(item) for item in raw_values if str(item).strip()]
+                widget = card_body(stored)
         return {
             "id": message["id"],
             "agentId": message["agent_id"],
@@ -668,6 +675,8 @@ class Store:
             "brief": message.get("brief"),
             "replyCount": reply_count,
             "widget": widget,
+            "widgetStatus": widget_status,
+            "widgetValues": widget_values,
         }
 
     async def list_images(self, message_id: str) -> list[dict[str, Any]]:
@@ -726,6 +735,12 @@ class Store:
         if sender_name is None:
             sender_name = USER_SENDER_NAME if sender_id == USER_SENDER_ID else sender_id
         stored_mentions = json.dumps(mentions or [], ensure_ascii=False)
+        if kind == "widget":
+            from snorlax_runtime.widgets import WidgetPendingError
+
+            existing = await self.pending_widget(agent_id, thread_id=reply_to)
+            if existing is not None:
+                raise WidgetPendingError()
         stored_widget = (
             json.dumps(widget, ensure_ascii=False) if widget is not None else None
         )
@@ -791,8 +806,7 @@ class Store:
         )
         for row in await cur.fetchall():
             public = await self._message_public(dict(row))
-            widget = public.get("widget") or {}
-            if widget.get("status") == "pending":
+            if public.get("widgetStatus") == "pending":
                 return public
         return None
 

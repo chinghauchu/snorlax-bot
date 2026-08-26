@@ -639,7 +639,7 @@ export function App() {
     localImages?: ChatMessage["images"];
     mentionIds?: string[];
     optimisticUser?: boolean;
-    extra?: { widgetReply?: { id: string; values: string[] }; dismissed?: boolean };
+  extra?: { widgetReply?: { id: string; values?: string[]; dismissed?: boolean } };
   }) {
     if (!session || !active || busy) return;
     const content = opts.content;
@@ -813,11 +813,10 @@ export function App() {
   }
 
   async function dismissWidget(id: string) {
-    void id;
     setComposerError(null);
     await submitTurn({
       content: "",
-      extra: { dismissed: true },
+      extra: { widgetReply: { id, dismissed: true } },
     });
   }
 
@@ -1159,6 +1158,8 @@ export function App() {
                       <WidgetCard
                         messageId={message.id}
                         widget={message.widget}
+                        status={message.widgetStatus}
+                        values={message.widgetValues}
                         disabled={busy}
                         onReply={(id, values) => void answerWidget(id, values)}
                         onDismiss={(id) => void dismissWidget(id)}

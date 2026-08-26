@@ -15,7 +15,7 @@ Meant to *run*, including without a GPU.
 | Create / list / patch / delete agents | Sandbox computer GUI (browser, screenshot pane) |
 | Transcript persistence (SQLite) | Skills, “teach a task”, routines |
 | `POST .../messages` as SSE (`message.delta` / `message.done` / `tool.*` / `error`) plus `kind=widget` `message.done` | Extra SSE event types (`widget.*`) |
-| Question widgets (`ask_user_question`; POST `widgetReply` / `dismissed`; not a user bubble) | Tool-approval cards; widgets on the channel timeline |
+| Question widgets (`ask_user_question`; POST `widgetReply: { id, values?, dismissed? }`; not a user bubble) | Tool-approval cards; widgets on the channel timeline |
 | Bearer token LAN auth; bind localhost until a token exists | Vision (images persist, not sent to the model) |
 | Mock inference, **oMLX**, or **vLLM** OpenAI-compat | TensorRT-LLM |
 | Tauri + TypeScript chat UI; 320px computer pane (file tree + text preview, collapsible) | Full sandbox computer GUI (browser, screenshot, terminal, VNC) |

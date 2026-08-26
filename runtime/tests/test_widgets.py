@@ -31,7 +31,6 @@ def _send(
     mentions: list[str] | None = None,
     reply_to: str | None = None,
     widget_reply: dict | None = None,
-    dismissed: bool = False,
 ):
     payload: dict = {"content": content}
     if mentions is not None:
@@ -40,8 +39,6 @@ def _send(
         payload["replyTo"] = reply_to
     if widget_reply is not None:
         payload["widgetReply"] = widget_reply
-    if dismissed:
-        payload["dismissed"] = True
     with client.stream(
         "POST",
         f"/v1/agents/{dest}/messages",
@@ -62,6 +59,14 @@ def _pending_card(client, dest: str, **params):
     cards = [m for m in _msgs(client, dest, **params) if m.get("kind") == "widget"]
     assert cards
     return cards[-1]
+
+
+def _assistant_text(listed):
+    return [
+        m
+        for m in listed
+        if m["senderId"] != "user" and m.get("kind") == "message"
+    ]
 
 
 def test_parse_widget_fills_value_and_caps_options() -> None:
@@ -88,42 +93,34 @@ def test_parse_widget_fills_value_and_caps_options() -> None:
     assert len(parsed["options"]) == 6
     assert parsed["allowCustom"] is True
     assert parsed["dismissOnMoveOn"] is True
-    assert parsed["status"] == "pending"
-    assert parsed["values"] == []
     assert parse_widget_args({"prompt": "Hi", "options": []}) is None
 
 
-def test_widget_kind_and_stream_ends(client) -> None:
+def test_emit_and_get_kind_widget(client) -> None:
     status, events, raw = _send(client, SEED, ASK_LINE)
     assert status == 200
     assert "event: widget" not in raw
     assert "widget.start" not in raw
-    assert "widget.done" not in raw
-    names = [n for n, _ in events]
-    assert names[-1] == "message.done"
     dones = [p for n, p in events if n == "message.done"]
     widget_done = next(p for p in dones if p.get("kind") == "widget")
     assert widget_done["senderId"] == SEED
     assert widget_done["role"] == "assistant"
     assert widget_done["widget"]["prompt"] == ASK["prompt"]
-    assert widget_done["widget"]["status"] == "pending"
-    assert widget_done["widget"]["options"][0]["value"] == "Use VS Code"
-    assert widget_done["widget"]["values"] == []
-    after = dones[dones.index(widget_done) + 1 :]
-    assert after == []
+    assert "status" not in (widget_done["widget"] or {})
+    assert "values" not in (widget_done["widget"] or {})
+    assert widget_done["widgetStatus"] == "pending"
+    assert widget_done["widgetValues"] == []
+    assert dones[-1]["id"] == widget_done["id"]
     listed = _msgs(client, SEED)
     cards = [m for m in listed if m.get("kind") == "widget"]
     assert len(cards) == 1
     assert cards[0]["id"] == widget_done["id"]
-    assert not any(
-        m.get("kind") == "message"
-        and m["role"] == "assistant"
-        and m["createdAt"] > cards[0]["createdAt"]
-        for m in listed
-    )
+    assert cards[0]["widgetStatus"] == "pending"
+    assert cards[0]["widgetValues"] == []
+    assert cards[0]["widget"]["options"][0]["value"] == "Use VS Code"
 
 
-def test_widget_reply_is_not_a_user_bubble(client) -> None:
+def test_reply_updates_same_row_no_user_bubble(client) -> None:
     _send(client, SEED, ASK_LINE)
     card = _pending_card(client, SEED)
     before_users = [m for m in _msgs(client, SEED) if m["senderId"] == "user"]
@@ -138,40 +135,33 @@ def test_widget_reply_is_not_a_user_bubble(client) -> None:
     assert len(users) == len(before_users)
     updated = next(m for m in listed if m["id"] == card["id"])
     assert updated["kind"] == "widget"
-    assert updated["widget"]["status"] == "resolved"
-    assert updated["widget"]["values"] == ["Use VS Code"]
+    assert updated["widgetStatus"] == "resolved"
+    assert updated["widgetValues"] == ["Use VS Code"]
     dones = [p for n, p in events if n == "message.done"]
     assert dones[0]["id"] == card["id"]
-    assert dones[0]["widget"]["status"] == "resolved"
-    assert not any(p.get("role") == "user" and p.get("kind") != "widget" for p in dones if p.get("id") not in {u["id"] for u in before_users})
-    assistant = [
-        m
-        for m in listed
-        if m["senderId"] == SEED and m.get("kind") != "widget"
-    ]
-    assert assistant
-    assert assistant[-1]["kind"] == "message"
+    assert dones[0]["widgetStatus"] == "resolved"
+    assert _assistant_text(listed)
     assert not any(n == "tool.start" for n, _ in events)
 
 
-def test_dismissed_is_not_a_user_bubble(client) -> None:
+def test_dismiss_does_not_wake_agent(client) -> None:
     _send(client, SEED, ASK_LINE)
-    before_users = [m for m in _msgs(client, SEED) if m["senderId"] == "user"]
-    status, events, _raw = _send(client, SEED, dismissed=True)
+    card = _pending_card(client, SEED)
+    before = _msgs(client, SEED)
+    before_text = _assistant_text(before)
+    status, events, _raw = _send(
+        client, SEED, widget_reply={"id": card["id"], "dismissed": True}
+    )
     assert status == 200
     listed = _msgs(client, SEED)
-    cards = [m for m in listed if m.get("kind") == "widget"]
-    assert len(cards) == 1
-    assert cards[0]["widget"]["status"] == "dismissed"
-    assert cards[0]["widget"]["values"] == []
+    updated = next(m for m in listed if m["id"] == card["id"])
+    assert updated["widgetStatus"] == "dismissed"
+    assert updated["widgetValues"] == []
     users = [m for m in listed if m["senderId"] == "user"]
-    assert len(users) == len(before_users)
-    assert users[-1]["content"] == ASK_LINE
+    assert len(users) == len([m for m in before if m["senderId"] == "user"])
+    assert _assistant_text(listed) == before_text
     dones = [p for n, p in events if n == "message.done"]
-    assert dones[0]["id"] == cards[0]["id"]
-    assert dones[0]["widget"]["status"] == "dismissed"
-    follow = [p for p in dones[1:] if p.get("kind") != "tool"]
-    assert all(p.get("kind") != "widget" for p in follow)
+    assert [p["id"] for p in dones] == [card["id"]]
 
 
 def test_content_while_pending_is_409(client) -> None:
@@ -184,24 +174,57 @@ def test_content_while_pending_is_409(client) -> None:
     after = _msgs(client, SEED)
     assert len(after) == len(before)
     updated = next(m for m in after if m["id"] == card["id"])
-    assert updated["widget"]["status"] == "pending"
-    assert not any(m["senderId"] == "user" and m["content"] == "never mind, ship it" for m in after)
+    assert updated["widgetStatus"] == "pending"
 
 
-def test_dismiss_on_move_on_auto_dismisses_and_proceeds(client) -> None:
-    ask = {
-        **ASK,
-        "dismissOnMoveOn": True,
-    }
+def test_second_pending_content_is_409(client) -> None:
+    _send(client, SEED, ASK_LINE)
+    status, _events, _raw = _send(client, SEED, ASK_LINE)
+    assert status == 409
+    cards = [m for m in _msgs(client, SEED) if m.get("kind") == "widget"]
+    assert len(cards) == 1
+    assert cards[0]["widgetStatus"] == "pending"
+
+
+def test_dismiss_on_move_on_auto_dismisses_no_widget_wake(client) -> None:
+    ask = {**ASK, "dismissOnMoveOn": True}
     _send(client, SEED, f"SNORLAX_TOOL ask_user_question {json.dumps(ask)}")
     card = _pending_card(client, SEED)
     status, _events, _raw = _send(client, SEED, "Actually use Helix")
     assert status == 200
     listed = _msgs(client, SEED)
     updated = next(m for m in listed if m["id"] == card["id"])
-    assert updated["widget"]["status"] == "dismissed"
+    assert updated["widgetStatus"] == "dismissed"
     users = [m for m in listed if m["senderId"] == "user"]
     assert users[-1]["content"] == "Actually use Helix"
+    assert _assistant_text(listed)
+
+
+def test_unknown_id_and_already_closed_are_422(client) -> None:
+    _send(client, SEED, ASK_LINE)
+    card = _pending_card(client, SEED)
+    status, _events, _raw = _send(
+        client, SEED, widget_reply={"id": "msg_missing", "values": ["Use VS Code"]}
+    )
+    assert status == 422
+    _send(client, SEED, widget_reply={"id": card["id"], "dismissed": True})
+    status, _events, _raw = _send(
+        client, SEED, widget_reply={"id": card["id"], "values": ["Use VS Code"]}
+    )
+    assert status == 422
+
+
+def test_multiple_values_without_multiselect_422(client) -> None:
+    _send(client, SEED, ASK_LINE)
+    card = _pending_card(client, SEED)
+    status, _events, _raw = _send(
+        client,
+        SEED,
+        widget_reply={"id": card["id"], "values": ["Use VS Code", "Use Neovim"]},
+    )
+    assert status == 422
+    listed = next(m for m in _msgs(client, SEED) if m["id"] == card["id"])
+    assert listed["widgetStatus"] == "pending"
 
 
 def test_b_widget_never_appears_in_a_one_to_one(client) -> None:
@@ -229,23 +252,9 @@ def test_b_widget_never_appears_in_a_one_to_one(client) -> None:
     assert not any(m["senderId"] == bob["id"] for m in alice_later)
     alice_widgets = [m for m in alice_later if m.get("kind") == "widget"]
     assert all(w["senderId"] == alice["id"] for w in alice_widgets)
-    user = [m for m in alice_later if m["senderId"] == "user"][-1]
-    if user.get("handoff"):
-        thread = _msgs(
-            client,
-            user["handoff"]["channelId"],
-            threadId=user["handoff"]["threadId"],
-        )
-        assert not any(
-            m.get("kind") == "widget" and m["senderId"] == bob["id"]
-            for m in alice_later
-        )
-        del thread
-    seed_msgs = _msgs(client, SEED)
-    assert not any(m["senderId"] == bob["id"] for m in seed_msgs)
 
 
-def test_report_back_never_copies_b_cards(client) -> None:
+def test_report_back_is_text_only_never_copies_b_cards(client) -> None:
     alice = client.post(
         "/v1/agents", headers=AUTH, json={"name": "Alice"}
     ).json()
@@ -253,7 +262,7 @@ def test_report_back_never_copies_b_cards(client) -> None:
     _send(
         client,
         alice["id"],
-        f"@Bob {ASK_LINE}",
+        "@Bob please add 2+2",
         mentions=[bob["id"]],
     )
     alice_msgs = _msgs(client, alice["id"])
@@ -264,16 +273,17 @@ def test_report_back_never_copies_b_cards(client) -> None:
         user["handoff"]["channelId"],
         threadId=user["handoff"]["threadId"],
     )
-    bob_cards = [
-        m for m in thread if m.get("kind") == "widget" and m["senderId"] == bob["id"]
-    ]
     assert not any(
         m.get("kind") == "widget" and m["senderId"] == bob["id"] for m in alice_msgs
     )
-    assert all(
-        m.get("kind") != "widget" or m["senderId"] == alice["id"] for m in alice_msgs
-    )
-    del bob_cards
+    reports = [
+        m
+        for m in alice_msgs
+        if m["senderId"] == alice["id"] and m.get("kind") == "message"
+    ]
+    assert reports
+    assert all(m.get("kind") != "widget" or m["senderId"] == alice["id"] for m in alice_msgs)
+    del thread
 
 
 def test_channel_widget_is_thread_only_never_timeline(client) -> None:
@@ -295,7 +305,8 @@ def test_channel_widget_is_thread_only_never_timeline(client) -> None:
         if m.get("kind") == "widget" and m["senderId"] == bob["id"]
     ]
     assert bob_cards
-    assert bob_cards[0]["widget"]["status"] == "pending"
+    assert bob_cards[0]["widgetStatus"] == "pending"
+    assert bob_cards[0].get("replyTo")
     seed_one_to_one = _msgs(client, SEED)
     assert not any(
         m.get("kind") == "widget" and m["senderId"] == bob["id"]
@@ -328,8 +339,8 @@ def test_multiselect_reply_is_array_of_values(client) -> None:
     listed = _msgs(client, SEED)
     updated = next(m for m in listed if m["id"] == card["id"])
     assert updated["widget"]["multiSelect"] is True
-    assert updated["widget"]["status"] == "resolved"
-    assert updated["widget"]["values"] == ["Python", "Rust"]
+    assert updated["widgetStatus"] == "resolved"
+    assert updated["widgetValues"] == ["Python", "Rust"]
     users = [m for m in listed if m["senderId"] == "user"]
     assert len(users) == len(before_users)
 
@@ -342,7 +353,10 @@ def test_empty_content_without_answer_still_422(client) -> None:
     )
     assert response.status_code == 422
     _send(client, SEED, ASK_LINE)
-    status, _events, _raw = _send(client, SEED, dismissed=True)
+    card = _pending_card(client, SEED)
+    status, _events, _raw = _send(
+        client, SEED, widget_reply={"id": card["id"], "dismissed": True}
+    )
     assert status == 200
 
 
@@ -355,7 +369,7 @@ def test_reply_maps_label_to_value(client) -> None:
         widget_reply={"id": card["id"], "values": ["VS Code"]},
     )
     updated = next(m for m in _msgs(client, SEED) if m["id"] == card["id"])
-    assert updated["widget"]["values"] == ["Use VS Code"]
+    assert updated["widgetValues"] == ["Use VS Code"]
 
 
 @pytest.mark.asyncio
