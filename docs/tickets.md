@@ -13,7 +13,7 @@ Concrete follow-ups after v0. Filed on GitHub against
 ## Design
 
 - [D1 — Desktop visual system: roster, status, empty states](https://github.com/chinghauchu/snorlax-bot/issues/11)
-- [D2 — Computer pane next to chat](https://github.com/chinghauchu/snorlax-bot/issues/12) — v0.6 first slice: 320px right file tree + text preview over the existing `~/.snorlax-bot` workspace (collapsible, default open). Not VNC / take-over / screenshot stream. iOS: no pane this slice.
+- [D2 — Computer pane next to chat](https://github.com/chinghauchu/snorlax-bot/issues/12) — v0.6 first slice: 320px right file tree + text preview over the existing `~/.snorlax-bot` workspace (collapsible, default open). **v0.14:** identity-pane 16:10 Bearer PNG preview (288×180); not VNC / take-over / click API. File-tree column unchanged.
 - [D3 — In-stream widgets and attachment chips](https://github.com/chinghauchu/snorlax-bot/issues/8) — **v0.8 first slice:** LEFT question card chrome (desktop + iOS, no extra sheet). Attachment-chip VL treatment stays later.
 
 ## Backend
@@ -21,7 +21,7 @@ Concrete follow-ups after v0. Filed on GitHub against
 - [B1 — vLLM on GB10 70B FP8 recipe](https://github.com/chinghauchu/snorlax-bot/issues/10)
 - [B2 — Runtime-owned tool loop](https://github.com/chinghauchu/snorlax-bot/issues/14) — v0.5 built-in files/shell/web in a `~/.snorlax-bot` sandbox (not a Mac folder picker); shell has no extra network; tools auto-run; search provider is env/config; MCP stays later; computer pane first slice is v0.6
 - [B3 — MCP client: stdio and LAN, not public internet](https://github.com/chinghauchu/snorlax-bot/issues/15) — v0.7: FastAPI is the MCP client; `mcp.json` under `SNORLAX_DATA_DIR`; stdio + LAN HTTP/SSE; namespaced `server__tool`; built-ins win; desktop/iOS never speak MCP. **v0.10:** `GET /v1/plugins` + `POST .../auth` + `kind=connect` chrome (Settings list; OS browser). **v0.12:** Settings Add custom (`POST /v1/plugins`, `DELETE .../{id}`; no separate disconnect). No marketplace catalog.
-- [B4 — Local sandbox computer on the Spark](https://github.com/chinghauchu/snorlax-bot/issues/7) — v0.6 first slice: GET list/read of the existing tool sandbox (same `workspace_for()` roots). Full B4 (browser, per-agent VNC, 128GB Spark VM) stays later
+- [B4 — Local sandbox computer on the Spark](https://github.com/chinghauchu/snorlax-bot/issues/7) — v0.6 first slice: GET list/read of the existing tool sandbox (same `workspace_for()` roots). **v0.14:** per-agent 1280×800 display; `GET /v1/agents/{id}/computer` `{ hasSandbox, width, height, imageUrl }`; `imageUrl` is Bearer PNG at `/computer/screenshot`. Channel 409. Missing agent 404. No click/key/scroll POST. Full B4 (browser, per-agent VNC, 128GB Spark VM, take-over) stays later
 - [B5 — Scheduler for routines while the laptop is closed](https://github.com/chinghauchu/snorlax-bot/issues/17) — **v0.9:** FastAPI-process scheduler, cron in Asia/Taipei; a due run writes a normal assistant Message in that agent's 1:1 (`senderId=A`, `kind=message`, optional `routineName`). Isolation stands. **v0.13:** webhook fire is the same 1:1 path; pause still stops fire.
 - [B6 — Agent-to-agent messages and group threads](https://github.com/chinghauchu/snorlax-bot/issues/18) — v0.1 isolation + v0.2 handoff threads / jump chip + v0.4 report-back and extra channels
 
@@ -33,8 +33,8 @@ Concrete follow-ups after v0. Filed on GitHub against
 - Attachment chips with “not sent to model” already exist in v0; VL-on
   treatment stays with D3.
 - Computer pane first slice is v0.6 (D2/B4): desktop file tree + preview over
-  `~/.snorlax-bot` workspaces. Full sandbox computer GUI (browser, screenshot,
-  terminal) stays with later B4.
+  `~/.snorlax-bot` workspaces. **v0.14:** identity-pane screenshot preview.
+  Full sandbox computer GUI (browser, VNC, terminal, take-over) stays later.
 
 ## iOS
 

@@ -20,12 +20,13 @@ computer. Bots live on your LAN, talk through a thin local runtime, and (in
 later versions) browse, click, schedule, and call tools without sending tokens
 off-box.
 
-v0.13 is still small: **named teammates + identity pane + group channel threads
+v0.14 is still small: **named teammates + identity pane + group channel threads
 + chat with @mentions + report-back + extra channels + built-in tools + a
 thin desktop Computer pane + a runtime MCP client + question widgets +
 skills and cron/webhook routines (list + enable/pause + Copy webhook URL) + MCP connect chrome
 (Settings plugins list + `kind=connect` card) + assistant markdown +
-MCP Add custom (Settings POST / DELETE; no separate disconnect)**. Header click opens agent identity (PATCH) or
+MCP Add custom (Settings POST / DELETE; no separate disconnect) +
+identity-pane Box computer preview (Bearer PNG, no clicks)**. Header click opens agent identity (PATCH) or
 the channel member list. Agent identity lists routines with a live
 enable/pause switch and Copy for webhook URLs. 1:1s are user ↔ that agent only; a user `@chip`
 (or agent DM) opens a handoff thread in a channel (seed `snorlax-bot-group`
@@ -38,8 +39,10 @@ auto-runs tools; clients never call the model, the tools, or MCP. Channel work
 lives in a sandbox under `~/.snorlax-bot` when the channel’s shared-project
 toggle is on (default off); otherwise each agent uses its own workspace.
 Desktop shows that sandbox as a 320px right pane (file tree + text preview;
-collapsible). iOS stays chat + muted tool traces (no file browser this
-slice). No screenshot stream / VNC, no vision, no MCP marketplace UI. That slice is meant
+collapsible). The agent identity pane shows a live 16:10 computer preview
+(Bearer PNG of the runtime-owned 1280×800 display). iOS matches that
+preview in the agent sheet (no tap-to-open; no file browser). No VNC /
+take-over / click API. That slice is meant
 to actually run on a laptop *or* a Spark, with a mocked model backend when a
 70B-class checkpoint is not present.
 

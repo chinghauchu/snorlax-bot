@@ -94,10 +94,24 @@ def test_protocol_openapi_is_locked_v0_contract() -> None:
     assert "never call MCP" in text
     assert "SNORLAX_DATA_DIR" in text
     assert "No MCP, no browser-use GUI" not in text
+    assert "0.14.0" in text
     assert "0.13.0" in text
     assert "assistant markdown" in text.lower() or "v0.11" in text
     assert "v0.12" in text
     assert "v0.13" in text
+    assert "v0.14" in text
+    assert "/v1/agents/{id}/computer" in text
+    assert "/v1/agents/{id}/computer/screenshot" in text
+    assert "/v1/agents/{id}/computer/image" not in text
+    assert "/v1/agents/{id}/computer/click" not in text
+    assert "/v1/agents/{id}/computer/key" not in text
+    assert "/v1/agents/{id}/computer/scroll" not in text
+    assert "ComputerPreview" in text
+    assert "hasSandbox" in text
+    assert "No computer yet." in text
+    assert "288x180" in text or "288×180" in text
+    assert "click/key" in text.lower() or "No click" in text
+    assert "Bearer PNG" in text
     assert "/v1/hooks/{token}" in text
     assert "/v1/hooks/{routineId}" not in text
     assert "X-Snorlax-Hook-Key" not in text

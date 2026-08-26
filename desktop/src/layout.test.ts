@@ -136,6 +136,36 @@ test("agent identity type sizes and channel member rows", () => {
   assert.match(member, /height:\s*44px/);
 });
 
+test("computer preview in the identity pane is 288x180 16:10 with 8px radius", () => {
+  const header = block(".info-computer-header");
+  const empty = block(".info-computer-empty");
+  const frame = block(".info-computer-frame");
+  assert.match(header, /font-size:\s*12px/);
+  assert.match(header, /color:\s*var\(--text-muted\)/);
+  assert.match(empty, /font-size:\s*12px/);
+  assert.match(empty, /color:\s*var\(--text-muted\)/);
+  assert.match(frame, /width:\s*288px/);
+  assert.match(frame, /height:\s*180px/);
+  assert.match(frame, /border-radius:\s*8px/);
+  assert.match(frame, /border:\s*1px\s+solid\s+var\(--border\)/);
+  assert.match(frame, /cursor:\s*default/);
+  assert.match(frame, /pointer-events:\s*none/);
+  const img = block(".info-computer-frame img,\n.info-computer-slot");
+  assert.match(img, /object-fit:\s*contain/);
+  assert.match(img, /pointer-events:\s*none/);
+  const app = readFileSync(
+    join(dirname(fileURLToPath(import.meta.url)), "App.tsx"),
+    "utf8",
+  );
+  assert.match(app, /AgentComputer/);
+  const pane = app.slice(
+    app.indexOf("info-identity"),
+    app.indexOf("<ComputerPane"),
+  );
+  assert.ok(pane.indexOf("AgentComputer") < pane.indexOf("info-routines"));
+  assert.doesNotMatch(pane, />\s*Open\s*</);
+});
+
 test("routines list is 44px rows with switch on the agent read pane", () => {
   const header = block(".info-routines-header");
   const row = block(".info-routine");

@@ -391,6 +391,61 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/agents/{id}/computer": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["Id"];
+            };
+            cookie?: never;
+        };
+        /**
+         * Per-agent computer preview
+         * @description Runtime-owned 1280x800 sandbox display. Clients never send
+         *     clicks. Clients never speak MCP or the model. kind=channel is
+         *     409. Unknown agent is 404. `{ hasSandbox, width: 1280,
+         *     height: 800, imageUrl }`. `imageUrl` is present only when
+         *     hasSandbox is true: GET `/v1/agents/{id}/computer/screenshot`
+         *     (Bearer, image/png). No sandbox: hasSandbox false, omit imageUrl,
+         *     no frame on clients (`No computer yet.`). Idle desktop still
+         *     returns a 1280x800 shot (always on). No click/key/scroll POST.
+         *     Workspace file-tree GETs are unchanged.
+         */
+        get: operations["getComputer"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/agents/{id}/computer/screenshot": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["Id"];
+            };
+            cookie?: never;
+        };
+        /**
+         * Bearer PNG screenshot of the agent sandbox display
+         * @description image/png of the live 1280x800 framebuffer. Same SNORLAX_TOKEN
+         *     as other GETs. kind=channel is 409. Unknown agent is 404. No
+         *     sandbox is 404. Idle still returns a desktop shot. Not a
+         *     decorative static asset. No click/key/scroll POST.
+         */
+        get: operations["getComputerScreenshot"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/plugins": {
         parameters: {
             query?: never;
@@ -870,6 +925,31 @@ export interface components {
             content: string;
             /** @description True when the file was larger than the 256k cap. */
             truncated?: boolean;
+        };
+        ComputerPreview: {
+            /**
+             * @description False when this agent has no sandbox. Clients show 12px
+             *     muted `No computer yet.` and no frame. True means the
+             *     desktop is on (including idle) and imageUrl is a Bearer PNG.
+             */
+            hasSandbox: boolean;
+            /**
+             * @description Sandbox display width. Always 1280.
+             * @constant
+             */
+            width: 1280;
+            /**
+             * @description Sandbox display height. Always 800.
+             * @constant
+             */
+            height: 800;
+            /**
+             * @description Present only when hasSandbox is true. Path to the Bearer PNG
+             *     (`/v1/agents/{id}/computer/screenshot`). Same SNORLAX_TOKEN
+             *     as other GETs. Omitted when hasSandbox is false. Clients must
+             *     not invent a click/key/scroll POST.
+             */
+            imageUrl?: string;
         };
         Routine: {
             id: string;
@@ -1382,6 +1462,56 @@ export interface operations {
             401: components["responses"]["Error"];
             404: components["responses"]["Error"];
             422: components["responses"]["Error"];
+        };
+    };
+    getComputer: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["Id"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Computer preview descriptor */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ComputerPreview"];
+                };
+            };
+            401: components["responses"]["Error"];
+            404: components["responses"]["Error"];
+            409: components["responses"]["Error"];
+        };
+    };
+    getComputerScreenshot: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["Id"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description PNG screenshot */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "image/png": string;
+                };
+            };
+            401: components["responses"]["Error"];
+            404: components["responses"]["Error"];
+            409: components["responses"]["Error"];
         };
     };
     listPlugins: {

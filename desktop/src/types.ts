@@ -15,6 +15,7 @@ export type RoutinePatch = components["schemas"]["RoutinePatch"];
 export type Plugin = components["schemas"]["Plugin"];
 export type PluginAuth = components["schemas"]["PluginAuth"];
 export type PluginCreate = components["schemas"]["PluginCreate"];
+export type ComputerPreview = components["schemas"]["ComputerPreview"];
 
 export type Session = {
   baseUrl: string;

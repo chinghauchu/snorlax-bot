@@ -70,6 +70,10 @@ struct RuntimeClient: Sendable {
         try await get("v1/agents/\(Self.encode(agentId))/routines")
     }
 
+    func getComputer(agentId: String) async throws -> ComputerPreview {
+        try await get("v1/agents/\(Self.encode(agentId))/computer")
+    }
+
     func listPlugins() async throws -> [Plugin] {
         try await get("v1/plugins")
     }

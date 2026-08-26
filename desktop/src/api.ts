@@ -7,6 +7,7 @@ import type {
   Plugin,
   PluginAuth,
   PluginCreate,
+  ComputerPreview,
   Routine,
   RoutinePatch,
   RuntimeHealth,
@@ -361,6 +362,17 @@ export async function readWorkspaceFile(
     { headers: headers(session) },
   );
   return json<WorkspaceFile>(response);
+}
+
+export async function getComputer(
+  session: Session,
+  agentId: string,
+): Promise<ComputerPreview> {
+  const response = await fetch(
+    `${session.baseUrl}/v1/agents/${encodeURIComponent(agentId)}/computer`,
+    { headers: headers(session) },
+  );
+  return json<ComputerPreview>(response);
 }
 
 export async function listPlugins(session: Session): Promise<Plugin[]> {
