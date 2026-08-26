@@ -214,6 +214,7 @@ class Store:
             "handoff_thread_id": "TEXT",
             "origin_conversation_id": "TEXT",
             "widget": "TEXT",
+            "connect": "TEXT",
             "routine_name": "TEXT",
         }
         for name, spec in additions.items():
@@ -659,7 +660,7 @@ class Store:
             # behind ?threadId=. Widgets never appear on the timeline.
             where += (
                 " AND (reply_to IS NULL OR reply_to = '')"
-                " AND (kind IS NULL OR kind != 'widget')"
+                " AND (kind IS NULL OR (kind != 'widget' AND kind != 'connect'))"
             )
         if before:
             cur = await self.conn.execute(
@@ -782,6 +783,8 @@ class Store:
         widget = None
         widget_status = None
         widget_values: list[str] = []
+        connect = None
+        connect_status = None
         if kind == "widget":
             from snorlax_runtime.widgets import card_body, public_widget
 
@@ -791,6 +794,14 @@ class Store:
                 raw_values = stored.get("values") or []
                 widget_values = [str(item) for item in raw_values if str(item).strip()]
                 widget = card_body(stored)
+        elif kind == "connect":
+            from snorlax_runtime.connect import card_body as connect_body
+            from snorlax_runtime.connect import public_connect
+
+            stored_connect = public_connect(message.get("connect"))
+            if stored_connect is not None:
+                connect_status = stored_connect.get("status") or "pending"
+                connect = connect_body(stored_connect)
         return {
             "id": message["id"],
             "agentId": message["agent_id"],
@@ -812,6 +823,8 @@ class Store:
             "widget": widget,
             "widgetStatus": widget_status,
             "widgetValues": widget_values,
+            "connect": connect,
+            "connectStatus": connect_status,
             "routineName": message.get("routine_name") or None,
         }
 
@@ -863,6 +876,7 @@ class Store:
         handoff_thread_id: str | None = None,
         origin_conversation_id: str | None = None,
         widget: dict[str, Any] | None = None,
+        connect: dict[str, Any] | None = None,
         routine_name: str | None = None,
     ) -> dict[str, Any]:
         message_id = message_id or new_id("msg")
@@ -878,16 +892,25 @@ class Store:
             existing = await self.pending_widget(agent_id, thread_id=reply_to)
             if existing is not None:
                 raise WidgetPendingError()
+        if kind == "connect":
+            from snorlax_runtime.connect import ConnectPendingError
+
+            existing_connect = await self.pending_connect(agent_id, thread_id=reply_to)
+            if existing_connect is not None:
+                raise ConnectPendingError()
         stored_widget = (
             json.dumps(widget, ensure_ascii=False) if widget is not None else None
+        )
+        stored_connect = (
+            json.dumps(connect, ensure_ascii=False) if connect is not None else None
         )
         await self.conn.execute(
             "INSERT INTO messages "
             "(id, agent_id, role, content, created_at, sender_id, sender_name, "
             "sender_avatar, hop, mentions, reply_to, kind, user_ask, brief, "
             "handoff_channel_id, handoff_thread_id, origin_conversation_id, "
-            "widget, routine_name) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            "widget, connect, routine_name) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (
                 message_id,
                 agent_id,
@@ -907,6 +930,7 @@ class Store:
                 handoff_thread_id,
                 origin_conversation_id,
                 stored_widget,
+                stored_connect,
                 routine_name,
             ),
         )
@@ -981,6 +1005,65 @@ class Store:
         await self.conn.execute(
             "UPDATE messages SET widget = ? WHERE id = ?",
             (json.dumps(widget, ensure_ascii=False), message_id),
+        )
+        await self.conn.commit()
+        cur = await self.conn.execute(
+            "SELECT * FROM messages WHERE id = ?", (message_id,)
+        )
+        updated = await cur.fetchone()
+        assert updated is not None
+        return await self._message_public(dict(updated))
+
+    async def pending_connect(
+        self,
+        conversation_id: str,
+        *,
+        thread_id: str | None = None,
+    ) -> dict[str, Any] | None:
+        """Latest pending kind=connect in this transcript (or channel thread)."""
+        params: list[Any] = [conversation_id, "connect"]
+        where = "WHERE agent_id = ? AND kind = ?"
+        conversation = await self.get_agent(conversation_id)
+        is_channel = (
+            conversation is not None and conversation.get("kind") == KIND_CHANNEL
+        )
+        if is_channel and thread_id:
+            root_id = await self.resolve_thread_root(conversation_id, thread_id)
+            where += " AND (id = ? OR reply_to = ?)"
+            params.extend([root_id, root_id])
+        elif is_channel:
+            where += " AND (reply_to IS NULL OR reply_to = '')"
+        cur = await self.conn.execute(
+            f"SELECT * FROM messages {where} ORDER BY created_at DESC",
+            params,
+        )
+        for row in await cur.fetchall():
+            public = await self._message_public(dict(row))
+            if public.get("connectStatus") == "pending":
+                return public
+        return None
+
+    async def resolve_connect(
+        self,
+        message_id: str,
+        *,
+        status: str,
+    ) -> dict[str, Any] | None:
+        from snorlax_runtime.connect import public_connect
+
+        cur = await self.conn.execute(
+            "SELECT * FROM messages WHERE id = ?", (message_id,)
+        )
+        row = await cur.fetchone()
+        if row is None:
+            return None
+        card = public_connect(dict(row).get("connect"))
+        if card is None:
+            return None
+        card["status"] = status
+        await self.conn.execute(
+            "UPDATE messages SET connect = ? WHERE id = ?",
+            (json.dumps(card, ensure_ascii=False), message_id),
         )
         await self.conn.commit()
         cur = await self.conn.execute(
@@ -1158,7 +1241,7 @@ class Store:
             )
             return messages
         cur = await self.conn.execute(
-            "SELECT sender_id, sender_name, role, content, kind, widget FROM messages "
+            "SELECT sender_id, sender_name, role, content, kind, widget, connect FROM messages "
             "WHERE agent_id = ? ORDER BY created_at ASC",
             (conversation_id,),
         )
@@ -1183,7 +1266,7 @@ class Store:
     ) -> None:
         root_id = await self.resolve_thread_root(conversation_id, thread_id)
         cur = await self.conn.execute(
-            "SELECT sender_id, sender_name, role, content, kind, widget FROM messages "
+            "SELECT sender_id, sender_name, role, content, kind, widget, connect FROM messages "
             "WHERE agent_id = ? AND (id = ? OR reply_to = ?) "
             "ORDER BY created_at ASC",
             (conversation_id, root_id, root_id),
@@ -1222,6 +1305,31 @@ class Store:
                     {
                         "role": "user",
                         "content": "\n".join(picked) or "(empty)",
+                    }
+                )
+            return
+        if kind == "connect":
+            from snorlax_runtime.connect import (
+                format_connect_for_model,
+                public_connect,
+            )
+
+            card = public_connect(row["connect"] if "connect" in row.keys() else None)
+            if card is not None:
+                body = format_connect_for_model(card)
+            messages.append({"role": "assistant", "content": body})
+            if card and card.get("status") == "dismissed":
+                messages.append(
+                    {
+                        "role": "user",
+                        "content": "The user declined to connect that plugin.",
+                    }
+                )
+            elif card and card.get("status") == "connected":
+                messages.append(
+                    {
+                        "role": "user",
+                        "content": "The user connected the plugin. Continue with its tools.",
                     }
                 )
             return

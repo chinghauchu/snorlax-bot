@@ -1,0 +1,4 @@
+[[permission]]
+identifier = "allow-open-url"
+description = "Open the system browser for plugin OAuth."
+commands.allow = ["open_url"]

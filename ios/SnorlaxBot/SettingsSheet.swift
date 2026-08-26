@@ -78,6 +78,36 @@ struct SettingsSheet: View {
                         .accessibilityLabel(showToken ? "Hide token" : "Show token")
                     }
                 }
+
+                Section {
+                    if model.plugins.isEmpty {
+                        Text("No plugins yet.")
+                            .font(.system(size: 12))
+                            .foregroundStyle(.secondary)
+                    } else {
+                        ForEach(model.plugins) { plugin in
+                            HStack {
+                                Text(plugin.name)
+                                    .font(.system(size: 14))
+                                Spacer()
+                                Text(plugin.status == .connected ? "Connected" : "Needs sign-in")
+                                    .font(.system(size: 12))
+                                    .foregroundStyle(.secondary)
+                                if plugin.status != .connected {
+                                    Button("Connect") {
+                                        Task { _ = await model.connectPlugin(id: plugin.id) }
+                                    }
+                                    .font(.system(size: 14))
+                                }
+                            }
+                            .frame(minHeight: 44)
+                        }
+                    }
+                } header: {
+                    Text("Plugins")
+                        .font(.system(size: 12))
+                        .foregroundStyle(.secondary)
+                }
             }
             .font(.system(size: 14))
             .navigationTitle("Settings")
@@ -89,6 +119,9 @@ struct SettingsSheet: View {
             }
         }
         .presentationDetents([.medium, .large])
+        .task {
+            await model.refreshPlugins()
+        }
         .onDisappear {
             Task { await model.bootstrap() }
         }

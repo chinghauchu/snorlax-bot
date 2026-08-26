@@ -17,7 +17,7 @@ From public Grok Bot docs and the Aug 2026 launch:
 | Files, shell, web on a computer | v0.5: runtime tools in a workspace jail; v0.6: thin file-tree pane |
 | One user-scoped computer shared by all bots | Later: one sandbox on the Spark, shared files/logins, per-bot screen |
 | Skills (how) and routines (when) | v0.9: SKILL.md + cron (Asia/Taipei); list + enable/pause; fire LEFT 1:1 |
-| MCP + computer-use for sites without an API | v0.7: local/LAN MCP client; later: sandbox browser |
+| MCP + computer-use for sites without an API | v0.7: local/LAN MCP client; v0.10: connect chrome (`GET /v1/plugins` + `kind=connect`); later: sandbox browser |
 | Question / approval moments | v0.8: question widgets (`kind=widget`); tools stay auto-run (no approval card) |
 | Desktop + iOS, same bots | Tauri desktop now; Swift iOS companion on the LAN |
 | Cloud LLM | vLLM on GB10 (70B FP8 default; 200B-class in-range) |
@@ -137,7 +137,10 @@ SQLite file `~/.snorlax-bot/snorlax.db` (override with `SNORLAX_DATA_DIR`):
   (`/v1/agents/{id}/workspace` and `.../file`) read that same jail.
 - `mcp.json` (v0.7) — not in SQLite. Optional file under `SNORLAX_DATA_DIR`
   listing stdio and LAN MCP servers. Desktop/iOS never read it. Empty or
-  missing = no MCP; built-ins still work.
+  missing = no MCP; built-ins still work. v0.10 lists those servers on
+  `GET /v1/plugins` and authenticates via `POST /v1/plugins/{id}/auth`
+  (OS browser; callback hits the runtime). Connect cards persist as
+  `kind=connect`.
 - Question widgets (v0.8) — `messages.widget` JSON on `kind=widget` rows.
   Answer is POST `widgetReply: { id, values?, dismissed? }` on the same
   transcript; not a new user row. Clients render the card; they never invent
@@ -206,6 +209,10 @@ process owns the scheduler. A due run is a normal assistant Message in
 that agent's 1:1 with optional `routineName`. Agent info pane lists
 routines with a live enable/pause switch. Channel pane and Computer pane
 unchanged.
+
+v0.10: MCP connect chrome. `GET /v1/plugins` + `POST /v1/plugins/{id}/auth`
+(`authorizationUrl` for the OS browser). Message `kind=connect` (not
+`kind=widget`). Plugins list is Settings only.
 
 ## Inference interface
 

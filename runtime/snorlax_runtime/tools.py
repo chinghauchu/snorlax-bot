@@ -35,7 +35,7 @@ SEARCH_RESULT_CAP = 8
 
 _SAFE_ID = re.compile(r"^[A-Za-z0-9._-]+$")
 _USER_AGENT = (
-    "Snorlax-Bot/0.9 (+https://github.com/chinghauchu/snorlax-bot)"
+    "Snorlax-Bot/0.10 (+https://github.com/chinghauchu/snorlax-bot)"
 )
 BINARY_POLICY = "binary / too large"
 DEFAULT_SEARCH_PROVIDER = "duckduckgo"
@@ -898,19 +898,22 @@ async def run_tool_loop(
     persist_tool: PersistTool | None = None,
     use_tools: bool = True,
     use_widget: bool = True,
-) -> tuple[list[tuple[str, dict[str, Any]]], str, dict[str, Any] | None]:
+) -> tuple[
+    list[tuple[str, dict[str, Any]]], str, dict[str, Any] | None, dict[str, Any] | None
+]:
     """Execute OpenAI-compat tool rounds. Yields SSE-shaped (event, payload) list.
 
     Clients never see the raw tools payload. Final assistant text is returned
     for persistence as a normal Message. A valid ask_user_question ends the
     turn immediately (no more tokens/tools) and returns the widget payload.
+    A Connect card for an unauthenticated MCP plugin also ends the turn.
 
     A failed tool does not end the turn: results go back as role=tool and
     the model may call tools again until max_rounds. After any tool round,
     this always returns non-empty final text so the caller can persist a
     normal assistant bubble (empty model text and InferenceError after
-    tools included), unless a question card ended the turn. InferenceError
-    before any tool still propagates.
+    tools included), unless a question or connect card ended the turn.
+    InferenceError before any tool still propagates.
     """
     events: list[tuple[str, dict[str, Any]]] = []
     history: list[dict[str, Any]] = [dict(m) for m in messages]
@@ -925,6 +928,7 @@ async def run_tool_loop(
     final_parts: list[str] = []
     tool_outcomes: list[tuple[str, bool, str]] = []
     widget: dict[str, Any] | None = None
+    connect: dict[str, Any] | None = None
     offered = offered_tool_definitions(use_tools=use_tools, use_widget=use_widget)
 
     while True:
@@ -953,7 +957,18 @@ async def run_tool_loop(
         if not use_widget:
             widget_calls = []
 
-        runnable = other_calls if other_calls and rounds < max_rounds else []
+        from snorlax_runtime.mcp import connect_card_for_tool
+
+        pending_connect = None
+        runnable_calls: list[ToolCall] = []
+        for call in other_calls:
+            card = connect_card_for_tool(call.name) if use_tools else None
+            if card is not None and pending_connect is None:
+                pending_connect = card
+            elif card is None:
+                runnable_calls.append(call)
+
+        runnable = runnable_calls if runnable_calls and rounds < max_rounds else []
         pending_widget = None
         if widget_calls:
             pending_widget = parse_widget_args(widget_calls[0].arguments)
@@ -1021,11 +1036,20 @@ async def run_tool_loop(
                         "content": result,
                     }
                 )
+            if pending_connect is not None:
+                connect = pending_connect
+                final_parts = text_parts
+                break
             if pending_widget is not None:
                 widget = pending_widget
                 final_parts = text_parts
                 break
             continue
+
+        if pending_connect is not None:
+            connect = pending_connect
+            final_parts = text_parts
+            break
 
         if pending_widget is not None:
             widget = pending_widget
@@ -1070,7 +1094,7 @@ async def run_tool_loop(
         break
 
     content = "".join(final_parts)
-    if widget is not None:
+    if widget is not None or connect is not None:
         # The card is not a fake-token stream. Preamble text (if any) still
         # streams as a normal LEFT bubble before the card.
         if stream and content:
@@ -1078,7 +1102,7 @@ async def run_tool_loop(
 
             for token in _tokenize(content):
                 events.append(("message.delta", {**sender, "delta": token}))
-        return events, content, widget
+        return events, content, widget, connect
     if stream and content:
         from snorlax_runtime.inference import _tokenize
 
@@ -1094,7 +1118,7 @@ async def run_tool_loop(
             )
     elif stream:
         pass
-    return events, content, None
+    return events, content, None, None
 
 
 def _parse_args(raw: str) -> dict[str, Any]:

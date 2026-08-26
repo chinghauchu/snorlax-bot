@@ -48,6 +48,7 @@ final class AppModel {
     var showSettings = false
     var showProfile = false
     var routines: [Routine] = []
+    var plugins: [Plugin] = []
 
     init() {
         runtimeURL = UserDefaults.standard.string(forKey: Keys.runtimeURL) ?? ""
@@ -85,6 +86,7 @@ final class AppModel {
     func bootstrap() async {
         guard isConfigured, let client else {
             agents = []
+            plugins = []
             selectedAgentID = Agent.channelID
             messages = []
             localPreviews = [:]
@@ -95,6 +97,7 @@ final class AppModel {
         do {
             let roster = try await client.listAgents()
             agents = roster
+            plugins = (try? await client.listPlugins()) ?? []
             if let next = Agent.fallbackRosterSelection(in: roster) {
                 await select(next.id, push: true)
                 wantsComposerFocus = true
@@ -361,7 +364,58 @@ final class AppModel {
         await streamAnswer(widgetReply: WidgetReply(id: id, dismissed: true))
     }
 
-    private func streamAnswer(widgetReply: WidgetReply) async {
+    func refreshPlugins() async {
+        guard let client else {
+            plugins = []
+            return
+        }
+        plugins = (try? await client.listPlugins()) ?? []
+    }
+
+    func connectPlugin(id: String) async -> Bool {
+        guard let client else { return false }
+        do {
+            let auth = try await client.startPluginAuth(id: id)
+            let url = URL(string: auth.authorizationUrl) ?? client.resolve(auth.authorizationUrl)
+            guard let url else { return false }
+            Task { await PluginBrowser.open(url) }
+            let connected = await waitUntilPluginConnected(id: id)
+            await refreshPlugins()
+            return connected
+        } catch {
+            composerError = error.localizedDescription
+            return false
+        }
+    }
+
+    func answerConnect(id: String, pluginId: String) async {
+        if plugins.first(where: { $0.id == pluginId })?.status != .connected {
+            let ok = await connectPlugin(id: pluginId)
+            if !ok { return }
+        }
+        await streamAnswer(connectReply: ConnectReply(id: id))
+    }
+
+    func dismissConnect(id: String) async {
+        await streamAnswer(connectReply: ConnectReply(id: id, dismissed: true))
+    }
+
+    private func waitUntilPluginConnected(id: String, timeoutNs: UInt64 = 60_000_000_000) async -> Bool {
+        guard let client else { return false }
+        let start = DispatchTime.now().uptimeNanoseconds
+        while DispatchTime.now().uptimeNanoseconds - start < timeoutNs {
+            if Task.isCancelled { return false }
+            if let rows = try? await client.listPlugins(),
+               rows.contains(where: { $0.id == id && $0.status == .connected })
+            {
+                return true
+            }
+            try? await Task.sleep(nanoseconds: 400_000_000)
+        }
+        return false
+    }
+
+    private func streamAnswer(widgetReply: WidgetReply? = nil, connectReply: ConnectReply? = nil) async {
         guard let client, let agent = selectedAgent, !isSending else { return }
         composerError = nil
         toolTraces = []
@@ -374,7 +428,8 @@ final class AppModel {
                 images: [],
                 replyTo: agent.isChannel ? threadID : nil,
                 channelId: agent.isChannel ? nil : lastExtraChannelID,
-                widgetReply: widgetReply
+                widgetReply: widgetReply,
+                connectReply: connectReply
             ) { [weak self] event in
                 Task { @MainActor in
                     self?.handle(event, agentId: agent.id)

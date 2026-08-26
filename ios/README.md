@@ -5,9 +5,11 @@ contract as desktop. Named agents, streaming transcript, muted tool traces,
 image previews that are **never** sent to the model. Question widgets
 render as LEFT cards in the speaking agent's streak (no extra sheet). Agent
 info sheet lists cron routines under the 72px identity (list + enable/pause
-only, no extra sheet). No
+only, no extra sheet). Settings lists runtime plugins (OS browser via
+`ASWebAuthenticationSession`). No
 computer pane / file browser this slice (v0.6 desktop-only). MCP is
-runtime-owned; this client never speaks MCP. Tool traces (`kind=tool`)
+runtime-owned; this client never speaks MCP. Connect cards (`kind=connect`)
+render as LEFT chrome, not a user bubble. Tool traces (`kind=tool`)
 already paint as muted status.
 
 The Spark stays up when the phone sleeps. Reconnect is
@@ -63,6 +65,8 @@ Output: `SnorlaxBot/Generated/V1Types.swift`. Do not hand-edit that file.
 - `SnorlaxBot/ContentView.swift` — iPhone stack / iPad split chrome
 - `SnorlaxBot/AppModel.swift` — roster, chat, settings persistence
 - `SnorlaxBot/ProfileSheet.swift` — identity / channel pane; agent routines list
+- `SnorlaxBot/SettingsSheet.swift` — URL, token, plugins list
+- `SnorlaxBot/ConnectCard.swift` — `kind=connect` LEFT card
 - `SnorlaxBot/RuntimeClient.swift` — `/v1` + SSE
 - `SnorlaxBot/Generated/V1Types.swift` — OpenAPI models
 - `SnorlaxBot/KeychainStore.swift` — bearer token

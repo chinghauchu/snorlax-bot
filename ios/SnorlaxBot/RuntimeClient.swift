@@ -70,6 +70,19 @@ struct RuntimeClient: Sendable {
         try await get("v1/agents/\(Self.encode(agentId))/routines")
     }
 
+    func listPlugins() async throws -> [Plugin] {
+        try await get("v1/plugins")
+    }
+
+    func startPluginAuth(id: String) async throws -> PluginAuth {
+        try await send(
+            "v1/plugins/\(Self.encode(id))/auth",
+            method: "POST",
+            body: [String: String](),
+            expected: 200
+        )
+    }
+
     func patchRoutine(agentId: String, routineId: String, enabled: Bool) async throws -> Routine {
         try await send(
             "v1/agents/\(Self.encode(agentId))/routines/\(Self.encode(routineId))",
@@ -98,6 +111,7 @@ struct RuntimeClient: Sendable {
         replyTo: String? = nil,
         channelId: String? = nil,
         widgetReply: WidgetReply? = nil,
+        connectReply: ConnectReply? = nil,
         onEvent: @escaping @Sendable (StreamEvent) -> Void
     ) async throws {
         var request = try makeRequest(
@@ -109,7 +123,8 @@ struct RuntimeClient: Sendable {
                 mentions: mentions.isEmpty ? nil : mentions,
                 replyTo: replyTo,
                 channelId: channelId,
-                widgetReply: widgetReply
+                widgetReply: widgetReply,
+                connectReply: connectReply
             )
         )
         request.setValue("text/event-stream", forHTTPHeaderField: "Accept")

@@ -9,7 +9,7 @@ from contextlib import asynccontextmanager
 from fastapi import Body, Depends, FastAPI, HTTPException, Query, Request, status
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse, Response, StreamingResponse
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Response, StreamingResponse
 
 from snorlax_runtime import KIND_AGENT, KIND_CHANNEL, SEEDED_CHANNEL_ID, __version__
 from snorlax_runtime.auth import require_bearer
@@ -24,6 +24,8 @@ from snorlax_runtime.schemas import (
     Health,
     Message,
     MessageCreate,
+    Plugin,
+    PluginAuth,
     Routine,
     RoutineCreate,
     RoutinePatch,
@@ -32,8 +34,14 @@ from snorlax_runtime.schemas import (
     WorkspaceListing,
 )
 from snorlax_runtime.widgets import PENDING_ERROR, STATUS_PENDING, WidgetAnswerError, require_reply_values
+from snorlax_runtime.connect import (
+    CONNECT_KIND,
+    PENDING_ERROR as CONNECT_PENDING_ERROR,
+    STATUS_PENDING as CONNECT_PENDING,
+    ConnectAnswerError,
+)
 from snorlax_runtime.token import resolve_token, write_token_file
-from snorlax_runtime.mcp import start_mcp, stop_mcp
+from snorlax_runtime.mcp import McpConfigError, start_mcp, stop_mcp
 from snorlax_runtime.tools import (
     BinaryFileError,
     PathJailError,
@@ -338,6 +346,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         pending = await store.pending_widget(
             id, thread_id=stored_reply_to if is_group else None
         )
+        pending_connect = await store.pending_connect(
+            id, thread_id=stored_reply_to if is_group else None
+        )
         if payload.widgetReply is not None:
             target = await store.get_message(payload.widgetReply.id)
             if target is None or target.get("agentId") != id:
@@ -358,10 +369,29 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     )
                 except WidgetAnswerError as exc:
                     raise _error(422, exc.message) from exc
+        elif payload.connectReply is not None:
+            target_id = (payload.connectReply.id or "").strip()
+            target = None
+            if target_id:
+                target = await store.get_message(target_id)
+            else:
+                target = pending_connect
+            if target is None or target.get("agentId") != id:
+                raise _error(422, "connect card not found")
+            if is_group:
+                target_thread = target.get("replyTo") or target["id"]
+                if stored_reply_to and target_thread != stored_reply_to:
+                    raise _error(422, "connect card not in this thread")
+            if target.get("kind") != CONNECT_KIND:
+                raise _error(422, "connect card not found")
+            if target.get("connectStatus") != CONNECT_PENDING:
+                raise _error(422, "connect card is not pending")
         elif (payload.content or "").strip() and pending is not None:
             body = pending.get("widget") or {}
             if not body.get("dismissOnMoveOn"):
                 raise _error(409, PENDING_ERROR)
+        elif (payload.content or "").strip() and pending_connect is not None:
+            raise _error(409, CONNECT_PENDING_ERROR)
 
         async def events() -> AsyncIterator[bytes]:
             async for event, data in run_user_turn(
@@ -377,6 +407,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 widget_reply=(
                     payload.widgetReply.model_dump()
                     if payload.widgetReply is not None
+                    else None
+                ),
+                connect_reply=(
+                    payload.connectReply.model_dump()
+                    if payload.connectReply is not None
                     else None
                 ),
             ):
@@ -526,6 +561,65 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             raise _error(404, "path not found") from None
         except IsADirectoryError:
             raise _error(422, "not a file") from None
+
+    @app.get("/v1/plugins", response_model=list[Plugin])
+    async def list_plugins(
+        request: Request, _: str = Depends(require_bearer)
+    ) -> list[Plugin]:
+        manager = getattr(request.app.state, "mcp", None)
+        if manager is None:
+            return []
+        return [Plugin.model_validate(row) for row in manager.list_public()]
+
+    @app.post("/v1/plugins/{id}/auth", response_model=PluginAuth)
+    async def start_plugin_auth(
+        id: str, request: Request, _: str = Depends(require_bearer)
+    ) -> PluginAuth:
+        manager = getattr(request.app.state, "mcp", None)
+        if manager is None:
+            raise _error(500, "MCP is not running")
+        try:
+            state = manager.begin_auth(id)
+        except McpConfigError as exc:
+            raise _error(exc.status, exc.message) from exc
+        base = str(request.base_url).rstrip("/")
+        authorization_url = f"{base}/v1/plugins/oauth/start/{id}?state={state}"
+        return PluginAuth(authorizationUrl=authorization_url)
+
+    @app.get("/v1/plugins/oauth/start/{id}")
+    async def plugin_oauth_start(
+        id: str, request: Request, state: str = Query(default="")
+    ) -> Response:
+        manager = getattr(request.app.state, "mcp", None)
+        if manager is None or not state or manager.plugin_for_state(state) != id:
+            raise _error(422, "invalid auth state")
+        base = str(request.base_url).rstrip("/")
+        callback = f"{base}/v1/plugins/oauth/callback?state={state}"
+        upstream = manager.upstream_authorize_url(id, callback)
+        target = upstream or f"{callback}&code=local"
+        return RedirectResponse(url=target, status_code=302)
+
+    @app.get("/v1/plugins/oauth/callback")
+    async def plugin_oauth_callback(
+        request: Request,
+        state: str = Query(default=""),
+        code: str | None = Query(default=None),
+        token: str | None = Query(default=None),
+        access_token: str | None = Query(default=None),
+    ) -> HTMLResponse:
+        manager = getattr(request.app.state, "mcp", None)
+        if manager is None:
+            raise _error(500, "MCP is not running")
+        secret = (token or access_token or code or "").strip() or "local"
+        try:
+            await manager.complete_auth(state, secret)
+        except McpConfigError as exc:
+            raise _error(exc.status, exc.message) from exc
+        html = (
+            "<!doctype html><title>Snorlax-Bot</title>"
+            "<p>Connected. You can close this window.</p>"
+        )
+        return HTMLResponse(html)
 
     @app.get("/v1/images/{id}")
     async def get_image(

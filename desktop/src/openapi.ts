@@ -165,15 +165,21 @@ export interface paths {
          *     Report-back into A's 1:1 is a normal assistant `kind=message` as A
          *     and does not copy B's tool lines or B's widgets. A turn that ran tools always
          *     finishes with a normal assistant `kind=message` (streamed and
-         *     persisted) unless the model asked a question card — then the POST
+         *     persisted) unless the model asked a question card —         then the POST
          *     SSE ends on that `kind=widget` `message.done` (no `widget.*` event).
-         *     Answer with `{ widgetReply: { id, values?, dismissed? } }` on that
-         *     transcript; that is not a user Message. Dismiss does not wake the
-         *     agent. A pick continues this POST as hop-0 with the values. A
+         *     A Connect card for an unauthenticated MCP plugin is the same
+         *     persist-then-`message.done` shape with `kind=connect` (no
+         *     `connect.*` event). Answer with `{ widgetReply: { id, values?, dismissed? } }` on that
+         *     transcript; that is not a user Message. Connect is
+         *     `{ connectReply: { id } }` or `{ dismissed: true }` — also not a
+         *     user Message. Dismiss does not wake the
+         *     agent. A pick (or a successful connect) continues this POST as hop-0 with the values. A
          *     normal content send while a card is pending is 409 unless
          *     dismissOnMoveOn (then auto-dismiss, no wake for the widget, then
-         *     the new user message). One pending widget per transcript (409 if
-         *     the model emits a second). Unknown id or already closed is 422.
+         *     the new user message). Connect pending has no dismiss-on-move-on:
+         *     content is 409 until connect or dismiss. One pending widget per transcript (409 if
+         *     the model emits a second). One pending connect card per transcript.
+         *     Unknown id or already closed is 422.
          *     Empty model text or an inference error after tools still
          *     produce that follow-up; do not end on only a `kind=tool` line or
          *     `event:error` with no saved assistant message. Live `tool.start` /
@@ -325,6 +331,57 @@ export interface paths {
         get: operations["getWorkspaceFile"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/plugins": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List runtime-owned MCP plugins
+         * @description JSON array of Plugin (not wrapped): `{ id, name, status }` where
+         *     status is `connected` or `needsAuth`. Catalog may be empty.
+         *     Runtime-global (not per-agent). Clients never speak MCP; this is
+         *     Settings chrome only, not the agent pane. No store / search /
+         *     uninstall this slice. Hand-edited mcp.json under SNORLAX_DATA_DIR
+         *     still loads stdio and LAN servers.
+         */
+        get: operations["listPlugins"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/plugins/{id}/auth": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["Id"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Start plugin browser auth
+         * @description Returns `{ authorizationUrl }` for the OS browser (desktop system
+         *     browser; iOS ASWebAuthenticationSession). The OAuth callback hits
+         *     the runtime. Unknown id is 404. After the browser finishes,
+         *     GET /v1/plugins shows `connected` and tools auto-run (no approval
+         *     widgets). Connect-card reply is a separate POST connectReply.
+         */
+        post: operations["startPluginAuth"];
         delete?: never;
         options?: never;
         head?: never;
@@ -483,11 +540,12 @@ export interface components {
              *     like `Read src/a.ts` / `Ran ls` / `Fetched …`, same senderId as
              *     the agent). Question card is `widget` (LEFT card under the
              *     speaking agent's 20px avatar + 13px name; not a user-right
-             *     bubble and not a token stream). Default `message`. Do not
-             *     drop kind=message|handoff|tool.
+             *     bubble and not a token stream). Connect card is `connect`
+             *     (same LEFT chrome family as widgets, NOT kind=widget). Default
+             *     `message`. Do not drop kind=message|handoff|tool.
              * @enum {string}
              */
-            kind?: "message" | "handoff" | "tool" | "widget";
+            kind?: "message" | "handoff" | "tool" | "widget" | "connect";
             /** @description Channel thread id. Null on timeline roots and on 1:1s. */
             replyTo?: string | null;
             /**
@@ -513,6 +571,18 @@ export interface components {
              *     user-right bubble.
              */
             widget?: components["schemas"]["Widget"];
+            /**
+             * @description Set on kind=connect. Card fields only. Status lives on
+             *     connectStatus on this Message so GET can re-render the same
+             *     card. Absent on other kinds. Never a user-right bubble.
+             */
+            connect?: components["schemas"]["ConnectCard"];
+            /**
+             * @description Set on kind=connect. pending until a connectReply; connected
+             *     after `{ id }`; dismissed after `{ dismissed: true }`.
+             * @enum {string}
+             */
+            connectStatus?: "pending" | "connected" | "dismissed";
             /**
              * @description Set on kind=widget. pending until a widgetReply; resolved after
              *     a pick; dismissed after decline or dismissOnMoveOn.
@@ -576,11 +646,41 @@ export interface components {
              */
             dismissed: boolean;
         };
+        ConnectCard: {
+            /**
+             * @description Natural prompt on the card, e.g. `Connect Slack to read your
+             *     channels.`
+             */
+            prompt: string;
+            /** @description Plugin id from GET /v1/plugins. */
+            pluginId: string;
+            /** @description Optional 12px muted help, e.g. `Opens your browser to sign in.` */
+            helpText?: string | null;
+        };
+        ConnectReply: {
+            /**
+             * @description Message id of the pending kind=connect row. Required unless
+             *     dismissed is true (then the latest pending card in this
+             *     transcript is used).
+             */
+            id?: string;
+            /**
+             * @description Decline the pending card. Updates that same Message to
+             *     connectStatus=dismissed. Does not create a user Message and
+             *     does not wake the agent. `{ dismissed: true }` is enough;
+             *     `{ id }` after the browser finishes sets connected and wakes
+             *     the agent so tools auto-run.
+             * @default false
+             */
+            dismissed: boolean;
+        };
         MessageCreate: {
             /**
-             * @description User text. Required unless widgetReply. Empty is allowed only
-             *     for a widgetReply post. A normal send while a question is
-             *     pending is 409 unless dismissOnMoveOn.
+             * @description User text. Required unless widgetReply or connectReply. Empty
+             *     is allowed only for a widgetReply or connectReply post. A
+             *     normal send while a question is pending is 409 unless
+             *     dismissOnMoveOn. A send while a connect card is pending is
+             *     409 until connect or dismiss.
              */
             content?: string;
             images?: components["schemas"]["ImageIn"][];
@@ -612,6 +712,13 @@ export interface components {
              *     bubble.
              */
             widgetReply?: components["schemas"]["WidgetReply"];
+            /**
+             * @description Answer the pending connect card. `{ id }` marks that same
+             *     Message connected and wakes the agent. `{ dismissed: true }`
+             *     declines it and does not wake the agent. Not a user Message.
+             *     Not a user-right bubble.
+             */
+            connectReply?: components["schemas"]["ConnectReply"];
         };
         MessageDelta: {
             id: string;
@@ -683,6 +790,23 @@ export interface components {
             source: "workspace" | "skillsDir";
             /** @description Path relative to the workspace or skills dir. */
             path: string;
+        };
+        Plugin: {
+            id: string;
+            name: string;
+            /**
+             * @description `connected` when the runtime has a live MCP session.
+             *     `needsAuth` otherwise (including disabled / not signed in).
+             * @enum {string}
+             */
+            status: "connected" | "needsAuth";
+        };
+        PluginAuth: {
+            /**
+             * @description URL for the OS browser. OAuth callback hits the runtime.
+             *     Clients never speak MCP.
+             */
+            authorizationUrl: string;
         };
         ErrorBody: {
             error: string;
@@ -1097,6 +1221,51 @@ export interface operations {
             401: components["responses"]["Error"];
             404: components["responses"]["Error"];
             422: components["responses"]["Error"];
+        };
+    };
+    listPlugins: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description JSON array of Plugin */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Plugin"][];
+                };
+            };
+            401: components["responses"]["Error"];
+        };
+    };
+    startPluginAuth: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["Id"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Browser URL */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PluginAuth"];
+                };
+            };
+            401: components["responses"]["Error"];
+            404: components["responses"]["Error"];
         };
     };
     getImage: {
