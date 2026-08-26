@@ -217,14 +217,18 @@ export interface paths {
         /**
          * List routines assigned to this agent
          * @description JSON array of Routine (not wrapped). A routine is cron XOR
-         *     trigger: cron rows have `schedule` (5-field, Asia/Taipei) and
-         *     optional `scheduleLabel` (`Weekdays 9:00`). Webhook rows have
-         *     `trigger: { kind: webhook }`, `webhookUrl`, and `webhookKey`
-         *     (Copy on the identity pane). Missing agent is 404. kind=channel
-         *     is 409 (routines are agent-only). Used by the agent info pane
-         *     (list + enable/pause + Copy for webhook URL). No New / create /
-         *     edit / delete UI. Humanized trigger line (`Webhook` /
-         *     `Weekdays 9:00`) is a client concern.
+         *     trigger. `kind` is `cron` | `webhook` | `slack` | `github`.
+         *     Cron rows have `schedule` (5-field, Asia/Taipei) and optional
+         *     `scheduleLabel` (`Weekdays 9:00`). Webhook rows have
+         *     `webhookUrl` (full URL with secret token in the path; Copy on
+         *     the identity pane; clients must not paint it). Slack/GitHub
+         *     rows may have `label` (e.g. `Slack #eng`). Null fields are
+         *     omitted (`webhookUrl` is absent on cron rows). Missing agent
+         *     is 404. kind=channel is 409 (routines are agent-only). Used by
+         *     the agent info pane (list + enable/pause + Copy for webhook
+         *     URL). No New / create / edit / delete UI. Humanized trigger
+         *     line (`Webhook` / `Weekdays 9:00`) is a client concern. Do not
+         *     emit Connect cards from the pane.
          */
         get: operations["listRoutines"];
         put?: never;
@@ -232,14 +236,15 @@ export interface paths {
          * Seed a routine for this agent
          * @description Test/runtime seed. Body is cron XOR trigger. Cron:
          *     `{ name, skill, schedule }` (5-field or named hour, Asia/Taipei).
-         *     Webhook: `{ name, skill, trigger: { kind: webhook } }` — runtime
-         *     mints `webhookUrl` + `webhookKey`. POST of an event routine
-         *     without a trigger is 422. POST with both cron and trigger is 422.
-         *     Slack/GitHub `trigger.kind` is 422 unless that MCP plugin is
-         *     already connected; inbound Slack/GitHub is not in this slice
-         *     (use webhook). Webhook works with zero plugins. Clients have no
-         *     create UI this slice. 422 unknown skill / bad cron / channel id.
-         *     Missing agent is 404. No DELETE this slice.
+         *     Webhook: `{ name, skill, trigger: { type: webhook } }` — 201
+         *     with `webhookUrl` (token in the path). POST of an event routine
+         *     without a trigger is 422. POST with both schedule and trigger is
+         *     422. Slack/GitHub `{ type: slack|github, label? }` is 422 unless
+         *     GET /v1/plugins shows that plugin status=connected; inbound
+         *     Slack/GitHub is not in this slice (use webhook). Webhook works
+         *     with zero plugins. Clients have no create UI this slice. 422
+         *     unknown skill / bad cron / channel id. Missing agent is 404.
+         *     No DELETE this slice.
          */
         post: operations["createRoutine"];
         delete?: never;
@@ -273,12 +278,13 @@ export interface paths {
         patch: operations["patchRoutine"];
         trace?: never;
     };
-    "/v1/hooks/{routineId}": {
+    "/v1/hooks/{token}": {
         parameters: {
             query?: never;
             header?: never;
             path: {
-                routineId: string;
+                /** @description Secret token minted into webhookUrl. Not the routine id. */
+                token: string;
             };
             cookie?: never;
         };
@@ -286,14 +292,13 @@ export interface paths {
         put?: never;
         /**
          * Fire a webhook routine
-         * @description Unauthenticated-or-secret-gated fire. Does not use SNORLAX_TOKEN. Header `X-Snorlax-Hook-Key` must match the key
-         *     minted at create (returned as `webhookKey` on GET / POST create,
-         *     bearer-gated). Invalid or missing key is 401. Unknown routine, a
-         *     cron routine, or a non-webhook trigger is 404. Success is 202,
-         *     then the runtime runs that agent's SKILL.md into that agent's
-         *     1:1 as LEFT kind=message senderId=A with routineName. Paused
-         *     routines return 202 and do not run. Isolation stands: never
-         *     paint B in A's 1:1.
+         * @description POST the minted webhookUrl. Does not use SNORLAX_TOKEN. The
+         *     secret is the path token, not a query string and not a header.
+         *     Unknown token, a non-webhook routine, or a paused webhook is
+         *     404 and does not run. Success is 204, then the runtime runs
+         *     that agent's SKILL.md into that agent's 1:1 as LEFT kind=message
+         *     senderId=A with routineName. No catch-up. Isolation stands:
+         *     never paint B in A's 1:1.
          */
         post: operations["fireWebhook"];
         delete?: never;
@@ -867,24 +872,27 @@ export interface components {
             name: string;
             /** @description SKILL.md slug this routine fires. */
             skill: string;
-            /** @description Cron only. 5-field cron in Asia/Taipei. Omitted for trigger routines. */
+            /**
+             * @description cron XOR webhook / slack / github.
+             * @enum {string}
+             */
+            kind: "cron" | "webhook" | "slack" | "github";
+            /** @description Cron only. 5-field cron in Asia/Taipei. Present only for kind=cron. Omitted otherwise. */
             schedule?: string;
             /** @description false is paused. Resume is enabled true. */
             enabled: boolean;
-            /** @description Display string. Cron `Weekdays 9:00`. Webhook `Webhook`. */
+            /** @description Cron display (`Weekdays 9:00`). Present only for kind=cron. */
             scheduleLabel?: string;
-            trigger?: components["schemas"]["RoutineTrigger"];
-            /** @description Public POST URL for a webhook routine (`/v1/hooks/{routineId}`). Copy this from the identity pane. Bearer GET returns it so chrome can Copy. */
+            /** @description Present only for kind=webhook. Full POST URL with the secret token in the path (`/v1/hooks/{token}`), not query. Copy this from the identity pane. Clients must not paint it as the muted line. */
             webhookUrl?: string;
-            /** @description Sender key for `X-Snorlax-Hook-Key`. Returned on create and on bearer GET so the pane can Copy. Fire does not use SNORLAX_TOKEN. */
-            webhookKey?: string;
+            /** @description Optional Slack/GitHub display (e.g. `Slack #eng`, `GitHub owner/repo`). Omitted for cron and webhook. */
+            label?: string;
         };
         RoutineTrigger: {
-            /**
-             * @description webhook always works (zero plugins). slack/github 422 unless that MCP plugin is already connected; inbound Slack/GitHub delivery is not in this slice.
-             * @enum {string}
-             */
-            kind: "webhook" | "slack" | "github";
+            /** @description webhook, slack, or github. webhook always works (zero plugins). slack/github 422 unless GET /v1/plugins shows that plugin status=connected; inbound Slack/GitHub delivery is not in this slice. */
+            type: string;
+            /** @description Optional Slack/GitHub display, e.g. Slack */
+            label?: string;
         };
         RoutineCreate: {
             name: string;
@@ -1272,25 +1280,22 @@ export interface operations {
     fireWebhook: {
         parameters: {
             query?: never;
-            header: {
-                /** @description Sender key minted with the webhook routine. */
-                "X-Snorlax-Hook-Key": string;
-            };
+            header?: never;
             path: {
-                routineId: string;
+                /** @description Secret token minted into webhookUrl. Not the routine id. */
+                token: string;
             };
             cookie?: never;
         };
         requestBody?: never;
         responses: {
-            /** @description Accepted (run started, or skipped if paused) */
-            202: {
+            /** @description Fired; no body */
+            204: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content?: never;
             };
-            401: components["responses"]["Error"];
             404: components["responses"]["Error"];
         };
     };

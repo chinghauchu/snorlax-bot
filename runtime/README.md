@@ -64,9 +64,10 @@ A skill has no trigger of its own. No marketplace / client picker.
 
 Routines are cron XOR webhook on an agent (`GET /v1/agents/{id}/routines`,
 `PATCH .../routines/{id}` `{ enabled }`). Cron scheduler runs in this
-process (Asia/Taipei). Webhook fire is `POST /v1/hooks/{id}` with
-`X-Snorlax-Hook-Key` (not `SNORLAX_TOKEN`). A run writes a normal
-assistant Message in that agent's 1:1 with optional `routineName`.
+process (Asia/Taipei). Webhook fire is `POST` the minted `webhookUrl`
+(`/v1/hooks/{token}` in the path, no Bearer). Enabled → 204 and a
+normal assistant Message in that agent's 1:1 with optional
+`routineName`. Paused or unknown token → 404, do not run.
 Clients list, enable/pause, and Copy the webhook URL this slice.
 
 ## MCP (`mcp.json`)

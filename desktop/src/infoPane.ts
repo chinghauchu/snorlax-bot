@@ -90,10 +90,11 @@ export function nextRosterSelection<T extends { id: string; kind: string }>(
 export const EMPTY_ROUTINES = "No routines yet.";
 
 export type RoutineTriggerLine = {
+  kind?: string | null;
   skill?: string;
   schedule?: string | null;
   scheduleLabel?: string | null;
-  trigger?: { kind?: string | null } | null;
+  label?: string | null;
   webhookUrl?: string | null;
 };
 
@@ -116,16 +117,17 @@ export function humanizeTaipeiCron(cron: string): string {
 
 export function isWebhookRoutine(routine: RoutineTriggerLine): boolean {
   return (
-    routine.trigger?.kind === "webhook" || Boolean((routine.webhookUrl || "").trim())
+    (routine.kind || "").trim().toLowerCase() === "webhook" ||
+    Boolean((routine.webhookUrl || "").trim())
   );
 }
 
-/** Muted identity-pane line: trigger only (`Webhook` / `Weekdays 9:00`). */
+/** Muted identity-pane line: trigger only (`Webhook` / `Weekdays 9:00`). Never the URL. */
 export function routineMutedLine(routine: RoutineTriggerLine): string {
-  const kind = (routine.trigger?.kind || "").trim().toLowerCase();
+  const kind = (routine.kind || "").trim().toLowerCase();
   if (kind === "webhook" || isWebhookRoutine(routine)) return "Webhook";
-  if (kind === "slack") return "Slack";
-  if (kind === "github") return "GitHub";
+  if (kind === "slack") return (routine.label || "").trim() || "Slack";
+  if (kind === "github") return (routine.label || "").trim() || "GitHub";
   const when =
     (routine.scheduleLabel || "").trim() ||
     humanizeTaipeiCron(routine.schedule || "");
@@ -134,10 +136,6 @@ export function routineMutedLine(routine: RoutineTriggerLine): string {
 
 export function webhookCopyText(routine: {
   webhookUrl?: string | null;
-  webhookKey?: string | null;
 }): string {
-  const url = (routine.webhookUrl || "").trim();
-  const key = (routine.webhookKey || "").trim();
-  if (url && key) return `${url}\n${key}`;
-  return url;
+  return (routine.webhookUrl || "").trim();
 }

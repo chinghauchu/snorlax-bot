@@ -215,14 +215,21 @@ class WorkspaceFile(BaseModel):
 
 
 class RoutineTrigger(BaseModel):
-    kind: str = Field(description="webhook, slack, or github.")
+    type: str = Field(description="webhook, slack, or github.")
+    label: str | None = Field(
+        default=None,
+        description='Optional Slack/GitHub display, e.g. "Slack #eng".',
+        max_length=80,
+    )
 
     @model_validator(mode="after")
-    def known_kind(self) -> RoutineTrigger:
-        kind = (self.kind or "").strip().lower()
+    def known_type(self) -> RoutineTrigger:
+        kind = (self.type or "").strip().lower()
         if kind not in {"webhook", "slack", "github"}:
-            raise ValueError("trigger.kind must be webhook, slack, or github")
-        self.kind = kind
+            raise ValueError("trigger.type must be webhook, slack, or github")
+        self.type = kind
+        if self.label is not None:
+            self.label = self.label.strip() or None
         return self
 
 
@@ -231,11 +238,11 @@ class Routine(BaseModel):
     name: str
     skill: str
     enabled: bool = True
+    kind: str = "cron"
     schedule: str | None = None
     scheduleLabel: str | None = None
-    trigger: RoutineTrigger | None = None
     webhookUrl: str | None = None
-    webhookKey: str | None = None
+    label: str | None = None
 
 
 class RoutineCreate(BaseModel):

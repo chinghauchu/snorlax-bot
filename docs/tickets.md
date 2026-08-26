@@ -7,7 +7,7 @@ Concrete follow-ups after v0. Filed on GitHub against
 
 - [P1 — First-run roster roles without a workflow builder](https://github.com/chinghauchu/snorlax-bot/issues/2)
 - [P2 — Question widgets: approve, pick, short answer](https://github.com/chinghauchu/snorlax-bot/issues/3) — **v0.8:** runtime-owned `kind=widget` LEFT card; POST `widgetReply: { id, values?, dismissed? }` (not a user bubble); dismiss does not wake; 409 unless `dismissOnMoveOn`; thread-only in channels. Not a tool-approval card.
-- [P3 — Skills vs routines object model](https://github.com/chinghauchu/snorlax-bot/issues/4) — **v0.9:** one routine = one agent + one SKILL.md; GET `{ id, name, skill, schedule, enabled }`; PATCH `{ enabled }`; chrome is list + enable/pause only (no create/edit/delete UI, no teach-a-task, no marketplace). **v0.13:** cron XOR trigger; webhook URL + Copy; `POST /v1/hooks/{routineId}` (`X-Snorlax-Hook-Key`, not SNORLAX_TOKEN).
+- [P3 — Skills vs routines object model](https://github.com/chinghauchu/snorlax-bot/issues/4) — **v0.9:** one routine = one agent + one SKILL.md; GET `{ id, name, skill, schedule, enabled }`; PATCH `{ enabled }`; chrome is list + enable/pause only (no create/edit/delete UI, no teach-a-task, no marketplace). **v0.13:** cron XOR trigger; GET `kind` + webhook URL (token in path) + Copy; `POST {webhookUrl}` (no Bearer; 204; paused/unknown 404).
 - [P4 — Shared sandbox computer threat model](https://github.com/chinghauchu/snorlax-bot/issues/5)
 
 ## Design

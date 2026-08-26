@@ -162,22 +162,25 @@ extension Message {
 
 extension Routine {
     var isWebhook: Bool {
-        trigger?.kind == .webhook || !(webhookUrl ?? "").isEmpty
+        kind == .webhook || !(webhookUrl ?? "").isEmpty
     }
 
     var mutedLine: String {
         if isWebhook { return "Webhook" }
-        if trigger?.kind == .slack { return "Slack" }
-        if trigger?.kind == .github { return "GitHub" }
-        if let label = scheduleLabel, !label.isEmpty { return label }
+        if kind == .slack {
+            if let label, !label.isEmpty { return label }
+            return "Slack"
+        }
+        if kind == .github {
+            if let label, !label.isEmpty { return label }
+            return "GitHub"
+        }
+        if let scheduleLabel, !scheduleLabel.isEmpty { return scheduleLabel }
         return Self.humanizeTaipeiCron(schedule ?? "")
     }
 
     var copyPayload: String {
-        let url = (webhookUrl ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
-        let key = (webhookKey ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
-        if !url.isEmpty, !key.isEmpty { return "\(url)\n\(key)" }
-        return url
+        (webhookUrl ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
     static func humanizeTaipeiCron(_ cron: String) -> String {

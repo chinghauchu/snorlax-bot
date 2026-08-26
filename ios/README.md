@@ -23,7 +23,7 @@ The Spark stays up when the phone sleeps. Reconnect is
 | --- | --- |
 | Language | Swift 5.9+, SwiftUI |
 | Target | iOS 18+ (iPhone + iPad) |
-| Network | URLSession, `Authorization: Bearer` on everything except `GET /v1/health` and incoming `POST /v1/hooks/{routineId}` (hook key header, not the app token) |
+| Network | URLSession, `Authorization: Bearer` on everything except `GET /v1/health` and incoming `POST /v1/hooks/{token}` (token in the path, not the app token) |
 | Chat | `POST /v1/agents/{id}/messages` as SSE (`message.delta` / `message.done` / `tool.start` / `tool.done` / `error`) |
 | Computer | No file browser / computer pane this slice (desktop-only v0.6) |
 | Pairing | Settings sheet. Token in Keychain, URL in AppStorage. No gate screen |

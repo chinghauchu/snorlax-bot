@@ -151,7 +151,7 @@ SQLite file `~/.snorlax-bot/snorlax.db` (override with `SNORLAX_DATA_DIR`):
   process (Asia/Taipei). A due cron or a webhook POST persists a normal
   assistant Message in that agent's 1:1 with optional `routineName`. Channel
   GET/PATCH routines are 409. Missed ticks are skipped. Webhook fire is
-  `POST /v1/hooks/{routineId}` with `X-Snorlax-Hook-Key` (not SNORLAX_TOKEN).
+  `POST {webhookUrl}` (`/v1/hooks/{token}` in the path, no Bearer).
 
 v0.1 keeps one transcript per agent (the 1:1) plus one seeded group channel
 and extra user-created channels (v0.4).
@@ -230,11 +230,14 @@ Do not auto-open a connect card. GET and `POST .../auth` stay v0.10.
 Settings-only; no store. Clients never speak MCP.
 
 v0.13: event listeners, webhook first. A routine is cron XOR trigger.
-`POST /v1/hooks/{routineId}` with `X-Snorlax-Hook-Key` fires the skill
-into that agent's 1:1 (same path as cron). GET returns `webhookUrl` +
-`webhookKey` for Copy. Slack/GitHub `trigger.kind` 422 unless that MCP
-plugin is connected; inbound Slack/GitHub is not this slice. Pause still
-PATCH `{ enabled }`. No New routine button.
+`POST {webhookUrl}` (`/v1/hooks/{token}` in the path, no Bearer) fires
+the skill into that agent's 1:1 (same path as cron). Success 204.
+Paused or unknown token 404. GET returns `kind`; `schedule` only for
+cron; `webhookUrl` only for kind=webhook (Copy; clients must not paint
+it); optional `label` for Slack/GitHub. Slack/GitHub `trigger.type` 422
+unless GET `/v1/plugins` shows that plugin status=connected; inbound
+Slack/GitHub is not this slice. Pause still PATCH `{ enabled }`. No New
+routine button.
 
 ## Inference interface
 

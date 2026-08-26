@@ -152,6 +152,9 @@ CREATE TABLE IF NOT EXISTS routines (
     webhook_key TEXT,
     FOREIGN KEY (agent_id) REFERENCES agents(id) ON DELETE CASCADE
 );
+
+CREATE UNIQUE INDEX IF NOT EXISTS routines_webhook_key
+ON routines(webhook_key) WHERE webhook_key IS NOT NULL;
 """
 
 ROSTER_SEEDED_KEY = "roster_seeded"
@@ -250,6 +253,10 @@ class Store:
             await self.conn.execute(
                 "ALTER TABLE routines ADD COLUMN webhook_key TEXT"
             )
+        await self.conn.execute(
+            "CREATE UNIQUE INDEX IF NOT EXISTS routines_webhook_key "
+            "ON routines(webhook_key) WHERE webhook_key IS NOT NULL"
+        )
         await self.conn.commit()
 
     async def _roster_already_seeded(self) -> bool:
@@ -657,6 +664,22 @@ class Store:
             (when, utcnow(), routine_id),
         )
         await self.conn.commit()
+
+    async def get_routine_by_webhook_token(
+        self, token: str
+    ) -> dict[str, Any] | None:
+        offered = (token or "").strip()
+        if not offered:
+            return None
+        cur = await self.conn.execute(
+            "SELECT * FROM routines WHERE webhook_key = ? "
+            "AND trigger_type = 'webhook'",
+            (offered,),
+        )
+        row = await cur.fetchone()
+        if row is None:
+            return None
+        return self._routine_public(row)
 
     async def list_messages(
         self,

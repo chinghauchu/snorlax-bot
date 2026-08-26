@@ -156,21 +156,28 @@ test("humanizeTaipeiCron matches Weekdays 9:00", () => {
   assert.equal(
     routineMutedLine({
       skill: "status",
-      trigger: { kind: "webhook" },
-      webhookUrl: "http://127.0.0.1:8787/v1/hooks/rtn_x",
+      kind: "webhook",
+      webhookUrl: "http://127.0.0.1:8787/v1/hooks/secret-token",
     }),
     "Webhook",
   );
-  assert.equal(isWebhookRoutine({ trigger: { kind: "webhook" } }), true);
   assert.equal(
-    isWebhookRoutine({ skill: "status", schedule: "0 9 * * 1-5" }),
+    routineMutedLine({
+      kind: "slack",
+      label: "Slack #eng",
+    }),
+    "Slack #eng",
+  );
+  assert.equal(routineMutedLine({ kind: "github" }), "GitHub");
+  assert.equal(isWebhookRoutine({ kind: "webhook" }), true);
+  assert.equal(
+    isWebhookRoutine({ skill: "status", kind: "cron", schedule: "0 9 * * 1-5" }),
     false,
   );
   assert.equal(
     webhookCopyText({
-      webhookUrl: "http://127.0.0.1:8787/v1/hooks/rtn_x",
-      webhookKey: "secret-key",
+      webhookUrl: "http://127.0.0.1:8787/v1/hooks/secret-token",
     }),
-    "http://127.0.0.1:8787/v1/hooks/rtn_x\nsecret-key",
+    "http://127.0.0.1:8787/v1/hooks/secret-token",
   );
 });
