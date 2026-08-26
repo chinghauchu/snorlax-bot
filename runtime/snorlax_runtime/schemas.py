@@ -228,6 +228,38 @@ class ComputerPreview(BaseModel):
     )
 
 
+class ComputerSession(BaseModel):
+    width: int = 1280
+    height: int = 800
+
+
+class PointerEvent(BaseModel):
+    x: int
+    y: int
+    type: str
+
+    @model_validator(mode="after")
+    def known_pointer_type(self) -> PointerEvent:
+        kind = (self.type or "").strip().lower()
+        if kind not in {"move", "down", "up", "click"}:
+            raise ValueError("type must be move, down, up, or click")
+        self.type = kind
+        return self
+
+
+class KeyEvent(BaseModel):
+    key: str = Field(min_length=1, max_length=80)
+    type: str
+
+    @model_validator(mode="after")
+    def known_key_type(self) -> KeyEvent:
+        kind = (self.type or "").strip().lower()
+        if kind not in {"down", "up", "type"}:
+            raise ValueError("type must be down, up, or type")
+        self.type = kind
+        return self
+
+
 class RoutineTrigger(BaseModel):
     type: str = Field(description="webhook, slack, or github.")
     label: str | None = Field(

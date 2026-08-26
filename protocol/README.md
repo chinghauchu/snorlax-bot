@@ -60,8 +60,13 @@ for the URL. No New routine button.
 v0.14 Box computer preview: `GET /v1/agents/{id}/computer`
 `{ hasSandbox, width: 1280, height: 800, imageUrl }`. `imageUrl` is
 `GET /v1/agents/{id}/computer/screenshot` (Bearer, image/png).
-hasSandbox false omits imageUrl. Channel 409. Missing agent 404. No
-click/key/scroll POST. Clients poll while the identity pane is open.
+hasSandbox false omits imageUrl. Channel 409. Missing agent 404.
+
+v0.15 Box takeover (desktop + runtime): `POST /v1/agents/{id}/computer/session`
+→ 201. `DELETE .../session` → 204. While the session exists,
+`POST .../pointer` `{ x, y, type }` and `POST .../key` `{ key, type }`
+in 1280×800 (204). Agent tools that drive the sandbox 409. Channel 409.
+iOS does not POST these routes.
 
 A copy is also kept at `runtime/openapi.yaml` and `desktop/openapi.yaml`
 so those trees are self-contained. Do not let the files diverge.

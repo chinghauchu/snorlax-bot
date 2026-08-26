@@ -28,6 +28,8 @@ import {
   sendMessage,
   startPluginAuth,
   waitUntilPluginConnected,
+  openComputerSession,
+  closeComputerSession,
   type StreamHandlers,
 } from "./api";
 import {
@@ -75,6 +77,8 @@ import {
 import { showThinkingLine, THINKING_LABEL } from "./thinking";
 import { ComputerPane } from "./ComputerPane";
 import { AgentComputer } from "./AgentComputer";
+import { ComputerTakeover } from "./ComputerTakeover";
+import { composerInert } from "./computerSession";
 import { WidgetCard } from "./WidgetCard";
 import { ConnectCard } from "./ConnectCard";
 import { HttpsText, MarkdownBody } from "./MarkdownBody";
@@ -333,6 +337,7 @@ export function App() {
   const [pendingRemove, setPendingRemove] = useState<Plugin | null>(null);
   const [computerOpen, setComputerOpen] = useState(true);
   const [workspaceTick, setWorkspaceTick] = useState(0);
+  const [takeoverId, setTakeoverId] = useState<string | null>(null);
 
   const scroller = useRef<HTMLDivElement>(null);
   const composerRef = useRef<HTMLTextAreaElement>(null);
@@ -340,6 +345,7 @@ export function App() {
   const avatarFileRef = useRef<HTMLInputElement>(null);
 
   const credsReady = session !== null;
+  const takeoverOpen = composerInert(Boolean(takeoverId));
   const pluginAddReady =
     pluginAddName.trim() !== "" &&
     (pluginAddMode === "stdio"
@@ -405,7 +411,7 @@ export function App() {
   function canDelete(agent: Agent) {
     return canDeleteAgent(agent);
   }
-  const composerDisabled = !credsReady || busy;
+  const composerDisabled = !credsReady || busy || takeoverOpen;
 
   useEffect(() => {
     applyChrome(themePref, accent);
@@ -1060,7 +1066,40 @@ export function App() {
     });
   }
 
+  async function openTakeover() {
+    if (!session || !active || active.kind === "channel") return;
+    try {
+      await openComputerSession(session, active.id);
+      setTakeoverId(active.id);
+    } catch (err) {
+      setComposerError(describeError(err));
+    }
+  }
+
+  async function closeTakeover() {
+    const id = takeoverId;
+    setTakeoverId(null);
+    if (session && id) {
+      try {
+        await closeComputerSession(session, id);
+      } catch {
+        /* already closed */
+      }
+    }
+  }
+
+  useEffect(() => {
+    if (takeoverId && active?.id !== takeoverId) {
+      void closeTakeover();
+    }
+  }, [active?.id, takeoverId]);
+
   function onComposerKey(event: KeyboardEvent<HTMLTextAreaElement>) {
+    if (takeoverOpen) {
+      event.preventDefault();
+      event.stopPropagation();
+      return;
+    }
     if (mentionOpen && mentionCandidates.length > 0) {
       if (event.key === "ArrowDown") {
         event.preventDefault();
@@ -1540,7 +1579,7 @@ export function App() {
           </div>
         </div>
 
-        <footer className="composer">
+        <footer className="composer" aria-hidden={takeoverOpen || undefined}>
           {pendingImage ? (
             <div className="attach-preview">
               <img src={pendingImage.previewUrl} alt="Attachment preview" />
@@ -1613,6 +1652,8 @@ export function App() {
                 value={draft}
                 rows={1}
                 disabled={composerDisabled}
+                readOnly={takeoverOpen}
+                tabIndex={takeoverOpen ? -1 : undefined}
                 placeholder={
                   active ? `Message ${active.name}` : "Message"
                 }
@@ -1838,6 +1879,7 @@ export function App() {
               session={session}
               agentId={active.id}
               open={profileOpen && !profileEditing}
+              onOpen={() => void openTakeover()}
             />
             <section className="info-routines" aria-label="Routines">
               <p className="info-routines-header">Routines</p>
@@ -1856,6 +1898,21 @@ export function App() {
             </>
           )}
         </aside>
+      ) : null}
+      {takeoverOpen && session && active && takeoverId === active.id ? (
+        <ComputerTakeover
+          session={session}
+          agent={active}
+          avatar={
+            <Avatar
+              src={active.avatar}
+              name={active.name}
+              size={24}
+              session={session}
+            />
+          }
+          onDone={() => void closeTakeover()}
+        />
       ) : null}
       </main>
 

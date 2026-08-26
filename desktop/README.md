@@ -40,7 +40,12 @@ npm run tauri dev
 v0 chrome: 256px agent sidebar, chat, 320px computer pane (file tree +
 text preview; collapsible, default open), 320px identity overlay on the
 chat (not a fourth column), Settings. The agent overlay shows a 288×180
-16:10 computer preview above Routines (display only; no Open / clicks).
+16:10 computer preview above Routines. When `hasSandbox`, a trailing
+12px **Open** (and a pointer-cursor shot) opens a takeover overlay on
+chat + the info pane (sidebar stays). 52px bar: 24px avatar + name,
+12px muted `You're driving · agent paused`, trailing primary **Done**
+36px. Esc = Done. Composer is inert while driving. Empty `No computer
+yet.` has no Open. iOS stays preview-only (no tap-to-open).
 Create agent or channel from +.
 Muted 12px tool traces (`Searching…` / `Wrote app.py` / `Used server__tool`) may appear in
 the transcript while the runtime runs tools (including MCP). Agent info

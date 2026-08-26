@@ -16,6 +16,7 @@ from urllib.parse import parse_qs, quote_plus, unquote, urljoin, urlparse
 import httpx
 
 from snorlax_runtime import KIND_CHANNEL
+from snorlax_runtime.computer import ComputerError
 from snorlax_runtime.db import new_id
 from snorlax_runtime.inference import InferenceError, StreamPart, ToolCall
 from snorlax_runtime.widgets import (
@@ -385,6 +386,45 @@ TOOL_DEFINITIONS: list[dict[str, Any]] = [
             },
         },
     },
+    {
+        "type": "function",
+        "function": {
+            "name": "computer_click",
+            "description": (
+                "Click the agent's 1280x800 sandbox display at (x, y). "
+                "Fails while the user is driving (takeover session)."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "x": {"type": "integer"},
+                    "y": {"type": "integer"},
+                },
+                "required": ["x", "y"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "computer_key",
+            "description": (
+                "Type a key into the agent's 1280x800 sandbox display. "
+                "Fails while the user is driving (takeover session)."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "key": {"type": "string"},
+                    "type": {
+                        "type": "string",
+                        "description": "down, up, or type",
+                    },
+                },
+                "required": ["key"],
+            },
+        },
+    },
 ]
 
 
@@ -407,6 +447,10 @@ def start_summary(name: str, args: dict[str, Any]) -> str:
         if len(cmd) > 48:
             cmd = cmd[:45] + "…"
         return f"Running `{cmd}`…" if cmd else "Running command…"
+    if name == "computer_click":
+        return "Clicking…"
+    if name == "computer_key":
+        return "Typing…"
     return f"Using {name}…"
 
 
@@ -435,6 +479,10 @@ def done_summary(name: str, args: dict[str, Any], ok: bool) -> str:
         return f"Searched {q}" if q else "Searched"
     if name == "web_fetch":
         return "Fetched page"
+    if name == "computer_click":
+        return f"Clicked {args.get('x')},{args.get('y')}"
+    if name == "computer_key":
+        return f"Typed {args.get('key')}"
     return f"Used {name}"
 
 
@@ -520,11 +568,57 @@ def execute_tool(name: str, arguments: str, workspace: Path) -> str:
             return _await(_web_search(str(args.get("query") or "")))
         if name == "web_fetch":
             return _await(_web_fetch(str(args.get("url") or "")))
+        if name == "computer_click":
+            return _computer_click(workspace, args)
+        if name == "computer_key":
+            return _computer_key(workspace, args)
         return f"Error: unknown tool {name!r}"
     except PathJailError as exc:
         return f"Error: {exc.message}"
+    except ComputerError as exc:
+        return f"Error: {exc.message}"
     except Exception as exc:  # noqa: BLE001 — tool errors are returned to the model
         return f"Error: {exc}"
+
+
+def _computer_click(workspace: Path, args: dict[str, Any]) -> str:
+    from snorlax_runtime.computer import (
+        ComputerError,
+        agent_id_from_workspace,
+        current_hub,
+    )
+
+    hub = current_hub()
+    agent_id = agent_id_from_workspace(workspace)
+    if hub is None or not agent_id:
+        return "Error: no computer"
+    try:
+        x = int(args.get("x") or 0)
+        y = int(args.get("y") or 0)
+        hub.pointer(agent_id, x, y, "click", user=False)
+    except ComputerError as exc:
+        raise ComputerError(exc.status, exc.message) from exc
+    return f"Clicked {x},{y}"
+
+
+def _computer_key(workspace: Path, args: dict[str, Any]) -> str:
+    from snorlax_runtime.computer import (
+        ComputerError,
+        agent_id_from_workspace,
+        current_hub,
+    )
+
+    hub = current_hub()
+    agent_id = agent_id_from_workspace(workspace)
+    if hub is None or not agent_id:
+        return "Error: no computer"
+    key = str(args.get("key") or "")
+    kind = str(args.get("type") or "type")
+    try:
+        hub.key(agent_id, key, kind, user=False)
+    except ComputerError as exc:
+        raise ComputerError(exc.status, exc.message) from exc
+    return f"Typed {key}"
 
 
 def _await(coro: Any) -> Any:

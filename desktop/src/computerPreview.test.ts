@@ -53,10 +53,11 @@ test("preview chrome is 288x180 16:10; poll only while open", () => {
   assert.ok(COMPUTER_POLL_MS >= 1000 && COMPUTER_POLL_MS <= 2000);
 });
 
-test("desktop identity pane paints Computer above Routines without Open or clicks", () => {
+test("desktop identity pane paints Computer above Routines with Open when hasSandbox", () => {
   const app = readFileSync(join(here, "App.tsx"), "utf8");
   const css = readFileSync(join(here, "styles.css"), "utf8");
   const preview = readFileSync(join(here, "AgentComputer.tsx"), "utf8");
+  const takeover = readFileSync(join(here, "ComputerTakeover.tsx"), "utf8");
   const api = readFileSync(join(here, "api.ts"), "utf8");
   const pane = app.slice(
     app.indexOf("info-identity"),
@@ -64,23 +65,33 @@ test("desktop identity pane paints Computer above Routines without Open or click
   );
   assert.match(pane, /AgentComputer/);
   assert.ok(pane.indexOf("AgentComputer") < pane.indexOf("info-routines"));
-  assert.doesNotMatch(pane, />\s*Open\s*</);
-  assert.doesNotMatch(preview, /onClick/);
-  assert.doesNotMatch(preview, /pointer:\s*pointer/);
+  assert.match(pane, /onOpen/);
+  assert.match(preview, /OPEN_LABEL/);
+  assert.match(preview, /onClick/);
+  assert.match(preview, /NO_COMPUTER_YET/);
   assert.doesNotMatch(preview, /computer\/click/);
   assert.match(preview, /COMPUTER_POLL_MS/);
-  assert.match(preview, /NO_COMPUTER_YET/);
   assert.match(preview, /Authorization/);
   assert.match(preview, /Bearer/);
+  assert.match(takeover, /DRIVING_LABEL/);
+  assert.match(takeover, /DONE_LABEL/);
+  assert.match(takeover, /Escape/);
+  assert.match(app, /ComputerTakeover/);
+  assert.match(app, /composerInert/);
+  assert.match(app, /readOnly=\{takeoverOpen\}/);
   assert.match(api, /\/v1\/agents\/\$\{encodeURIComponent\(agentId\)\}\/computer/);
+  assert.match(api, /computer\/session/);
+  assert.match(api, /computer\/pointer/);
+  assert.match(api, /computer\/key/);
   assert.doesNotMatch(api, /computer\/click/);
-  assert.doesNotMatch(api, /computer\/key/);
   assert.doesNotMatch(api, /computer\/scroll/);
   assert.match(css, /\.info-computer-frame \{/);
   assert.match(css, /width:\s*288px/);
   assert.match(css, /height:\s*180px/);
   assert.match(css, /border-radius:\s*8px/);
   assert.match(css, /object-fit:\s*contain/);
+  assert.match(css, /cursor:\s*pointer/);
+  assert.match(css, /\.computer-takeover \{/);
   assert.equal(existsSync(join(here, "computerPane.ts")), false);
   assert.doesNotMatch(app, /computerPane\.ts/);
 });
@@ -105,4 +116,16 @@ test("iOS agent sheet matches: 16:10, 8pt, 12pt labels, no tap-to-open", () => {
   assert.doesNotMatch(computerBlock, /onTapGesture/);
   assert.doesNotMatch(computerBlock, /NavigationLink/);
   assert.match(sheet, /allowsHitTesting\(false\)/);
+  const client = readFileSync(
+    join(here, "../../ios/SnorlaxBot/RuntimeClient.swift"),
+    "utf8",
+  );
+  const model = readFileSync(
+    join(here, "../../ios/SnorlaxBot/AppModel.swift"),
+    "utf8",
+  );
+  assert.doesNotMatch(client, /computer\/session/);
+  assert.doesNotMatch(client, /computer\/pointer/);
+  assert.doesNotMatch(model, /computer\/session/);
+  assert.doesNotMatch(sheet, /computer\/session/);
 });

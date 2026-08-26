@@ -12,15 +12,15 @@ Meant to *run*, including without a GPU.
 | In | Out |
 | --- | --- |
 | Seeded agent `snorlax-bot` (Snorlax 1:1, PATCH identity; DELETE 204) and channel `snorlax-bot-group` (DELETE 204, no auto-reseed, never recreate) | MCP marketplace UI / Settings picker |
-| Create / list / patch / delete agents | User takeover / teach-a-task / separate Box window |
+| Create / list / patch / delete agents | Teach-a-task / recording / separate Box window / VNC |
 | Transcript persistence (SQLite) | “Teach a task”, MCP marketplace UI |
 | `POST .../messages` as SSE (`message.delta` / `message.done` / `tool.*` / `error`) plus `kind=widget` `message.done` | Extra SSE event types (`widget.*`) |
 | Question widgets (`ask_user_question`; POST `widgetReply: { id, values?, dismissed? }`; not a user bubble) | Tool-approval cards; widgets on the channel timeline |
 | Bearer token LAN auth; bind localhost until a token exists | Vision (images persist, not sent to the model) |
 | Mock inference, **oMLX**, or **vLLM** OpenAI-compat | TensorRT-LLM |
-| Tauri + TypeScript chat UI; 320px computer pane (file tree + text preview, collapsible); agent-pane 288×180 computer preview | Full sandbox computer GUI (browser, terminal, VNC, take-over) |
-| Swift/SwiftUI iOS companion (chat + muted tool traces + agent-sheet computer preview) | Extra channel types |
-| Seeded group channel + extra user-created channels + agent DMs + @mentions + v0.2 handoff threads + v0.3 identity pane + v0.4 report-back + v0.8 question widgets + v0.9 routines list + v0.10 connect chrome + v0.11 assistant markdown + v0.12 MCP Add custom + v0.13 webhook event listeners + v0.14 Box computer preview | Slack/GitHub inbound listeners; create/edit/delete routine UI; teach-a-task |
+| Tauri + TypeScript chat UI; 320px computer pane (file tree + text preview, collapsible); agent-pane 288×180 computer preview + desktop Open/Done takeover | Full sandbox computer GUI (browser, terminal, VNC); iOS tap-to-open |
+| Swift/SwiftUI iOS companion (chat + muted tool traces + agent-sheet computer preview) | Extra channel types; iOS takeover |
+| Seeded group channel + extra user-created channels + agent DMs + @mentions + v0.2 handoff threads + v0.3 identity pane + v0.4 report-back + v0.8 question widgets + v0.9 routines list + v0.10 connect chrome + v0.11 assistant markdown + v0.12 MCP Add custom + v0.13 webhook event listeners + v0.14 Box computer preview + v0.15 Box takeover (desktop) | Slack/GitHub inbound listeners; create/edit/delete routine UI; teach-a-task |
 | Runtime-owned tools: list_dir, read_file, write_file, delete_file, shell (no extra network), web_search (configured provider), web_fetch; auto-run; sandbox under `~/.snorlax-bot`; GET workspace list/read for the desktop pane | Host Docker/SSH secrets in the tool env; Mac folder picker; approval widgets |
 | Runtime MCP client: stdio subprocess + LAN HTTP/SSE from `mcp.json` under `SNORLAX_DATA_DIR`; namespaced `server__tool`; built-ins win; `GET /v1/plugins` + `POST .../auth` + `kind=connect` + Settings Add custom (`POST /v1/plugins`, `DELETE .../{id}`; no separate disconnect) | Public-cloud MCP requirement; clients speaking MCP; marketplace catalog / public plugin store |
 | Skills (`SKILL.md` in workspace and/or `SNORLAX_DATA_DIR/skills`) + cron XOR webhook routines (Asia/Taipei cron; GET list + PATCH enabled; webhook URL + Copy; fire LEFT 1:1 with `routineName`) | Teach-a-task; marketplace / skill picker; Slack/GitHub inbound |
@@ -28,7 +28,7 @@ Meant to *run*, including without a GPU.
 
 Default model on Spark: **70B-class FP8**, swapped via config.
 
-Locked v0.1 / v0.2 / v0.3 / v0.4 / v0.5 / v0.6 / v0.7 / v0.8 / v0.9 / v0.10 / v0.11 / v0.12 / v0.13 / v0.14 (chat layout + agent messaging + collaboration handoff + identity pane + report-back + extra channels + basic tools + computer pane + runtime MCP client + question widgets + skills and cron routines + MCP connect chrome + assistant markdown + MCP Add custom + webhook event listeners + Box computer preview): [docs/specs/v0.1-chat-and-agents.md](docs/specs/v0.1-chat-and-agents.md).
+Locked v0.1 / v0.2 / v0.3 / v0.4 / v0.5 / v0.6 / v0.7 / v0.8 / v0.9 / v0.10 / v0.11 / v0.12 / v0.13 / v0.14 / v0.15 (chat layout + agent messaging + collaboration handoff + identity pane + report-back + extra channels + basic tools + computer pane + runtime MCP client + question widgets + skills and cron routines + MCP connect chrome + assistant markdown + MCP Add custom + webhook event listeners + Box computer preview + Box takeover): [docs/specs/v0.1-chat-and-agents.md](docs/specs/v0.1-chat-and-agents.md).
 
 ## v1 — computer and tools
 

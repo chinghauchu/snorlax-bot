@@ -52,6 +52,8 @@ BUILTIN_TOOL_NAMES = frozenset(
         "shell",
         "web_search",
         "web_fetch",
+        "computer_click",
+        "computer_key",
     }
 )
 

@@ -1,9 +1,9 @@
 openapi: 3.1.0
 info:
   title: Snorlax-Bot
-  version: 0.14.0
+  version: 0.15.0
   description: |
-    Locked v0.14 LAN contract. Clients use SNORLAX_URL + SNORLAX_TOKEN.
+    Locked v0.15 LAN contract. Clients use SNORLAX_URL + SNORLAX_TOKEN.
     They never call vLLM, never call tools, never call MCP, and never read
     the Spark filesystem. Additive workspace GETs are runtime reads of the
     existing sandbox (same roots as the tool loop), not a second tool loop.
@@ -323,6 +323,36 @@ info:
     teach-a-task, a separate Box window, VNC, click/key POST. Isolation,
     report-back, seed DELETE 204, Mac oMLX, no Mac folder picker,
     workspaceTree.ts stand. OpenAPI **0.14.0**.
+
+    v0.15: Box takeover (desktop + runtime only). iOS is unchanged this
+    slice — no tap-to-open, no session POST, no ios/ UI work. GET
+    `/v1/agents/{id}/computer` and Bearer PNG screenshot stand (v0.14).
+    `POST /v1/agents/{id}/computer/session` → **201** `{ width: 1280,
+    height: 800 }` (takeover session). `DELETE .../computer/session` →
+    **204** (Done). While the session exists: `POST .../pointer`
+    `{ x, y, type }` and `POST .../key` `{ key, type }` in 1280x800
+    coords (204). `type` for pointer is `move` | `down` | `up` |
+    `click`; for key is `down` | `up` | `type`. Agent tools that drive
+    the sandbox (`computer_click`, `computer_key`) while a session
+    exists → **409** (`computer session is active`); POST messages to
+    that agent is also 409 (agent paused). Channel id → **409** on
+    these routes. Missing agent 404. No session + pointer/key → 409.
+    No sandbox + POST session → 404. Desktop chrome: Computer header
+    12px muted `Computer` + trailing 12px `Open` when hasSandbox; the
+    288x180 shot is pointer cursor and click also Opens. Empty `No
+    computer yet.` has no Open. Open is an overlay over chat + info
+    pane (sidebar stays). Scrim `--bg`. 1280x800 letterboxed to fit,
+    8px radius, 1px border. 52px bar: 24px avatar + name, 12px muted
+    `You're driving · agent paused`, trailing primary `Done` 36px.
+    Esc = Done. Pointer and keys map to sandbox coords. Composer is
+    inert so keystrokes do not leak into chat. Agent does not run
+    tools / drive the sandbox while the session is up. Done returns
+    to display-only; preview picks up the last frame. Channel pane
+    unchanged. Isolation / report-back / widgets / markdown / routines
+    / MCP / seed DELETE stand. No Mac folder picker.
+    `workspaceTree.ts` (never reintroduce `computerPane.ts`). File-tree
+    column untouched. Teach-a-task waits. Out: teach-a-task,
+    recording, a separate OS window, VNC. OpenAPI **0.15.0**.
   license:
     name: Apache-2.0
     identifier: Apache-2.0
@@ -864,15 +894,15 @@ paths:
     get:
       summary: Per-agent computer preview
       description: |
-        Runtime-owned 1280x800 sandbox display. Clients never send
-        clicks. Clients never speak MCP or the model. kind=channel is
-        409. Unknown agent is 404. `{ hasSandbox, width: 1280,
-        height: 800, imageUrl }`. `imageUrl` is present only when
-        hasSandbox is true: GET `/v1/agents/{id}/computer/screenshot`
-        (Bearer, image/png). No sandbox: hasSandbox false, omit imageUrl,
-        no frame on clients (`No computer yet.`). Idle desktop still
-        returns a 1280x800 shot (always on). No click/key/scroll POST.
-        Workspace file-tree GETs are unchanged.
+        Runtime-owned 1280x800 sandbox display. kind=channel is 409.
+        Unknown agent is 404. `{ hasSandbox, width: 1280, height: 800,
+        imageUrl }`. `imageUrl` is present only when hasSandbox is true:
+        GET `/v1/agents/{id}/computer/screenshot` (Bearer, image/png).
+        No sandbox: hasSandbox false, omit imageUrl, no frame on clients
+        (`No computer yet.`). Idle desktop still returns a 1280x800 shot
+        (always on). Takeover is POST `/v1/agents/{id}/computer/session`
+        (201) then pointer/key while the session exists. Workspace
+        file-tree GETs are unchanged.
       operationId: getComputer
       responses:
         "200":
@@ -897,7 +927,8 @@ paths:
         image/png of the live 1280x800 framebuffer. Same SNORLAX_TOKEN
         as other GETs. kind=channel is 409. Unknown agent is 404. No
         sandbox is 404. Idle still returns a desktop shot. Not a
-        decorative static asset. No click/key/scroll POST.
+        decorative static asset. Takeover input is POST session then
+        pointer/key, not this GET.
       operationId: getComputerScreenshot
       responses:
         "200":
@@ -912,6 +943,105 @@ paths:
         "404":
           $ref: "#/components/responses/Error"
         "409":
+          $ref: "#/components/responses/Error"
+
+  /v1/agents/{id}/computer/session:
+    parameters:
+      - $ref: "#/components/parameters/Id"
+    post:
+      summary: Open a desktop takeover session
+      description: |
+        201 `{ width: 1280, height: 800 }`. User is driving; agent is
+        paused and must not run tools that drive the sandbox (409).
+        kind=channel is 409. Unknown agent is 404. No sandbox is 404.
+        Idempotent if a session is already open. Desktop only this
+        slice; iOS does not POST this route.
+      operationId: openComputerSession
+      responses:
+        "201":
+          description: Takeover session is up
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ComputerSession"
+        "401":
+          $ref: "#/components/responses/Error"
+        "404":
+          $ref: "#/components/responses/Error"
+        "409":
+          $ref: "#/components/responses/Error"
+    delete:
+      summary: End the takeover session (Done)
+      description: |
+        204. Returns to display-only; the next screenshot is the last
+        frame. kind=channel is 409. Unknown agent is 404. Idempotent
+        if no session is open.
+      operationId: closeComputerSession
+      responses:
+        "204":
+          description: Session closed
+        "401":
+          $ref: "#/components/responses/Error"
+        "404":
+          $ref: "#/components/responses/Error"
+        "409":
+          $ref: "#/components/responses/Error"
+
+  /v1/agents/{id}/computer/pointer:
+    parameters:
+      - $ref: "#/components/parameters/Id"
+    post:
+      summary: Pointer event in sandbox coordinates
+      description: |
+        Body `{ x, y, type }` with x/y in 1280x800. `type` is `move`,
+        `down`, `up`, or `click`. 204. Requires an open session (409
+        without one). kind=channel is 409. Unknown agent is 404. No
+        sandbox is 404.
+      operationId: postComputerPointer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PointerEvent"
+      responses:
+        "204":
+          description: Pointer applied
+        "401":
+          $ref: "#/components/responses/Error"
+        "404":
+          $ref: "#/components/responses/Error"
+        "409":
+          $ref: "#/components/responses/Error"
+        "422":
+          $ref: "#/components/responses/Error"
+
+  /v1/agents/{id}/computer/key:
+    parameters:
+      - $ref: "#/components/parameters/Id"
+    post:
+      summary: Key event in the sandbox
+      description: |
+        Body `{ key, type }`. `type` is `down`, `up`, or `type`. 204.
+        Requires an open session (409 without one). kind=channel is
+        409. Unknown agent is 404. No sandbox is 404.
+      operationId: postComputerKey
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/KeyEvent"
+      responses:
+        "204":
+          description: Key applied
+        "401":
+          $ref: "#/components/responses/Error"
+        "404":
+          $ref: "#/components/responses/Error"
+        "409":
+          $ref: "#/components/responses/Error"
+        "422":
           $ref: "#/components/responses/Error"
 
   /v1/plugins:
@@ -1620,8 +1750,43 @@ components:
           description: |
             Present only when hasSandbox is true. Path to the Bearer PNG
             (`/v1/agents/{id}/computer/screenshot`). Same SNORLAX_TOKEN
-            as other GETs. Omitted when hasSandbox is false. Clients must
-            not invent a click/key/scroll POST.
+            as other GETs. Omitted when hasSandbox is false.
+
+    ComputerSession:
+      type: object
+      required: [width, height]
+      properties:
+        width:
+          type: integer
+          const: 1280
+        height:
+          type: integer
+          const: 800
+
+    PointerEvent:
+      type: object
+      required: [x, y, type]
+      properties:
+        x:
+          type: integer
+          description: Sandbox x in 0..1279 (1280x800).
+        y:
+          type: integer
+          description: Sandbox y in 0..799 (1280x800).
+        type:
+          type: string
+          enum: [move, down, up, click]
+
+    KeyEvent:
+      type: object
+      required: [key, type]
+      properties:
+        key:
+          type: string
+          description: Key name (`a`, `Enter`, `Backspace`, …).
+        type:
+          type: string
+          enum: [down, up, type]
 
     Routine:
       type: object

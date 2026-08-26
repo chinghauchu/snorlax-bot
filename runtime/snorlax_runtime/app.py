@@ -23,13 +23,20 @@ from snorlax_runtime.routing import (
     resume_after_connect,
     run_user_turn,
 )
-from snorlax_runtime.computer import ComputerHub
+from snorlax_runtime.computer import (
+    ComputerError,
+    ComputerHub,
+    configure_computer,
+)
 from snorlax_runtime.schemas import (
     Agent,
     AgentCreate,
     AgentPatch,
     ComputerPreview,
+    ComputerSession,
     Health,
+    KeyEvent,
+    PointerEvent,
     Message,
     MessageCreate,
     Plugin,
@@ -196,6 +203,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         mcp = await start_mcp(settings.data_dir)
         app.state.mcp = mcp
         app.state.computer = ComputerHub(settings.data_dir)
+        configure_computer(app.state.computer)
         backend_name = settings.resolved_backend()
         app.state.backend = build_backend(
             backend_name,
@@ -451,6 +459,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         conversation = await store.get_agent(id)
         if conversation is None:
             raise _error(404, f"Agent {id!r} not found")
+        if conversation.get("kind") != KIND_CHANNEL and _computer(
+            request
+        ).has_session(id):
+            raise _error(409, "computer session is active")
         roster = await store.list_agents()
         is_group = conversation.get("kind") == "channel"
         try:
@@ -821,6 +833,93 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             media_type="image/png",
             headers={"Cache-Control": "no-store"},
         )
+
+    @app.post(
+        "/v1/agents/{id}/computer/session",
+        response_model=ComputerSession,
+        status_code=status.HTTP_201_CREATED,
+    )
+    async def open_computer_session(
+        id: str, request: Request, _: str = Depends(require_bearer)
+    ) -> ComputerSession:
+        store: Store = request.app.state.store
+        conversation = await store.get_agent(id)
+        _require_agent(
+            conversation,
+            id,
+            channel_status=409,
+            reason="computer session is agent-only",
+        )
+        hub = _computer(request)
+        opened = hub.open_session(id, str(conversation.get("name") or ""))
+        if opened is None:
+            raise _error(404, "no computer")
+        return ComputerSession.model_validate(opened)
+
+    @app.delete(
+        "/v1/agents/{id}/computer/session",
+        status_code=status.HTTP_204_NO_CONTENT,
+    )
+    async def close_computer_session(
+        id: str, request: Request, _: str = Depends(require_bearer)
+    ) -> None:
+        store: Store = request.app.state.store
+        conversation = await store.get_agent(id)
+        _require_agent(
+            conversation,
+            id,
+            channel_status=409,
+            reason="computer session is agent-only",
+        )
+        _computer(request).close_session(id)
+
+    @app.post(
+        "/v1/agents/{id}/computer/pointer",
+        status_code=status.HTTP_204_NO_CONTENT,
+    )
+    async def post_computer_pointer(
+        id: str,
+        payload: PointerEvent,
+        request: Request,
+        _: str = Depends(require_bearer),
+    ) -> None:
+        store: Store = request.app.state.store
+        conversation = await store.get_agent(id)
+        _require_agent(
+            conversation,
+            id,
+            channel_status=409,
+            reason="computer session is agent-only",
+        )
+        try:
+            _computer(request).pointer(
+                id, payload.x, payload.y, payload.type, user=True
+            )
+        except ComputerError as exc:
+            raise _error(exc.status, exc.message) from exc
+
+    @app.post(
+        "/v1/agents/{id}/computer/key",
+        status_code=status.HTTP_204_NO_CONTENT,
+    )
+    async def post_computer_key(
+        id: str,
+        payload: KeyEvent,
+        request: Request,
+        _: str = Depends(require_bearer),
+    ) -> None:
+        store: Store = request.app.state.store
+        conversation = await store.get_agent(id)
+        _require_agent(
+            conversation,
+            id,
+            channel_status=409,
+            reason="computer session is agent-only",
+        )
+        try:
+            _computer(request).key(id, payload.key, payload.type, user=True)
+        except ComputerError as exc:
+            raise _error(exc.status, exc.message) from exc
 
     @app.get("/v1/plugins", response_model=list[Plugin])
     async def list_plugins(

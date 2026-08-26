@@ -14,7 +14,7 @@ NVIDIA DGX Spark.
   in CI and on machines without a 70B checkpoint. `omlx` is the Mac-local
   OpenAI-compat path. `vllm` is the Spark path. Neither is a development
   dependency.
-- **Keep v0.14 small.** Named teammates, identity pane, seeded group plus extra
+- **Keep v0.15 small.** Named teammates, identity pane, seeded group plus extra
   channels, @mentions, 1:1 isolation, channel handoff threads, report-back,
   runtime-owned file/shell/web tools in a `~/.snorlax-bot` sandbox (auto-run,
   no extra shell network, configured search provider), a thin desktop
@@ -27,10 +27,12 @@ NVIDIA DGX Spark.
   routines (list + enable/pause + Copy webhook URL on the agent info pane;
   SKILL.md from the workspace and/or `SNORLAX_DATA_DIR/skills`; cron XOR
   trigger), assistant markdown (clients render
-  LEFT `kind=message`; `content` stays a plain string), and a display-only
+  LEFT `kind=message`; `content` stays a plain string), a display-only
   Box computer preview (`GET /v1/agents/{id}/computer` JSON; Bearer PNG at
-  `/computer/screenshot`; identity pane only; no clicks). Full sandbox
-  computer GUI (VNC / take-over), vision, marketplace UI, teach-a-task, and Slack/GitHub
+  `/computer/screenshot`; identity pane), and desktop Box takeover
+  (`POST/DELETE /computer/session`; `POST .../pointer` and `.../key` while
+  the session is up; Open / Done overlay; iOS stays preview-only). Full sandbox
+  computer GUI (VNC), vision, marketplace UI, teach-a-task, and Slack/GitHub
   inbound listeners are later — see [ROADMAP.md](ROADMAP.md).
 
 ## Locked v0 decisions (do not reopen in drive-by PRs)

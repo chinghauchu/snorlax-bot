@@ -4,6 +4,8 @@ from __future__ import annotations
 from snorlax_runtime.computer import WIDTH, HEIGHT, png_size
 from tests.conftest import AUTH
 
+import pytest
+
 CHANNEL = "snorlax-bot-group"
 SEED = "snorlax-bot"
 PNG_SIG = b"\x89PNG\r\n\x1a\n"
@@ -79,16 +81,154 @@ def test_no_sandbox_omits_image_url(client) -> None:
     assert missing.status_code == 404
 
 
-def test_no_input_routes(client) -> None:
+def test_no_legacy_click_scroll_routes(client) -> None:
     for path in (
         f"/v1/agents/{SEED}/computer/click",
-        f"/v1/agents/{SEED}/computer/key",
         f"/v1/agents/{SEED}/computer/scroll",
         f"/v1/agents/{SEED}/computer/mouse",
         f"/v1/agents/{SEED}/computer/input",
     ):
         posted = client.post(path, headers=AUTH, json={"x": 1, "y": 1})
         assert posted.status_code in {404, 405}
+
+
+def test_session_201_and_done_204(client) -> None:
+    opened = client.post(f"/v1/agents/{SEED}/computer/session", headers=AUTH)
+    assert opened.status_code == 201
+    body = opened.json()
+    assert body == {"width": 1280, "height": 800}
+    again = client.post(f"/v1/agents/{SEED}/computer/session", headers=AUTH)
+    assert again.status_code == 201
+    done = client.delete(f"/v1/agents/{SEED}/computer/session", headers=AUTH)
+    assert done.status_code == 204
+    assert done.content == b""
+    idle = client.delete(f"/v1/agents/{SEED}/computer/session", headers=AUTH)
+    assert idle.status_code == 204
+
+
+def test_pointer_and_key_while_session_open(client) -> None:
+    opened = client.post(f"/v1/agents/{SEED}/computer/session", headers=AUTH)
+    assert opened.status_code == 201
+    moved = client.post(
+        f"/v1/agents/{SEED}/computer/pointer",
+        headers=AUTH,
+        json={"x": 640, "y": 400, "type": "move"},
+    )
+    assert moved.status_code == 204
+    clicked = client.post(
+        f"/v1/agents/{SEED}/computer/pointer",
+        headers=AUTH,
+        json={"x": 100, "y": 80, "type": "click"},
+    )
+    assert clicked.status_code == 204
+    typed = client.post(
+        f"/v1/agents/{SEED}/computer/key",
+        headers=AUTH,
+        json={"key": "a", "type": "type"},
+    )
+    assert typed.status_code == 204
+    down = client.post(
+        f"/v1/agents/{SEED}/computer/key",
+        headers=AUTH,
+        json={"key": "Enter", "type": "down"},
+    )
+    assert down.status_code == 204
+    png = client.get(SCREENSHOT, headers=AUTH)
+    assert png.status_code == 200
+    assert png.content.startswith(PNG_SIG)
+    assert png_size(png.content) == (WIDTH, HEIGHT)
+    client.delete(f"/v1/agents/{SEED}/computer/session", headers=AUTH)
+    last = client.get(SCREENSHOT, headers=AUTH)
+    assert last.status_code == 200
+    assert last.content.startswith(PNG_SIG)
+    assert png_size(last.content) == (WIDTH, HEIGHT)
+
+
+def test_pointer_key_without_session_is_409(client) -> None:
+    pointer = client.post(
+        f"/v1/agents/{SEED}/computer/pointer",
+        headers=AUTH,
+        json={"x": 1, "y": 1, "type": "click"},
+    )
+    assert pointer.status_code == 409
+    assert pointer.json() == {"error": "no computer session"}
+    key = client.post(
+        f"/v1/agents/{SEED}/computer/key",
+        headers=AUTH,
+        json={"key": "a", "type": "type"},
+    )
+    assert key.status_code == 409
+    assert key.json() == {"error": "no computer session"}
+
+
+def test_agent_driven_tools_409_while_session(client) -> None:
+    opened = client.post(f"/v1/agents/{SEED}/computer/session", headers=AUTH)
+    assert opened.status_code == 201
+    blocked = client.post(
+        f"/v1/agents/{SEED}/messages",
+        headers=AUTH,
+        json={"content": 'SNORLAX_TOOL computer_click {"x": 10, "y": 20}'},
+    )
+    assert blocked.status_code == 409
+    assert blocked.json() == {"error": "computer session is active"}
+    from snorlax_runtime.computer import ComputerError
+
+    with pytest.raises(ComputerError) as exc:
+        client.app.state.computer.pointer(SEED, 10, 20, "click", user=False)
+    assert exc.value.status == 409
+    assert exc.value.message == "computer session is active"
+    client.delete(f"/v1/agents/{SEED}/computer/session", headers=AUTH)
+    ok = client.post(
+        f"/v1/agents/{SEED}/messages",
+        headers=AUTH,
+        json={"content": "hi"},
+    )
+    assert ok.status_code == 200
+
+
+def test_channel_session_pointer_key_are_409(client) -> None:
+    for method, path, body in (
+        ("POST", f"/v1/agents/{CHANNEL}/computer/session", None),
+        ("DELETE", f"/v1/agents/{CHANNEL}/computer/session", None),
+        (
+            "POST",
+            f"/v1/agents/{CHANNEL}/computer/pointer",
+            {"x": 1, "y": 1, "type": "click"},
+        ),
+        (
+            "POST",
+            f"/v1/agents/{CHANNEL}/computer/key",
+            {"key": "a", "type": "type"},
+        ),
+    ):
+        response = client.request(method, path, headers=AUTH, json=body)
+        assert response.status_code == 409
+        assert response.json() == {"error": "computer session is agent-only"}
+
+
+def test_missing_agent_session_pointer_key_are_404(client) -> None:
+    for method, path, body in (
+        ("POST", "/v1/agents/no-such/computer/session", None),
+        ("DELETE", "/v1/agents/no-such/computer/session", None),
+        (
+            "POST",
+            "/v1/agents/no-such/computer/pointer",
+            {"x": 1, "y": 1, "type": "click"},
+        ),
+        (
+            "POST",
+            "/v1/agents/no-such/computer/key",
+            {"key": "a", "type": "type"},
+        ),
+    ):
+        response = client.request(method, path, headers=AUTH, json=body)
+        assert response.status_code == 404
+
+
+def test_session_without_sandbox_is_404(client) -> None:
+    client.app.state.computer.detach(SEED)
+    opened = client.post(f"/v1/agents/{SEED}/computer/session", headers=AUTH)
+    assert opened.status_code == 404
 
 
 def test_idle_desktop_still_returns_1280x800_shot(client, tmp_path) -> None:

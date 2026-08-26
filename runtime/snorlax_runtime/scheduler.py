@@ -77,6 +77,11 @@ async def fire_routine_now(
 
     if not routine.get("enabled"):
         return None
+    from snorlax_runtime.computer import session_blocks_agent
+
+    agent_id = str(routine.get("agentId") or routine.get("agent_id") or "")
+    if agent_id and session_blocks_agent(agent_id):
+        return None
     await store.mark_routine_run(routine["id"], utcnow())
     return await run_routine_turn(
         store,

@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 //
-// Generated from protocol/openapi.yaml (Snorlax-Bot 0.14.0).
+// Generated from protocol/openapi.yaml (Snorlax-Bot 0.15.0).
 // Do not edit by hand. Regenerate with:
 //   python3 ios/scripts/generate_v1_types.py
 //
@@ -810,6 +810,95 @@ struct ComputerPreview: Codable, Hashable, Sendable {
         try container.encode(width, forKey: .width)
         try container.encode(height, forKey: .height)
         try container.encodeIfPresent(imageUrl, forKey: .imageUrl)
+    }
+}
+
+struct ComputerSession: Codable, Hashable, Sendable {
+    var width: Int
+    var height: Int
+
+    init(width: Int, height: Int) {
+        self.width = width
+        self.height = height
+    }
+
+    enum CodingKeys: String, CodingKey { case width, height }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        width = try container.decode(Int.self, forKey: .width)
+        height = try container.decode(Int.self, forKey: .height)
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(width, forKey: .width)
+        try container.encode(height, forKey: .height)
+    }
+}
+
+struct PointerEvent: Codable, Hashable, Sendable {
+    enum Type: String, Codable, Hashable, Sendable {
+        case move
+        case down
+        case up
+        case click
+    }
+
+    var x: Int
+    var y: Int
+    var type: Type
+
+    init(x: Int, y: Int, type: Type) {
+        self.x = x
+        self.y = y
+        self.type = type
+    }
+
+    enum CodingKeys: String, CodingKey { case x, y, type }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        x = try container.decode(Int.self, forKey: .x)
+        y = try container.decode(Int.self, forKey: .y)
+        type = try container.decode(Type.self, forKey: .type)
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(x, forKey: .x)
+        try container.encode(y, forKey: .y)
+        try container.encode(type, forKey: .type)
+    }
+}
+
+struct KeyEvent: Codable, Hashable, Sendable {
+    enum Type: String, Codable, Hashable, Sendable {
+        case down
+        case up
+        case type
+    }
+
+    var key: String
+    var type: Type
+
+    init(key: String, type: Type) {
+        self.key = key
+        self.type = type
+    }
+
+    enum CodingKeys: String, CodingKey { case key, type }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        key = try container.decode(String.self, forKey: .key)
+        type = try container.decode(Type.self, forKey: .type)
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(key, forKey: .key)
+        try container.encode(type, forKey: .type)
     }
 }
 

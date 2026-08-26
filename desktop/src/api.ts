@@ -375,6 +375,60 @@ export async function getComputer(
   return json<ComputerPreview>(response);
 }
 
+export async function openComputerSession(
+  session: Session,
+  agentId: string,
+): Promise<{ width: number; height: number }> {
+  const response = await fetch(
+    `${session.baseUrl}/v1/agents/${encodeURIComponent(agentId)}/computer/session`,
+    { method: "POST", headers: headers(session) },
+  );
+  return json<{ width: number; height: number }>(response);
+}
+
+export async function closeComputerSession(
+  session: Session,
+  agentId: string,
+): Promise<void> {
+  const response = await fetch(
+    `${session.baseUrl}/v1/agents/${encodeURIComponent(agentId)}/computer/session`,
+    { method: "DELETE", headers: headers(session) },
+  );
+  await json<void>(response);
+}
+
+export async function postComputerPointer(
+  session: Session,
+  agentId: string,
+  body: { x: number; y: number; type: string },
+): Promise<void> {
+  const response = await fetch(
+    `${session.baseUrl}/v1/agents/${encodeURIComponent(agentId)}/computer/pointer`,
+    {
+      method: "POST",
+      headers: headers(session, { "Content-Type": "application/json" }),
+      body: JSON.stringify(body),
+    },
+  );
+  await json<void>(response);
+}
+
+export async function postComputerKey(
+  session: Session,
+  agentId: string,
+  body: { key: string; type: string },
+): Promise<void> {
+  const response = await fetch(
+    `${session.baseUrl}/v1/agents/${encodeURIComponent(agentId)}/computer/key`,
+    {
+      method: "POST",
+      headers: headers(session, { "Content-Type": "application/json" }),
+      body: JSON.stringify(body),
+    },
+  );
+  await json<void>(response);
+}
+
 export async function listPlugins(session: Session): Promise<Plugin[]> {
   const response = await fetch(`${session.baseUrl}/v1/plugins`, {
     headers: headers(session),
