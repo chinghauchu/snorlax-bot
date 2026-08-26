@@ -298,6 +298,7 @@ button:disabled {
 
 .turn.left {
   align-self: flex-start;
+  width: 100%;
 }
 
 .turn.right {
@@ -366,6 +367,155 @@ button:disabled {
   font-family: inherit;
   font-size: 14px;
   line-height: 1.4;
+}
+
+.assistant-md {
+  width: 100%;
+  max-width: 100%;
+  align-self: stretch;
+  background: none;
+  border: none;
+  padding: 0;
+  font-size: 14px;
+  line-height: 1.4;
+}
+
+.assistant-md p,
+.assistant-md ul,
+.assistant-md ol,
+.assistant-md blockquote,
+.assistant-md h1,
+.assistant-md h2,
+.assistant-md h3,
+.assistant-md h4,
+.assistant-md h5,
+.assistant-md h6 {
+  margin: 0 0 8px;
+}
+
+.assistant-md p:last-child,
+.assistant-md ul:last-child,
+.assistant-md ol:last-child,
+.assistant-md h1:last-child,
+.assistant-md h2:last-child,
+.assistant-md h3:last-child {
+  margin-bottom: 0;
+}
+
+.assistant-md h1 {
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.assistant-md h2 {
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.assistant-md h3,
+.assistant-md h4,
+.assistant-md h5,
+.assistant-md h6 {
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.assistant-md ul {
+  padding-left: 1.2em;
+}
+
+.assistant-md ol {
+  padding-left: 1.2em;
+}
+
+.assistant-md blockquote {
+  margin-left: 0;
+  padding-left: 10px;
+  border-left: 2px solid var(--border);
+  color: var(--text-muted);
+}
+
+.assistant-md a.md-link {
+  color: var(--accent);
+  text-decoration: none;
+}
+
+.bubble.user a.md-link {
+  color: var(--accent);
+  text-decoration: none;
+}
+
+.assistant-md a.md-link:hover {
+  text-decoration: underline;
+}
+
+.bubble.user a.md-link:hover {
+  text-decoration: underline;
+}
+
+.assistant-md code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas,
+    "Liberation Mono", monospace;
+  font-size: 13px;
+  padding: 0 4px;
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 18%, transparent);
+  border-radius: 4px;
+}
+
+.md-fence {
+  width: 100%;
+  position: relative;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--bg-elevated);
+  overflow: hidden;
+  margin: 8px 0;
+}
+
+.md-fence:last-child {
+  margin-bottom: 0;
+}
+
+.md-fence-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 6px 10px 0;
+}
+
+.md-fence-lang {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.md-fence-body {
+  margin: 0;
+  padding: 8px 10px 10px;
+  overflow-x: auto;
+  white-space: pre;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas,
+    "Liberation Mono", monospace;
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.md-fence-body code {
+  color: inherit;
+  background: none;
+  border-radius: 0;
+  padding: 0;
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.md-copy {
+  font-size: 12px;
+  color: var(--text-muted);
+  background: none;
+  border: none;
+  padding: 0;
 }
 
 .mention {

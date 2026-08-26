@@ -32,6 +32,13 @@ or `{ dismissed: true }`. `{ id }` emits `connect.url` then ends; dismiss
 does not. No `connect.*` event on the card emit. No uninstall / store /
 Add-custom UI. Plugins list is Settings only.
 
+v0.11 assistant markdown: `Message.content` stays a string. Do not
+add `contentType`, mime, html, or `blocks[]`. Runtime does not rewrite
+assistant text to HTML or split one message into many. SSE
+`message.delta` is still text chunks of that same string. User messages
+stay plain text as stored. Clients render markdown. widget / connect /
+tool / routine fields stay. No MCP mix-in.
+
 A copy is also kept at `runtime/openapi.yaml` and `desktop/openapi.yaml`
 so those trees are self-contained. Do not let the files diverge.
 

@@ -94,10 +94,17 @@ enum DataURI {
 struct MentionLabel: View {
     let text: String
     let names: [String]
+    var links = false
+    @Environment(\.openURL) private var openURL
 
     var body: some View {
         Text(attributed)
             .multilineTextAlignment(.leading)
+            .environment(\.openURL, OpenURLAction { url in
+                guard links, url.scheme?.lowercased() == "https" else { return .discarded }
+                openURL(url)
+                return .handled
+            })
     }
 
     private var attributed: AttributedString {
@@ -110,7 +117,7 @@ struct MentionLabel: View {
         pattern?.enumerateMatches(in: text, range: full) { match, _, _ in
             guard let match else { return }
             if match.range.location > last {
-                output.append(AttributedString(ns.substring(with: NSRange(location: last, length: match.range.location - last))))
+                appendPlain(ns.substring(with: NSRange(location: last, length: match.range.location - last)), to: &output)
             }
             let token = ns.substring(with: match.range(at: 1))
             var chunk = AttributedString(ns.substring(with: match.range))
@@ -123,11 +130,47 @@ struct MentionLabel: View {
             last = match.range.location + match.range.length
         }
         if last < ns.length {
-            output.append(AttributedString(ns.substring(from: last)))
+            appendPlain(ns.substring(from: last), to: &output)
         }
         if output.characters.isEmpty {
-            output = AttributedString(text)
+            appendPlain(text, to: &output)
         }
         return output
+    }
+
+    private func appendPlain(_ raw: String, to output: inout AttributedString) {
+        guard links else {
+            output.append(AttributedString(raw))
+            return
+        }
+        guard let pattern = try? NSRegularExpression(pattern: "https://[^\\s<>\"'`]+") else {
+            output.append(AttributedString(raw))
+            return
+        }
+        let ns = raw as NSString
+        let full = NSRange(location: 0, length: ns.length)
+        var last = 0
+        pattern.enumerateMatches(in: raw, range: full) { match, _, _ in
+            guard let match else { return }
+            if match.range.location > last {
+                output.append(AttributedString(ns.substring(with: NSRange(location: last, length: match.range.location - last))))
+            }
+            var url = ns.substring(with: match.range)
+            while let lastChar = url.last, ".,;:!?)".contains(lastChar) {
+                url.removeLast()
+            }
+            if let parsed = URL(string: url), parsed.scheme?.lowercased() == "https" {
+                var chunk = AttributedString(url)
+                chunk.link = parsed
+                chunk.foregroundColor = .accentColor
+                output.append(chunk)
+                last = match.range.location + url.count
+            } else {
+                last = match.range.location
+            }
+        }
+        if last < ns.length {
+            output.append(AttributedString(ns.substring(from: last)))
+        }
     }
 }

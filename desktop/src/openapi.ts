@@ -534,6 +534,15 @@ export interface components {
             agentId: string;
             /** @enum {string} */
             role: "user" | "assistant";
+            /**
+             * @description Plain string. Runtime stores user and model text as-is.
+             *     Do not add contentType, mime, html, or blocks[]. Do not rewrite
+             *     assistant text to HTML or split one Message into many. SSE
+             *     message.delta is text chunks of this same string. User
+             *     messages stay plain text as stored. v0.11 clients render
+             *     assistant LEFT kind=message as markdown. widget, connect,
+             *     tool, and routineName stay. No MCP mix-in.
+             */
             content: string;
             images: components["schemas"]["ImageOut"][];
             /** Format: date-time */
@@ -736,6 +745,11 @@ export interface components {
             id: string;
             /** @constant */
             role: "assistant";
+            /**
+             * @description Text chunk of the assistant Message.content string. Concatenate
+             *     in order to rebuild content. Not HTML, not a block, not a
+             *     second Message.
+             */
             delta: string;
             senderId?: string;
             senderName?: string;

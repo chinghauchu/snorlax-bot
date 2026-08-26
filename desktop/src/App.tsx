@@ -70,6 +70,7 @@ import { showThinkingLine, THINKING_LABEL } from "./thinking";
 import { ComputerPane } from "./ComputerPane";
 import { WidgetCard } from "./WidgetCard";
 import { ConnectCard } from "./ConnectCard";
+import { HttpsText, MarkdownBody } from "./MarkdownBody";
 import { isConnect, pluginStatusLabel } from "./connect";
 import { isWidget } from "./widget";
 import { openOsBrowser } from "./openUrl";
@@ -1293,8 +1294,8 @@ export function App() {
                         onConnect={(id, pluginId) => void answerConnect(id, pluginId)}
                         onDismiss={(id) => void dismissConnect(id)}
                       />
-                    ) : (
-                      <div className={`bubble ${mine ? "user" : "agent"}`}>
+                    ) : mine ? (
+                      <div className="bubble user">
                         {message.images.map((image) => (
                           <AuthedImg
                             key={image.id}
@@ -1312,8 +1313,30 @@ export function App() {
                                 message.senderName,
                               )}
                               knownNames={knownNames}
+                              links
                             />
                           </pre>
+                        ) : null}
+                      </div>
+                    ) : (
+                      <div className="assistant-md">
+                        {message.images.map((image) => (
+                          <AuthedImg
+                            key={image.id}
+                            className="bubble-image"
+                            src={resolveMediaUrl(session?.baseUrl ?? "", image.url)}
+                            session={session}
+                            alt=""
+                          />
+                        ))}
+                        {message.content ? (
+                          <MarkdownBody
+                            text={displayBody(
+                              message.content,
+                              message.senderName,
+                            )}
+                            knownNames={knownNames}
+                          />
                         ) : null}
                       </div>
                     )}
@@ -2027,10 +2050,12 @@ function MentionText({
   text,
   knownNames,
   chips = false,
+  links = false,
 }: {
   text: string;
   knownNames: string[];
   chips?: boolean;
+  links?: boolean;
 }) {
   const pieces = splitMentions(text, knownNames);
   if (pieces.length === 0) return text ? <>{text}</> : null;
@@ -2041,6 +2066,8 @@ function MentionText({
           <span key={index} className={chips ? "mention-chip" : "mention"}>
             {piece.value}
           </span>
+        ) : links ? (
+          <HttpsText key={index} text={piece.value} />
         ) : (
           <span key={index}>{piece.value}</span>
         ),

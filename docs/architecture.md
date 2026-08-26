@@ -214,6 +214,14 @@ v0.10: MCP connect chrome. `GET /v1/plugins` + `POST /v1/plugins/{id}/auth`
 (`authorizationUrl` for the OS browser). Message `kind=connect` (not
 `kind=widget`). Plugins list is Settings only.
 
+v0.11: assistant markdown is client-only. `Message.content` stays a
+string; do not add contentType, mime, html, or blocks[]. Runtime does
+not rewrite or split. SSE `message.delta` stays text chunks. User
+messages stay plain as stored. LEFT `kind=message` is 14px markdown
+(16/14 headings, no grey bubble). User-right stays plain (`https://`
+tappable). Fenced code: language + Copy, 12px/1.45. Inline: 13px / 4px /
+accent 18%.
+
 ## Inference interface
 
 ```text

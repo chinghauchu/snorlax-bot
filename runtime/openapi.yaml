@@ -1,9 +1,9 @@
 openapi: 3.1.0
 info:
   title: Snorlax-Bot
-  version: 0.10.0
+  version: 0.11.0
   description: |
-    Locked v0.10 LAN contract. Clients use SNORLAX_URL + SNORLAX_TOKEN.
+    Locked v0.11 LAN contract. Clients use SNORLAX_URL + SNORLAX_TOKEN.
     They never call vLLM, never call tools, never call MCP, and never read
     the Spark filesystem. Additive workspace GETs are runtime reads of the
     existing sandbox (same roots as the tool loop), not a second tool loop.
@@ -58,6 +58,8 @@ info:
     routines are v0.9. MCP connect chrome is v0.10 (GET /v1/plugins +
     POST /v1/plugins/{id}/auth + kind=connect). No Add-custom UI; hand-edited
     mcp.json still works. Plugins list is Settings only, not the agent pane.
+    Assistant markdown is v0.11 (clients render LEFT kind=message; content
+    stays a plain string; runtime does not rewrite).
 
     Images persist and are returned; they are never sent to the model. No mDNS.
 
@@ -215,6 +217,26 @@ info:
     Plugins list is Settings only (runtime-global), not the agent pane.
     Isolation, report-back, widgets, cron, seed DELETE 204, Mac oMLX, and
     no Mac folder picker stand. OpenAPI **0.10.0**.
+
+    v0.11: assistant markdown. Clients render only. Message.content stays
+    a string. Do not add contentType, mime, html, or blocks[]. The runtime
+    does not rewrite assistant text to HTML or split one message into
+    many. SSE message.delta is still text chunks of that same string.
+    User messages stay plain text as stored. Clients render markdown.
+    widget, connect, tool, and routine fields stay intact. No MCP mix-in.
+    Assistant LEFT kind=message (from A) is 14px markdown with no grey
+    agent bubble, 16/14 headings, lists, and bold. User-right stays plain
+    text (https:// URLs tappable). Fenced code is full-turn 8px radius /
+    elevated fill + 1px border / 12px muted language + Copy / 12px/1.45
+    mono with horizontal scroll. https:// links are accent, hover
+    underline, OS browser. Inline code is 13px mono, 4px radius, accent
+    18% mix. Tool lines, widget
+    cards, connect cards, thinking, and handoff are unchanged. Out of
+    scope: mermaid, math/KaTeX, raw HTML (escape/strip; never inject HTML
+    from model text). Isolation, report-back, widgets, cron, connect
+    chrome, seed DELETE 204, Mac oMLX, no Mac folder picker, and
+    workspaceTree.ts (never reintroduce computerPane.ts) stand. OpenAPI
+    **0.11.0**.
   license:
     name: Apache-2.0
     identifier: Apache-2.0
@@ -994,6 +1016,14 @@ components:
           enum: [user, assistant]
         content:
           type: string
+          description: |
+            Plain string. Runtime stores user and model text as-is.
+            Do not add contentType, mime, html, or blocks[]. Do not rewrite
+            assistant text to HTML or split one Message into many. SSE
+            message.delta is text chunks of this same string. User
+            messages stay plain text as stored. v0.11 clients render
+            assistant LEFT kind=message as markdown. widget, connect,
+            tool, and routineName stay. No MCP mix-in.
         images:
           type: array
           items:
@@ -1260,6 +1290,10 @@ components:
           const: assistant
         delta:
           type: string
+          description: |
+            Text chunk of the assistant Message.content string. Concatenate
+            in order to rebuild content. Not HTML, not a block, not a
+            second Message.
         senderId:
           type: string
         senderName:

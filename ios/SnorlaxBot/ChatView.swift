@@ -431,10 +431,8 @@ private struct MessageBubble: View {
             } else if message.isConnect, message.connect != nil {
                 ConnectCardView(message: message)
                     .padding(.horizontal, 12)
-            } else {
-            HStack(alignment: .top, spacing: 0) {
-                if isUser { Spacer(minLength: 48) }
-                if threadRoot {
+            } else if threadRoot {
+                HStack(alignment: .top, spacing: 0) {
                     VStack(alignment: .leading, spacing: 6) {
                         Text("from \(message.senderName)")
                             .font(.system(size: 12))
@@ -455,35 +453,36 @@ private struct MessageBubble: View {
                     .padding(.horizontal, 12)
                     .padding(.vertical, 8)
                     .background(Color(uiColor: .secondarySystemFill), in: RoundedRectangle(cornerRadius: 16))
-                } else {
+                    Spacer(minLength: 48)
+                }
+                .padding(.horizontal, 12)
+            } else if isUser {
+                HStack(alignment: .top, spacing: 0) {
+                    Spacer(minLength: 48)
                     VStack(alignment: .leading, spacing: 6) {
-                        ForEach(Array(localPreviews.enumerated()), id: \.offset) { _, data in
-                            if let image = UIImage(data: data) {
-                                Image(uiImage: image)
-                                    .resizable()
-                                    .scaledToFit()
-                                    .frame(maxWidth: 220, maxHeight: 220)
-                                    .clipShape(RoundedRectangle(cornerRadius: 12))
-                            }
-                        }
-                        ForEach(message.images) { image in
-                            RemoteImage(urlString: image.url, mime: image.mime)
-                                .frame(maxWidth: 220, maxHeight: 220)
-                                .clipShape(RoundedRectangle(cornerRadius: 12))
-                        }
+                        messageImages
                         if !message.content.isEmpty {
-                            MentionLabel(text: message.displayContent, names: agents.filter { !$0.isChannel }.map(\.name))
+                            MentionLabel(text: message.displayContent, names: agents.filter { !$0.isChannel }.map(\.name), links: true)
                                 .font(.system(size: 14))
                                 .textSelection(.enabled)
                         }
                     }
                     .padding(.horizontal, 12)
                     .padding(.vertical, 8)
-                    .background(bubbleColor, in: RoundedRectangle(cornerRadius: 16))
+                    .background(Color.accentColor.opacity(0.22), in: RoundedRectangle(cornerRadius: 16))
                 }
-                if !isUser { Spacer(minLength: 48) }
-            }
-            .padding(.horizontal, 12)
+                .padding(.horizontal, 12)
+            } else {
+                VStack(alignment: .leading, spacing: 6) {
+                    messageImages
+                    if !message.content.isEmpty {
+                        AssistantMarkdown(
+                            text: message.displayContent,
+                            names: agents.filter { !$0.isChannel }.map(\.name)
+                        )
+                    }
+                }
+                .padding(.horizontal, 12)
             }
             if isUser, let jump = message.visibleJump(in: agents) {
                 Button {
@@ -506,10 +505,22 @@ private struct MessageBubble: View {
         .accessibilityLabel(isUser ? "You" : message.senderName)
     }
 
-    private var bubbleColor: Color {
-        isUser
-            ? Color.accentColor.opacity(0.22)
-            : Color(uiColor: .secondarySystemFill)
+    @ViewBuilder
+    private var messageImages: some View {
+        ForEach(Array(localPreviews.enumerated()), id: \.offset) { _, data in
+            if let image = UIImage(data: data) {
+                Image(uiImage: image)
+                    .resizable()
+                    .scaledToFit()
+                    .frame(maxWidth: 220, maxHeight: 220)
+                    .clipShape(RoundedRectangle(cornerRadius: 12))
+            }
+        }
+        ForEach(message.images) { image in
+            RemoteImage(urlString: image.url, mime: image.mime)
+                .frame(maxWidth: 220, maxHeight: 220)
+                .clipShape(RoundedRectangle(cornerRadius: 12))
+        }
     }
 }
 

@@ -88,7 +88,13 @@ def test_protocol_openapi_is_locked_v0_contract() -> None:
     assert "never call MCP" in text
     assert "SNORLAX_DATA_DIR" in text
     assert "No MCP, no browser-use GUI" not in text
-    assert "0.10.0" in text
+    assert "0.11.0" in text
+    assert "assistant markdown" in text.lower() or "v0.11" in text
+    assert "not rewrite" in text
+    assert "contentType, mime, html, or blocks[]" in text
+    assert "split one message into" in text
+    assert "text chunks of that same string" in text
+    assert "No MCP mix-in" in text
     assert "/v1/agents/{id}/routines" in text
     assert "/v1/agents/{id}/skills" in text
     assert "SKILL.md" in text
@@ -103,6 +109,31 @@ def test_protocol_openapi_is_locked_v0_contract() -> None:
     assert "no catch-up" in text
     assert "skills/<slug>/SKILL.md" in text
     assert "No New / create / edit / delete UI" in text or "list + enable/pause" in text or "enable/pause only" in text
+
+
+def test_message_content_stays_a_string_no_blocks() -> None:
+    import yaml
+    from snorlax_runtime.schemas import Message, MessageDelta
+
+    root = Path(__file__).resolve().parents[2]
+    doc = yaml.safe_load(
+        (root / "protocol" / "openapi.yaml").read_text(encoding="utf-8")
+    )
+    props = doc["components"]["schemas"]["Message"]["properties"]
+    assert props["content"]["type"] == "string"
+    delta = doc["components"]["schemas"]["MessageDelta"]["properties"]["delta"]
+    assert delta["type"] == "string"
+    for name in ("contentType", "html", "blocks"):
+        assert name not in props
+        assert name not in Message.model_fields
+    assert "widget" in props
+    assert "connect" in props
+    assert "routineName" in props
+    assert Message.model_fields["content"].annotation is str
+    assert MessageDelta.model_fields["delta"].annotation is str
+    assert "widget" in Message.model_fields
+    assert "connect" in Message.model_fields
+    assert "routineName" in Message.model_fields
 
 
 def test_openapi_copies_match_protocol() -> None:
