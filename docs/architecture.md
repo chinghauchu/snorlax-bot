@@ -278,14 +278,16 @@ while recording = Stop. Stop opens 320px Save as skill. Out: blank New
 skill UI, marketplace, iOS record, VNC, a separate OS window.
 
 v0.17: create/delete routine chrome. Runtime + desktop + iOS. Routines
-header trailing 12px `Add` (Plugins family). 320px `Add routine` sheet:
-name + that agent's SKILL.md picker (GET skills) + segmented
-Schedule/Webhook. Cron placeholder `0 9 * * 1-5`. Webhook: no extra
-fields; Copy stays webhook-only. `DELETE .../routines/{id}` 204
-(unknown 404; channel 409). Every row muted 12px `Remove` +
-`Remove {name}?`. Pause stays. Slack/GitHub remain list-only. Out:
-marketplace, iOS Open/Record/takeover, skill markdown editor,
-Slack/GitHub trigger builder.
+header trailing 12px `Add` (Plugins family). Empty still `No routines
+yet.` — Add still shows. 320px `Add routine` sheet: Name 14px; 44px
+SKILL.md rows from GET skills `{ id, name }` (none: 12px `No skills
+yet.`); segmented Schedule/Webhook; cron placeholder plus 12px muted
+Taipei hint. Webhook: no extra fields; Copy left of Remove. GET skills
+empty 200 `[]`, channel 409. POST cron/webhook 201; Slack/GitHub
+trigger 422. `DELETE .../routines/{id}` 204 (unknown 404; channel
+409). Every row muted 12px `Remove` left of pause + `Remove {name}?`.
+Pause stays. Out: marketplace, iOS Open/Record/takeover, skill
+markdown editor, Slack/GitHub trigger builder.
 
 ## Inference interface
 

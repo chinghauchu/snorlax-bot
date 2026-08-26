@@ -370,7 +370,7 @@ final class AppModel {
         }
     }
 
-    func loadSkills(for agentId: String) async -> [SkillInfo] {
+    func loadSkills(for agentId: String) async -> [Skill] {
         guard let client else { return [] }
         do {
             return try await client.listSkills(agentId: agentId)

@@ -229,13 +229,14 @@ export interface paths {
          *     is 404. kind=channel is 409 (routines are agent-only). Used by
          *     the agent info pane (list + enable/pause + Copy for webhook
          *     URL). v0.17: trailing 12px `Add` opens a 320px Add routine
-         *     sheet (name + SKILL.md picker + segmented Schedule/Webhook).
+         *     sheet (name + 44px SKILL.md rows + segmented Schedule/Webhook).
          *     Every row has muted 12px `Remove` (`Remove {name}?`). Pause
          *     stays. No edit-in-place. Humanized trigger
          *     line (`Webhook` / `Weekdays 9:00`) is a client concern. Webhook
-         *     rows show 12px muted Copy left of the switch (`Copied` for 1.5s);
-         *     do not paint webhookUrl. Slack/GitHub rows have no Copy and no
-         *     builder UI. Do not emit Connect cards from the pane.
+         *     rows show 12px muted Copy left of Remove, then the pause switch
+         *     (`Copied` for 1.5s); do not paint webhookUrl. Slack/GitHub rows
+         *     have no Copy and no builder UI. Do not emit Connect cards from
+         *     the pane.
          */
         get: operations["listRoutines"];
         put?: never;
@@ -246,12 +247,11 @@ export interface paths {
          *     Webhook: `{ name, skill, trigger: { type: webhook } }` — 201
          *     with `webhookUrl` (token in the path). POST of an event routine
          *     without a trigger is 422. POST with both schedule and trigger is
-         *     422. Slack/GitHub `{ type: slack|github, label? }` is 422 unless
-         *     GET /v1/plugins shows that plugin status=connected; inbound
-         *     Slack/GitHub is not in this slice (use webhook). Webhook works
-         *     with zero plugins. Clients have no create UI this slice. 422
-         *     unknown skill / bad cron / channel id. Missing agent is 404.
-         *     No DELETE this slice.
+         *     422. Slack/GitHub `{ type: slack|github }` is 422 (no builder
+         *     this slice). Webhook works with zero plugins. 422 missing
+         *     name/skill, unknown skill, bad cron, or channel id. Missing
+         *     agent is 404. Pause stays PATCH `{ enabled }`. DELETE is a
+         *     separate operation.
          */
         post: operations["createRoutine"];
         delete?: never;
@@ -333,9 +333,11 @@ export interface paths {
          * List discovered skills for this agent
          * @description Thin discovery. Runtime reads SKILL.md from
          *     SNORLAX_DATA_DIR/skills/<slug>/SKILL.md (and may also see a
-         *     workspace SKILL.md). Not a marketplace catalog. kind=channel is
-         *     422. Clients never read the host disk. v0.17 Add-routine picker
-         *     reuses this list (`name` is the POST skill). No markdown editor.
+         *     workspace SKILL.md). Returns `{ id, name }` per file (`id` is
+         *     the directory slug or frontmatter name). Empty list is 200
+         *     `[]`. Not a marketplace catalog. kind=channel is 409. Clients
+         *     never read the host disk. v0.17 Add-routine picker reuses this
+         *     list (`id` is the POST skill). No markdown editor.
          */
         get: operations["listSkills"];
         put?: never;
@@ -1653,18 +1655,18 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description JSON array of SkillInfo (not wrapped) */
+            /** @description JSON array of Skill `{ id, name }` (not wrapped) */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["SkillInfo"][];
+                    "application/json": components["schemas"]["Skill"][];
                 };
             };
             401: components["responses"]["Error"];
             404: components["responses"]["Error"];
-            422: components["responses"]["Error"];
+            409: components["responses"]["Error"];
         };
     };
     createSkill: {

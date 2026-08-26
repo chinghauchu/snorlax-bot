@@ -11,7 +11,7 @@ import type {
   Routine,
   RoutineCreate,
   RoutinePatch,
-  SkillInfo,
+  Skill,
   RuntimeHealth,
   Session,
 } from "./types";
@@ -203,12 +203,12 @@ export async function deleteRoutine(
 export async function listSkills(
   session: Session,
   agentId: string,
-): Promise<SkillInfo[]> {
+): Promise<Skill[]> {
   const response = await fetch(
     `${session.baseUrl}/v1/agents/${encodeURIComponent(agentId)}/skills`,
     { headers: headers(session) },
   );
-  return asList<SkillInfo>(await json<unknown>(response), "skills");
+  return asList<Skill>(await json<unknown>(response), "skills");
 }
 
 export async function listMessages(

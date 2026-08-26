@@ -212,6 +212,9 @@ test("routines list is 44px rows with switch on the agent read pane", () => {
   const sheet = block(".modal.routine-add-sheet");
   const addName = block(".routine-add-name");
   const primary = block(".routine-add-primary");
+  const skillRow = block(".routine-skill-row");
+  const skillEmpty = block(".routine-skill-empty");
+  const cronHint = block(".routine-add-hint");
   assert.match(header, /font-size:\s*12px/);
   assert.match(header, /color:\s*var\(--text-muted\)/);
   assert.match(add, /font-size:\s*12px/);
@@ -232,6 +235,11 @@ test("routines list is 44px rows with switch on the agent read pane", () => {
   assert.match(sheet, /width:\s*320px/);
   assert.match(addName, /font-size:\s*14px/);
   assert.match(primary, /min-height:\s*36px/);
+  assert.match(skillRow, /height:\s*44px/);
+  assert.match(skillEmpty, /font-size:\s*12px/);
+  assert.match(skillEmpty, /color:\s*var\(--text-muted\)/);
+  assert.match(cronHint, /font-size:\s*12px/);
+  assert.match(cronHint, /color:\s*var\(--text-muted\)/);
 
   const app = readFileSync(
     join(dirname(fileURLToPath(import.meta.url)), "App.tsx"),
@@ -262,12 +270,18 @@ test("routines list is 44px rows with switch on the agent read pane", () => {
   assert.match(app, /info-routine-remove/);
   assert.match(app, /routineRemoveConfirm/);
   assert.match(app, /CRON_PLACEHOLDER/);
+  assert.match(app, /CRON_HINT/);
+  assert.match(app, /NO_SKILLS_YET/);
   assert.match(infoPane, /0 9 \* \* 1-5/);
+  assert.match(infoPane, /Taipei\. Weekdays 9:00 is 0 9 \* \* 1-5\./);
   assert.match(app, />\s*Schedule\s*</);
   assert.match(app, />\s*Webhook\s*</);
   assert.match(app, /canSubmitRoutine/);
   assert.match(app, /routine-add-primary/);
+  assert.match(app, /routine-skill-row/);
+  assert.match(app, /routine-skill-empty/);
   assert.match(app, /type: "webhook"/);
+  assert.doesNotMatch(app, /<select/);
   assert.doesNotMatch(app, /Teach a task/);
   assert.doesNotMatch(app, /marketplace/);
   assert.doesNotMatch(app, /editRoutine/);
@@ -288,11 +302,11 @@ test("routines list is 44px rows with switch on the agent read pane", () => {
   assert.match(rowSrc, /info-routine-remove/);
   assert.match(rowSrc, /Copied/);
   assert.ok(
-    rowSrc.indexOf("info-routine-remove") <
-      rowSrc.indexOf("info-routine-hook-copy"),
+    rowSrc.indexOf("info-routine-hook-copy") <
+      rowSrc.indexOf("info-routine-remove"),
   );
   assert.ok(
-    rowSrc.indexOf("info-routine-hook-copy") <
+    rowSrc.indexOf("info-routine-remove") <
       rowSrc.indexOf("info-routine-switch"),
   );
   const hookCopy = block(".info-routine-hook-copy");

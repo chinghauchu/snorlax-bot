@@ -39,6 +39,9 @@ class Skill:
             "path": self.path,
         }
 
+    def listed(self) -> dict[str, str]:
+        return {"id": skill_slug(self), "name": self.name}
+
 
 def skills_dir(data_dir: Path) -> Path:
     return data_dir / SKILLS_DIRNAME

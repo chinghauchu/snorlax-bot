@@ -70,7 +70,7 @@ struct RuntimeClient: Sendable {
         try await get("v1/agents/\(Self.encode(agentId))/routines")
     }
 
-    func listSkills(agentId: String) async throws -> [SkillInfo] {
+    func listSkills(agentId: String) async throws -> [Skill] {
         try await get("v1/agents/\(Self.encode(agentId))/skills")
     }
 

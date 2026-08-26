@@ -185,13 +185,6 @@ struct ProfileSheet: View {
                                 .lineLimit(1)
                         }
                         Spacer(minLength: 0)
-                        Button("Remove") {
-                            pendingRemove = routine
-                        }
-                        .font(.system(size: 12, weight: .medium))
-                        .foregroundStyle(.secondary)
-                        .buttonStyle(.plain)
-                        .accessibilityLabel("Remove \(routine.name)")
                         if routine.showsWebhookCopy {
                             Button(copiedRoutineId == routine.id ? "Copied" : "Copy") {
                                 UIPasteboard.general.string = routine.copyPayload
@@ -208,6 +201,13 @@ struct ProfileSheet: View {
                             .buttonStyle(.plain)
                             .accessibilityLabel("Copy webhook URL")
                         }
+                        Button("Remove") {
+                            pendingRemove = routine
+                        }
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundStyle(.secondary)
+                        .buttonStyle(.plain)
+                        .accessibilityLabel("Remove \(routine.name)")
                         Toggle(isOn: Binding(
                             get: { routine.enabled },
                             set: { on in
@@ -406,7 +406,7 @@ private struct AddRoutineSheet: View {
     @State private var skill = ""
     @State private var mode = Mode.schedule
     @State private var cron = ""
-    @State private var skills: [SkillInfo] = []
+    @State private var skills: [Skill] = []
     @State private var saving = false
 
     private enum Mode: String, CaseIterable, Identifiable {
@@ -429,14 +429,27 @@ private struct AddRoutineSheet: View {
             Form {
                 TextField("Name", text: $name)
                     .font(.system(size: 14))
-                Picker("Skill", selection: $skill) {
-                    Text(skills.isEmpty ? "No skills yet." : "Choose a skill")
-                        .tag("")
-                    ForEach(skills, id: \.name) { row in
-                        Text(row.name).tag(row.name)
+                if skills.isEmpty {
+                    Text("No skills yet.")
+                        .font(.system(size: 12))
+                        .foregroundStyle(.secondary)
+                } else {
+                    ForEach(skills) { row in
+                        Button {
+                            skill = row.id
+                        } label: {
+                            HStack {
+                                Text(row.name)
+                                    .font(.system(size: 14, weight: skill == row.id ? .medium : .regular))
+                                    .foregroundStyle(.primary)
+                                Spacer(minLength: 0)
+                            }
+                            .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+                            .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
                     }
                 }
-                .font(.system(size: 14))
                 Picker("When", selection: $mode) {
                     ForEach(Mode.allCases) { item in
                         Text(item.rawValue).tag(item)
@@ -448,6 +461,9 @@ private struct AddRoutineSheet: View {
                         .font(.system(size: 14))
                         .textInputAutocapitalization(.never)
                         .autocorrectionDisabled()
+                    Text("Taipei. Weekdays 9:00 is 0 9 * * 1-5.")
+                        .font(.system(size: 12))
+                        .foregroundStyle(.secondary)
                 }
                 Button("Add") {
                     Task { await save() }

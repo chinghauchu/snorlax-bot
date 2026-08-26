@@ -54,6 +54,8 @@ import {
   WEBHOOK_COPY_FEEDBACK_MS,
   ADD_ROUTINE_TITLE,
   CRON_PLACEHOLDER,
+  CRON_HINT,
+  NO_SKILLS_YET,
   canSubmitRoutine,
   fallbackRosterSelection,
   infoPaneKind,
@@ -100,7 +102,7 @@ import type {
   Plugin,
   Routine,
   Session,
-  SkillInfo,
+  Skill,
   ThemePref,
 } from "./types";
 
@@ -255,14 +257,6 @@ function AgentRoutineRow({
         <p className="info-routine-name">{routine.name}</p>
         <p className="info-routine-meta">{routineMutedLine(routine)}</p>
       </div>
-      <button
-        type="button"
-        className="info-routine-remove"
-        aria-label={`Remove ${routine.name}`}
-        onClick={() => onRemove(routine)}
-      >
-        Remove
-      </button>
       {showsWebhookCopy(routine) ? (
         <button
           type="button"
@@ -273,6 +267,14 @@ function AgentRoutineRow({
           {copied ? "Copied" : "Copy"}
         </button>
       ) : null}
+      <button
+        type="button"
+        className="info-routine-remove"
+        aria-label={`Remove ${routine.name}`}
+        onClick={() => onRemove(routine)}
+      >
+        Remove
+      </button>
       <label className="info-routine-switch">
         <input
           type="checkbox"
@@ -344,7 +346,7 @@ export function App() {
   const [profileSharedProject, setProfileSharedProject] = useState(false);
   const [profileSaving, setProfileSaving] = useState(false);
   const [routines, setRoutines] = useState<Routine[]>([]);
-  const [routineSkills, setRoutineSkills] = useState<SkillInfo[]>([]);
+  const [routineSkills, setRoutineSkills] = useState<Skill[]>([]);
   const [routineAddOpen, setRoutineAddOpen] = useState(false);
   const [routineAddName, setRoutineAddName] = useState("");
   const [routineAddSkill, setRoutineAddSkill] = useState("");
@@ -2430,22 +2432,32 @@ export function App() {
               </label>
               <label>
                 Skill
-                <select
-                  className="routine-add-skill"
-                  value={routineAddSkill}
-                  onChange={(e) => setRoutineAddSkill(e.target.value)}
-                >
-                  <option value="">
-                    {routineSkills.length === 0
-                      ? "No skills yet."
-                      : "Choose a skill"}
-                  </option>
-                  {routineSkills.map((skill) => (
-                    <option key={`${skill.source}:${skill.path}`} value={skill.name}>
-                      {skill.name}
-                    </option>
-                  ))}
-                </select>
+                {routineSkills.length === 0 ? (
+                  <p className="routine-skill-empty">{NO_SKILLS_YET}</p>
+                ) : (
+                  <div
+                    className="routine-skill-list"
+                    role="listbox"
+                    aria-label="Skill"
+                  >
+                    {routineSkills.map((row) => (
+                      <button
+                        key={row.id}
+                        type="button"
+                        role="option"
+                        aria-selected={routineAddSkill === row.id}
+                        className={
+                          routineAddSkill === row.id
+                            ? "routine-skill-row on"
+                            : "routine-skill-row"
+                        }
+                        onClick={() => setRoutineAddSkill(row.id)}
+                      >
+                        {row.name}
+                      </button>
+                    ))}
+                  </div>
+                )}
               </label>
               <fieldset>
                 <legend>When</legend>
@@ -2485,6 +2497,7 @@ export function App() {
                     placeholder={CRON_PLACEHOLDER}
                     onChange={(e) => setRoutineAddCron(e.target.value)}
                   />
+                  <p className="routine-add-hint">{CRON_HINT}</p>
                 </label>
               ) : null}
               <div className="confirm-actions">

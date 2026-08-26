@@ -22,6 +22,8 @@ import {
   webhookCopyText,
   ADD_ROUTINE_TITLE,
   CRON_PLACEHOLDER,
+  CRON_HINT,
+  NO_SKILLS_YET,
   canSubmitRoutine,
 } from "./infoPane.ts";
 
@@ -223,6 +225,8 @@ test("humanizeTaipeiCron matches Weekdays 9:00", () => {
 test("add-routine submit is name + skill + cron if schedule", () => {
   assert.equal(ADD_ROUTINE_TITLE, "Add routine");
   assert.equal(CRON_PLACEHOLDER, "0 9 * * 1-5");
+  assert.equal(CRON_HINT, "Taipei. Weekdays 9:00 is 0 9 * * 1-5.");
+  assert.equal(NO_SKILLS_YET, "No skills yet.");
   assert.equal(routineRemoveConfirm("Morning status"), "Remove Morning status?");
   assert.equal(
     canSubmitRoutine({

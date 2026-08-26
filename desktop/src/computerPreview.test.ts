@@ -166,9 +166,24 @@ test("iOS agent sheet matches: 16:10, 8pt, 12pt labels, no tap-to-open", () => {
   assert.match(sheet, /Button\("Add"\)/);
   assert.match(sheet, /Button\("Remove"\)/);
   assert.match(sheet, /0 9 \* \* 1-5/);
+  assert.match(sheet, /Taipei\. Weekdays 9:00 is 0 9 \* \* 1-5\./);
+  assert.match(sheet, /No skills yet\./);
+  assert.match(sheet, /minHeight: 44/);
   assert.match(sheet, /Schedule/);
   assert.match(sheet, /Webhook/);
   assert.match(sheet, /showsWebhookCopy/);
+  const routinesBlock = sheet.slice(
+    sheet.indexOf("paneRoutines"),
+    sheet.indexOf("channelPane"),
+  );
+  assert.ok(
+    routinesBlock.indexOf("showsWebhookCopy") <
+      routinesBlock.indexOf('Button("Remove")'),
+  );
+  assert.ok(
+    routinesBlock.indexOf('Button("Remove")') <
+      routinesBlock.indexOf("Toggle"),
+  );
   assert.match(client, /listSkills/);
   assert.match(client, /createRoutine/);
   assert.match(client, /deleteRoutine/);

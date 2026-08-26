@@ -91,6 +91,8 @@ export const EMPTY_ROUTINES = "No routines yet.";
 export const WEBHOOK_COPY_FEEDBACK_MS = 1500;
 export const ADD_ROUTINE_TITLE = "Add routine";
 export const CRON_PLACEHOLDER = "0 9 * * 1-5";
+export const CRON_HINT = "Taipei. Weekdays 9:00 is 0 9 * * 1-5.";
+export const NO_SKILLS_YET = "No skills yet.";
 
 export type RoutineAddMode = "schedule" | "webhook";
 

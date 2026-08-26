@@ -48,7 +48,6 @@ from snorlax_runtime.schemas import (
     RoutinePatch,
     Skill,
     SkillCreate,
-    SkillInfo,
     WorkspaceFile,
     WorkspaceListing,
 )
@@ -639,25 +638,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         trigger = payload.trigger
         if trigger is not None:
             kind = trigger.type
-            if kind in {"slack", "github"}:
-                manager = getattr(request.app.state, "mcp", None)
-                if not _plugin_kind_connected(manager, kind):
-                    raise _error(
-                        422,
-                        f"{kind} trigger requires a connected {kind} MCP plugin",
-                    )
-                display = trigger.label or (
-                    "Slack" if kind == "slack" else "GitHub"
+            if kind != "webhook":
+                raise _error(
+                    422,
+                    f"{kind} trigger is not available this slice",
                 )
-                row = await store.create_routine(
-                    agent_id=id,
-                    name=payload.name.strip(),
-                    skill=skill_slug(matched),
-                    cron="",
-                    schedule_label=display,
-                    trigger_type=kind,
-                )
-                return _routine_out(row, _base_url(request))
             key = secrets.token_urlsafe(32)
             row = await store.create_routine(
                 agent_id=id,
@@ -750,19 +735,24 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             log.exception("webhook routine %s failed", row.get("id"))
         return Response(status_code=status.HTTP_204_NO_CONTENT)
 
-    @app.get("/v1/agents/{id}/skills", response_model=list[SkillInfo])
+    @app.get("/v1/agents/{id}/skills", response_model=list[Skill])
     async def list_skills(
         id: str, request: Request, _: str = Depends(require_bearer)
-    ) -> list[SkillInfo]:
+    ) -> list[Skill]:
         from snorlax_runtime.skills import load_skills
         from snorlax_runtime.tools import workspace_for
 
         store: Store = request.app.state.store
         conversation = await store.get_agent(id)
-        _require_agent(conversation, id, channel_status=422)
+        _require_agent(
+            conversation,
+            id,
+            channel_status=409,
+            reason="skills are assigned to an agent",
+        )
         workspace = workspace_for(store.data_dir, conversation, id)
         skills = load_skills(store.data_dir, workspace)
-        return [SkillInfo.model_validate(s.public()) for s in skills]
+        return [Skill.model_validate(s.listed()) for s in skills]
 
     @app.post(
         "/v1/agents/{id}/skills",
