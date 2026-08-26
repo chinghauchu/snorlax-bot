@@ -26,7 +26,8 @@ thin desktop Computer pane + a runtime MCP client + question widgets +
 skills and cron/webhook routines (list + enable/pause + Copy webhook URL) + MCP connect chrome
 (Settings plugins list + `kind=connect` card) + assistant markdown +
 MCP Add custom (Settings POST / DELETE; no separate disconnect) +
-identity-pane Box computer preview (Bearer PNG, no clicks)**. Header click opens agent identity (PATCH) or
+identity-pane Box computer preview (Bearer PNG) + desktop Box takeover
+(Open / Done; pointer/key in 1280×800)**. Header click opens agent identity (PATCH) or
 the channel member list. Agent identity lists routines with a live
 enable/pause switch and Copy for webhook URLs. 1:1s are user ↔ that agent only; a user `@chip`
 (or agent DM) opens a handoff thread in a channel (seed `snorlax-bot-group`
@@ -40,9 +41,10 @@ lives in a sandbox under `~/.snorlax-bot` when the channel’s shared-project
 toggle is on (default off); otherwise each agent uses its own workspace.
 Desktop shows that sandbox as a 320px right pane (file tree + text preview;
 collapsible). The agent identity pane shows a live 16:10 computer preview
-(Bearer PNG of the runtime-owned 1280×800 display). iOS matches that
-preview in the agent sheet (no tap-to-open; no file browser). No VNC /
-take-over / click API. That slice is meant
+(Bearer PNG of the runtime-owned 1280×800 display). Desktop Open takes
+over that display (overlay on chat + info pane; Esc / Done). iOS matches
+the preview in the agent sheet (no tap-to-open; no file browser). No VNC /
+separate Box window. That slice is meant
 to actually run on a laptop *or* a Spark, with a mocked model backend when a
 70B-class checkpoint is not present.
 
@@ -190,7 +192,7 @@ default).
 
 ## v0 vs later
 
-See [ROADMAP.md](ROADMAP.md). Short version: v0.13 is named agents plus
+See [ROADMAP.md](ROADMAP.md). Short version: v0.15 is named agents plus
 runtime-owned file/shell/web tools in a `~/.snorlax-bot` sandbox, a
 thin desktop Computer pane over that sandbox, a runtime MCP client
 (stdio + LAN from `mcp.json`), connect chrome (`GET /v1/plugins` +

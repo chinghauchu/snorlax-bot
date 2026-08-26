@@ -402,15 +402,18 @@ export interface paths {
         };
         /**
          * Per-agent computer preview
-         * @description Runtime-owned 1280x800 sandbox display. Clients never send
-         *     clicks. Clients never speak MCP or the model. kind=channel is
-         *     409. Unknown agent is 404. `{ hasSandbox, width: 1280,
-         *     height: 800, imageUrl }`. `imageUrl` is present only when
-         *     hasSandbox is true: GET `/v1/agents/{id}/computer/screenshot`
-         *     (Bearer, image/png). No sandbox: hasSandbox false, omit imageUrl,
-         *     no frame on clients (`No computer yet.`). Idle desktop still
-         *     returns a 1280x800 shot (always on). No click/key/scroll POST.
-         *     Workspace file-tree GETs are unchanged.
+         * @description Runtime-owned 1280x800 sandbox display. kind=channel is 409.
+         *     Unknown agent is 404. `{ hasSandbox, width: 1280, height: 800,
+         *     imageUrl }`. `imageUrl` is present only when hasSandbox is true:
+         *     GET `/v1/agents/{id}/computer/screenshot` (Bearer, image/png).
+         *     No sandbox: hasSandbox false, omit imageUrl, no frame on clients
+         *     (`No computer yet.`). Idle desktop still returns a 1280x800 shot
+         *     (always on). When hasSandbox, GET may include `driving`: `user`
+         *     (takeover session), `agent` (agent last drove the sandbox), or
+         *     `idle`. Omitted when hasSandbox is false. Takeover is POST
+         *     `/v1/agents/{id}/computer/session` (201 `{ sessionId }`) then
+         *     pointer/key while the session exists. Workspace file-tree GETs
+         *     are unchanged.
          */
         get: operations["getComputer"];
         put?: never;
@@ -435,11 +438,120 @@ export interface paths {
          * @description image/png of the live 1280x800 framebuffer. Same SNORLAX_TOKEN
          *     as other GETs. kind=channel is 409. Unknown agent is 404. No
          *     sandbox is 404. Idle still returns a desktop shot. Not a
-         *     decorative static asset. No click/key/scroll POST.
+         *     decorative static asset. Takeover input is POST session then
+         *     pointer/key, not this GET.
          */
         get: operations["getComputerScreenshot"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/agents/{id}/computer/session": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["Id"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Open a desktop takeover session
+         * @description 201 `{ sessionId }`. User is driving; agent is paused and must
+         *     not run tools that drive the sandbox (409). kind=channel is 409.
+         *     Unknown agent is 404. No sandbox is 404. Idempotent if a session
+         *     is already open (same sessionId). Desktop only this slice; iOS
+         *     does not POST this route.
+         */
+        post: operations["openComputerSession"];
+        /**
+         * End the takeover session (Done)
+         * @description 204. Returns to display-only; the next screenshot is the last
+         *     frame. kind=channel is 409. Unknown agent is 404. Idempotent
+         *     if no session is open. `DELETE .../computer/session/{sessionId}`
+         *     also 204 for that session; unknown sessionId is 404.
+         */
+        delete: operations["closeComputerSession"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/agents/{id}/computer/session/{sessionId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["Id"];
+                sessionId: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * End a takeover session by id (Done)
+         * @description 204. Same as DELETE `/computer/session` for this sessionId.
+         *     Unknown sessionId is 404. kind=channel is 409. Unknown agent
+         *     is 404.
+         */
+        delete: operations["closeComputerSessionById"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/agents/{id}/computer/pointer": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["Id"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Pointer event in sandbox coordinates
+         * @description Body `{ x, y, type }` with x/y in 1280x800. `type` is `move`,
+         *     `down`, `up`, or `click`. 200. Requires an open session (409
+         *     without one). kind=channel is 409. Unknown agent is 404. No
+         *     sandbox is 404.
+         */
+        post: operations["postComputerPointer"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/agents/{id}/computer/key": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["Id"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Key event in the sandbox
+         * @description Body `{ key, type, text? }`. `type` is `down`, `up`, or `type`.
+         *     When `type` is `type`, `text` is preferred if present else `key`.
+         *     200. Requires an open session (409 without one). kind=channel is
+         *     409. Unknown agent is 404. No sandbox is 404.
+         */
+        post: operations["postComputerKey"];
         delete?: never;
         options?: never;
         head?: never;
@@ -946,10 +1058,40 @@ export interface components {
             /**
              * @description Present only when hasSandbox is true. Path to the Bearer PNG
              *     (`/v1/agents/{id}/computer/screenshot`). Same SNORLAX_TOKEN
-             *     as other GETs. Omitted when hasSandbox is false. Clients must
-             *     not invent a click/key/scroll POST.
+             *     as other GETs. Omitted when hasSandbox is false.
              */
             imageUrl?: string;
+            /**
+             * @description Present when hasSandbox is true. `user` while a takeover
+             *     session exists; `agent` after the agent drove the sandbox
+             *     (`computer_click` / `computer_key`); `idle` otherwise.
+             *     Omitted when hasSandbox is false.
+             * @enum {string}
+             */
+            driving?: "user" | "agent" | "idle";
+        };
+        ComputerSession: {
+            /** @description Opaque takeover session id. Same id if POST while already open. */
+            sessionId: string;
+        };
+        PointerEvent: {
+            /** @description Sandbox x in 0..1279 (1280x800). */
+            x: number;
+            /** @description Sandbox y in 0..799 (1280x800). */
+            y: number;
+            /** @enum {string} */
+            type: "move" | "down" | "up" | "click";
+        };
+        KeyEvent: {
+            /** @description Key name (`a`, `Enter`, `Backspace`, …). */
+            key: string;
+            /** @enum {string} */
+            type: "down" | "up" | "type";
+            /**
+             * @description Optional string to type. When type is `type`, preferred over
+             *     `key` if present.
+             */
+            text?: string;
         };
         Routine: {
             id: string;
@@ -1512,6 +1654,134 @@ export interface operations {
             401: components["responses"]["Error"];
             404: components["responses"]["Error"];
             409: components["responses"]["Error"];
+        };
+    };
+    openComputerSession: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["Id"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Takeover session is up */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ComputerSession"];
+                };
+            };
+            401: components["responses"]["Error"];
+            404: components["responses"]["Error"];
+            409: components["responses"]["Error"];
+        };
+    };
+    closeComputerSession: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["Id"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Session closed */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Error"];
+            404: components["responses"]["Error"];
+            409: components["responses"]["Error"];
+        };
+    };
+    closeComputerSessionById: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["Id"];
+                sessionId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Session closed */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Error"];
+            404: components["responses"]["Error"];
+            409: components["responses"]["Error"];
+        };
+    };
+    postComputerPointer: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["Id"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PointerEvent"];
+            };
+        };
+        responses: {
+            /** @description Pointer applied */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Error"];
+            404: components["responses"]["Error"];
+            409: components["responses"]["Error"];
+            422: components["responses"]["Error"];
+        };
+    };
+    postComputerKey: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["Id"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["KeyEvent"];
+            };
+        };
+        responses: {
+            /** @description Key applied */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Error"];
+            404: components["responses"]["Error"];
+            409: components["responses"]["Error"];
+            422: components["responses"]["Error"];
         };
     };
     listPlugins: {

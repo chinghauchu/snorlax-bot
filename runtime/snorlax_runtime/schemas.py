@@ -226,6 +226,60 @@ class ComputerPreview(BaseModel):
             "no sandbox."
         ),
     )
+    driving: str | None = Field(
+        default=None,
+        description=(
+            "Present when hasSandbox is true. user while a takeover session "
+            "exists; agent after the agent drove the sandbox; idle otherwise. "
+            "Omitted when hasSandbox is false."
+        ),
+    )
+
+    @model_validator(mode="after")
+    def known_driving(self) -> ComputerPreview:
+        if self.driving is None:
+            return self
+        kind = self.driving.strip().lower()
+        if kind not in {"user", "agent", "idle"}:
+            raise ValueError("driving must be user, agent, or idle")
+        self.driving = kind
+        return self
+
+
+class ComputerSession(BaseModel):
+    sessionId: str
+
+
+class PointerEvent(BaseModel):
+    x: int
+    y: int
+    type: str
+
+    @model_validator(mode="after")
+    def known_pointer_type(self) -> PointerEvent:
+        kind = (self.type or "").strip().lower()
+        if kind not in {"move", "down", "up", "click"}:
+            raise ValueError("type must be move, down, up, or click")
+        self.type = kind
+        return self
+
+
+class KeyEvent(BaseModel):
+    key: str = Field(min_length=1, max_length=80)
+    type: str
+    text: str | None = Field(
+        default=None,
+        max_length=80,
+        description="Optional string to type. When type=type, preferred over key.",
+    )
+
+    @model_validator(mode="after")
+    def known_key_type(self) -> KeyEvent:
+        kind = (self.type or "").strip().lower()
+        if kind not in {"down", "up", "type"}:
+            raise ValueError("type must be down, up, or type")
+        self.type = kind
+        return self
 
 
 class RoutineTrigger(BaseModel):

@@ -9,16 +9,19 @@ import {
   showsComputerFrame,
   type ComputerPreviewState,
 } from "./computerPreview";
+import { OPEN_LABEL, canOpenComputer } from "./computerSession";
 import type { Session } from "./types";
 
 export function AgentComputer({
   session,
   agentId,
   open,
+  onOpen,
 }: {
   session: Session | null;
   agentId: string;
   open: boolean;
+  onOpen?: () => void;
 }) {
   const [preview, setPreview] = useState<ComputerPreviewState | null>(null);
   const [blobUrl, setBlobUrl] = useState("");
@@ -77,18 +80,34 @@ export function AgentComputer({
   }, [open, session, agentId]);
 
   const framed = showsComputerFrame(preview);
+  const showOpen = canOpenComputer(preview?.hasSandbox) && Boolean(onOpen);
 
   return (
     <section className="info-computer" aria-label={COMPUTER_LABEL}>
-      <p className="info-computer-header">{COMPUTER_LABEL}</p>
+      <p className="info-computer-header">
+        <span>{COMPUTER_LABEL}</span>
+        {showOpen ? (
+          <button
+            type="button"
+            className="info-computer-open"
+            onClick={onOpen}
+          >
+            {OPEN_LABEL}
+          </button>
+        ) : null}
+      </p>
       {framed ? (
-        <div className="info-computer-frame">
+        <button
+          type="button"
+          className="info-computer-frame"
+          onClick={showOpen ? onOpen : undefined}
+        >
           {blobUrl ? (
             <img src={blobUrl} alt="" draggable={false} />
           ) : (
             <span className="info-computer-slot" />
           )}
-        </div>
+        </button>
       ) : (
         <p className="info-computer-empty">{NO_COMPUTER_YET}</p>
       )}

@@ -72,7 +72,9 @@ async function parseError(response: Response): Promise<ApiError> {
 async function json<T>(response: Response): Promise<T> {
   if (!response.ok) throw await parseError(response);
   if (response.status === 204) return undefined as T;
-  return (await response.json()) as T;
+  const raw = await response.text();
+  if (!raw) return undefined as T;
+  return JSON.parse(raw) as T;
 }
 
 /** GET /v1/health — no auth. Does not unlock send. */
@@ -373,6 +375,64 @@ export async function getComputer(
     { headers: headers(session) },
   );
   return json<ComputerPreview>(response);
+}
+
+export async function openComputerSession(
+  session: Session,
+  agentId: string,
+): Promise<{ sessionId: string }> {
+  const response = await fetch(
+    `${session.baseUrl}/v1/agents/${encodeURIComponent(agentId)}/computer/session`,
+    { method: "POST", headers: headers(session) },
+  );
+  return json<{ sessionId: string }>(response);
+}
+
+export async function closeComputerSession(
+  session: Session,
+  agentId: string,
+  sessionId?: string,
+): Promise<void> {
+  const suffix = sessionId
+    ? `/computer/session/${encodeURIComponent(sessionId)}`
+    : "/computer/session";
+  const response = await fetch(
+    `${session.baseUrl}/v1/agents/${encodeURIComponent(agentId)}${suffix}`,
+    { method: "DELETE", headers: headers(session) },
+  );
+  await json<void>(response);
+}
+
+export async function postComputerPointer(
+  session: Session,
+  agentId: string,
+  body: { x: number; y: number; type: string },
+): Promise<void> {
+  const response = await fetch(
+    `${session.baseUrl}/v1/agents/${encodeURIComponent(agentId)}/computer/pointer`,
+    {
+      method: "POST",
+      headers: headers(session, { "Content-Type": "application/json" }),
+      body: JSON.stringify(body),
+    },
+  );
+  await json<void>(response);
+}
+
+export async function postComputerKey(
+  session: Session,
+  agentId: string,
+  body: { key: string; type: string; text?: string },
+): Promise<void> {
+  const response = await fetch(
+    `${session.baseUrl}/v1/agents/${encodeURIComponent(agentId)}/computer/key`,
+    {
+      method: "POST",
+      headers: headers(session, { "Content-Type": "application/json" }),
+      body: JSON.stringify(body),
+    },
+  );
+  await json<void>(response);
 }
 
 export async function listPlugins(session: Session): Promise<Plugin[]> {

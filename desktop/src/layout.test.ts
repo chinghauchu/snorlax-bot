@@ -148,11 +148,23 @@ test("computer preview in the identity pane is 288x180 16:10 with 8px radius", (
   assert.match(frame, /height:\s*180px/);
   assert.match(frame, /border-radius:\s*8px/);
   assert.match(frame, /border:\s*1px\s+solid\s+var\(--border\)/);
-  assert.match(frame, /cursor:\s*default/);
-  assert.match(frame, /pointer-events:\s*none/);
+  assert.match(frame, /cursor:\s*pointer/);
+  assert.match(frame, /pointer-events:\s*auto/);
   const img = block(".info-computer-frame img,\n.info-computer-slot");
   assert.match(img, /object-fit:\s*contain/);
   assert.match(img, /pointer-events:\s*none/);
+  const open = block(".info-computer-open");
+  assert.match(open, /font-size:\s*12px/);
+  const bar = block(".computer-takeover-bar");
+  const status = block(".computer-takeover-status");
+  const done = block(".computer-takeover-done");
+  const takeoverFrame = block(".computer-takeover-frame");
+  assert.match(bar, /height:\s*52px/);
+  assert.match(status, /font-size:\s*12px/);
+  assert.match(status, /color:\s*var\(--text-muted\)/);
+  assert.match(done, /height:\s*36px/);
+  assert.match(takeoverFrame, /border-radius:\s*8px/);
+  assert.match(takeoverFrame, /border:\s*1px\s+solid\s+var\(--border\)/);
   const app = readFileSync(
     join(dirname(fileURLToPath(import.meta.url)), "App.tsx"),
     "utf8",
@@ -163,7 +175,9 @@ test("computer preview in the identity pane is 288x180 16:10 with 8px radius", (
     app.indexOf("<ComputerPane"),
   );
   assert.ok(pane.indexOf("AgentComputer") < pane.indexOf("info-routines"));
-  assert.doesNotMatch(pane, />\s*Open\s*</);
+  assert.match(pane, /onOpen/);
+  assert.match(app, /ComputerTakeover/);
+  assert.match(app, /composerInert/);
 });
 
 test("routines list is 44px rows with switch on the agent read pane", () => {

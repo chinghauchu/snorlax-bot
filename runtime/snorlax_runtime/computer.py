@@ -4,11 +4,14 @@
 This is a headless framebuffer the runtime screenshots as PNG. It is not a
 second product window, not VNC, and not a static decorative asset. Idle
 still counts as on: every screenshot is captured from the live buffer.
-Clients never send clicks this slice.
+
+v0.15: a user takeover session maps pointer/key into this 1280x800 buffer.
+The agent does not drive the sandbox while that session exists.
 """
 
 from __future__ import annotations
 
+import secrets
 import struct
 import zlib
 from datetime import datetime
@@ -212,8 +215,10 @@ def _tint_for(agent_id: str) -> tuple[int, int, int]:
     return (40 + (h & 31), 48 + ((h >> 5) & 31), 72 + ((h >> 10) & 47))
 
 
-def paint_desktop(agent_id: str, name: str, data_dir: Path | None = None) -> bytes:
-    """Capture the live idle desktop for this agent as PNG bytes."""
+def paint_desktop_pixels(
+    agent_id: str, name: str, data_dir: Path | None = None
+) -> bytearray:
+    """Paint the live idle desktop into an RGB buffer."""
     pixels = bytearray(WIDTH * HEIGHT * 3)
     top = _tint_for(agent_id)
     bottom = (max(8, top[0] - 18), max(10, top[1] - 18), max(18, top[2] - 22))
@@ -276,7 +281,64 @@ def paint_desktop(agent_id: str, name: str, data_dir: Path | None = None) -> byt
     for i in range(dock_n):
         _blend_rect(pixels, dock_x + i * 44, HEIGHT - 44, 28, 28, (109, 139, 255), 0.35)
 
-    return encode_png(WIDTH, HEIGHT, bytes(pixels))
+    return pixels
+
+
+def paint_desktop(agent_id: str, name: str, data_dir: Path | None = None) -> bytes:
+    """Capture the live idle desktop for this agent as PNG bytes."""
+    return encode_png(WIDTH, HEIGHT, bytes(paint_desktop_pixels(agent_id, name, data_dir)))
+
+
+def _draw_cursor(pixels: bytearray, x: int, y: int) -> None:
+    # Simple pointer: filled triangle with a 1px outline.
+    for dy in range(16):
+        span = max(1, dy // 2)
+        _fill_rect(pixels, x, y + dy, span, 1, (236, 236, 239))
+        _fill_rect(pixels, x, y + dy, 1, 1, (18, 20, 28))
+        _fill_rect(pixels, x + span - 1, y + dy, 1, 1, (18, 20, 28))
+    _fill_rect(pixels, x, y, 2, 2, (18, 20, 28))
+
+
+def _draw_click_mark(pixels: bytearray, x: int, y: int) -> None:
+    _fill_rect(pixels, x - 3, y - 3, 7, 7, (109, 139, 255))
+    _fill_rect(pixels, x - 1, y - 1, 3, 3, (236, 236, 239))
+
+
+POINTER_TYPES = frozenset({"move", "down", "up", "click"})
+KEY_TYPES = frozenset({"down", "up", "type"})
+SANDBOX_DRIVE_TOOLS = frozenset({"computer_click", "computer_key"})
+
+_HUB: ComputerHub | None = None
+
+
+class ComputerError(Exception):
+    def __init__(self, status: int, message: str) -> None:
+        super().__init__(message)
+        self.status = status
+        self.message = message
+
+
+def configure_computer(hub: ComputerHub | None) -> None:
+    global _HUB
+    _HUB = hub
+
+
+def current_hub() -> ComputerHub | None:
+    return _HUB
+
+
+def session_blocks_agent(agent_id: str) -> bool:
+    return _HUB is not None and _HUB.has_session(agent_id)
+
+
+def agent_id_from_workspace(workspace: Path) -> str | None:
+    parts = Path(workspace).resolve().parts
+    for label in ("agents", "channels"):
+        if label in parts:
+            idx = parts.index(label)
+            if idx + 1 < len(parts):
+                return parts[idx + 1]
+    return None
 
 
 class ComputerHub:
@@ -286,13 +348,35 @@ class ComputerHub:
         self.data_dir = Path(data_dir)
         self._detached: set[str] = set()
         self._last: dict[str, bytes] = {}
+        self._pixels: dict[str, bytearray] = {}
+        self._cursor: dict[str, tuple[int, int]] = {}
+        self._typed: dict[str, str] = {}
+        self._sessions: dict[str, str] = {}
+        self._driver: dict[str, str] = {}
+        self._names: dict[str, str] = {}
 
     def detach(self, agent_id: str) -> None:
         self._detached.add(agent_id)
         self._last.pop(agent_id, None)
+        self._pixels.pop(agent_id, None)
+        self._cursor.pop(agent_id, None)
+        self._typed.pop(agent_id, None)
+        self._sessions.pop(agent_id, None)
+        self._driver.pop(agent_id, None)
+        self._names.pop(agent_id, None)
 
     def has_sandbox(self, agent_id: str) -> bool:
         return agent_id not in self._detached
+
+    def has_session(self, agent_id: str) -> bool:
+        return agent_id in self._sessions and self.has_sandbox(agent_id)
+
+    def driving(self, agent_id: str) -> str:
+        if self.has_session(agent_id):
+            return "user"
+        if self._driver.get(agent_id) == "agent":
+            return "agent"
+        return "idle"
 
     def preview(self, agent_id: str) -> dict[str, object]:
         if not self.has_sandbox(agent_id):
@@ -302,11 +386,123 @@ class ComputerHub:
             "width": WIDTH,
             "height": HEIGHT,
             "imageUrl": image_url(agent_id),
+            "driving": self.driving(agent_id),
         }
+
+    def open_session(self, agent_id: str, name: str = "") -> dict[str, str] | None:
+        if not self.has_sandbox(agent_id):
+            return None
+        if name:
+            self._names[agent_id] = name
+        self._ensure_pixels(agent_id)
+        existing = self._sessions.get(agent_id)
+        if existing:
+            return {"sessionId": existing}
+        session_id = f"sess_{secrets.token_hex(8)}"
+        self._sessions[agent_id] = session_id
+        return {"sessionId": session_id}
+
+    def close_session(self, agent_id: str, session_id: str | None = None) -> None:
+        if session_id is not None:
+            current = self._sessions.get(agent_id)
+            if current != session_id:
+                raise ComputerError(404, "no computer session")
+        if agent_id in self._sessions:
+            self._snapshot(agent_id)
+        self._sessions.pop(agent_id, None)
+
+    def pointer(
+        self,
+        agent_id: str,
+        x: int,
+        y: int,
+        kind: str,
+        *,
+        user: bool,
+    ) -> None:
+        self._require_drive(agent_id, user=user)
+        self._ensure_pixels(agent_id)
+        x = max(0, min(WIDTH - 1, int(x)))
+        y = max(0, min(HEIGHT - 1, int(y)))
+        self._cursor[agent_id] = (x, y)
+        if kind in {"down", "click"}:
+            _draw_click_mark(self._pixels[agent_id], x, y)
+        if not user:
+            self._driver[agent_id] = "agent"
+        self._snapshot(agent_id)
+
+    def key(
+        self,
+        agent_id: str,
+        key: str,
+        kind: str,
+        *,
+        user: bool,
+        text: str | None = None,
+    ) -> None:
+        self._require_drive(agent_id, user=user)
+        self._ensure_pixels(agent_id)
+        buf = self._typed.get(agent_id, "")
+        typed = (text or "").strip() if kind == "type" else ""
+        if kind == "type" and typed:
+            buf = (buf + typed)[:80]
+        else:
+            token = (key or "").strip()
+            if kind in {"down", "type"} and token:
+                if token in {"Backspace", "Delete"}:
+                    buf = buf[:-1]
+                elif token in {"Enter", "Return"}:
+                    buf = (buf + " ")[:80]
+                elif len(token) == 1:
+                    buf = (buf + token)[:80]
+        self._typed[agent_id] = buf
+        if not user:
+            self._driver[agent_id] = "agent"
+        self._snapshot(agent_id)
 
     def screenshot_png(self, agent_id: str, name: str = "") -> bytes | None:
         if not self.has_sandbox(agent_id):
             return None
-        png = paint_desktop(agent_id, name, self.data_dir)
+        if name:
+            self._names[agent_id] = name
+        png = encode_png(WIDTH, HEIGHT, bytes(self._composite(agent_id)))
         self._last[agent_id] = png
         return png
+
+    def last_png(self, agent_id: str) -> bytes | None:
+        return self._last.get(agent_id)
+
+    def _require_drive(self, agent_id: str, *, user: bool) -> None:
+        if not self.has_sandbox(agent_id):
+            raise ComputerError(404, "no computer")
+        if user and not self.has_session(agent_id):
+            raise ComputerError(409, "no computer session")
+        if not user and self.has_session(agent_id):
+            raise ComputerError(409, "computer session is active")
+
+    def _ensure_pixels(self, agent_id: str) -> bytearray:
+        existing = self._pixels.get(agent_id)
+        if existing is None:
+            existing = paint_desktop_pixels(
+                agent_id, self._names.get(agent_id, ""), self.data_dir
+            )
+            self._pixels[agent_id] = existing
+        return existing
+
+    def _composite(self, agent_id: str) -> bytearray:
+        if agent_id not in self._pixels:
+            return paint_desktop_pixels(
+                agent_id, self._names.get(agent_id, ""), self.data_dir
+            )
+        pixels = bytearray(self._pixels[agent_id])
+        typed = self._typed.get(agent_id) or ""
+        if typed:
+            _draw_text(pixels, 320, 400, typed.upper()[:40], (236, 236, 239), scale=2)
+        cursor = self._cursor.get(agent_id)
+        if cursor is not None and self.has_session(agent_id):
+            _draw_cursor(pixels, cursor[0], cursor[1])
+        return pixels
+
+    def _snapshot(self, agent_id: str) -> None:
+        png = encode_png(WIDTH, HEIGHT, bytes(self._composite(agent_id)))
+        self._last[agent_id] = png

@@ -1027,9 +1027,22 @@ button:disabled {
 }
 
 .info-computer-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
   margin: 0 0 8px;
   font-size: 12px;
   color: var(--text-muted);
+  font-weight: 500;
+}
+
+.info-computer-open {
+  border: 0;
+  background: transparent;
+  padding: 0;
+  font-size: 12px;
+  color: var(--text);
   font-weight: 500;
 }
 
@@ -1046,9 +1059,11 @@ button:disabled {
   border: 1px solid var(--border);
   overflow: hidden;
   background: #000;
-  cursor: default;
-  pointer-events: none;
+  cursor: pointer;
+  pointer-events: auto;
   flex-shrink: 0;
+  padding: 0;
+  display: block;
 }
 
 .info-computer-frame img,
@@ -1058,11 +1073,79 @@ button:disabled {
   object-fit: contain;
   display: block;
   pointer-events: none;
-  cursor: default;
+  cursor: pointer;
 }
 
 .info-computer-slot {
   background: #000;
+}
+
+.computer-takeover {
+  position: absolute;
+  inset: 0;
+  z-index: 20;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg);
+}
+
+.computer-takeover-bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  height: 52px;
+  padding: 0 14px;
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+.computer-takeover-name {
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.computer-takeover-status {
+  font-size: 12px;
+  color: var(--text-muted);
+  flex: 1;
+  min-width: 0;
+}
+
+.computer-takeover-done {
+  height: 36px;
+  padding: 0 14px;
+  margin-left: auto;
+}
+
+.computer-takeover-stage {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  background: var(--bg);
+}
+
+.computer-takeover-frame {
+  max-width: 100%;
+  max-height: 100%;
+  width: auto;
+  height: auto;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  overflow: hidden;
+  background: #000;
+  cursor: default;
+}
+
+.computer-takeover-frame img,
+.computer-takeover-slot {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  display: block;
+  pointer-events: none;
 }
 
 .info-members {

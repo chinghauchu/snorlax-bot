@@ -249,6 +249,21 @@ click/key/scroll POST. Agent identity pane
 no frame. Idle desktop still on. File-tree 320px column unchanged. Do
 not reintroduce `computerPane.ts`.
 
+v0.15: Box takeover. Desktop + runtime only. iOS unchanged (preview
+only; no tap-to-open, no session POST). `POST /v1/agents/{id}/computer/session`
+201 `{ sessionId }`; `DELETE .../session` or `DELETE .../session/{sessionId}`
+204. While the session exists, `POST .../pointer`
+`{ x, y, type }` and `POST .../key` `{ key, type, text? }` in 1280×800
+(200). GET may include `driving: user|agent|idle`. Agent tools that
+drive the sandbox 409. Channel 409. Desktop identity
+pane: 12px muted Computer + trailing 12px Open when hasSandbox; 288×180
+pointer cursor, click Opens. Overlay over chat + info pane (sidebar
+stays). Scrim `--bg`. 1280×800 letterboxed, 8px radius, 1px border.
+52px bar: 24px avatar + name, 12px muted `You're driving · agent paused`,
+trailing primary Done 36px. Esc = Done. Composer inert. Done returns to
+display-only; preview last frame. File-tree column untouched. Teach-a-task
+waits. Out: recording, a separate OS window, VNC.
+
 ## Inference interface
 
 ```text
