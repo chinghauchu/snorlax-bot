@@ -5,7 +5,7 @@ contract as desktop. Named agents, streaming transcript, muted tool traces,
 image previews that are **never** sent to the model. Question widgets
 render as LEFT cards in the speaking agent's streak (no extra sheet). Agent
 info sheet lists a 16:10 computer preview above routines (12pt labels,
-8pt radius, no tap-to-open) then routines (list + enable/pause
+8pt radius, 12pt `Open` when `hasSandbox`; the shot is tappable) then routines (list + enable/pause
 + Copy webhook URL + 12pt Add / Remove with confirm) then skills
 (12pt Edit / Remove; Edit skill source sheet; no blank Add). Settings lists runtime plugins (Add / Remove; OS browser via
 `ASWebAuthenticationSession`). No
@@ -27,7 +27,7 @@ The Spark stays up when the phone sleeps. Reconnect is
 | Target | iOS 18+ (iPhone + iPad) |
 | Network | URLSession, `Authorization: Bearer` on everything except `GET /v1/health` and incoming `POST /v1/hooks/{token}` (token in the path, not the app token) |
 | Chat | `POST /v1/agents/{id}/messages` as SSE (`message.delta` / `message.done` / `tool.start` / `tool.done` / `error`) |
-| Computer | Agent-sheet 16:10 preview (no tap-to-open). No file browser (desktop-only v0.6) |
+| Computer | Agent-sheet 16:10 preview + full-screen Open/Done takeover (v0.15 session). No Record. No file browser (desktop-only v0.6) |
 | Pairing | Settings sheet. Token in Keychain, URL in AppStorage. No gate screen |
 | Seed | `snorlax-bot` (Snorlax / Assistant) and `snorlax-bot-group` (Snorlax-Bot, Channel). Extra user-created channels. Swipe-delete on every row including the seed agent and seed channel (not in the info pane). After seed channel delete, select an agent first if any remain, else a remaining channel; never recreate `snorlax-bot-group`. Empty roster keeps chrome. No jump chip if no channel remains |
 
@@ -59,6 +59,7 @@ Wire types are generated from [../protocol/openapi.yaml](../protocol/openapi.yam
 ```bash
 python3 ios/scripts/generate_v1_types.py
 python3 ios/scripts/generate_v1_types.py --check
+python3 ios/scripts/test_computer_takeover.py
 ```
 
 Output: `SnorlaxBot/Generated/V1Types.swift`. Do not hand-edit that file.
@@ -69,6 +70,8 @@ Output: `SnorlaxBot/Generated/V1Types.swift`. Do not hand-edit that file.
 - `SnorlaxBot/ContentView.swift` — iPhone stack / iPad split chrome
 - `SnorlaxBot/AppModel.swift` — roster, chat, settings persistence
 - `SnorlaxBot/ProfileSheet.swift` — identity / channel pane; agent routines + skills lists
+- `SnorlaxBot/ComputerSession.swift` — v0.19 Open chrome + letterbox pointer map
+- `SnorlaxBot/ComputerTakeover.swift` — full-screen Open (Keyboard + Done)
 - `SnorlaxBot/SettingsSheet.swift` — URL, token, plugins list + Add sheet
 - `SnorlaxBot/ConnectCard.swift` — `kind=connect` LEFT card
 - `SnorlaxBot/AssistantMarkdown.swift` — assistant LEFT markdown

@@ -303,6 +303,17 @@ List stays `{ id, name }`. Channel 409. Unknown sid 404. Empty
 name/body 422. Out: marketplace, iOS Open/Record/takeover, `/`
 autocomplete, blank New skill.
 
+v0.19: iOS takeover. iOS only. Desktop Open/Done stays v0.15. Runtime
+protocol unchanged: reuse v0.15 POST/DELETE `/computer/session` plus
+pointer/key. OpenAPI stays 0.18.0. `recording` unused. Agent sheet:
+12pt Open when hasSandbox; 16:10 shot also Opens; empty `No computer
+yet.` has no Open. Open is full-screen (not a sheet). Safe-area 52pt
+bar: 24pt avatar + name, 12pt muted `You're driving · agent paused`,
+trailing 12pt Keyboard then primary Done 44pt. Keyboard focuses a
+hidden field → POST `…/key`. Letterboxed 1280×800: tap is click, pan
+is move, no pinch, swipe-back disabled. Done DELETE session, back to
+the still. Composer covered. Channel pane unchanged. No Record.
+
 ## Inference interface
 
 ```text

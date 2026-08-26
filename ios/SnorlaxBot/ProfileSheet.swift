@@ -148,10 +148,21 @@ struct ProfileSheet: View {
 
     private var computerBlock: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text("Computer")
-                .font(.system(size: 12))
-                .foregroundStyle(.secondary)
-                .padding(.top, 12)
+            HStack {
+                Text(ComputerTakeoverChrome.computerLabel)
+                    .font(.system(size: ComputerTakeoverChrome.labelSize))
+                    .foregroundStyle(.secondary)
+                Spacer(minLength: 0)
+                if ComputerTakeoverChrome.canOpen(hasSandbox: model.computerPreview?.hasSandbox) {
+                    Button(ComputerTakeoverChrome.openLabel) {
+                        Task { await model.openComputer(for: live.id) }
+                    }
+                    .font(.system(size: ComputerTakeoverChrome.labelSize))
+                    .disabled(!model.isConfigured)
+                    .accessibilityLabel(ComputerTakeoverChrome.openLabel)
+                }
+            }
+            .padding(.top, 12)
             if model.computerPreview?.hasSandbox == true {
                 ZStack {
                     Color.black
@@ -167,10 +178,15 @@ struct ProfileSheet: View {
                     RoundedRectangle(cornerRadius: 8, style: .continuous)
                         .strokeBorder(Color.primary.opacity(0.12), lineWidth: 1)
                 }
-                .allowsHitTesting(false)
+                .contentShape(Rectangle())
+                .onTapGesture {
+                    Task { await model.openComputer(for: live.id) }
+                }
+                .accessibilityAddTraits(.isButton)
+                .accessibilityLabel(ComputerTakeoverChrome.openLabel)
             } else {
-                Text("No computer yet.")
-                    .font(.system(size: 12))
+                Text(ComputerTakeoverChrome.noComputerYet)
+                    .font(.system(size: ComputerTakeoverChrome.labelSize))
                     .foregroundStyle(.secondary)
             }
         }

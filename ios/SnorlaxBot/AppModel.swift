@@ -53,6 +53,9 @@ final class AppModel {
     var plugins: [Plugin] = []
     var computerPreview: ComputerPreview?
     var computerImage: UIImage?
+    var computerTakeoverOpen = false
+    var computerSessionId: String?
+    var computerTakeoverAgentId: String?
 
     init() {
         runtimeURL = UserDefaults.standard.string(forKey: Keys.runtimeURL) ?? ""
@@ -73,7 +76,9 @@ final class AppModel {
         return RuntimeClient(baseURL: url, token: token.trimmingCharacters(in: .whitespacesAndNewlines))
     }
 
-    var canCompose: Bool { client != nil && !isSending && selectedAgent != nil }
+    var canCompose: Bool {
+        client != nil && !isSending && selectedAgent != nil && !computerTakeoverOpen
+    }
 
     var visibleAgents: [Agent] {
         if !isConfigured && agents.isEmpty {
@@ -326,6 +331,52 @@ final class AppModel {
         } catch {
             computerPreview = ComputerPreview(hasSandbox: false, width: 1280, height: 800)
             computerImage = nil
+        }
+    }
+
+    func openComputer(for agentId: String) async {
+        guard let client,
+              ComputerTakeoverChrome.openPostsSession(hasSandbox: computerPreview?.hasSandbox)
+        else { return }
+        do {
+            let opened = try await client.openComputerSession(agentId: agentId)
+            computerSessionId = opened.sessionId
+            computerTakeoverAgentId = agentId
+            computerTakeoverOpen = true
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    func closeComputer(agentId: String) async {
+        let sid = computerSessionId
+        computerTakeoverOpen = false
+        computerSessionId = nil
+        computerTakeoverAgentId = nil
+        guard let client else { return }
+        do {
+            try await client.closeComputerSession(agentId: agentId, sessionId: sid)
+        } catch {
+            /* already closed */
+        }
+        await loadComputer(for: agentId)
+    }
+
+    func postComputerPointer(agentId: String, event: PointerEvent) async {
+        guard computerTakeoverOpen, let client else { return }
+        do {
+            try await client.postComputerPointer(agentId: agentId, event: event)
+        } catch {
+            /* session may have ended */
+        }
+    }
+
+    func postComputerKey(agentId: String, event: KeyEvent) async {
+        guard computerTakeoverOpen, let client else { return }
+        do {
+            try await client.postComputerKey(agentId: agentId, event: event)
+        } catch {
+            /* session may have ended */
         }
     }
 

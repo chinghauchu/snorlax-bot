@@ -48,8 +48,9 @@ chat + the info pane (sidebar stays). 52px bar: 24px avatar + name,
 yet.` has no Open. While driving, 12px muted **Record** sits left of
 Done. Recording swaps that control to `--danger` **Stop** plus a 6px
 danger dot (static if Reduce Motion); Done is disabled. Stop opens a
-320px **Save as skill** sheet. iOS stays preview-only (no tap-to-open,
-no Record).
+320px **Save as skill** sheet. iOS Open (v0.19) is a full-screen takeover
+on the agent-sheet still (same v0.15 session; 12pt Open + tappable 16:10
+shot; Keyboard + Done; no Record).
 Create agent or channel from +.
 Muted 12px tool traces (`Searching…` / `Wrote app.py` / `Used server__tool`) may appear in
 the transcript while the runtime runs tools (including MCP). Agent info

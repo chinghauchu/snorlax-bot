@@ -95,6 +95,9 @@ Empty name/body 422. No blank POST — create stays teach-a-task
 `POST /skills { name }`. Chrome: Skills below Routines; 320px
 `Edit skill` source textarea; no blank Add.
 
+v0.19 iOS takeover: same v0.15 session/pointer/key routes as desktop.
+iOS now POSTs them. `recording` unused. OpenAPI stays 0.18.0.
+
 A copy is also kept at `runtime/openapi.yaml` and `desktop/openapi.yaml`
 so those trees are self-contained. Do not let the files diverge.
 

@@ -17,6 +17,16 @@ struct ContentView: View {
         .sheet(isPresented: $model.showSettings) {
             SettingsSheet()
         }
+        .fullScreenCover(isPresented: takeoverPresented) {
+            if let id = model.computerTakeoverAgentId,
+               let agent = model.visibleAgents.first(where: { $0.id == id }),
+               !agent.isChannel
+            {
+                ComputerTakeoverView(agent: agent)
+                    .environment(model)
+                    .interactiveDismissDisabled(true)
+            }
+        }
         .alert("Error", isPresented: errorPresented) {
             Button("OK", role: .cancel) { model.errorMessage = nil }
         } message: {
@@ -28,6 +38,17 @@ struct ContentView: View {
                 Task { await model.handleSceneActive() }
             }
         }
+    }
+
+    private var takeoverPresented: Binding<Bool> {
+        Binding(
+            get: { model.computerTakeoverOpen },
+            set: { open in
+                if !open, model.computerTakeoverOpen, let id = model.computerTakeoverAgentId {
+                    Task { await model.closeComputer(agentId: id) }
+                }
+            }
+        )
     }
 
     private var errorPresented: Binding<Bool> {

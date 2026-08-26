@@ -114,26 +114,59 @@ test("desktop identity pane paints Computer above Routines with Open when hasSan
   assert.doesNotMatch(app, /computerPane\.ts/);
 });
 
-test("iOS agent sheet matches: 16:10, 8pt, 12pt labels, no tap-to-open", () => {
+test("iOS agent sheet matches: 16:10, 8pt, 12pt Open when hasSandbox, tap POSTs session", () => {
   const sheet = readFileSync(
     join(here, "../../ios/SnorlaxBot/ProfileSheet.swift"),
     "utf8",
   );
-  assert.match(sheet, /No computer yet\./);
-  assert.match(sheet, /Computer/);
+  const chrome = readFileSync(
+    join(here, "../../ios/SnorlaxBot/ComputerSession.swift"),
+    "utf8",
+  );
+  const takeover = readFileSync(
+    join(here, "../../ios/SnorlaxBot/ComputerTakeover.swift"),
+    "utf8",
+  );
+  assert.match(chrome, /No computer yet\./);
+  assert.match(chrome, /Computer/);
+  assert.match(chrome, /openLabel = "Open"/);
+  assert.match(chrome, /canOpen\(hasSandbox: Bool\?\)/);
+  assert.match(chrome, /hasSandbox == true/);
+  assert.match(chrome, /You're driving · agent paused/);
+  assert.match(chrome, /barHeight: CGFloat = 52/);
+  assert.match(chrome, /avatarSize: CGFloat = 24/);
+  assert.match(chrome, /doneHeight: CGFloat = 44/);
+  assert.match(chrome, /keyboardLabel = "Keyboard"/);
   assert.match(sheet, /aspectRatio\(16\s*\/\s*10/);
   assert.match(sheet, /cornerRadius:\s*8/);
   assert.match(sheet, /lineWidth:\s*1/);
   assert.match(sheet, /size:\s*12/);
-  assert.doesNotMatch(sheet, /tap-to-open/i);
   assert.doesNotMatch(sheet, /computer\/click/);
   const computerBlock = sheet.slice(
-    sheet.indexOf("computerBlock"),
-    sheet.indexOf("routinesList"),
+    sheet.indexOf("private var computerBlock"),
+    sheet.indexOf("private var paneRoutines"),
   );
-  assert.doesNotMatch(computerBlock, /onTapGesture/);
+  assert.match(computerBlock, /onTapGesture/);
+  assert.match(computerBlock, /openLabel/);
+  assert.match(computerBlock, /canOpen/);
+  assert.match(computerBlock, /openComputer/);
   assert.doesNotMatch(computerBlock, /NavigationLink/);
-  assert.match(sheet, /allowsHitTesting\(false\)/);
+  const empty = computerBlock.slice(computerBlock.lastIndexOf("else"));
+  assert.doesNotMatch(empty, /openLabel/);
+  const content = readFileSync(
+    join(here, "../../ios/SnorlaxBot/ContentView.swift"),
+    "utf8",
+  );
+  assert.match(content, /fullScreenCover/);
+  assert.match(content, /ComputerTakeoverView/);
+  assert.match(takeover, /interactiveDismissDisabled/);
+  assert.match(takeover, /HiddenKeyboardField/);
+  assert.match(takeover, /doneLabel/);
+  assert.match(takeover, /keyboardLabel/);
+  assert.match(takeover, /MagnificationGesture/);
+  assert.doesNotMatch(takeover, /RECORD_LABEL/);
+  assert.doesNotMatch(takeover, /Save as skill/);
+  assert.doesNotMatch(takeover, /computer\/record/);
   const client = readFileSync(
     join(here, "../../ios/SnorlaxBot/RuntimeClient.swift"),
     "utf8",
@@ -142,20 +175,19 @@ test("iOS agent sheet matches: 16:10, 8pt, 12pt labels, no tap-to-open", () => {
     join(here, "../../ios/SnorlaxBot/AppModel.swift"),
     "utf8",
   );
-  assert.doesNotMatch(client, /computer\/session/);
-  assert.doesNotMatch(client, /computer\/pointer/);
+  assert.match(client, /computer\/session/);
+  assert.match(client, /computer\/pointer/);
+  assert.match(client, /computer\/key/);
+  assert.match(client, /openComputerSession/);
+  assert.match(model, /openComputerSession/);
+  assert.match(model, /closeComputerSession/);
   assert.doesNotMatch(client, /computer\/record/);
-  assert.doesNotMatch(model, /computer\/session/);
   assert.doesNotMatch(model, /computer\/record/);
-  assert.doesNotMatch(sheet, /computer\/session/);
+  assert.doesNotMatch(sheet, /computer\/record/);
   assert.doesNotMatch(sheet, /Save as skill/);
   assert.doesNotMatch(sheet, /RECORD_LABEL/);
   const chat = readFileSync(
     join(here, "../../ios/SnorlaxBot/ChatView.swift"),
-    "utf8",
-  );
-  const content = readFileSync(
-    join(here, "../../ios/SnorlaxBot/ContentView.swift"),
     "utf8",
   );
   assert.doesNotMatch(chat, /computer\/record/);
@@ -221,4 +253,6 @@ test("iOS agent sheet matches: 16:10, 8pt, 12pt labels, no tap-to-open", () => {
   assert.doesNotMatch(channelPane, /AddRoutineSheet/);
   assert.doesNotMatch(channelPane, /EditSkillSheet/);
   assert.doesNotMatch(channelPane, /listSkills/);
+  assert.doesNotMatch(channelPane, /ComputerTakeoverView/);
+  assert.doesNotMatch(channelPane, /openLabel/);
 });
