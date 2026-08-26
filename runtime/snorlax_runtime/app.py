@@ -23,10 +23,12 @@ from snorlax_runtime.routing import (
     resume_after_connect,
     run_user_turn,
 )
+from snorlax_runtime.computer import ComputerHub
 from snorlax_runtime.schemas import (
     Agent,
     AgentCreate,
     AgentPatch,
+    ComputerPreview,
     Health,
     Message,
     MessageCreate,
@@ -193,6 +195,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         )
         mcp = await start_mcp(settings.data_dir)
         app.state.mcp = mcp
+        app.state.computer = ComputerHub(settings.data_dir)
         backend_name = settings.resolved_backend()
         app.state.backend = build_backend(
             backend_name,
@@ -413,6 +416,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             "channels" if existing.get("kind") == KIND_CHANNEL else "agents",
             id,
         )
+        hub = getattr(request.app.state, "computer", None)
+        if hub is not None:
+            hub.detach(id)
 
     @app.get("/v1/agents/{id}/messages", response_model=list[Message])
     async def list_messages(
@@ -561,11 +567,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         agent_id: str,
         *,
         channel_status: int,
+        reason: str = "routines are assigned to an agent",
     ) -> dict:
         if conversation is None:
             raise _error(404, f"Agent {agent_id!r} not found")
         if conversation.get("kind") == KIND_CHANNEL:
-            raise _error(channel_status, "routines are assigned to an agent")
+            raise _error(channel_status, reason)
         return conversation
 
     @app.get(
@@ -767,6 +774,53 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             raise _error(404, "path not found") from None
         except IsADirectoryError:
             raise _error(422, "not a file") from None
+
+    def _computer(request: Request) -> ComputerHub:
+        hub = getattr(request.app.state, "computer", None)
+        if hub is None:
+            store: Store = request.app.state.store
+            hub = ComputerHub(store.data_dir)
+            request.app.state.computer = hub
+        return hub
+
+    @app.get(
+        "/v1/agents/{id}/computer",
+        response_model=ComputerPreview,
+        response_model_exclude_none=True,
+    )
+    async def get_computer(
+        id: str, request: Request, _: str = Depends(require_bearer)
+    ) -> ComputerPreview:
+        store: Store = request.app.state.store
+        conversation = await store.get_agent(id)
+        _require_agent(
+            conversation,
+            id,
+            channel_status=409,
+            reason="computer preview is agent-only",
+        )
+        return ComputerPreview.model_validate(_computer(request).preview(id))
+
+    @app.get("/v1/agents/{id}/computer/image")
+    async def get_computer_image(
+        id: str, request: Request, _: str = Depends(require_bearer)
+    ) -> Response:
+        store: Store = request.app.state.store
+        conversation = await store.get_agent(id)
+        _require_agent(
+            conversation,
+            id,
+            channel_status=409,
+            reason="computer preview is agent-only",
+        )
+        png = _computer(request).screenshot_png(id, str(conversation.get("name") or ""))
+        if png is None:
+            raise _error(404, "no computer")
+        return Response(
+            content=png,
+            media_type="image/png",
+            headers={"Cache-Control": "no-store"},
+        )
 
     @app.get("/v1/plugins", response_model=list[Plugin])
     async def list_plugins(

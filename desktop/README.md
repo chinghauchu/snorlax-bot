@@ -39,7 +39,9 @@ npm run tauri dev
 
 v0 chrome: 256px agent sidebar, chat, 320px computer pane (file tree +
 text preview; collapsible, default open), 320px identity overlay on the
-chat (not a fourth column), Settings. Create agent or channel from +.
+chat (not a fourth column), Settings. The agent overlay shows a 288×180
+16:10 computer preview above Routines (display only; no Open / clicks).
+Create agent or channel from +.
 Muted 12px tool traces (`Searching…` / `Wrote app.py` / `Used server__tool`) may appear in
 the transcript while the runtime runs tools (including MCP). Agent info
 pane lists cron routines (44px rows, live enable/pause switch). Webhook
@@ -47,7 +49,7 @@ rows show muted `Webhook` plus Copy for the URL. Settings
 lists runtime plugins (`Connected` / `Needs sign-in`; Add / Remove).
 Assistant LEFT
 `kind=message` is 14px markdown (no grey bubble, 16/14 headings); user-right stays plain (`https://` tappable). Fenced code is full-turn language + Copy at 12px/1.45.
-iOS has no computer pane.
+iOS has no file-tree computer pane; the agent sheet shows the same preview.
 
 Types and the `/v1` client are generated from the locked camelCase OpenAPI
 (`openapi.yaml`, same contract as `protocol/openapi.yaml` on the Backend

@@ -2,6 +2,7 @@
 import Foundation
 import Observation
 import SwiftUI
+import UIKit
 
 @MainActor
 @Observable
@@ -49,6 +50,8 @@ final class AppModel {
     var showProfile = false
     var routines: [Routine] = []
     var plugins: [Plugin] = []
+    var computerPreview: ComputerPreview?
+    var computerImage: UIImage?
 
     init() {
         runtimeURL = UserDefaults.standard.string(forKey: Keys.runtimeURL) ?? ""
@@ -278,6 +281,34 @@ final class AppModel {
         } catch {
             routines = []
             errorMessage = error.localizedDescription
+        }
+    }
+
+    func loadComputer(for agentId: String) async {
+        guard let client,
+              let agent = agents.first(where: { $0.id == agentId }),
+              !agent.isChannel
+        else {
+            computerPreview = nil
+            computerImage = nil
+            return
+        }
+        do {
+            let row = try await client.getComputer(agentId: agentId)
+            computerPreview = row
+            if row.hasSandbox,
+               let path = row.imageUrl?.trimmingCharacters(in: .whitespacesAndNewlines),
+               !path.isEmpty,
+               let url = client.resolve(path)
+            {
+                let data = try await client.data(from: url)
+                computerImage = UIImage(data: data)
+            } else {
+                computerImage = nil
+            }
+        } catch {
+            computerPreview = ComputerPreview(hasSandbox: false, width: 1280, height: 800)
+            computerImage = nil
         }
     }
 

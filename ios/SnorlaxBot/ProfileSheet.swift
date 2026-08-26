@@ -82,6 +82,7 @@ struct ProfileSheet: View {
                     .font(.system(size: 13))
                     .foregroundStyle(.secondary)
             }
+            computerBlock
             routinesList
             Spacer(minLength: 0)
         }
@@ -89,6 +90,41 @@ struct ProfileSheet: View {
         .padding(16)
         .task(id: live.id) {
             await model.loadRoutines(for: live.id)
+            await model.loadComputer(for: live.id)
+            while !Task.isCancelled {
+                try? await Task.sleep(nanoseconds: 1_500_000_000)
+                await model.loadComputer(for: live.id)
+            }
+        }
+    }
+
+    private var computerBlock: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Computer")
+                .font(.system(size: 12))
+                .foregroundStyle(.secondary)
+                .padding(.top, 12)
+            if model.computerPreview?.hasSandbox == true {
+                ZStack {
+                    Color.black
+                    if let image = model.computerImage {
+                        Image(uiImage: image)
+                            .resizable()
+                            .scaledToFit()
+                    }
+                }
+                .aspectRatio(16 / 10, contentMode: .fit)
+                .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+                .overlay {
+                    RoundedRectangle(cornerRadius: 8, style: .continuous)
+                        .strokeBorder(Color.primary.opacity(0.12), lineWidth: 1)
+                }
+                .allowsHitTesting(false)
+            } else {
+                Text("No computer yet.")
+                    .font(.system(size: 12))
+                    .foregroundStyle(.secondary)
+            }
         }
     }
 

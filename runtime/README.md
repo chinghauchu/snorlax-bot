@@ -6,6 +6,9 @@ mock backend sits behind it. Clients never call the model server, never
 call tools, never call MCP, and never read `~/.snorlax-bot/` — they use `SNORLAX_URL` +
 `SNORLAX_TOKEN`. Desktop may `GET /v1/agents/{id}/workspace` (a runtime
 read of the sandbox); iOS does not browse files this slice.
+`GET /v1/agents/{id}/computer` is the identity-pane screenshot (Bearer
+PNG of a runtime-owned 1280×800 display). Channel ids are 409. No
+click/key POST.
 
 Contract: [../protocol/openapi.yaml](../protocol/openapi.yaml) (copy:
 [openapi.yaml](openapi.yaml)).

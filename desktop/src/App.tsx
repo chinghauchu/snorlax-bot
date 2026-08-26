@@ -74,6 +74,7 @@ import {
 } from "./runtimeUrl";
 import { showThinkingLine, THINKING_LABEL } from "./thinking";
 import { ComputerPane } from "./ComputerPane";
+import { AgentComputer } from "./AgentComputer";
 import { WidgetCard } from "./WidgetCard";
 import { ConnectCard } from "./ConnectCard";
 import { HttpsText, MarkdownBody } from "./MarkdownBody";
@@ -1833,6 +1834,11 @@ export function App() {
                 <p className="info-muted">{active.description}</p>
               ) : null}
             </div>
+            <AgentComputer
+              session={session}
+              agentId={active.id}
+              open={profileOpen && !profileEditing}
+            />
             <section className="info-routines" aria-label="Routines">
               <p className="info-routines-header">Routines</p>
               {visiblePaneRoutines(routines, plugins).length === 0 ? (

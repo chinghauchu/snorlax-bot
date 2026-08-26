@@ -1020,6 +1020,51 @@ button:disabled {
   white-space: pre-wrap;
 }
 
+.info-computer {
+  display: flex;
+  flex-direction: column;
+  padding: 0 16px 12px;
+}
+
+.info-computer-header {
+  margin: 0 0 8px;
+  font-size: 12px;
+  color: var(--text-muted);
+  font-weight: 500;
+}
+
+.info-computer-empty {
+  margin: 0;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.info-computer-frame {
+  width: 288px;
+  height: 180px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  overflow: hidden;
+  background: #000;
+  cursor: default;
+  pointer-events: none;
+  flex-shrink: 0;
+}
+
+.info-computer-frame img,
+.info-computer-slot {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  display: block;
+  pointer-events: none;
+  cursor: default;
+}
+
+.info-computer-slot {
+  background: #000;
+}
+
 .info-members {
   display: flex;
   flex-direction: column;

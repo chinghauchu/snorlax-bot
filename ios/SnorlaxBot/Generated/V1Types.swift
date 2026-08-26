@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 //
-// Generated from protocol/openapi.yaml (Snorlax-Bot 0.13.0).
+// Generated from protocol/openapi.yaml (Snorlax-Bot 0.14.0).
 // Do not edit by hand. Regenerate with:
 //   python3 ios/scripts/generate_v1_types.py
 //
@@ -778,6 +778,38 @@ struct WorkspaceFile: Codable, Hashable, Sendable {
         try container.encode(path, forKey: .path)
         try container.encode(content, forKey: .content)
         try container.encodeIfPresent(truncated, forKey: .truncated)
+    }
+}
+
+struct ComputerPreview: Codable, Hashable, Sendable {
+    var hasSandbox: Bool
+    var width: Int
+    var height: Int
+    var imageUrl: String?
+
+    init(hasSandbox: Bool, width: Int, height: Int, imageUrl: String? = nil) {
+        self.hasSandbox = hasSandbox
+        self.width = width
+        self.height = height
+        self.imageUrl = imageUrl
+    }
+
+    enum CodingKeys: String, CodingKey { case hasSandbox, width, height, imageUrl }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        hasSandbox = try container.decode(Bool.self, forKey: .hasSandbox)
+        width = try container.decode(Int.self, forKey: .width)
+        height = try container.decode(Int.self, forKey: .height)
+        imageUrl = try container.decodeIfPresent(String.self, forKey: .imageUrl)
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(hasSandbox, forKey: .hasSandbox)
+        try container.encode(width, forKey: .width)
+        try container.encode(height, forKey: .height)
+        try container.encodeIfPresent(imageUrl, forKey: .imageUrl)
     }
 }
 

@@ -4,10 +4,11 @@ Snorlax-Bot’s phone client. SwiftUI, iOS 18+, same locked `/v1` camelCase
 contract as desktop. Named agents, streaming transcript, muted tool traces,
 image previews that are **never** sent to the model. Question widgets
 render as LEFT cards in the speaking agent's streak (no extra sheet). Agent
-info sheet lists routines under the 72px identity (list + enable/pause
+info sheet lists a 16:10 computer preview above routines (12pt labels,
+8pt radius, no tap-to-open) then routines (list + enable/pause
 + Copy webhook URL, no extra sheet). Settings lists runtime plugins (Add / Remove; OS browser via
 `ASWebAuthenticationSession`). No
-computer pane / file browser this slice (v0.6 desktop-only). MCP is
+file-tree computer pane this slice (v0.6 desktop-only). MCP is
 runtime-owned; this client never speaks MCP. Connect cards (`kind=connect`)
 render as LEFT chrome, not a user bubble. Assistant `kind=message` is 14pt
 markdown with no grey bubble (16/14 headings; user-right stays plain,
@@ -25,7 +26,7 @@ The Spark stays up when the phone sleeps. Reconnect is
 | Target | iOS 18+ (iPhone + iPad) |
 | Network | URLSession, `Authorization: Bearer` on everything except `GET /v1/health` and incoming `POST /v1/hooks/{token}` (token in the path, not the app token) |
 | Chat | `POST /v1/agents/{id}/messages` as SSE (`message.delta` / `message.done` / `tool.start` / `tool.done` / `error`) |
-| Computer | No file browser / computer pane this slice (desktop-only v0.6) |
+| Computer | Agent-sheet 16:10 preview (no tap-to-open). No file browser (desktop-only v0.6) |
 | Pairing | Settings sheet. Token in Keychain, URL in AppStorage. No gate screen |
 | Seed | `snorlax-bot` (Snorlax / Assistant) and `snorlax-bot-group` (Snorlax-Bot, Channel). Extra user-created channels. Swipe-delete on every row including the seed agent and seed channel (not in the info pane). After seed channel delete, select an agent first if any remain, else a remaining channel; never recreate `snorlax-bot-group`. Empty roster keeps chrome. No jump chip if no channel remains |
 

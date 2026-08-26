@@ -214,6 +214,20 @@ class WorkspaceFile(BaseModel):
     truncated: bool = False
 
 
+class ComputerPreview(BaseModel):
+    hasSandbox: bool
+    width: int = 1280
+    height: int = 800
+    imageUrl: str | None = Field(
+        default=None,
+        description=(
+            "Bearer PNG at this path. Present only when hasSandbox is true. "
+            "Same SNORLAX_TOKEN as other GETs. Omitted when the agent has "
+            "no sandbox."
+        ),
+    )
+
+
 class RoutineTrigger(BaseModel):
     type: str = Field(description="webhook, slack, or github.")
     label: str | None = Field(
