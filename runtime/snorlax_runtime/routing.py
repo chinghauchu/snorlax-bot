@@ -176,14 +176,25 @@ def resolve_agent_mentions(
     return found
 
 
-def a2a_log_channel_id(roster: list[dict[str, Any]]) -> str | None:
-    """Channel that should hold 1:1 @involve traffic, or None to skip the log."""
+def a2a_log_channel_id(
+    roster: list[dict[str, Any]],
+    *,
+    preferred: str | None = None,
+) -> str | None:
+    """Channel that should hold 1:1 @involve traffic, or None to skip the log.
+
+    Seed wins while it exists. After it is gone, use the last-selected extra
+    channel if it still remains; otherwise another remaining extra; else skip.
+    """
     channels = [row for row in roster if row.get("kind") == KIND_CHANNEL]
     if not channels:
         return None
     if any(row["id"] == SEEDED_CHANNEL_ID for row in channels):
         return SEEDED_CHANNEL_ID
-    return channels[0]["id"]
+    extra_ids = {row["id"] for row in channels}
+    if preferred and preferred in extra_ids:
+        return preferred
+    return channels[-1]["id"]
 
 
 def expand_mention_targets(
@@ -321,8 +332,8 @@ async def run_user_turn(
     Yields SSE (event, payload) only for messages that land in `conversation`.
     Holds the originating POST open until every mentioned peer has done or
     been dropped and A has reported for each. 1:1 @involves log as handoff
-    threads on the seed channel when it exists; otherwise a remaining
-    user-created channel; otherwise no channel log (B still wakes).
+    threads on the seed channel when it exists; otherwise the last-selected
+    extra channel; otherwise no channel log (B still wakes).
     """
     origin_id = conversation["id"]
     is_group = conversation.get("kind") == KIND_CHANNEL
@@ -549,8 +560,8 @@ async def _enqueue_mentions(
         return
 
     # 1:1 isolation: never write peer/involve/DM into either 1:1.
-    # A2A log prefers the seeded channel; if it is gone, a remaining
-    # user-created channel; if none, skip the log (no fake seed).
+    # A2A log prefers the seeded channel; if it is gone, the last-selected
+    # extra channel; if none remain, skip the log (no fake seed).
     targets = [t for t in targets if t != source_id]
     if not targets:
         return
@@ -584,7 +595,9 @@ async def _enqueue_mentions(
     if not cap_runnable:
         return
 
-    channel_id = a2a_log_channel_id(roster)
+    channel_id = a2a_log_channel_id(
+        roster, preferred=await store.last_extra_channel_id()
+    )
     brief = await store.one_to_one_brief(origin_id)
     pack = wake_pack(
         originating=through,

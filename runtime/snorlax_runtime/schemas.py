@@ -101,6 +101,15 @@ class MessageCreate(BaseModel):
     images: list[ImageIn] = Field(default_factory=list)
     mentions: list[str] = Field(default_factory=list)
     replyTo: str | None = None
+    channelId: str | None = Field(
+        default=None,
+        description=(
+            "Optional last-selected extra channel. Ignored for the A2A log "
+            "while seed snorlax-bot-group exists. After the seed is gone, "
+            "1:1 @involves log here if the id is still a user-created "
+            "channel. Unknown or agent ids are ignored."
+        ),
+    )
 
 
 class MessageDelta(BaseModel):

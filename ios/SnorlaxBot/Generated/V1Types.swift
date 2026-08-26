@@ -370,15 +370,17 @@ struct MessageCreate: Codable, Hashable, Sendable {
     var images: [ImageIn]?
     var mentions: [String]?
     var replyTo: String?
+    var channelId: String?
 
-    init(content: String, images: [ImageIn]? = nil, mentions: [String]? = nil, replyTo: String? = nil) {
+    init(content: String, images: [ImageIn]? = nil, mentions: [String]? = nil, replyTo: String? = nil, channelId: String? = nil) {
         self.content = content
         self.images = images
         self.mentions = mentions
         self.replyTo = replyTo
+        self.channelId = channelId
     }
 
-    enum CodingKeys: String, CodingKey { case content, images, mentions, replyTo }
+    enum CodingKeys: String, CodingKey { case content, images, mentions, replyTo, channelId }
 
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
@@ -386,6 +388,7 @@ struct MessageCreate: Codable, Hashable, Sendable {
         images = try container.decodeIfPresent([ImageIn].self, forKey: .images)
         mentions = try container.decodeIfPresent([String].self, forKey: .mentions)
         replyTo = try container.decodeIfPresent(String.self, forKey: .replyTo)
+        channelId = try container.decodeIfPresent(String.self, forKey: .channelId)
     }
 
     func encode(to encoder: Encoder) throws {
@@ -394,6 +397,7 @@ struct MessageCreate: Codable, Hashable, Sendable {
         try container.encodeIfPresent(images, forKey: .images)
         try container.encodeIfPresent(mentions, forKey: .mentions)
         try container.encode(replyTo, forKey: .replyTo)
+        try container.encode(channelId, forKey: .channelId)
     }
 }
 

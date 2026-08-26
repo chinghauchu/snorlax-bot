@@ -38,5 +38,6 @@ def test_protocol_openapi_is_locked_v0_contract() -> None:
     assert "DELETE of kind=channel including seed" in text
     assert "`snorlax-bot-group` is 204" in text
     assert "User-created channel DELETE is 204" in text
+    assert "last-selected extra channel" in text
     assert "kind=channel" in text
     assert "report-back" in text

@@ -126,7 +126,7 @@ export interface paths {
          *
          *     For a 1:1 agent, hop 0 is that agent. Mentioned peers and hops
          *     reply in a handoff thread on seed `snorlax-bot-group` when present
-         *     (else a remaining user-created channel; if none, skip the log).
+         *     (else the last-selected extra channel; if none, skip the log).
          *     Not in either 1:1. A still
          *     answers in the 1:1. When the peer posts a material reply (or is
          *     hop/cap dropped), A is woken with a report-back pack and posts
@@ -322,12 +322,19 @@ export interface components {
              *     and is not a mention. Unknown chip ids 422. Runtime also
              *     parses exact `@DisplayName`. Peer deliveries from a 1:1 land
              *     in the seeded channel as a handoff thread when that channel
-             *     exists (else a remaining user-created channel, else no log),
+             *     exists (else the last-selected extra channel, else no log),
              *     never in another agent's 1:1.
              */
             mentions?: string[];
             /** @description Channel thread id when posting a reply in a thread. */
             replyTo?: string | null;
+            /**
+             * @description Optional last-selected extra channel id. Ignored for the A2A
+             *     log while seed `snorlax-bot-group` exists. After the seed is
+             *     gone, 1:1 @involves log here if the id is still a user-created
+             *     channel. Unknown or agent ids are ignored.
+             */
+            channelId?: string | null;
         };
         MessageDelta: {
             id: string;

@@ -57,8 +57,8 @@ info:
     including the seed row. No computer preview, routines, or connectors.
 
     v0.4: collaboration report-back. 1:1 @involves log as handoff threads
-    on seed `snorlax-bot-group` when present. If the seed is gone, use a
-    remaining user-created channel; if none, skip the log (B still wakes;
+    on seed `snorlax-bot-group` when present. If the seed is gone, use the
+    last-selected extra channel if any remain; if none, skip the log (B still wakes;
     jump chip only if a thread was created). When B's thread turn completes or B
     is hop/cap dropped, enqueue a non-hop assistant generation for A on
     A's 1:1. Prompt pack `{ from, result, threadId, userAsk }` is not a
@@ -276,7 +276,7 @@ paths:
 
         For a 1:1 agent, hop 0 is that agent. Mentioned peers and hops
         reply in a handoff thread on seed `snorlax-bot-group` when present
-        (else a remaining user-created channel; if none, skip the log).
+        (else the last-selected extra channel; if none, skip the log).
         Not in either 1:1. A still
         answers in the 1:1. When the peer posts a material reply (or is
         hop/cap dropped), A is woken with a report-back pack and posts
@@ -615,11 +615,18 @@ components:
             and is not a mention. Unknown chip ids 422. Runtime also
             parses exact `@DisplayName`. Peer deliveries from a 1:1 land
             in the seeded channel as a handoff thread when that channel
-            exists (else a remaining user-created channel, else no log),
+            exists (else the last-selected extra channel, else no log),
             never in another agent's 1:1.
         replyTo:
           type: [string, "null"]
           description: Channel thread id when posting a reply in a thread.
+        channelId:
+          type: [string, "null"]
+          description: |
+            Optional last-selected extra channel id. Ignored for the A2A
+            log while seed `snorlax-bot-group` exists. After the seed is
+            gone, 1:1 @involves log here if the id is still a user-created
+            channel. Unknown or agent ids are ignored.
 
     MessageDelta:
       type: object

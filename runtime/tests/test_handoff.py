@@ -450,3 +450,53 @@ def test_a2a_log_uses_remaining_user_channel_when_seed_gone(client) -> None:
         for m in alice_msgs
     )
     assert _msgs(client, bob["id"]) == []
+
+
+def test_a2a_log_uses_last_selected_extra_when_seed_gone(client) -> None:
+    alice = _create(client, "Alice")
+    bob = _create(client, "Bob")
+    members = [alice["id"], bob["id"]]
+    ops = client.post(
+        "/v1/agents",
+        headers=AUTH,
+        json={"name": "Ops", "kind": "channel", "memberIds": members},
+    ).json()
+    lab = client.post(
+        "/v1/agents",
+        headers=AUTH,
+        json={"name": "Lab", "kind": "channel", "memberIds": members},
+    ).json()
+    assert ops["id"] != lab["id"]
+    listed = client.get(f"/v1/agents/{ops['id']}/messages", headers=AUTH)
+    assert listed.status_code == 200
+    assert client.delete(f"/v1/agents/{CHANNEL}", headers=AUTH).status_code == 204
+
+    status, _ = _send(client, alice["id"], "@Bob answer 1+1")
+    assert status == 200
+    user = [m for m in _msgs(client, alice["id"]) if m["senderId"] == "user"][-1]
+    assert user["handoff"]["channelId"] == ops["id"]
+    thread = client.get(
+        f"/v1/agents/{ops['id']}/messages",
+        headers=AUTH,
+        params={"threadId": user["handoff"]["threadId"]},
+    ).json()
+    assert any(m["senderId"] == bob["id"] for m in thread)
+    lab_timeline = client.get(
+        f"/v1/agents/{lab['id']}/messages", headers=AUTH
+    ).json()
+    assert lab_timeline == []
+    assert _msgs(client, bob["id"]) == []
+
+
+def test_a2a_log_channel_id_prefers_seed_then_last_selected() -> None:
+    from snorlax_runtime.routing import a2a_log_channel_id
+
+    seed = {"id": CHANNEL, "kind": "channel"}
+    ops = {"id": "ops", "kind": "channel"}
+    lab = {"id": "lab", "kind": "channel"}
+    alice = {"id": "alice", "kind": "agent"}
+    assert a2a_log_channel_id([seed, ops, alice], preferred="ops") == CHANNEL
+    assert a2a_log_channel_id([ops, lab, alice], preferred="ops") == "ops"
+    assert a2a_log_channel_id([ops, lab, alice], preferred="lab") == "lab"
+    assert a2a_log_channel_id([ops, lab, alice], preferred="gone") == "lab"
+    assert a2a_log_channel_id([alice], preferred="ops") is None

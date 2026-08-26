@@ -217,6 +217,7 @@ export function App() {
   const [mentionQuery, setMentionQuery] = useState("");
   const [mentionIndex, setMentionIndex] = useState(0);
   const pickedMentions = useRef(new Map<string, string>());
+  const lastExtraChannelId = useRef<string | null>(null);
   const pendingCaret = useRef<number | null>(null);
   const highlightRef = useRef<HTMLDivElement>(null);
 
@@ -406,6 +407,9 @@ export function App() {
     setProfileEditing(false);
     const agent = agents.find((a) => a.id === id);
     if (agent?.kind === "channel") {
+      if (agent.id !== SEED_CHANNEL_ID) {
+        lastExtraChannelId.current = agent.id;
+      }
       setUnreadIds((prev) => {
         if (!prev.has(id)) return prev;
         const next = new Set(prev);
@@ -574,6 +578,9 @@ export function App() {
             : a,
         );
       setAgents(roster);
+      if (lastExtraChannelId.current === doomed.id) {
+        lastExtraChannelId.current = null;
+      }
       if (activeId === doomed.id) {
         const next = nextRosterSelection(roster, doomed.id, activeId);
         setActiveId(next);
@@ -680,6 +687,7 @@ export function App() {
         },
         mentionIds,
         active.kind === "channel" && threadId ? threadId : undefined,
+        active.kind === "channel" ? undefined : lastExtraChannelId.current,
       );
       const listed = await listMessages(
         session,

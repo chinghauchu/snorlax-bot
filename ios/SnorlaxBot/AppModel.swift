@@ -36,6 +36,7 @@ final class AppModel {
     var messages: [Message] = []
     var threadID: String?
     var unreadChannelIDs: Set<String> = []
+    var lastExtraChannelID: String?
     var localPreviews: [String: [Data]] = [:]
     var draft = ""
     var pendingImage: PendingImage?
@@ -128,6 +129,9 @@ final class AppModel {
         }
         if visibleAgents.first(where: { $0.id == id })?.isChannel == true {
             unreadChannelIDs.remove(id)
+            if id != Agent.channelID {
+                lastExtraChannelID = id
+            }
         }
         guard isConfigured, let client else {
             messages = []
@@ -180,6 +184,9 @@ final class AppModel {
         do {
             try await client.deleteAgent(id: agent.id)
             agents.removeAll { $0.id == agent.id }
+            if lastExtraChannelID == agent.id {
+                lastExtraChannelID = nil
+            }
             for index in agents.indices where agents[index].isChannel {
                 agents[index].memberIds.removeAll { $0 == agent.id }
             }
@@ -249,7 +256,8 @@ final class AppModel {
                 content: content,
                 images: image.map { [$0.asInput] } ?? [],
                 mentions: mentionIDs,
-                replyTo: agent.isChannel ? threadID : nil
+                replyTo: agent.isChannel ? threadID : nil,
+                channelId: agent.isChannel ? nil : lastExtraChannelID
             ) { [weak self] event in
                 Task { @MainActor in
                     self?.handle(event, agentId: agent.id)
@@ -261,8 +269,6 @@ final class AppModel {
                 if !agent.isChannel, messages.contains(where: { $0.handoff != nil }) {
                     if let channelId = messages.compactMap(\.handoff?.channelId).last {
                         unreadChannelIDs.insert(channelId)
-                    } else {
-                        unreadChannelIDs.insert(Agent.channelID)
                     }
                 }
             }
