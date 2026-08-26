@@ -101,3 +101,23 @@ test("desktop chrome uses a flowing Thinking label, not a static ellipsis", () =
   assert.match(css, /@keyframes\s+thinking-wave/);
   assert.match(css, /prefers-reduced-motion:\s*reduce/);
 });
+
+test("thinking-label keeps a solid muted fill if clip or gradient fails", () => {
+  const needle = "\n.thinking-label {";
+  const idx = css.indexOf(needle);
+  assert.ok(idx >= 0, "missing .thinking-label");
+  const start = css.indexOf("{", idx);
+  const end = css.indexOf("}", start);
+  const label = css.slice(start, end + 1);
+  assert.match(label, /color:\s*var\(--text-muted\)/);
+  assert.doesNotMatch(label, /(?:^|[^-])color:\s*transparent\b/);
+  assert.doesNotMatch(label, /-webkit-text-fill-color:\s*transparent\b/);
+  assert.doesNotMatch(
+    css,
+    /\.thinking-label\s*\{[^}]*-webkit-text-fill-color:\s*transparent/,
+  );
+  assert.doesNotMatch(
+    css,
+    /\.thinking-label\s*\{[^}]*(?<!-webkit-text-fill-)color:\s*transparent/,
+  );
+});

@@ -392,33 +392,24 @@ button:disabled {
 
 .thinking-label {
   display: inline-block;
-  background-image: linear-gradient(
-    90deg,
-    var(--text-muted) 0%,
-    color-mix(in srgb, var(--text) 82%, var(--text-muted)) 50%,
-    var(--text-muted) 100%
-  );
-  background-size: 220% 100%;
-  background-clip: text;
-  -webkit-background-clip: text;
-  color: transparent;
-  -webkit-text-fill-color: transparent;
+  color: var(--text-muted);
+  -webkit-text-fill-color: var(--text-muted);
   animation: thinking-wave 1.4s ease-in-out infinite;
 }
 
 @keyframes thinking-wave {
-  0% {
-    background-position: 100% 50%;
-  }
+  0%,
   100% {
-    background-position: -120% 50%;
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.55;
   }
 }
 
 @media (prefers-reduced-motion: reduce) {
   .thinking-label {
     animation: none;
-    background-image: none;
     color: var(--text-muted);
     -webkit-text-fill-color: var(--text-muted);
   }

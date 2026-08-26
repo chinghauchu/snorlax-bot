@@ -1,12 +1,40 @@
 // SPDX-License-Identifier: Apache-2.0
 import assert from "node:assert/strict";
+import { readdirSync } from "node:fs";
+import { dirname } from "node:path";
+import { fileURLToPath } from "node:url";
 import test from "node:test";
 import {
   BINARY_TOO_LARGE,
   isEscapePath,
   joinWorkspacePath,
   previewNote,
-} from "./computerPane.ts";
+} from "./workspaceTree.ts";
+
+test("src filenames must not collide on case-insensitive volumes", () => {
+  const srcDir = dirname(fileURLToPath(import.meta.url));
+  const names = readdirSync(srcDir);
+  const byStem = new Map<string, string[]>();
+  for (const name of names) {
+    const stem = name.replace(/\.[^.]+$/, "").toLowerCase();
+    const group = byStem.get(stem);
+    if (group) group.push(name);
+    else byStem.set(stem, [name]);
+  }
+  const collisions = [...byStem.values()].filter((group) => group.length > 1);
+  assert.deepEqual(
+    collisions,
+    [],
+    `case-insensitive stem collision in desktop/src: ${collisions
+      .map((group) => group.join(" vs "))
+      .join("; ")}`,
+  );
+  assert.equal(
+    names.some((name) => name.toLowerCase() === "computerpane.ts"),
+    false,
+    "computerPane.ts collides with ComputerPane.tsx on macOS",
+  );
+});
 
 test("joinWorkspacePath stays relative", () => {
   assert.equal(joinWorkspacePath(".", "app.py"), "app.py");

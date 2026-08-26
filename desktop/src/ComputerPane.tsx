@@ -8,7 +8,7 @@ import {
   joinWorkspacePath,
   previewNote,
   type WorkspaceEntry,
-} from "./computerPane";
+} from "./workspaceTree";
 import type { Agent, Session } from "./types";
 
 type Preview =
