@@ -9,6 +9,7 @@ import {
   displayBody,
   fromLabel,
   isHandoffRoot,
+  isToolLine,
   jumpChannelName,
   messageHandoff,
   repliesLabel,
@@ -50,6 +51,9 @@ test("handoff helpers", () => {
     true,
   );
   assert.equal(isHandoffRoot({ kind: "message" } as never), false);
+  assert.equal(isToolLine({ kind: "tool" } as never), true);
+  assert.equal(isToolLine({ kind: "message" } as never), false);
+  assert.equal(isToolLine({ kind: "handoff" } as never), false);
   assert.deepEqual(
     messageHandoff({
       handoff: { channelId: "snorlax-bot-group", threadId: "msg_1" },

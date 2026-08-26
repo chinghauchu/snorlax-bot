@@ -152,9 +152,15 @@ export interface paths {
          *     - event `error` data `{ error }` (string)
          *
          *     Multiple `message.done` events may appear on one stream when more
-         *     than one agent speaks in this transcript. Tool traces are ephemeral
-         *     (not persisted as Message rows). Clients that do not understand
-         *     `tool.*` skip those events.
+         *     than one agent speaks in this transcript, and after each persisted
+         *     tool line (`kind=tool`). Tool activity is stored as Message
+         *     `kind=tool` with short content (`Read src/a.ts`, `Ran ls`,
+         *     `Fetched …`), same senderId as the speaking agent, in that
+         *     transcript only (1:1 if A tools; channel thread if B tools).
+         *     Report-back into A's 1:1 is a normal assistant `kind=message` as A
+         *     and does not copy B's tool lines. Live `tool.start` / `tool.done`
+         *     traces stay additive. Clients that do not understand `tool.*` skip
+         *     those events and may still render `kind=tool` rows from GET.
          */
         post: operations["postMessage"];
         delete?: never;
@@ -311,10 +317,13 @@ export interface components {
             mentions: components["schemas"]["Mention"][];
             /**
              * @description Channel handoff root is `handoff` (LEFT card authored as A).
-             *     Default `message`.
+             *     Tool activity is `tool` (LEFT 12px muted status, short content
+             *     like `Read src/a.ts` / `Ran ls` / `Fetched …`, same senderId as
+             *     the agent). Not JSON and not a user-right bubble. Default
+             *     `message`.
              * @enum {string}
              */
-            kind?: "message" | "handoff";
+            kind?: "message" | "handoff" | "tool";
             /** @description Channel thread id. Null on timeline roots and on 1:1s. */
             replyTo?: string | null;
             /**

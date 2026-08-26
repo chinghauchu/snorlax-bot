@@ -84,6 +84,7 @@ extension Agent {
 extension Message {
     var isFromUser: Bool { senderId == "user" || (senderId.isEmpty && role == .user) }
     var isHandoffRoot: Bool { kind == .handoff && replyTo == nil }
+    var isToolLine: Bool { kind == .tool }
 
     var jump: HandoffRef? { handoff }
 

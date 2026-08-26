@@ -288,6 +288,7 @@ struct Message: Codable, Hashable, Identifiable, Sendable {
     enum Kind: String, Codable, Hashable, Sendable {
         case message
         case handoff
+        case tool
     }
 
     var id: String

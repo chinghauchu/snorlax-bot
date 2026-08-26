@@ -573,6 +573,7 @@ class Store:
         cur = await self.conn.execute(
             "SELECT sender_id, sender_name, content FROM messages "
             "WHERE agent_id = ? AND (sender_id = ? OR sender_id = ?) "
+            "AND (kind IS NULL OR kind = 'message') "
             "ORDER BY created_at DESC LIMIT 8",
             (agent_id, USER_SENDER_ID, agent_id),
         )
@@ -591,7 +592,8 @@ class Store:
 
     async def _reply_count(self, message_id: str) -> int:
         cur = await self.conn.execute(
-            "SELECT COUNT(*) AS n FROM messages WHERE reply_to = ?",
+            "SELECT COUNT(*) AS n FROM messages WHERE reply_to = ? "
+            "AND (kind IS NULL OR kind NOT IN ('tool'))",
             (message_id,),
         )
         row = await cur.fetchone()
@@ -844,13 +846,18 @@ class Store:
             )
             return messages
         cur = await self.conn.execute(
-            "SELECT sender_id, sender_name, role, content FROM messages "
+            "SELECT sender_id, sender_name, role, content, kind FROM messages "
             "WHERE agent_id = ? ORDER BY created_at ASC",
             (conversation_id,),
         )
         for row in await cur.fetchall():
             sender = row["sender_id"]
             if not is_group and sender not in {USER_SENDER_ID, who}:
+                continue
+            if (row["kind"] if "kind" in row.keys() else "message") in {
+                "tool",
+                "handoff",
+            }:
                 continue
             self._append_turn(messages, row, who)
         return messages
@@ -870,7 +877,7 @@ class Store:
             (conversation_id, root_id, root_id),
         )
         for row in await cur.fetchall():
-            if (row["kind"] or "message") == "handoff":
+            if (row["kind"] or "message") in {"handoff", "tool"}:
                 continue
             self._append_turn(messages, row, who)
 

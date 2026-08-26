@@ -36,6 +36,14 @@ def _send(client, dest: str, content: str, mentions: list[str] | None = None):
         return response.status_code, body, parse_sse(body)
 
 
+def _final_assistant(events: list[tuple[str, dict]]) -> dict:
+    dones = [p for n, p in events if n == "message.done"]
+    for payload in reversed(dones):
+        if payload.get("kind") != "tool":
+            return payload
+    return dones[-1]
+
+
 def test_resolve_rejects_traversal(tmp_path) -> None:
     root = tmp_path / "ws"
     root.mkdir()
@@ -76,16 +84,91 @@ def test_tool_loop_writes_file_in_agent_workspace(client, tmp_path) -> None:
     assert "app.py" in start["summary"]
     assert done["ok"] is True
     assert done["summary"] == "Wrote app.py"
+    tool_msgs = [p for n, p in events if n == "message.done" and p.get("kind") == "tool"]
+    assert tool_msgs
+    assert tool_msgs[0]["content"] == "Wrote app.py"
+    assert tool_msgs[0]["id"] == done["id"]
+    assert tool_msgs[0]["senderId"] == SEED
     path = tmp_path / "workspaces" / "agents" / SEED / "app.py"
     assert path.read_text() == 'print("ok")'
+    listed = client.get(f"/v1/agents/{SEED}/messages", headers=AUTH).json()
+    tools = [m for m in listed if m.get("kind") == "tool"]
+    assert tools
+    assert tools[0]["content"] == "Wrote app.py"
+    assert tools[0]["senderId"] == SEED
+    assert tools[0]["role"] == "assistant"
     assert not (tmp_path / "workspaces" / "channels" / CHANNEL / "app.py").exists()
+
+
+def test_peer_tool_lines_stay_out_of_report_back(client, tmp_path) -> None:
+    alice = client.post(
+        "/v1/agents", headers=AUTH, json={"name": "Alice"}
+    ).json()
+    bob = client.post(
+        "/v1/agents", headers=AUTH, json={"name": "Bob"}
+    ).json()
+    status, _body, events = _send(
+        client,
+        alice["id"],
+        "@Bob please Write a file named secret.py containing leaked",
+    )
+    assert status == 200
+    sse_senders = {
+        payload.get("senderId")
+        for name, payload in events
+        if name in {"message.delta", "message.done", "tool.start", "tool.done"}
+    }
+    assert bob["id"] not in sse_senders
+    assert not any(
+        payload.get("kind") == "tool" and payload.get("senderId") == bob["id"]
+        for name, payload in events
+        if name == "message.done"
+    )
+
+    alice_msgs = client.get(
+        f"/v1/agents/{alice['id']}/messages", headers=AUTH
+    ).json()
+    assert not any(m.get("kind") == "tool" for m in alice_msgs)
+    assert not any(m["senderId"] == bob["id"] for m in alice_msgs)
+    reports = [
+        m
+        for m in alice_msgs
+        if m["senderId"] == alice["id"] and m.get("kind") != "handoff"
+    ]
+    assert reports
+    report = reports[-1]
+    assert report.get("kind", "message") == "message"
+    assert report["role"] == "assistant"
+    assert report["senderId"] == alice["id"]
+    assert report["content"] != "Wrote secret.py"
+
+    user = [m for m in alice_msgs if m["senderId"] == "user"][-1]
+    thread_id = user["handoff"]["threadId"]
+    thread = client.get(
+        f"/v1/agents/{CHANNEL}/messages",
+        headers=AUTH,
+        params={"threadId": thread_id},
+    ).json()
+    bob_tools = [
+        m
+        for m in thread
+        if m.get("kind") == "tool" and m["senderId"] == bob["id"]
+    ]
+    assert bob_tools
+    assert bob_tools[0]["content"] == "Wrote secret.py"
+    assert bob_tools[0]["role"] == "assistant"
+    assert (tmp_path / "workspaces" / "agents" / bob["id"] / "secret.py").read_text() == (
+        "leaked"
+    )
+    timeline = client.get(f"/v1/agents/{CHANNEL}/messages", headers=AUTH).json()
+    assert not any(m.get("kind") == "tool" for m in timeline)
 
 
 def test_shell_pwd_is_agent_workspace(client, tmp_path) -> None:
     status, _body, events = _send(client, SEED, "Run pwd in the workspace.")
     assert status == 200
     workspace = (tmp_path / "workspaces" / "agents" / SEED).resolve()
-    done = next(p for n, p in events if n == "message.done")
+    done = _final_assistant(events)
     assert str(workspace) in done["content"]
     assert workspace.is_dir()
 
@@ -103,7 +186,16 @@ def test_path_traversal_rejected_on_write(client, tmp_path) -> None:
     ws = tmp_path / "workspaces" / "agents" / SEED
     assert not (ws / "escape.txt").exists()
     listed = client.get(f"/v1/agents/{SEED}/messages", headers=AUTH).json()
-    assistant = [m for m in listed if m["role"] == "assistant"][-1]
+    tools = [m for m in listed if m.get("kind") == "tool"]
+    assert tools
+    assert tools[0]["content"] == "write_file failed"
+    assert tools[0]["senderId"] == SEED
+    assert tools[0]["role"] == "assistant"
+    assistant = [
+        m
+        for m in listed
+        if m["role"] == "assistant" and m.get("kind") != "tool"
+    ][-1]
     assert "Error" in assistant["content"] or "escape" in assistant["content"].lower()
 
 
@@ -125,17 +217,24 @@ def test_web_fetch_and_search_mocked(client, monkeypatch) -> None:
     )
     assert status == 200
     assert any(n == "tool.start" and p["name"] == "web_search" for n, p in events)
-    done = next(p for n, p in events if n == "message.done")
+    done = _final_assistant(events)
     assert "Snorlax page" in done["content"]
     assert "example.com/snorlax" in done["content"]
+    listed = client.get(f"/v1/agents/{SEED}/messages", headers=AUTH).json()
+    search_tools = [
+        m for m in listed if m.get("kind") == "tool" and m["content"].startswith("Searched")
+    ]
+    assert search_tools
 
     status, _body, events = _send(
         client, SEED, "Fetch the url https://example.com/page"
     )
     assert status == 200
     assert any(n == "tool.start" and p["name"] == "web_fetch" for n, p in events)
-    done = next(p for n, p in events if n == "message.done")
+    done = _final_assistant(events)
     assert "Hello from fetch" in done["content"]
+    listed = client.get(f"/v1/agents/{SEED}/messages", headers=AUTH).json()
+    assert any(m.get("kind") == "tool" and m["content"] == "Fetched page" for m in listed)
 
 
 def test_channel_turn_uses_agent_workspace_when_project_off(client, tmp_path) -> None:

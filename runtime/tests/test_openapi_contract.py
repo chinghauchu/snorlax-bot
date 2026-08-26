@@ -53,5 +53,9 @@ def test_protocol_openapi_is_locked_v0_contract() -> None:
     assert "Tools auto-run" in text
     assert "SNORLAX_SEARCH_PROVIDER" in text
     assert "sharedProject" in text
-    assert "not a picker for a folder on the host Mac" in text
+    assert "kind=tool" in text
+    assert "enum: [message, handoff, tool]" in text
+    assert "projectPath" not in text
+    assert "folderPath" not in text
+    assert "not persisted as Message" not in text
     assert "SSE, chat-only (no tools)" not in text

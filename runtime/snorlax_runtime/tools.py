@@ -16,6 +16,7 @@ from urllib.parse import parse_qs, quote_plus, unquote, urljoin, urlparse
 import httpx
 
 from snorlax_runtime import KIND_CHANNEL
+from snorlax_runtime.db import new_id
 from snorlax_runtime.inference import InferenceError, StreamPart, ToolCall
 
 MAX_TOOL_ROUNDS = 8
@@ -53,6 +54,9 @@ _BLOCKED_NET_BINS = (
 # Injected in tests. Signature: async (url, **kwargs) -> (status, body, content_type)
 HttpGet = Callable[..., Any]
 http_get: HttpGet | None = None
+
+# Persist a kind=tool Message. Signature: async (content, message_id) -> public Message
+PersistTool = Callable[..., Any]
 
 _search_provider = DEFAULT_SEARCH_PROVIDER
 _search_url: str | None = None
@@ -731,6 +735,7 @@ async def run_tool_loop(
     assistant_id: str,
     stream: bool,
     max_rounds: int = MAX_TOOL_ROUNDS,
+    persist_tool: PersistTool | None = None,
 ) -> tuple[list[tuple[str, dict[str, Any]]], str]:
     """Execute OpenAI-compat tool rounds. Yields SSE-shaped (event, payload) list.
 
@@ -772,12 +777,13 @@ async def run_tool_loop(
             history.append(assistant_msg)
             for call in tool_calls:
                 args = _parse_args(call.arguments)
+                tool_id = new_id("msg") if persist_tool is not None else call.id
                 if stream:
                     events.append(
                         (
                             "tool.start",
                             {
-                                "id": call.id,
+                                "id": tool_id,
                                 "name": call.name,
                                 "summary": start_summary(call.name, args),
                                 "senderId": agent["id"],
@@ -789,20 +795,31 @@ async def run_tool_loop(
                     execute_tool, call.name, call.arguments, workspace
                 )
                 ok = not result.startswith("Error:")
+                summary = done_summary(call.name, args, ok)
+                saved_tool: dict[str, Any] | None = None
+                if persist_tool is not None:
+                    persisted = persist_tool(summary, tool_id)
+                    saved_tool = (
+                        await persisted
+                        if asyncio.iscoroutine(persisted)
+                        else persisted
+                    )
                 if stream:
                     events.append(
                         (
                             "tool.done",
                             {
-                                "id": call.id,
+                                "id": tool_id,
                                 "name": call.name,
-                                "summary": done_summary(call.name, args, ok),
+                                "summary": summary,
                                 "ok": ok,
                                 "senderId": agent["id"],
                                 "senderName": agent["name"],
                             },
                         )
                     )
+                    if saved_tool:
+                        events.append(("message.done", saved_tool))
                 history.append(
                     {
                         "role": "tool",

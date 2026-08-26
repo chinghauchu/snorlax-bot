@@ -363,6 +363,9 @@ final class AppModel {
             } else {
                 messages.append(message)
             }
+            if message.kind == .tool {
+                toolTraces.removeAll { $0.id == message.id }
+            }
         case .error(let message):
             errorMessage = message
         case .tool(let id, let summary, _):

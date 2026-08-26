@@ -40,9 +40,12 @@ info:
     Path jail: tools cannot leave the active workspace root. Shell has no extra network; HTTP is web_search / web_fetch only. Search provider is
     configuration (SNORLAX_SEARCH_PROVIDER / SNORLAX_SEARCH_URL), not a
     hardcoded vendor. DELETE of an agent or channel (including seed) drops that
-    workspace dir (no dir reseed). Compact 12px muted tool status sits under
-    the speaking agent's LEFT streak; the final answer is a normal LEFT
-    bubble. iOS sees chat/status lines only (no file browser). No MCP, no
+    workspace dir (no dir reseed). Tool activity persists as Message
+    `kind=tool` (short content, same senderId) so GET matches live SSE.
+    Compact 12px muted status sits under the speaking agent's LEFT streak;
+    the final answer is a normal LEFT bubble. Report-back does not copy a
+    peer's tool lines. iOS sees chat/status lines only (no file browser).
+    No folder or path field; sharedProject is a boolean toggle. No MCP, no
     browser-use GUI, no computer screenshot pane, no widgets.
 
     Images persist and are returned; they are never sent to the model. No mDNS.
@@ -90,7 +93,8 @@ info:
     that channel. Extra user-created channels are kind=channel rows.
 
     v0.5: runtime tool loop. Additive SSE `tool.start` / `tool.done` traces
-    (`{ id, name, summary, ok?, senderId, senderName }`). Existing
+    (`{ id, name, summary, ok?, senderId, senderName }`). Tool activity also
+    persists as Message `kind=tool` so GET matches. Existing
     `message.delta` / `message.done` / `error` are unchanged. Desktop may
     show muted traces; unknown events must be ignored. Seeded channel DELETE
     is 204, gone from GET, no auto-reseed.
@@ -328,9 +332,15 @@ paths:
         - event `error` data `{ error }` (string)
 
         Multiple `message.done` events may appear on one stream when more
-        than one agent speaks in this transcript. Tool traces are ephemeral
-        (not persisted as Message rows). Clients that do not understand
-        `tool.*` skip those events.
+        than one agent speaks in this transcript, and after each persisted
+        tool line (`kind=tool`). Tool activity is stored as Message
+        `kind=tool` with short content (`Read src/a.ts`, `Ran ls`,
+        `Fetched …`), same senderId as the speaking agent, in that
+        transcript only (1:1 if A tools; channel thread if B tools).
+        Report-back into A's 1:1 is a normal assistant `kind=message` as A
+        and does not copy B's tool lines. Live `tool.start` / `tool.done`
+        traces stay additive. Clients that do not understand `tool.*` skip
+        those events and may still render `kind=tool` rows from GET.
       operationId: postMessage
       requestBody:
         required: true
@@ -613,10 +623,13 @@ components:
             $ref: "#/components/schemas/Mention"
         kind:
           type: string
-          enum: [message, handoff]
+          enum: [message, handoff, tool]
           description: |
             Channel handoff root is `handoff` (LEFT card authored as A).
-            Default `message`.
+            Tool activity is `tool` (LEFT 12px muted status, short content
+            like `Read src/a.ts` / `Ran ls` / `Fetched …`, same senderId as
+            the agent). Not JSON and not a user-right bubble. Default
+            `message`.
         replyTo:
           type: [string, "null"]
           description: Channel thread id. Null on timeline roots and on 1:1s.

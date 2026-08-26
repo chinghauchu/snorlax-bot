@@ -92,12 +92,15 @@ struct ChatView: View {
                     } else {
                         let visible = model.visibleMessages(for: agent)
                         let lastUserIdx = visible.lastIndex(where: \.isFromUser)
+                        let persistedToolIds = Set(visible.filter(\.isToolLine).map(\.id))
+                        let liveTraces = model.toolTraces.filter { !persistedToolIds.contains($0.id) }
                         let liveAssistantIdx = visible.indices.first { index in
                             guard let lastUserIdx else { return false }
                             let message = visible[index]
                             return index > lastUserIdx
                                 && message.role == .assistant
                                 && !message.isHandoffRoot
+                                && !message.isToolLine
                         }
                         ForEach(Array(visible.enumerated()), id: \.element.id) { index, message in
                             transcriptItem(
@@ -105,13 +108,13 @@ struct ChatView: View {
                                 index: index,
                                 in: visible,
                                 agent: agent,
-                                toolTraces: index == liveAssistantIdx ? model.toolTraces : []
+                                toolTraces: index == liveAssistantIdx ? liveTraces : []
                             )
                             .padding(.top, turnSpacing(at: index, in: visible, message: message))
                             .id(message.id)
                         }
-                        if liveAssistantIdx == nil, !model.toolTraces.isEmpty {
-                            liveToolStreak(agent: agent)
+                        if liveAssistantIdx == nil, !liveTraces.isEmpty {
+                            liveToolStreak(agent: agent, traces: liveTraces)
                         }
                     }
                     Color.clear.frame(height: 1).id("bottom")
@@ -131,7 +134,7 @@ struct ChatView: View {
     }
 
     @ViewBuilder
-    private func liveToolStreak(agent: Agent) -> some View {
+    private func liveToolStreak(agent: Agent, traces: [LiveToolTrace]) -> some View {
         let speaker = agent.isChannel
             ? (model.visibleAgents.first(where: { !$0.isChannel }) ?? .placeholder)
             : agent
@@ -143,7 +146,7 @@ struct ChatView: View {
                     .foregroundStyle(.secondary)
             }
             .padding(.horizontal, 12)
-            ForEach(model.toolTraces) { trace in
+            ForEach(traces) { trace in
                 Text(trace.summary)
                     .font(.system(size: 12))
                     .foregroundStyle(.secondary)
@@ -359,6 +362,12 @@ private struct MessageBubble: View {
                     .foregroundStyle(.secondary)
                     .padding(.horizontal, 12)
             }
+            if message.isToolLine {
+                Text(message.content)
+                    .font(.system(size: 12))
+                    .foregroundStyle(.secondary)
+                    .padding(.horizontal, 12)
+            } else {
             HStack(alignment: .top, spacing: 0) {
                 if isUser { Spacer(minLength: 48) }
                 if threadRoot {
@@ -411,6 +420,7 @@ private struct MessageBubble: View {
                 if !isUser { Spacer(minLength: 48) }
             }
             .padding(.horizontal, 12)
+            }
             if isUser, let jump = message.visibleJump(in: agents) {
                 Button {
                     onJump?(jump)

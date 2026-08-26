@@ -829,6 +829,22 @@ async def _generate(
     )
     workspace = workspace_for(store.data_dir, conversation or agent, agent["id"])
     events: list[tuple[str, dict[str, Any]]] = []
+
+    async def persist_tool(content: str, message_id: str) -> dict[str, Any]:
+        return await store.add_message(
+            agent_id=conversation_id,
+            role="assistant",
+            content=content,
+            message_id=message_id,
+            sender_id=agent["id"],
+            sender_name=agent["name"],
+            sender_avatar=agent["avatar"],
+            hop=hop,
+            mentions=[],
+            reply_to=thread_id if is_group else None,
+            kind="tool",
+        )
+
     try:
         events, raw = await run_tool_loop(
             backend,
@@ -838,6 +854,7 @@ async def _generate(
             assistant_id=assistant_id,
             stream=stream,
             max_rounds=max_tool_rounds if max_tool_rounds is not None else MAX_TOOL_ROUNDS,
+            persist_tool=persist_tool,
         )
     except InferenceError as exc:
         if stream:

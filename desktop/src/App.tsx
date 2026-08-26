@@ -26,6 +26,7 @@ import {
   displayBody,
   fromLabel,
   isHandoffRoot,
+  isToolLine,
   jumpChannelName,
   repliesLabel,
   visibleJump,
@@ -706,6 +707,11 @@ export function App() {
             return;
           }
           if (message) {
+            if (isToolLine(message)) {
+              setToolTraces((prev) =>
+                prev.filter((trace) => trace.id !== message.id),
+              );
+            }
             setMessages((prev) => {
               const without = prev.filter((m) => m.id !== message.id);
               return [...without, message];
@@ -836,14 +842,21 @@ export function App() {
       isUserSender(message.senderId, message.role) ? index : found,
     -1,
   );
+  const liveTraces = toolTraces.filter(
+    (trace) =>
+      !visibleMessages.some(
+        (message) => isToolLine(message) && message.id === trace.id,
+      ),
+  );
   const liveAssistantIdx = visibleMessages.findIndex(
     (message, index) =>
       index > lastUserIdx &&
       message.role === "assistant" &&
-      !isHandoffRoot(message),
+      !isHandoffRoot(message) &&
+      !isToolLine(message),
   );
   const showStandaloneTraces =
-    toolTraces.length > 0 && liveAssistantIdx < 0;
+    liveTraces.length > 0 && liveAssistantIdx < 0;
 
   return (
     <div className="app">
@@ -1044,7 +1057,7 @@ export function App() {
                       </div>
                     ) : null}
                     {!mine && index === liveAssistantIdx
-                      ? toolTraces.map((trace) => (
+                      ? liveTraces.map((trace) => (
                           <p key={trace.id} className="tool-trace">
                             {trace.summary}
                           </p>
@@ -1065,6 +1078,8 @@ export function App() {
                           </details>
                         ) : null}
                       </div>
+                    ) : isToolLine(message) ? (
+                      <p className="tool-trace">{message.content}</p>
                     ) : (
                       <div className={`bubble ${mine ? "user" : "agent"}`}>
                         {message.images.map((image) => (
@@ -1113,22 +1128,22 @@ export function App() {
                       agents.find(
                         (a) =>
                           a.id ===
-                          (toolTraces[0]?.senderId || active?.id),
+                          (liveTraces[0]?.senderId || active?.id),
                       )?.avatar ??
                       active?.avatar ??
                       null
                     }
                     name={
-                      toolTraces[0]?.senderName || active?.name || "Agent"
+                      liveTraces[0]?.senderName || active?.name || "Agent"
                     }
                     size={20}
                     session={session}
                   />
                   <span className="sender-name">
-                    {toolTraces[0]?.senderName || active?.name || "Agent"}
+                    {liveTraces[0]?.senderName || active?.name || "Agent"}
                   </span>
                 </div>
-                {toolTraces.map((trace) => (
+                {liveTraces.map((trace) => (
                   <p key={trace.id} className="tool-trace">
                     {trace.summary}
                   </p>
