@@ -173,8 +173,8 @@ test("iOS agent sheet matches: 16:10, 8pt, 12pt labels, no tap-to-open", () => {
   assert.match(sheet, /Webhook/);
   assert.match(sheet, /showsWebhookCopy/);
   const routinesBlock = sheet.slice(
-    sheet.indexOf("paneRoutines"),
-    sheet.indexOf("channelPane"),
+    sheet.indexOf("private var routinesList"),
+    sheet.indexOf("private var channelPane"),
   );
   assert.ok(
     routinesBlock.indexOf("showsWebhookCopy") <
