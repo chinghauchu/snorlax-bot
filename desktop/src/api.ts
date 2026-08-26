@@ -12,6 +12,8 @@ import type {
   RoutineCreate,
   RoutinePatch,
   Skill,
+  SkillBody,
+  SkillPatch,
   RuntimeHealth,
   Session,
 } from "./types";
@@ -209,6 +211,47 @@ export async function listSkills(
     { headers: headers(session) },
   );
   return asList<Skill>(await json<unknown>(response), "skills");
+}
+
+export async function getSkill(
+  session: Session,
+  agentId: string,
+  skillId: string,
+): Promise<SkillBody> {
+  const response = await fetch(
+    `${session.baseUrl}/v1/agents/${encodeURIComponent(agentId)}/skills/${encodeURIComponent(skillId)}`,
+    { headers: headers(session) },
+  );
+  return json<SkillBody>(response);
+}
+
+export async function patchSkill(
+  session: Session,
+  agentId: string,
+  skillId: string,
+  patch: SkillPatch,
+): Promise<SkillBody> {
+  const response = await fetch(
+    `${session.baseUrl}/v1/agents/${encodeURIComponent(agentId)}/skills/${encodeURIComponent(skillId)}`,
+    {
+      method: "PATCH",
+      headers: headers(session, { "Content-Type": "application/json" }),
+      body: JSON.stringify(patch),
+    },
+  );
+  return json<SkillBody>(response);
+}
+
+export async function deleteSkill(
+  session: Session,
+  agentId: string,
+  skillId: string,
+): Promise<void> {
+  const response = await fetch(
+    `${session.baseUrl}/v1/agents/${encodeURIComponent(agentId)}/skills/${encodeURIComponent(skillId)}`,
+    { method: "DELETE", headers: headers(session) },
+  );
+  if (!response.ok) throw await parseError(response);
 }
 
 export async function listMessages(

@@ -337,7 +337,9 @@ export interface paths {
          *     the directory slug or frontmatter name). Empty list is 200
          *     `[]`. Not a marketplace catalog. kind=channel is 409. Clients
          *     never read the host disk. v0.17 Add-routine picker reuses this
-         *     list (`id` is the POST skill). No markdown editor.
+         *     list (`id` is the POST skill). v0.18 GET/PATCH/DELETE of one
+         *     skill is `/skills/{sid}`; this list stays `{ id, name }` (no
+         *     body). No blank Add / no empty POST.
          */
         get: operations["listSkills"];
         put?: never;
@@ -352,15 +354,58 @@ export interface paths {
          *     kind=channel is 409. Missing agent is 404. Capture includes
          *     pointer/key plus screenshot context so the skill is runnable
          *     later via v0.9 (computer_click / computer_key). Not an empty
-         *     stub. Clients have no extra skills chrome this slice (v0.9 list
-         *     only). Desktop Save-as-skill sheet only. No marketplace, no
-         *     markdown editor API.
+         *     stub. v0.18 does not add a blank POST; create stays this
+         *     teach-a-task path. Edit is GET/PATCH `/skills/{sid}`. No
+         *     marketplace.
          */
         post: operations["createSkill"];
         delete?: never;
         options?: never;
         head?: never;
         patch?: never;
+        trace?: never;
+    };
+    "/v1/agents/{id}/skills/{sid}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["Id"];
+                /**
+                 * @description Skill id (directory slug under skills/<sid>/SKILL.md, or
+                 *     frontmatter name). Unknown is 404.
+                 */
+                sid: string;
+            };
+            cookie?: never;
+        };
+        /**
+         * Get a skill's SKILL.md source
+         * @description `{ id, name, body }`. `body` is the SKILL.md **source** (markdown
+         *     after YAML frontmatter), not a rendered preview. kind=channel is
+         *     409. Missing agent is 404. Unknown sid is 404. List stays
+         *     GET `/skills` `{ id, name }`.
+         */
+        get: operations["getSkill"];
+        put?: never;
+        post?: never;
+        /**
+         * Remove a skill
+         * @description `DELETE /v1/agents/{id}/skills/{sid}` → **204**, gone from GET.
+         *     Unknown sid is 404. kind=channel is 409. Missing agent is 404.
+         *     Confirm chrome is `Remove {name}?`. No blank Add.
+         */
+        delete: operations["deleteSkill"];
+        options?: never;
+        head?: never;
+        /**
+         * Edit a skill name and SKILL.md source
+         * @description `{ name, body }` → **200** `{ id, name, body }`. Rewrites that
+         *     SKILL.md in place (id/slug stays). Empty name or body is **422**.
+         *     kind=channel is 409. Missing agent is 404. Unknown sid is 404.
+         *     Not a blank create — POST `/skills { name }` stays teach-a-task.
+         */
+        patch: operations["patchSkill"];
         trace?: never;
     };
     "/v1/agents/{id}/workspace": {
@@ -1234,6 +1279,25 @@ export interface components {
              */
             name: string;
         };
+        SkillBody: {
+            /**
+             * @description Directory slug under SNORLAX_DATA_DIR/skills/<id>/SKILL.md
+             *     (v0.9 load path). PATCH does not rename the slug.
+             */
+            id: string;
+            /** @description Frontmatter name. */
+            name: string;
+            /**
+             * @description SKILL.md **source** (markdown after YAML frontmatter). Not a
+             *     rendered preview. Empty on PATCH is 422.
+             */
+            body: string;
+        };
+        SkillPatch: {
+            name: string;
+            /** @description SKILL.md markdown source. Empty is 422. */
+            body: string;
+        };
         Plugin: {
             id: string;
             name: string;
@@ -1691,6 +1755,99 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Skill"];
+                };
+            };
+            401: components["responses"]["Error"];
+            404: components["responses"]["Error"];
+            409: components["responses"]["Error"];
+            422: components["responses"]["Error"];
+        };
+    };
+    getSkill: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["Id"];
+                /**
+                 * @description Skill id (directory slug under skills/<sid>/SKILL.md, or
+                 *     frontmatter name). Unknown is 404.
+                 */
+                sid: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Skill with SKILL.md source */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SkillBody"];
+                };
+            };
+            401: components["responses"]["Error"];
+            404: components["responses"]["Error"];
+            409: components["responses"]["Error"];
+        };
+    };
+    deleteSkill: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["Id"];
+                /**
+                 * @description Skill id (directory slug under skills/<sid>/SKILL.md, or
+                 *     frontmatter name). Unknown is 404.
+                 */
+                sid: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Deleted; no body */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Error"];
+            404: components["responses"]["Error"];
+            409: components["responses"]["Error"];
+        };
+    };
+    patchSkill: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["Id"];
+                /**
+                 * @description Skill id (directory slug under skills/<sid>/SKILL.md, or
+                 *     frontmatter name). Unknown is 404.
+                 */
+                sid: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SkillPatch"];
+            };
+        };
+        responses: {
+            /** @description Updated skill with SKILL.md source */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SkillBody"];
                 };
             };
             401: components["responses"]["Error"];

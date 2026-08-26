@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 //
-// Generated from protocol/openapi.yaml (Snorlax-Bot 0.17.0).
+// Generated from protocol/openapi.yaml (Snorlax-Bot 0.18.0).
 // Do not edit by hand. Regenerate with:
 //   python3 ios/scripts/generate_v1_types.py
 //
@@ -1149,6 +1149,58 @@ struct SkillCreate: Codable, Hashable, Sendable {
     func encode(to encoder: Encoder) throws {
         var container = encoder.container(keyedBy: CodingKeys.self)
         try container.encode(name, forKey: .name)
+    }
+}
+
+struct SkillBody: Codable, Hashable, Identifiable, Sendable {
+    var id: String
+    var name: String
+    var body: String
+
+    init(id: String, name: String, body: String) {
+        self.id = id
+        self.name = name
+        self.body = body
+    }
+
+    enum CodingKeys: String, CodingKey { case id, name, body }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(String.self, forKey: .id)
+        name = try container.decode(String.self, forKey: .name)
+        body = try container.decode(String.self, forKey: .body)
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(id, forKey: .id)
+        try container.encode(name, forKey: .name)
+        try container.encode(body, forKey: .body)
+    }
+}
+
+struct SkillPatch: Codable, Hashable, Sendable {
+    var name: String
+    var body: String
+
+    init(name: String, body: String) {
+        self.name = name
+        self.body = body
+    }
+
+    enum CodingKeys: String, CodingKey { case name, body }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        name = try container.decode(String.self, forKey: .name)
+        body = try container.decode(String.self, forKey: .body)
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(name, forKey: .name)
+        try container.encode(body, forKey: .body)
     }
 }
 

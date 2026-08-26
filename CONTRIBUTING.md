@@ -14,7 +14,7 @@ NVIDIA DGX Spark.
   in CI and on machines without a 70B checkpoint. `omlx` is the Mac-local
   OpenAI-compat path. `vllm` is the Spark path. Neither is a development
   dependency.
-- **Keep v0.17 small.** Named teammates, identity pane, seeded group plus extra
+- **Keep v0.18 small.** Named teammates, identity pane, seeded group plus extra
   channels, @mentions, 1:1 isolation, channel handoff threads, report-back,
   runtime-owned file/shell/web tools in a `~/.snorlax-bot` sandbox (auto-run,
   no extra shell network, configured search provider), a thin desktop
@@ -26,7 +26,9 @@ NVIDIA DGX Spark.
   question widgets (`kind=widget`; not tool approval), cron + webhook
   routines (list + enable/pause + Add/Remove + Copy webhook URL on the agent info pane;
   SKILL.md from the workspace and/or `SNORLAX_DATA_DIR/skills`; cron XOR
-  trigger; `DELETE .../routines/{id}` 204), assistant markdown (clients render
+  trigger; `DELETE .../routines/{id}` 204), skill markdown editor
+  (`GET/PATCH/DELETE /skills/{sid}`; identity-pane Edit sheet; no blank
+  Add; create stays teach-a-task `POST /skills { name }`), assistant markdown (clients render
   LEFT `kind=message`; `content` stays a plain string), a display-only
   Box computer preview (`GET /v1/agents/{id}/computer` JSON; Bearer PNG at
   `/computer/screenshot`; identity pane), desktop Box takeover

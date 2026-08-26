@@ -47,7 +47,9 @@ from snorlax_runtime.schemas import (
     RoutineCreate,
     RoutinePatch,
     Skill,
+    SkillBody,
     SkillCreate,
+    SkillPatch,
     WorkspaceFile,
     WorkspaceListing,
 )
@@ -783,6 +785,84 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         except ValueError as exc:
             raise _error(422, str(exc)) from exc
         return Skill(id=skill_slug(skill), name=skill.name)
+
+    @app.get("/v1/agents/{id}/skills/{sid}", response_model=SkillBody)
+    async def get_skill(
+        id: str, sid: str, request: Request, _: str = Depends(require_bearer)
+    ) -> SkillBody:
+        from snorlax_runtime.skills import find_skill, load_skills
+        from snorlax_runtime.tools import workspace_for
+
+        store: Store = request.app.state.store
+        conversation = await store.get_agent(id)
+        _require_agent(
+            conversation,
+            id,
+            channel_status=409,
+            reason="skills are assigned to an agent",
+        )
+        workspace = workspace_for(store.data_dir, conversation, id)
+        skill = find_skill(load_skills(store.data_dir, workspace), sid)
+        if skill is None:
+            raise _error(404, f"Skill {sid!r} not found")
+        return SkillBody.model_validate(skill.sourced())
+
+    @app.patch("/v1/agents/{id}/skills/{sid}", response_model=SkillBody)
+    async def patch_skill(
+        id: str,
+        sid: str,
+        payload: SkillPatch,
+        request: Request,
+        _: str = Depends(require_bearer),
+    ) -> SkillBody:
+        from snorlax_runtime.skills import patch_skill as write_skill
+        from snorlax_runtime.tools import workspace_for
+
+        store: Store = request.app.state.store
+        conversation = await store.get_agent(id)
+        _require_agent(
+            conversation,
+            id,
+            channel_status=409,
+            reason="skills are assigned to an agent",
+        )
+        workspace = workspace_for(store.data_dir, conversation, id)
+        try:
+            skill = write_skill(
+                store.data_dir,
+                workspace,
+                sid,
+                name=payload.name,
+                body=payload.body,
+            )
+        except ValueError as exc:
+            raise _error(422, str(exc)) from exc
+        if skill is None:
+            raise _error(404, f"Skill {sid!r} not found")
+        return SkillBody.model_validate(skill.sourced())
+
+    @app.delete(
+        "/v1/agents/{id}/skills/{sid}",
+        status_code=status.HTTP_204_NO_CONTENT,
+    )
+    async def delete_skill(
+        id: str, sid: str, request: Request, _: str = Depends(require_bearer)
+    ) -> Response:
+        from snorlax_runtime.skills import delete_skill as drop_skill
+        from snorlax_runtime.tools import workspace_for
+
+        store: Store = request.app.state.store
+        conversation = await store.get_agent(id)
+        _require_agent(
+            conversation,
+            id,
+            channel_status=409,
+            reason="skills are assigned to an agent",
+        )
+        workspace = workspace_for(store.data_dir, conversation, id)
+        if not drop_skill(store.data_dir, workspace, sid):
+            raise _error(404, f"Skill {sid!r} not found")
+        return Response(status_code=status.HTTP_204_NO_CONTENT)
 
     @app.get("/v1/agents/{id}/workspace", response_model=WorkspaceListing)
     async def get_workspace(

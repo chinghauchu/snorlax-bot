@@ -383,6 +383,27 @@ class SkillCreate(BaseModel):
         return text
 
 
+class SkillBody(BaseModel):
+    """One skill with SKILL.md source. List stays Skill `{ id, name }`."""
+
+    id: str
+    name: str
+    body: str
+
+
+class SkillPatch(BaseModel):
+    name: str = Field(min_length=1, max_length=80)
+    body: str = Field(min_length=1)
+
+    @field_validator("name", "body")
+    @classmethod
+    def not_blank(cls, value: str) -> str:
+        text = (value or "").strip()
+        if not text:
+            raise ValueError("name and body are required")
+        return text
+
+
 class Plugin(BaseModel):
     id: str
     name: str

@@ -1,9 +1,9 @@
 openapi: 3.1.0
 info:
   title: Snorlax-Bot
-  version: 0.17.0
+  version: 0.18.0
   description: |
-    Locked v0.17 LAN contract. Clients use SNORLAX_URL + SNORLAX_TOKEN.
+    Locked v0.18 LAN contract. Clients use SNORLAX_URL + SNORLAX_TOKEN.
     They never call vLLM, never call tools, never call MCP, and never read
     the Spark filesystem. Additive workspace GETs are runtime reads of the
     existing sandbox (same roots as the tool loop), not a second tool loop.
@@ -421,6 +421,31 @@ info:
     connected). Isolation, report-back, widgets, markdown, MCP,
     computer preview/takeover/record, seed DELETE 204, Mac oMLX, no
     Mac folder picker, workspaceTree.ts stand. OpenAPI **0.17.0**.
+
+    v0.18: skill markdown editor. One impl PR covering runtime + desktop
+    + iOS. Spec rides this PR. OpenAPI **0.18.0**. **No second PR.**
+    Agent identity pane **Skills** block **below Routines**. Computer /
+    Routines / Add-routine unchanged. Channel pane unchanged. Chrome:
+    12px muted `Skills`. Empty: `No skills yet.` Row 44px: name 14px,
+    trailing 12px muted `Edit` then `Remove`. Confirm: `Remove {name}?`
+    then danger `Remove` / `Cancel`. **No blank Add** — create stays
+    teach-a-task `POST /skills { name }` from a capture. Edit is a
+    **320px sheet**. Title `Edit skill`. Name 14px. Body is a textarea,
+    **12px/1.45 mono**, **min-height 200px** — **source, not rendered
+    preview**. Primary `Save` 36px / iOS 44pt, **disabled until name
+    and body**. × discards. iOS matches (sheet + TextEditor, 12pt/1.45
+    mono, min-height 200pt, 44pt Save). No extra sheet beyond Edit.
+    HTTP: List stays `GET /v1/agents/{id}/skills` `{ id, name }`
+    (v0.17). `GET /v1/agents/{id}/skills/{sid}` → `{ id, name, body }`
+    (the SKILL.md **source**). `PATCH /v1/agents/{id}/skills/{sid}
+    { name, body }` → **200** `{ id, name, body }`. `DELETE
+    /v1/agents/{id}/skills/{sid}` → **204**. **No blank POST** for a
+    new empty skill. Unknown sid 404. Channel 409. Empty name/body on
+    PATCH 422. Out of scope: marketplace catalog, iOS Open/Record/
+    takeover, `/` autocomplete, blank New skill. Isolation,
+    report-back, widgets, markdown, MCP, computer preview/takeover/
+    record, routines Add/Remove, seed DELETE 204, Mac oMLX, no Mac
+    folder picker, workspaceTree.ts stand. OpenAPI **0.18.0**.
   license:
     name: Apache-2.0
     identifier: Apache-2.0
@@ -891,7 +916,9 @@ paths:
         the directory slug or frontmatter name). Empty list is 200
         `[]`. Not a marketplace catalog. kind=channel is 409. Clients
         never read the host disk. v0.17 Add-routine picker reuses this
-        list (`id` is the POST skill). No markdown editor.
+        list (`id` is the POST skill). v0.18 GET/PATCH/DELETE of one
+        skill is `/skills/{sid}`; this list stays `{ id, name }` (no
+        body). No blank Add / no empty POST.
       operationId: listSkills
       responses:
         "200":
@@ -920,9 +947,9 @@ paths:
         kind=channel is 409. Missing agent is 404. Capture includes
         pointer/key plus screenshot context so the skill is runnable
         later via v0.9 (computer_click / computer_key). Not an empty
-        stub. Clients have no extra skills chrome this slice (v0.9 list
-        only). Desktop Save-as-skill sheet only. No marketplace, no
-        markdown editor API.
+        stub. v0.18 does not add a blank POST; create stays this
+        teach-a-task path. Edit is GET/PATCH `/skills/{sid}`. No
+        marketplace.
       operationId: createSkill
       requestBody:
         required: true
@@ -944,6 +971,84 @@ paths:
         "409":
           $ref: "#/components/responses/Error"
         "422":
+          $ref: "#/components/responses/Error"
+
+  /v1/agents/{id}/skills/{sid}:
+    parameters:
+      - $ref: "#/components/parameters/Id"
+      - name: sid
+        in: path
+        required: true
+        schema:
+          type: string
+        description: |
+          Skill id (directory slug under skills/<sid>/SKILL.md, or
+          frontmatter name). Unknown is 404.
+    get:
+      summary: Get a skill's SKILL.md source
+      description: |
+        `{ id, name, body }`. `body` is the SKILL.md **source** (markdown
+        after YAML frontmatter), not a rendered preview. kind=channel is
+        409. Missing agent is 404. Unknown sid is 404. List stays
+        GET `/skills` `{ id, name }`.
+      operationId: getSkill
+      responses:
+        "200":
+          description: Skill with SKILL.md source
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SkillBody"
+        "401":
+          $ref: "#/components/responses/Error"
+        "404":
+          $ref: "#/components/responses/Error"
+        "409":
+          $ref: "#/components/responses/Error"
+    patch:
+      summary: Edit a skill name and SKILL.md source
+      description: |
+        `{ name, body }` → **200** `{ id, name, body }`. Rewrites that
+        SKILL.md in place (id/slug stays). Empty name or body is **422**.
+        kind=channel is 409. Missing agent is 404. Unknown sid is 404.
+        Not a blank create — POST `/skills { name }` stays teach-a-task.
+      operationId: patchSkill
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SkillPatch"
+      responses:
+        "200":
+          description: Updated skill with SKILL.md source
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SkillBody"
+        "401":
+          $ref: "#/components/responses/Error"
+        "404":
+          $ref: "#/components/responses/Error"
+        "409":
+          $ref: "#/components/responses/Error"
+        "422":
+          $ref: "#/components/responses/Error"
+    delete:
+      summary: Remove a skill
+      description: |
+        `DELETE /v1/agents/{id}/skills/{sid}` → **204**, gone from GET.
+        Unknown sid is 404. kind=channel is 409. Missing agent is 404.
+        Confirm chrome is `Remove {name}?`. No blank Add.
+      operationId: deleteSkill
+      responses:
+        "204":
+          description: Deleted; no body
+        "401":
+          $ref: "#/components/responses/Error"
+        "404":
+          $ref: "#/components/responses/Error"
+        "409":
           $ref: "#/components/responses/Error"
 
   /v1/agents/{id}/workspace:
@@ -2145,6 +2250,37 @@ components:
             Display name for the saved SKILL.md (frontmatter name).
             Writes SNORLAX_DATA_DIR/skills/<slug>/SKILL.md from the
             stopped capture. Discard is omit this POST.
+
+    SkillBody:
+      type: object
+      required: [id, name, body]
+      properties:
+        id:
+          type: string
+          description: |
+            Directory slug under SNORLAX_DATA_DIR/skills/<id>/SKILL.md
+            (v0.9 load path). PATCH does not rename the slug.
+        name:
+          type: string
+          description: Frontmatter name.
+        body:
+          type: string
+          description: |
+            SKILL.md **source** (markdown after YAML frontmatter). Not a
+            rendered preview. Empty on PATCH is 422.
+
+    SkillPatch:
+      type: object
+      required: [name, body]
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 80
+        body:
+          type: string
+          minLength: 1
+          description: SKILL.md markdown source. Empty is 422.
 
     Plugin:
       type: object

@@ -49,6 +49,7 @@ final class AppModel {
     var showSettings = false
     var showProfile = false
     var routines: [Routine] = []
+    var skills: [Skill] = []
     var plugins: [Plugin] = []
     var computerPreview: ComputerPreview?
     var computerImage: UIImage?
@@ -284,6 +285,22 @@ final class AppModel {
         }
     }
 
+    func loadSkillsList(for agentId: String) async {
+        guard let client,
+              let agent = agents.first(where: { $0.id == agentId }),
+              !agent.isChannel
+        else {
+            skills = []
+            return
+        }
+        do {
+            skills = try await client.listSkills(agentId: agentId)
+        } catch {
+            skills = []
+            errorMessage = error.localizedDescription
+        }
+    }
+
     func loadComputer(for agentId: String) async {
         guard let client,
               let agent = agents.first(where: { $0.id == agentId }),
@@ -377,6 +394,46 @@ final class AppModel {
         } catch {
             errorMessage = error.localizedDescription
             return []
+        }
+    }
+
+    func loadSkill(agentId: String, id: String) async -> SkillBody? {
+        guard let client else { return nil }
+        do {
+            return try await client.getSkill(agentId: agentId, skillId: id)
+        } catch {
+            errorMessage = error.localizedDescription
+            return nil
+        }
+    }
+
+    func saveSkill(agentId: String, id: String, name: String, body: String) async -> Bool {
+        guard let client else { return false }
+        do {
+            let updated = try await client.patchSkill(
+                agentId: agentId,
+                skillId: id,
+                body: SkillPatch(name: name, body: body)
+            )
+            if let index = skills.firstIndex(where: { $0.id == id || $0.id == updated.id }) {
+                skills[index] = Skill(id: updated.id, name: updated.name)
+            } else {
+                skills.append(Skill(id: updated.id, name: updated.name))
+            }
+            return true
+        } catch {
+            errorMessage = error.localizedDescription
+            return false
+        }
+    }
+
+    func removeSkill(agentId: String, id: String) async {
+        guard let client else { return }
+        do {
+            try await client.deleteSkill(agentId: agentId, skillId: id)
+            skills.removeAll { $0.id == id }
+        } catch {
+            errorMessage = error.localizedDescription
         }
     }
 

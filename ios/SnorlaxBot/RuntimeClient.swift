@@ -74,6 +74,28 @@ struct RuntimeClient: Sendable {
         try await get("v1/agents/\(Self.encode(agentId))/skills")
     }
 
+    func getSkill(agentId: String, skillId: String) async throws -> SkillBody {
+        try await get("v1/agents/\(Self.encode(agentId))/skills/\(Self.encode(skillId))")
+    }
+
+    func patchSkill(agentId: String, skillId: String, body: SkillPatch) async throws -> SkillBody {
+        try await send(
+            "v1/agents/\(Self.encode(agentId))/skills/\(Self.encode(skillId))",
+            method: "PATCH",
+            body: body,
+            expected: 200
+        )
+    }
+
+    func deleteSkill(agentId: String, skillId: String) async throws {
+        let request = try makeRequest(
+            "v1/agents/\(Self.encode(agentId))/skills/\(Self.encode(skillId))",
+            method: "DELETE"
+        )
+        let (data, response) = try await URLSession.shared.data(for: request)
+        try Self.throwIfNeeded(data: data, response: response, allowed: [204])
+    }
+
     func createRoutine(agentId: String, body: RoutineCreate) async throws -> Routine {
         try await send(
             "v1/agents/\(Self.encode(agentId))/routines",

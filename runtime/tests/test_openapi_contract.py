@@ -94,6 +94,7 @@ def test_protocol_openapi_is_locked_v0_contract() -> None:
     assert "never call MCP" in text
     assert "SNORLAX_DATA_DIR" in text
     assert "No MCP, no browser-use GUI" not in text
+    assert "0.18.0" in text
     assert "0.17.0" in text
     assert "0.16.0" in text
     assert "0.15.0" in text
@@ -106,6 +107,7 @@ def test_protocol_openapi_is_locked_v0_contract() -> None:
     assert "v0.15" in text
     assert "v0.16" in text
     assert "v0.17" in text
+    assert "v0.18" in text
     assert "/v1/agents/{id}/computer" in text
     assert "/v1/agents/{id}/computer/screenshot" in text
     assert "/v1/agents/{id}/computer/session" in text
@@ -122,6 +124,8 @@ def test_protocol_openapi_is_locked_v0_contract() -> None:
     assert "PointerEvent" in text
     assert "KeyEvent" in text
     assert "SkillCreate" in text
+    assert "SkillBody" in text
+    assert "SkillPatch" in text
     assert "    Skill:\n      type: object\n      required: [id, name]" in text
     assert "already recording" in text
     assert "no pending capture" in text
@@ -130,6 +134,12 @@ def test_protocol_openapi_is_locked_v0_contract() -> None:
     assert "hasSandbox" in text
     assert "recording" in text
     assert "Save as skill" in text
+    assert "Edit skill" in text
+    assert "No blank Add" in text or "No blank POST" in text
+    assert "/v1/agents/{id}/skills/{sid}" in text
+    assert "getSkill" in text
+    assert "patchSkill" in text
+    assert "deleteSkill" in text
     assert "No computer yet." in text
     assert "288x180" in text or "288×180" in text
     assert "You're driving" in text

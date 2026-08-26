@@ -55,7 +55,9 @@ Muted 12px tool traces (`Searching…` / `Wrote app.py` / `Used server__tool`) m
 the transcript while the runtime runs tools (including MCP). Agent info
 pane lists cron routines (44px rows, live enable/pause switch, 12px Add /
 Remove). Webhook
-rows show muted `Webhook` plus Copy for the URL. Settings
+rows show muted `Webhook` plus Copy for the URL. Below that, Skills
+(44px rows, 12px muted Edit then Remove; 320px Edit skill source
+sheet; no blank Add). Settings
 lists runtime plugins (`Connected` / `Needs sign-in`; Add / Remove).
 Assistant LEFT
 `kind=message` is 14px markdown (no grey bubble, 16/14 headings); user-right stays plain (`https://` tappable). Fenced code is full-turn language + Copy at 12px/1.45.

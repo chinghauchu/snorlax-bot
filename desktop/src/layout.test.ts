@@ -315,3 +315,85 @@ test("routines list is 44px rows with switch on the agent read pane", () => {
   const toggleCss = block(".info-routine-switch");
   assert.doesNotMatch(toggleCss, /margin-left:\s*auto/);
 });
+
+test("skills list is 44px rows with Edit then Remove, no blank Add, Edit sheet is source textarea", () => {
+  const header = block(".info-skills-header");
+  const row = block(".info-skill");
+  const name = block(".info-skill-name");
+  const edit = block(".info-skill-edit");
+  const remove = block(".info-skill-remove");
+  const empty = block(".info-skill-empty");
+  const sheet = block(".modal.skill-edit-sheet");
+  const editName = block(".skill-edit-name");
+  const body = block(".skill-edit-body");
+  const save = block(".skill-edit-save");
+  assert.match(header, /font-size:\s*12px/);
+  assert.match(header, /color:\s*var\(--text-muted\)/);
+  assert.match(row, /height:\s*44px/);
+  assert.match(name, /font-size:\s*14px/);
+  assert.match(edit, /font-size:\s*12px/);
+  assert.match(edit, /color:\s*var\(--text-muted\)/);
+  assert.match(remove, /font-size:\s*12px/);
+  assert.match(remove, /color:\s*var\(--text-muted\)/);
+  assert.match(empty, /font-size:\s*12px/);
+  assert.match(empty, /color:\s*var\(--text-muted\)/);
+  assert.match(sheet, /width:\s*320px/);
+  assert.match(editName, /font-size:\s*14px/);
+  assert.match(body, /font-size:\s*12px/);
+  assert.match(body, /line-height:\s*1\.45/);
+  assert.match(body, /min-height:\s*200px/);
+  assert.match(body, /ui-monospace/);
+  assert.match(save, /min-height:\s*36px/);
+
+  const app = readFileSync(
+    join(dirname(fileURLToPath(import.meta.url)), "App.tsx"),
+    "utf8",
+  );
+  const infoPane = readFileSync(
+    join(dirname(fileURLToPath(import.meta.url)), "infoPane.ts"),
+    "utf8",
+  );
+  const pane = app.slice(
+    app.indexOf("info-identity"),
+    app.indexOf("<ComputerPane"),
+  );
+  assert.ok(pane.indexOf("info-routines") < pane.indexOf("info-skills"));
+  assert.match(pane, /info-skills/);
+  assert.match(pane, /AgentSkillRow/);
+  assert.match(pane, /NO_SKILLS_YET/);
+  assert.doesNotMatch(pane, /info-skill-add/);
+  const skillsSrc = pane.slice(pane.indexOf("info-skills"));
+  assert.doesNotMatch(skillsSrc, /info-routine-add/);
+  assert.doesNotMatch(skillsSrc, />\s*Add\s*</);
+  assert.match(app, /EDIT_SKILL_TITLE/);
+  assert.match(app, /skillRemoveConfirm/);
+  assert.match(app, /canSubmitSkill/);
+  assert.match(app, /getSkill/);
+  assert.match(app, /patchSkill/);
+  assert.match(app, /deleteSkill/);
+  assert.match(app, /skill-edit-body/);
+  assert.match(app, /<textarea/);
+  assert.match(infoPane, /Edit skill/);
+  assert.match(infoPane, /Remove \$\{name\}\?/);
+  const editSheet = app.slice(
+    app.indexOf("skill-edit-sheet"),
+    app.indexOf("{createChannelOpen"),
+  );
+  assert.match(editSheet, /<textarea/);
+  assert.match(editSheet, /skill-edit-body/);
+  assert.match(editSheet, /skill-edit-save/);
+  assert.doesNotMatch(editSheet, /MarkdownBody/);
+  assert.doesNotMatch(editSheet, /react-markdown/);
+  const skillRow = app.slice(
+    app.indexOf("function AgentSkillRow"),
+    app.indexOf("export function App"),
+  );
+  assert.match(skillRow, /info-skill-edit/);
+  assert.match(skillRow, /info-skill-remove/);
+  assert.ok(
+    skillRow.indexOf("info-skill-edit") < skillRow.indexOf("info-skill-remove"),
+  );
+  assert.doesNotMatch(app, /New skill/);
+  assert.doesNotMatch(app, /info-skill-add/);
+  assert.doesNotMatch(css, /info-skill-add/);
+});

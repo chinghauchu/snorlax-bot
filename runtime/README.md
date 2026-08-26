@@ -19,7 +19,9 @@ already recording); `DELETE` that path stops (204, no SKILL.md;
 capture pending until save or discard). `POST /v1/agents/{id}/skills
 { name }` → 201 Skill `{ id, name }` writes SKILL.md from the pending
 capture (422 empty name / no pending capture). GET may include
-`recording` when hasSandbox.
+`recording` when hasSandbox. `GET /v1/agents/{id}/skills/{sid}` returns
+`{ id, name, body }` (SKILL.md source). `PATCH` `{ name, body }` is 200.
+`DELETE .../skills/{sid}` is 204. Empty name/body 422. Channel 409.
 
 Contract: [../protocol/openapi.yaml](../protocol/openapi.yaml) (copy:
 [openapi.yaml](openapi.yaml)).
@@ -84,6 +86,11 @@ process (Asia/Taipei). Webhook fire is `POST` the minted `webhookUrl`
 normal assistant Message in that agent's 1:1 with optional
 `routineName`. Paused or unknown token → 404, do not run.
 Clients list, create, enable/pause, Remove, and Copy the webhook URL.
+
+Identity-pane Skills (below Routines) lists `{ id, name }`. Edit is
+`GET` then `PATCH /skills/{sid}` `{ name, body }` (SKILL.md source, not
+a rendered preview). Remove is `DELETE` 204. Create stays teach-a-task
+`POST /skills { name }` — no blank Add.
 
 ## MCP (`mcp.json`)
 

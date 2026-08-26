@@ -16,7 +16,7 @@ From public Grok Bot docs and the Aug 2026 launch:
 | Message a bot like a coworker | `POST /v1/agents/{id}/messages` (SSE) |
 | Files, shell, web on a computer | v0.5: runtime tools in a workspace jail; v0.6: thin file-tree pane |
 | One user-scoped computer shared by all bots | Later: one sandbox on the Spark, shared files/logins, per-bot screen |
-| Skills (how) and routines (when) | v0.9: SKILL.md + cron (Asia/Taipei); v0.13: cron XOR webhook; v0.17: Add / Remove on the identity pane; fire LEFT 1:1 |
+| Skills (how) and routines (when) | v0.9: SKILL.md + cron (Asia/Taipei); v0.13: cron XOR webhook; v0.17: Add / Remove on the identity pane; v0.18: identity-pane skill markdown editor; fire LEFT 1:1 |
 | MCP + computer-use for sites without an API | v0.7: local/LAN MCP client; v0.10: connect chrome (`GET /v1/plugins` + `kind=connect`); v0.12: Settings Add custom; later: sandbox browser |
 | Question / approval moments | v0.8: question widgets (`kind=widget`); tools stay auto-run (no approval card) |
 | Desktop + iOS, same bots | Tauri desktop now; Swift iOS companion on the LAN |
@@ -288,6 +288,18 @@ trigger 422. `DELETE .../routines/{id}` 204 (unknown 404; channel
 409). Every row muted 12px `Remove` left of pause + `Remove {name}?`.
 Pause stays. Out: marketplace, iOS Open/Record/takeover, skill
 markdown editor, Slack/GitHub trigger builder.
+
+v0.18: skill markdown editor. Runtime + desktop + iOS. Skills block
+below Routines: 12px muted `Skills`; empty `No skills yet.`; 44px
+rows with name 14px and trailing 12px muted Edit then Remove;
+`Remove {name}?`. No blank Add — create stays teach-a-task. 320px
+`Edit skill` sheet: Name 14px; body textarea 12px/1.45 mono,
+min-height 200px (SKILL.md source, not a rendered preview); Save
+36px / iOS 44pt disabled until name and body; × discards. GET
+`/skills/{sid}` `{ id, name, body }`; PATCH `{ name, body }` 200;
+DELETE 204. List stays `{ id, name }`. Channel 409. Unknown sid 404.
+Empty name/body 422. Out: marketplace, iOS Open/Record/takeover, `/`
+autocomplete, blank New skill.
 
 ## Inference interface
 
