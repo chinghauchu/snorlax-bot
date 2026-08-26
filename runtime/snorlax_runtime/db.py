@@ -100,7 +100,6 @@ CREATE TABLE IF NOT EXISTS meta (
 """
 
 ROSTER_SEEDED_KEY = "roster_seeded"
-LAST_EXTRA_CHANNEL_KEY = "last_extra_channel_id"
 
 
 class Store:
@@ -192,29 +191,6 @@ class Store:
             "INSERT OR REPLACE INTO meta (key, value) VALUES (?, ?)",
             (ROSTER_SEEDED_KEY, "1"),
         )
-
-    async def remember_extra_channel(self, channel_id: str | None) -> None:
-        """Record last-selected user-created channel. Seed and non-channels no-op."""
-        if not channel_id or channel_id == SEEDED_CHANNEL_ID:
-            return
-        row = await self.get_agent(channel_id)
-        if row is None or row.get("kind") != KIND_CHANNEL:
-            return
-        await self.conn.execute(
-            "INSERT OR REPLACE INTO meta (key, value) VALUES (?, ?)",
-            (LAST_EXTRA_CHANNEL_KEY, channel_id),
-        )
-        await self.conn.commit()
-
-    async def last_extra_channel_id(self) -> str | None:
-        cur = await self.conn.execute(
-            "SELECT value FROM meta WHERE key = ?", (LAST_EXTRA_CHANNEL_KEY,)
-        )
-        row = await cur.fetchone()
-        if row is None:
-            return None
-        value = str(row["value"] or "").strip()
-        return value or None
 
     async def _seed(self) -> None:
         """Insert seed agent + channel only on first empty DB. Never auto-reseed.
@@ -455,10 +431,6 @@ class Store:
         await self.conn.commit()
 
     async def delete_agent(self, agent_id: str) -> bool:
-        if await self.last_extra_channel_id() == agent_id:
-            await self.conn.execute(
-                "DELETE FROM meta WHERE key = ?", (LAST_EXTRA_CHANNEL_KEY,)
-            )
         cur = await self.conn.execute(
             "DELETE FROM agents WHERE id = ?", (agent_id,)
         )

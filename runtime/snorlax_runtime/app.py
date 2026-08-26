@@ -136,7 +136,6 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 payload.avatar,
                 member_ids,
             )
-            await store.remember_extra_channel(row["id"])
             return Agent.model_validate(row)
         row = await store.create_agent(
             payload.name, payload.title, payload.description, payload.avatar
@@ -223,7 +222,6 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         conversation = await store.get_agent(id)
         if conversation is None:
             raise _error(404, f"Agent {id!r} not found")
-        await store.remember_extra_channel(id)
         thread_id = threadId or replyTo
         rows = await store.list_messages(
             id, limit=limit, before=before, thread_id=thread_id
@@ -241,8 +239,6 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         conversation = await store.get_agent(id)
         if conversation is None:
             raise _error(404, f"Agent {id!r} not found")
-        await store.remember_extra_channel(id)
-        await store.remember_extra_channel(payload.channelId)
         roster = await store.list_agents()
         is_group = conversation.get("kind") == "channel"
         try:
@@ -266,6 +262,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 images=images,
                 mentions=mentions,
                 reply_to=payload.replyTo,
+                preferred_channel_id=payload.channelId,
             ):
                 yield _sse(event, data)
 

@@ -405,17 +405,27 @@ def test_report_back_with_zero_channels_wakes_b_no_jump(client) -> None:
     assert {m["senderId"] for m in alice_msgs} <= {"user", alice["id"]}
     user = [m for m in alice_msgs if m["senderId"] == "user"][-1]
     assert user.get("handoff") is None
-    assert any(
-        m["senderId"] == alice["id"] and m["content"].strip() == "2"
+    reports = [
+        m
         for m in alice_msgs
-    )
+        if m["senderId"] == alice["id"] and m["content"].strip() == "2"
+    ]
+    assert len(reports) == 1
+    report = reports[0]
+    assert report["senderId"] == alice["id"]
+    assert report["senderName"] == "Alice"
+    assert report["role"] == "assistant"
+    assert report["hop"] == 0
+    assert report["mentions"] == []
+    assert "from" not in report
+    assert not report["content"].lower().startswith("from ")
     assert _msgs(client, bob["id"]) == []
     roster = client.get("/v1/agents", headers=AUTH).json()
     assert all(a["kind"] != "channel" for a in roster)
     assert all(a["id"] != CHANNEL for a in roster)
 
 
-def test_a2a_log_uses_remaining_user_channel_when_seed_gone(client) -> None:
+def test_a2a_log_uses_body_channel_id_when_seed_gone(client) -> None:
     alice = _create(client, "Alice")
     bob = _create(client, "Bob")
     created = client.post(
@@ -432,7 +442,7 @@ def test_a2a_log_uses_remaining_user_channel_when_seed_gone(client) -> None:
     deleted = client.delete(f"/v1/agents/{CHANNEL}", headers=AUTH)
     assert deleted.status_code == 204
 
-    status, _ = _send(client, alice["id"], "@Bob answer 1+1")
+    status, _ = _send(client, alice["id"], "@Bob answer 1+1", channel_id=extra_id)
     assert status == 200
     alice_msgs = _msgs(client, alice["id"])
     user = [m for m in alice_msgs if m["senderId"] == "user"][-1]
@@ -452,43 +462,83 @@ def test_a2a_log_uses_remaining_user_channel_when_seed_gone(client) -> None:
     assert _msgs(client, bob["id"]) == []
 
 
-def test_a2a_log_uses_last_selected_extra_when_seed_gone(client) -> None:
+def test_a2a_log_skips_when_seed_gone_even_if_extras_remain(client) -> None:
     alice = _create(client, "Alice")
     bob = _create(client, "Bob")
-    members = [alice["id"], bob["id"]]
-    ops = client.post(
+    created = client.post(
         "/v1/agents",
         headers=AUTH,
-        json={"name": "Ops", "kind": "channel", "memberIds": members},
-    ).json()
-    lab = client.post(
-        "/v1/agents",
-        headers=AUTH,
-        json={"name": "Lab", "kind": "channel", "memberIds": members},
-    ).json()
-    assert ops["id"] != lab["id"]
-    listed = client.get(f"/v1/agents/{ops['id']}/messages", headers=AUTH)
-    assert listed.status_code == 200
+        json={
+            "name": "Ops",
+            "kind": "channel",
+            "memberIds": [alice["id"], bob["id"]],
+        },
+    )
+    assert created.status_code == 201
+    extra_id = created.json()["id"]
     assert client.delete(f"/v1/agents/{CHANNEL}", headers=AUTH).status_code == 204
 
     status, _ = _send(client, alice["id"], "@Bob answer 1+1")
     assert status == 200
-    user = [m for m in _msgs(client, alice["id"]) if m["senderId"] == "user"][-1]
-    assert user["handoff"]["channelId"] == ops["id"]
-    thread = client.get(
-        f"/v1/agents/{ops['id']}/messages",
-        headers=AUTH,
-        params={"threadId": user["handoff"]["threadId"]},
+    alice_msgs = _msgs(client, alice["id"])
+    user = [m for m in alice_msgs if m["senderId"] == "user"][-1]
+    assert user.get("handoff") is None
+    extra_timeline = client.get(
+        f"/v1/agents/{extra_id}/messages", headers=AUTH
     ).json()
-    assert any(m["senderId"] == bob["id"] for m in thread)
+    assert extra_timeline == []
+    assert any(
+        m["senderId"] == alice["id"] and m["content"].strip() == "2"
+        for m in alice_msgs
+    )
+    assert _msgs(client, bob["id"]) == []
+    assert client.get(f"/v1/agents/{CHANNEL}", headers=AUTH).status_code == 404
+
+
+def test_stale_channel_id_after_seed_delete_skips_log(client) -> None:
+    alice = _create(client, "Alice")
+    bob = _create(client, "Bob")
+    ops = client.post(
+        "/v1/agents",
+        headers=AUTH,
+        json={
+            "name": "Ops",
+            "kind": "channel",
+            "memberIds": [alice["id"], bob["id"]],
+        },
+    ).json()
+    lab = client.post(
+        "/v1/agents",
+        headers=AUTH,
+        json={
+            "name": "Lab",
+            "kind": "channel",
+            "memberIds": [alice["id"], bob["id"]],
+        },
+    ).json()
+    assert client.delete(f"/v1/agents/{CHANNEL}", headers=AUTH).status_code == 204
+    assert client.delete(f"/v1/agents/{ops['id']}", headers=AUTH).status_code == 204
+
+    status, _ = _send(
+        client, alice["id"], "@Bob answer 1+1", channel_id=ops["id"]
+    )
+    assert status == 200
+    alice_msgs = _msgs(client, alice["id"])
+    user = [m for m in alice_msgs if m["senderId"] == "user"][-1]
+    assert user.get("handoff") is None
     lab_timeline = client.get(
         f"/v1/agents/{lab['id']}/messages", headers=AUTH
     ).json()
     assert lab_timeline == []
+    assert any(
+        m["senderId"] == alice["id"] and m["content"].strip() == "2"
+        for m in alice_msgs
+    )
     assert _msgs(client, bob["id"]) == []
+    assert client.get(f"/v1/agents/{CHANNEL}", headers=AUTH).status_code == 404
 
 
-def test_a2a_log_channel_id_prefers_seed_then_last_selected() -> None:
+def test_a2a_log_channel_id_seed_wins_else_body_else_skip() -> None:
     from snorlax_runtime.routing import a2a_log_channel_id
 
     seed = {"id": CHANNEL, "kind": "channel"}
@@ -498,5 +548,8 @@ def test_a2a_log_channel_id_prefers_seed_then_last_selected() -> None:
     assert a2a_log_channel_id([seed, ops, alice], preferred="ops") == CHANNEL
     assert a2a_log_channel_id([ops, lab, alice], preferred="ops") == "ops"
     assert a2a_log_channel_id([ops, lab, alice], preferred="lab") == "lab"
-    assert a2a_log_channel_id([ops, lab, alice], preferred="gone") == "lab"
+    assert a2a_log_channel_id([ops, lab, alice], preferred="gone") is None
+    assert a2a_log_channel_id([ops, lab, alice], preferred=CHANNEL) is None
+    assert a2a_log_channel_id([ops, lab, alice], preferred="alice") is None
+    assert a2a_log_channel_id([ops, lab, alice], preferred=None) is None
     assert a2a_log_channel_id([alice], preferred="ops") is None

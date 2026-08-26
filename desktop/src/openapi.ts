@@ -126,8 +126,11 @@ export interface paths {
          *
          *     For a 1:1 agent, hop 0 is that agent. Mentioned peers and hops
          *     reply in a handoff thread on seed `snorlax-bot-group` when present
-         *     (else the last-selected extra channel; if none, skip the log).
-         *     Not in either 1:1. A still
+         *     (ignore body `channelId`). Else if the 1:1 POST body has `channelId`
+         *     and it is an existing kind=channel row, log there. Else skip the
+         *     log (no handoff, no jump chip; still run B and A's report-back).
+         *     Unknown/stale `channelId` after seed delete: skip log, do not 422,
+         *     do not recreate seed. Not in either 1:1. A still
          *     answers in the 1:1. When the peer posts a material reply (or is
          *     hop/cap dropped), A is woken with a report-back pack and posts
          *     another assistant turn in that 1:1 (not a hop). Multiple
@@ -322,17 +325,20 @@ export interface components {
              *     and is not a mention. Unknown chip ids 422. Runtime also
              *     parses exact `@DisplayName`. Peer deliveries from a 1:1 land
              *     in the seeded channel as a handoff thread when that channel
-             *     exists (else the last-selected extra channel, else no log),
+             *     exists (body `channelId` ignored). After the seed is gone,
+             *     log on body `channelId` if it is an existing kind=channel row,
+             *     else no log. Unknown/stale ids skip the log (do not 422),
              *     never in another agent's 1:1.
              */
             mentions?: string[];
             /** @description Channel thread id when posting a reply in a thread. */
             replyTo?: string | null;
             /**
-             * @description Optional last-selected extra channel id. Ignored for the A2A
-             *     log while seed `snorlax-bot-group` exists. After the seed is
-             *     gone, 1:1 @involves log here if the id is still a user-created
-             *     channel. Unknown or agent ids are ignored.
+             * @description Optional. Used only as the A2A log fallback after seed
+             *     `snorlax-bot-group` is gone. Ignored while the seed exists.
+             *     After the seed is gone, 1:1 @involves log here if the id is
+             *     an existing kind=channel row. Unknown, stale, or agent ids:
+             *     skip the log (do not 422, do not recreate seed).
              */
             channelId?: string | null;
         };

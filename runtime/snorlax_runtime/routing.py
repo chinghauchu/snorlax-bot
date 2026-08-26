@@ -183,18 +183,17 @@ def a2a_log_channel_id(
 ) -> str | None:
     """Channel that should hold 1:1 @involve traffic, or None to skip the log.
 
-    Seed wins while it exists. After it is gone, use the last-selected extra
-    channel if it still remains; otherwise another remaining extra; else skip.
+    Seed wins while it exists (body channelId is ignored). After it is gone,
+    use preferred only if it is an existing kind=channel row. Unknown or stale
+    ids skip the log — do not 422, do not recreate seed, do not pick another.
     """
     channels = [row for row in roster if row.get("kind") == KIND_CHANNEL]
-    if not channels:
-        return None
     if any(row["id"] == SEEDED_CHANNEL_ID for row in channels):
         return SEEDED_CHANNEL_ID
-    extra_ids = {row["id"] for row in channels}
-    if preferred and preferred in extra_ids:
+    channel_ids = {row["id"] for row in channels}
+    if preferred and preferred in channel_ids:
         return preferred
-    return channels[-1]["id"]
+    return None
 
 
 def expand_mention_targets(
@@ -326,18 +325,25 @@ async def run_user_turn(
     images: list[dict[str, Any]],
     mentions: list[dict[str, str]],
     reply_to: str | None = None,
+    preferred_channel_id: str | None = None,
 ) -> AsyncIterator[tuple[str, dict[str, Any]]]:
     """Persist the user message, then route hop-0 and peer work.
 
     Yields SSE (event, payload) only for messages that land in `conversation`.
     Holds the originating POST open until every mentioned peer has done or
     been dropped and A has reported for each. 1:1 @involves log as handoff
-    threads on the seed channel when it exists; otherwise the last-selected
-    extra channel; otherwise no channel log (B still wakes).
+    threads on the seed channel when it exists; otherwise on body
+    `channelId` if that row is an existing channel; otherwise no channel
+    log (B still wakes).
     """
     origin_id = conversation["id"]
     is_group = conversation.get("kind") == KIND_CHANNEL
     roster = await store.list_agents()
+    log_channel_id = (
+        None
+        if is_group
+        else a2a_log_channel_id(roster, preferred=preferred_channel_id)
+    )
     stored_reply_to = None
     thread_id: str | None = None
     if is_group:
@@ -370,7 +376,7 @@ async def run_user_turn(
                 peer=False,
                 edge_from=USER_SENDER_ID,
                 edge_to=origin_id,
-                channel_id=SEEDED_CHANNEL_ID,
+                channel_id=log_channel_id,
             )
         )
 
@@ -390,7 +396,7 @@ async def run_user_turn(
         thread_id=thread_id,
         origin_user_message_id=user_saved["id"] if not is_group else None,
         origin_conversation_id=None if is_group else origin_id,
-        handoff_channel_id=None if is_group else SEEDED_CHANNEL_ID,
+        handoff_channel_id=log_channel_id,
     )
 
     i = 0
@@ -441,6 +447,7 @@ async def run_user_turn(
                 thread_id=job.thread_id or "",
                 user_ask=_job_user_ask(job),
                 origin_conversation_id=job.origin_conversation_id,
+                channel_id=job.channel_id,
             )
             continue
 
@@ -472,6 +479,7 @@ async def run_user_turn(
                 thread_id=job.thread_id or "",
                 user_ask=_job_user_ask(job),
                 origin_conversation_id=job.origin_conversation_id,
+                channel_id=job.channel_id,
             )
             continue
 
@@ -513,6 +521,7 @@ async def run_user_turn(
                 thread_id=job.thread_id or saved.get("replyTo") or saved["id"],
                 user_ask=_job_user_ask(job),
                 origin_conversation_id=origin_conversation,
+                channel_id=job.channel_id,
             )
 
 
@@ -560,8 +569,8 @@ async def _enqueue_mentions(
         return
 
     # 1:1 isolation: never write peer/involve/DM into either 1:1.
-    # A2A log prefers the seeded channel; if it is gone, the last-selected
-    # extra channel; if none remain, skip the log (no fake seed).
+    # A2A log: seed if present; else body channelId if it is a real
+    # channel; else skip (no fake seed).
     targets = [t for t in targets if t != source_id]
     if not targets:
         return
@@ -591,12 +600,13 @@ async def _enqueue_mentions(
                 thread_id="",
                 user_ask=quoted,
                 origin_conversation_id=origin_id,
+                channel_id=handoff_channel_id,
             )
     if not cap_runnable:
         return
 
     channel_id = a2a_log_channel_id(
-        roster, preferred=await store.last_extra_channel_id()
+        roster, preferred=handoff_channel_id
     )
     brief = await store.one_to_one_brief(origin_id)
     pack = wake_pack(
@@ -689,6 +699,7 @@ def _queue_report_back(
     thread_id: str,
     user_ask: str,
     origin_conversation_id: str | None,
+    channel_id: str | None = None,
 ) -> None:
     """Enqueue A's 1:1 report as the next job (report-as-each-lands).
 
@@ -728,7 +739,7 @@ def _queue_report_back(
             wake_pack=pack,
             origin_conversation_id=origin,
             report_back=True,
-            channel_id=SEEDED_CHANNEL_ID,
+            channel_id=channel_id,
         ),
     )
 
