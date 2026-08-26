@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 //
-// Generated from protocol/openapi.yaml (Snorlax-Bot 0.11.0).
+// Generated from protocol/openapi.yaml (Snorlax-Bot 0.12.0).
 // Do not edit by hand. Regenerate with:
 //   python3 ios/scripts/generate_v1_types.py
 //
@@ -936,6 +936,58 @@ struct Plugin: Codable, Hashable, Identifiable, Sendable {
         try container.encode(id, forKey: .id)
         try container.encode(name, forKey: .name)
         try container.encode(status, forKey: .status)
+    }
+}
+
+struct PluginStdio: Codable, Hashable, Sendable {
+    var command: String
+    var args: [String]?
+
+    init(command: String, args: [String]? = nil) {
+        self.command = command
+        self.args = args
+    }
+
+    enum CodingKeys: String, CodingKey { case command, args }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        command = try container.decode(String.self, forKey: .command)
+        args = try container.decodeIfPresent([String].self, forKey: .args)
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(command, forKey: .command)
+        try container.encodeIfPresent(args, forKey: .args)
+    }
+}
+
+struct PluginCreate: Codable, Hashable, Sendable {
+    var name: String
+    var stdio: PluginStdio?
+    var url: String?
+
+    init(name: String, stdio: PluginStdio? = nil, url: String? = nil) {
+        self.name = name
+        self.stdio = stdio
+        self.url = url
+    }
+
+    enum CodingKeys: String, CodingKey { case name, stdio, url }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        name = try container.decode(String.self, forKey: .name)
+        stdio = try container.decodeIfPresent(PluginStdio.self, forKey: .stdio)
+        url = try container.decodeIfPresent(String.self, forKey: .url)
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(name, forKey: .name)
+        try container.encodeIfPresent(stdio, forKey: .stdio)
+        try container.encodeIfPresent(url, forKey: .url)
     }
 }
 

@@ -5,6 +5,8 @@ struct SettingsSheet: View {
     @Environment(AppModel.self) private var model
     @Environment(\.dismiss) private var dismiss
     @State private var showToken = false
+    @State private var showAdd = false
+    @State private var pendingUninstall: Plugin?
 
     var body: some View {
         @Bindable var model = model
@@ -93,20 +95,37 @@ struct SettingsSheet: View {
                                 Text(plugin.status == .connected ? "Connected" : "Needs sign-in")
                                     .font(.system(size: 12))
                                     .foregroundStyle(.secondary)
-                                if plugin.status != .connected {
+                                if plugin.status == .connected {
+                                    Button("Disconnect") {
+                                        Task { await model.disconnectPlugin(id: plugin.id) }
+                                    }
+                                    .font(.system(size: 14))
+                                } else {
                                     Button("Connect") {
                                         Task { _ = await model.connectPlugin(id: plugin.id) }
                                     }
                                     .font(.system(size: 14))
                                 }
+                                Button("Uninstall", role: .destructive) {
+                                    pendingUninstall = plugin
+                                }
+                                .font(.system(size: 14))
                             }
                             .frame(minHeight: 44)
                         }
                     }
                 } header: {
-                    Text("Plugins")
-                        .font(.system(size: 12))
-                        .foregroundStyle(.secondary)
+                    HStack {
+                        Text("Plugins")
+                            .font(.system(size: 12))
+                            .foregroundStyle(.secondary)
+                            .textCase(nil)
+                        Spacer()
+                        Button("Add") { showAdd = true }
+                            .font(.system(size: 14))
+                            .textCase(nil)
+                            .disabled(!model.isConfigured)
+                    }
                 }
             }
             .font(.system(size: 14))
@@ -117,6 +136,25 @@ struct SettingsSheet: View {
                     Button("Done") { dismiss() }
                 }
             }
+            .sheet(isPresented: $showAdd) {
+                AddPluginSheet()
+            }
+            .confirmationDialog(
+                pendingUninstall.map { "Uninstall \($0.name)? This removes it from the runtime catalog." } ?? "",
+                isPresented: Binding(
+                    get: { pendingUninstall != nil },
+                    set: { if !$0 { pendingUninstall = nil } }
+                ),
+                titleVisibility: .visible
+            ) {
+                Button("Uninstall", role: .destructive) {
+                    if let plugin = pendingUninstall {
+                        Task { await model.uninstallPlugin(id: plugin.id) }
+                    }
+                    pendingUninstall = nil
+                }
+                Button("Cancel", role: .cancel) { pendingUninstall = nil }
+            }
         }
         .presentationDetents([.medium, .large])
         .task {
@@ -125,5 +163,78 @@ struct SettingsSheet: View {
         .onDisappear {
             Task { await model.bootstrap() }
         }
+    }
+}
+
+private struct AddPluginSheet: View {
+    @Environment(AppModel.self) private var model
+    @Environment(\.dismiss) private var dismiss
+    @State private var name = ""
+    @State private var mode = Transport.stdio
+    @State private var command = ""
+    @State private var args = ""
+    @State private var url = ""
+    @State private var saving = false
+
+    private enum Transport: String, CaseIterable, Identifiable {
+        case stdio = "Command"
+        case url = "URL"
+        var id: String { rawValue }
+    }
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                TextField("Name", text: $name)
+                    .font(.system(size: 14))
+                Picker("Transport", selection: $mode) {
+                    ForEach(Transport.allCases) { item in
+                        Text(item.rawValue).tag(item)
+                    }
+                }
+                .pickerStyle(.segmented)
+                if mode == .stdio {
+                    TextField("Command", text: $command)
+                        .font(.system(size: 14))
+                        .textInputAutocapitalization(.never)
+                        .autocorrectionDisabled()
+                    TextField("Args", text: $args)
+                        .font(.system(size: 14))
+                        .textInputAutocapitalization(.never)
+                        .autocorrectionDisabled()
+                } else {
+                    TextField("URL", text: $url, prompt: Text("http://127.0.0.1:8765/mcp"))
+                        .font(.system(size: 14))
+                        .textInputAutocapitalization(.never)
+                        .autocorrectionDisabled()
+                        .keyboardType(.URL)
+                }
+            }
+            .navigationTitle("Add plugin")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") { dismiss() }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Save") {
+                        Task { await save() }
+                    }
+                    .disabled(saving || !model.isConfigured)
+                }
+            }
+        }
+    }
+
+    private func save() async {
+        saving = true
+        defer { saving = false }
+        let ok: Bool
+        if mode == .stdio {
+            ok = await model.addPlugin(name: name, command: command, args: args, url: nil)
+        } else {
+            ok = await model.addPlugin(name: name, command: nil, args: "", url: url)
+        }
+        if ok { dismiss() }
     }
 }

@@ -388,6 +388,66 @@ final class AppModel {
         }
     }
 
+    func addPlugin(name: String, command: String?, args: String, url: String?) async -> Bool {
+        guard let client else { return false }
+        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else {
+            composerError = "Plugin name is required."
+            return false
+        }
+        do {
+            let body: PluginCreate
+            if let command {
+                let cmd = command.trimmingCharacters(in: .whitespacesAndNewlines)
+                guard !cmd.isEmpty else {
+                    composerError = "Command is required."
+                    return false
+                }
+                let parts = args.split(whereSeparator: \.isWhitespace).map(String.init)
+                body = PluginCreate(
+                    name: trimmed,
+                    stdio: PluginStdio(command: cmd, args: parts.isEmpty ? nil : parts)
+                )
+            } else if let url {
+                let value = url.trimmingCharacters(in: .whitespacesAndNewlines)
+                guard !value.isEmpty else {
+                    composerError = "URL is required."
+                    return false
+                }
+                body = PluginCreate(name: trimmed, url: value)
+            } else {
+                composerError = "Command or URL is required."
+                return false
+            }
+            _ = try await client.createPlugin(body)
+            await refreshPlugins()
+            return true
+        } catch {
+            composerError = error.localizedDescription
+            return false
+        }
+    }
+
+    func disconnectPlugin(id: String) async {
+        guard let client else { return }
+        do {
+            _ = try await client.disconnectPlugin(id: id)
+            await refreshPlugins()
+        } catch {
+            composerError = error.localizedDescription
+        }
+    }
+
+    func uninstallPlugin(id: String) async {
+        guard let client else { return }
+        do {
+            try await client.deletePlugin(id: id)
+            await refreshPlugins()
+        } catch {
+            composerError = error.localizedDescription
+        }
+    }
+
     func answerConnect(id: String, pluginId: String) async {
         await streamAnswer(connectReply: ConnectReply(id: id))
         _ = await waitUntilPluginConnected(id: pluginId)

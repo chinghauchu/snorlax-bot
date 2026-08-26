@@ -49,6 +49,12 @@ export function pluginStatusLabel(status: string): string {
   return status === "connected" ? "Connected" : "Needs sign-in";
 }
 
+export function parsePluginArgs(raw: string): string[] {
+  const trimmed = raw.trim();
+  if (!trimmed) return [];
+  return trimmed.split(/\s+/);
+}
+
 export function resolvedConnectLabel(status: ConnectStatus): string | null {
   if (status === "connected") return "Connected";
   if (status === "dismissed") return "Dismissed";

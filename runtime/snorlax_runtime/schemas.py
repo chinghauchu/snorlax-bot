@@ -253,5 +253,28 @@ class Plugin(BaseModel):
     status: str
 
 
+class PluginStdio(BaseModel):
+    command: str = Field(min_length=1)
+    args: list[str] | None = None
+
+
+class PluginCreate(BaseModel):
+    name: str = Field(min_length=1, max_length=80)
+    stdio: PluginStdio | None = None
+    url: str | None = None
+
+    @model_validator(mode="after")
+    def one_transport(self) -> PluginCreate:
+        url = (self.url or "").strip()
+        has_stdio = self.stdio is not None
+        has_url = bool(url)
+        if has_stdio and has_url:
+            raise ValueError("provide stdio or url, not both")
+        if not has_stdio and not has_url:
+            raise ValueError("stdio or url is required")
+        self.url = url or None
+        return self
+
+
 class PluginAuth(BaseModel):
     authorizationUrl: str

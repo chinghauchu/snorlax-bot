@@ -366,7 +366,6 @@ class McpManager:
         self.failures: list[str] = []
         self.records: dict[str, McpRecord] = {}
         self._auth_states: dict[str, str] = {}
-        self._lock = asyncio.Lock()
         self._jobs: asyncio.Queue[
             tuple[Any, tuple[Any, ...], dict[str, Any], asyncio.Future[Any]] | None
         ] = asyncio.Queue()
@@ -592,6 +591,17 @@ class McpManager:
         servers[name] = spec
         save_mcp_config(self.data_dir, config)
 
+    def _drop_spec(self, name: str) -> None:
+        if self.data_dir is None:
+            return
+        config = load_mcp_config(self.data_dir)
+        servers = config.get("mcpServers")
+        if not isinstance(servers, dict):
+            return
+        servers.pop(name, None)
+        config["mcpServers"] = servers
+        save_mcp_config(self.data_dir, config)
+
     def _unique_name(self, raw: str) -> str:
         base = _sanitize_server_name(raw) or "custom"
         name = base
@@ -615,69 +625,61 @@ class McpManager:
         return [self.public_row(name) for name in self.records]
 
     async def add_server(self, payload: dict[str, Any]) -> dict[str, Any]:
-        async with self._lock:
-            command = str(payload.get("command") or "").strip()
-            url = str(payload.get("url") or "").strip()
-            if not command and not url:
-                raise McpConfigError("command or url is required")
-            if url:
-                ok, reason = mcp_url_allowed(url)
-                if not ok:
-                    raise McpConfigError(reason)
-            requested = str(payload.get("id") or "").strip()
-            if requested:
-                name = _sanitize_server_name(requested)
-                if not name:
-                    raise McpConfigError("invalid id")
-                if name in self.records:
-                    raise McpConfigError("server already exists", status=409)
-            else:
-                hint = str(payload.get("name") or "").strip()
-                if not hint and command:
-                    hint = Path(command).stem
-                if not hint and url:
-                    hint = (urlparse(url).hostname or "lan").replace(".", "_")
-                name = self._unique_name(hint or "custom")
-            spec: dict[str, Any] = {}
-            display = str(payload.get("name") or "").strip()
-            if display:
-                spec["name"] = display
-            if command:
-                spec["command"] = command
-                args = payload.get("args") or []
-                if args is None:
-                    args = []
-                if not isinstance(args, list) or any(not isinstance(a, str) for a in args):
-                    raise McpConfigError("args must be a list of strings")
-                spec["args"] = list(args)
-            if url:
-                spec["url"] = url
-            env = payload.get("env")
-            if env:
-                if not isinstance(env, dict):
-                    raise McpConfigError("env must be an object")
-                spec["env"] = {str(k): str(v) for k, v in env.items()}
-            headers = payload.get("headers")
-            if headers:
-                if not isinstance(headers, dict):
-                    raise McpConfigError("headers must be an object")
-                spec["headers"] = {str(k): str(v) for k, v in headers.items()}
-            connect = payload.get("connect")
-            if connect is None:
-                connect = True
-            spec["disabled"] = not bool(connect)
-            token = str(payload.get("token") or "").strip()
-            if token:
-                headers_out = dict(spec.get("headers") or {})
-                headers_out["Authorization"] = f"Bearer {token}"
-                spec["headers"] = headers_out
-            rec = self._ensure_record(name, spec)
-            rec.status = STATUS_DISCONNECTED
-            rec.error = None
-            self._write_spec(name, spec)
-        if not spec.get("disabled"):
-            return await self.connect_server(name, token=token or None)
-        return self.public_row(name)
+        return await self._on_worker(self._add_server_locked, payload)
+
+    async def _add_server_locked(self, payload: dict[str, Any]) -> dict[str, Any]:
+        display = str(payload.get("name") or "").strip()
+        if not display:
+            raise McpConfigError("name is required")
+        stdio = payload.get("stdio")
+        url = str(payload.get("url") or "").strip()
+        has_stdio = isinstance(stdio, dict)
+        if stdio is not None and not has_stdio:
+            raise McpConfigError("stdio must be an object")
+        if has_stdio and url:
+            raise McpConfigError("provide stdio or url, not both")
+        if not has_stdio and not url:
+            raise McpConfigError("stdio or url is required")
+        command = ""
+        args: list[str] = []
+        if has_stdio:
+            command = str(stdio.get("command") or "").strip()
+            if not command:
+                raise McpConfigError("stdio.command is required")
+            raw_args = stdio.get("args")
+            if raw_args is None:
+                raw_args = []
+            if not isinstance(raw_args, list) or any(
+                not isinstance(item, str) for item in raw_args
+            ):
+                raise McpConfigError("stdio.args must be a list of strings")
+            args = list(raw_args)
+        if url:
+            ok, reason = mcp_url_allowed(url)
+            if not ok:
+                raise McpConfigError(reason)
+        name = self._unique_name(display)
+        spec: dict[str, Any] = {"name": display, "disabled": False}
+        if command:
+            spec["command"] = command
+            spec["args"] = args
+        if url:
+            spec["url"] = url
+        rec = self._ensure_record(name, spec)
+        rec.status = STATUS_DISCONNECTED
+        rec.error = None
+        self._write_spec(name, spec)
+        return await self._connect_server_locked(name)
+
+    async def remove_server(self, name: str) -> None:
+        await self._on_worker(self._remove_server_locked, name)
+
+    async def _remove_server_locked(self, name: str) -> None:
+        if name not in self.records:
+            raise McpConfigError(f"plugin {name!r} not found", status=404)
+        await self._drop_live(name)
+        self.records.pop(name, None)
+        self._drop_spec(name)
 
     async def connect_server(
         self, name: str, token: str | None = None

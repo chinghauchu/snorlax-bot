@@ -14,15 +14,16 @@ NVIDIA DGX Spark.
   in CI and on machines without a 70B checkpoint. `omlx` is the Mac-local
   OpenAI-compat path. `vllm` is the Spark path. Neither is a development
   dependency.
-- **Keep v0.11 small.** Named teammates, identity pane, seeded group plus extra
+- **Keep v0.12 small.** Named teammates, identity pane, seeded group plus extra
   channels, @mentions, 1:1 isolation, channel handoff threads, report-back,
   runtime-owned file/shell/web tools in a `~/.snorlax-bot` sandbox (auto-run,
   no extra shell network, configured search provider), a thin desktop
   Computer pane over that sandbox, a runtime MCP client (`mcp.json`
   stdio + LAN; desktop/iOS never speak MCP), connect chrome
-  (`GET /v1/plugins` + `kind=connect`; Settings list only), question widgets
-  (`kind=widget`; not tool approval), cron routines (list + enable/pause
-  on the agent info pane; SKILL.md from the workspace and/or
+  (`GET /v1/plugins` + `kind=connect`; Settings list only), MCP Add custom
+  (`POST /v1/plugins`, `DELETE /v1/plugins/{id}`, disconnect; no store),
+  question widgets (`kind=widget`; not tool approval), cron routines (list +
+  enable/pause on the agent info pane; SKILL.md from the workspace and/or
   `SNORLAX_DATA_DIR/skills`), and assistant markdown (clients render
   LEFT `kind=message`; `content` stays a plain string). Full sandbox
   computer GUI, vision, marketplace UI, teach-a-task, and event listeners

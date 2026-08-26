@@ -39,6 +39,12 @@ assistant text to HTML or split one message into many. SSE
 stay plain text as stored. Clients render markdown. widget / connect /
 tool / routine fields stay. No MCP mix-in.
 
+v0.12 MCP Add custom: `POST /v1/plugins` `{ name, stdio?: { command,
+args? }, url?: string }` (one of stdio or url). `DELETE /v1/plugins/{id}`
+uninstalls (204). `POST /v1/plugins/{id}/disconnect` returns the row to
+`needsAuth` without dropping the catalog. No store / search /
+marketplace catalog. Plugins list is Settings only.
+
 A copy is also kept at `runtime/openapi.yaml` and `desktop/openapi.yaml`
 so those trees are self-contained. Do not let the files diverge.
 

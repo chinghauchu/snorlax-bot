@@ -357,13 +357,70 @@ export interface paths {
          * @description JSON array of Plugin (not wrapped): `{ id, name, status }` where
          *     status is `connected` or `needsAuth`. Catalog may be empty.
          *     Runtime-global (not per-agent). Clients never speak MCP; this is
-         *     Settings chrome only, not the agent pane. No store / search /
-         *     uninstall this slice. Hand-edited mcp.json under SNORLAX_DATA_DIR
-         *     still loads stdio and LAN servers.
+         *     Settings chrome only, not the agent pane. Hand-edited mcp.json
+         *     under SNORLAX_DATA_DIR still loads stdio and LAN servers. Add
+         *     custom is POST this path. Uninstall is DELETE /v1/plugins/{id}.
+         *     Disconnect is POST /v1/plugins/{id}/disconnect. No store / search
+         *     / marketplace catalog.
          */
         get: operations["listPlugins"];
         put?: never;
+        /**
+         * Add a custom MCP plugin
+         * @description Body `{ name, stdio?: { command, args? }, url?: string }`. One of
+         *     `stdio` or `url` is required; both or neither is 422. Persists
+         *     into the runtime MCP catalog (`mcp.json` under SNORLAX_DATA_DIR).
+         *     201/200 returns the Plugin. Clients never speak MCP. No store /
+         *     search / install-from-catalog.
+         */
+        post: operations["createPlugin"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/plugins/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["Id"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
         post?: never;
+        /**
+         * Uninstall a plugin
+         * @description Drops the plugin from the runtime MCP catalog and tears down the
+         *     live session. 204. Unknown id is 404. Connected rows can also be
+         *     removed this way. Does not speak MCP from the client.
+         */
+        delete: operations["deletePlugin"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/plugins/{id}/disconnect": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["Id"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Disconnect a plugin without uninstalling
+         * @description Tears down the live MCP session and returns the catalog row to
+         *     `needsAuth`. Does not drop the catalog entry. Unknown id is 404.
+         */
+        post: operations["disconnectPlugin"];
         delete?: never;
         options?: never;
         head?: never;
@@ -827,6 +884,17 @@ export interface components {
              */
             status: "connected" | "needsAuth";
         };
+        PluginStdio: {
+            command: string;
+            args?: string[];
+        };
+        /** @description One of `stdio` or `url` is required. Both or neither is 422. */
+        PluginCreate: {
+            name: string;
+            stdio?: components["schemas"]["PluginStdio"];
+            /** @description LAN MCP URL (http or https). */
+            url?: string;
+        };
         PluginAuth: {
             /**
              * @description URL for the OS browser. OAuth callback hits the runtime.
@@ -1268,6 +1336,87 @@ export interface operations {
                 };
             };
             401: components["responses"]["Error"];
+        };
+    };
+    createPlugin: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PluginCreate"];
+            };
+        };
+        responses: {
+            /** @description Created plugin */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Plugin"];
+                };
+            };
+            /** @description Created plugin */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Plugin"];
+                };
+            };
+            401: components["responses"]["Error"];
+            422: components["responses"]["Error"];
+        };
+    };
+    deletePlugin: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["Id"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Uninstalled */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Error"];
+            404: components["responses"]["Error"];
+        };
+    };
+    disconnectPlugin: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["Id"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Plugin now needsAuth */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Plugin"];
+                };
+            };
+            401: components["responses"]["Error"];
+            404: components["responses"]["Error"];
         };
     };
     startPluginAuth: {

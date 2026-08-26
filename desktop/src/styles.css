@@ -1167,10 +1167,27 @@ button:disabled {
   gap: 0;
 }
 
+.settings-plugins-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
 .settings-plugins-header {
   margin: 4px 0 0;
+  flex: 1;
   font-size: 12px;
   color: var(--text-muted);
+}
+
+.plugin-add {
+  border: 0;
+  background: transparent;
+  color: var(--accent);
+  font-size: 13px;
+  font-weight: 500;
+  padding: 4px 6px;
+  cursor: pointer;
 }
 
 .plugin-row {
@@ -1207,10 +1224,39 @@ button:disabled {
   cursor: pointer;
 }
 
+.plugin-disconnect,
+.plugin-uninstall {
+  border: 0;
+  background: transparent;
+  font-size: 12px;
+  padding: 4px 6px;
+  cursor: pointer;
+}
+
+.plugin-disconnect {
+  color: var(--text-muted);
+}
+
+.plugin-uninstall {
+  color: var(--danger);
+}
+
 .plugins-empty {
   margin: 8px 0 0;
   font-size: 12px;
   color: var(--text-muted);
+}
+
+.modal-backdrop.plugin-sheet {
+  z-index: 7;
+}
+
+.modal.plugin-add-sheet {
+  width: min(360px, calc(100% - 32px));
+}
+
+.modal.plugin-add-sheet .profile-form {
+  padding: 0 14px 16px;
 }
 
 label {

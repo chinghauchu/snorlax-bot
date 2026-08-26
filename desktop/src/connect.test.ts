@@ -10,6 +10,7 @@ import {
   connectStatusOf,
   isConnect,
   isPendingConnect,
+  parsePluginArgs,
   pluginStatusLabel,
   resolvedConnectLabel,
 } from "./connect.ts";
@@ -44,6 +45,8 @@ test("connect helpers lock kind=connect status on the Message", () => {
   assert.equal(connectStatusOf(pending), "pending");
   assert.equal(pluginStatusLabel("connected"), "Connected");
   assert.equal(pluginStatusLabel("needsAuth"), "Needs sign-in");
+  assert.deepEqual(parsePluginArgs("  --foo bar  "), ["--foo", "bar"]);
+  assert.deepEqual(parsePluginArgs(""), []);
   assert.equal(resolvedConnectLabel("connected"), "Connected");
   assert.equal(resolvedConnectLabel("dismissed"), "Dismissed");
   assert.equal(isPendingConnect({ ...pending, connectStatus: "connected" }), false);
@@ -125,15 +128,25 @@ test("plugins list is Settings only, not the agent pane", () => {
   assert.match(app, /pluginStatusLabel/);
   assert.match(app, /listPlugins/);
   assert.match(app, /startPluginAuth/);
+  assert.match(app, /createPlugin/);
+  assert.match(app, /deletePlugin/);
+  assert.match(app, /disconnectPlugin/);
+  assert.match(app, /plugin-add/);
+  assert.match(app, /Add/);
+  assert.match(app, /Uninstall/);
+  assert.match(app, /Disconnect/);
   assert.match(app, /connectReply/);
   assert.match(app, /onConnectUrl/);
   assert.match(api, /connect\.url/);
+  assert.match(api, /\/v1\/plugins/);
+  assert.doesNotMatch(api, /modelcontextprotocol/);
+  assert.doesNotMatch(api, /tools\/list/);
+  assert.doesNotMatch(api, /mcp\.json/);
   assert.match(app, /ConnectCard/);
   assert.match(app, /openOsBrowser/);
   assert.doesNotMatch(app, /info-plugins/);
   assert.doesNotMatch(app, /marketplace/);
   assert.doesNotMatch(app, /Add custom/);
-  assert.doesNotMatch(app, /uninstall/);
   assert.doesNotMatch(app, /computerPane\.ts/);
   assert.equal(existsSync(join(here, "computerPane.ts")), false);
 });

@@ -1,9 +1,9 @@
 openapi: 3.1.0
 info:
   title: Snorlax-Bot
-  version: 0.11.0
+  version: 0.12.0
   description: |
-    Locked v0.11 LAN contract. Clients use SNORLAX_URL + SNORLAX_TOKEN.
+    Locked v0.12 LAN contract. Clients use SNORLAX_URL + SNORLAX_TOKEN.
     They never call vLLM, never call tools, never call MCP, and never read
     the Spark filesystem. Additive workspace GETs are runtime reads of the
     existing sandbox (same roots as the tool loop), not a second tool loop.
@@ -56,8 +56,10 @@ info:
     marketplace UI, no Settings picker, no browser-use GUI, no screenshot
     stream, no terminal GUI. Question widgets are v0.8. Skills and cron
     routines are v0.9. MCP connect chrome is v0.10 (GET /v1/plugins +
-    POST /v1/plugins/{id}/auth + kind=connect). No Add-custom UI; hand-edited
-    mcp.json still works. Plugins list is Settings only, not the agent pane.
+    POST /v1/plugins/{id}/auth + kind=connect). MCP Add custom is v0.12
+    (POST /v1/plugins + DELETE /v1/plugins/{id} + optional disconnect).
+    Hand-edited mcp.json still works. Plugins list is Settings only, not
+    the agent pane. No marketplace catalog / public plugin store.
     Assistant markdown is v0.11 (clients render LEFT kind=message; content
     stays a plain string; runtime does not rewrite).
 
@@ -237,6 +239,27 @@ info:
     chrome, seed DELETE 204, Mac oMLX, no Mac folder picker, and
     workspaceTree.ts (never reintroduce computerPane.ts) stand. OpenAPI
     **0.11.0**.
+
+    v0.12: MCP Add custom. Runtime still owns MCP (v0.7 mcp.json stdio +
+    LAN). Clients never speak MCP or the model. Settings Plugins is
+    Settings-only and runtime-global. POST /v1/plugins body
+    `{ name, stdio?: { command, args? }, url?: string }` (one of stdio or url required) persists into the runtime MCP catalog (`mcp.json` under
+    SNORLAX_DATA_DIR). 201/200 returns the Plugin. Invalid combo (both or
+    neither) is 422. DELETE /v1/plugins/{id} uninstalls (drops from catalog
+    and tears down the session); 204; unknown id 404. POST
+    /v1/plugins/{id}/disconnect signs out a connected plugin without
+    dropping the catalog entry (status returns to needsAuth); unknown 404.
+    GET /v1/plugins still returns a bare array
+    `{ id, name, status: connected|needsAuth }`. Auth is still the OS
+    browser (`POST /v1/plugins/{id}/auth` → `{ authorizationUrl }`;
+    desktop system browser; iOS ASWebAuthenticationSession). kind=connect
+    cards are unchanged. Tools still auto-run after connect. No approval
+    widgets. No store, no search, no marketplace catalog / public plugin
+    store. Isolation, report-back, widgets, markdown, cron routines, seed
+    DELETE 204, Mac oMLX, no Mac folder picker, and workspaceTree.ts
+    (never reintroduce computerPane.ts) stand. Out of scope: full Box/VNC,
+    teach-a-task, event listeners, marketplace catalog. OpenAPI
+    **0.12.0**.
   license:
     name: Apache-2.0
     identifier: Apache-2.0
@@ -736,9 +759,11 @@ paths:
         JSON array of Plugin (not wrapped): `{ id, name, status }` where
         status is `connected` or `needsAuth`. Catalog may be empty.
         Runtime-global (not per-agent). Clients never speak MCP; this is
-        Settings chrome only, not the agent pane. No store / search /
-        uninstall this slice. Hand-edited mcp.json under SNORLAX_DATA_DIR
-        still loads stdio and LAN servers.
+        Settings chrome only, not the agent pane. Hand-edited mcp.json
+        under SNORLAX_DATA_DIR still loads stdio and LAN servers. Add
+        custom is POST this path. Uninstall is DELETE /v1/plugins/{id}.
+        Disconnect is POST /v1/plugins/{id}/disconnect. No store / search
+        / marketplace catalog.
       operationId: listPlugins
       responses:
         "200":
@@ -750,6 +775,77 @@ paths:
                 items:
                   $ref: "#/components/schemas/Plugin"
         "401":
+          $ref: "#/components/responses/Error"
+    post:
+      summary: Add a custom MCP plugin
+      description: |
+        Body `{ name, stdio?: { command, args? }, url?: string }`. One of
+        `stdio` or `url` is required; both or neither is 422. Persists
+        into the runtime MCP catalog (`mcp.json` under SNORLAX_DATA_DIR).
+        201/200 returns the Plugin. Clients never speak MCP. No store /
+        search / install-from-catalog.
+      operationId: createPlugin
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PluginCreate"
+      responses:
+        "201":
+          description: Created plugin
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Plugin"
+        "200":
+          description: Created plugin
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Plugin"
+        "401":
+          $ref: "#/components/responses/Error"
+        "422":
+          $ref: "#/components/responses/Error"
+
+  /v1/plugins/{id}:
+    parameters:
+      - $ref: "#/components/parameters/Id"
+    delete:
+      summary: Uninstall a plugin
+      description: |
+        Drops the plugin from the runtime MCP catalog and tears down the
+        live session. 204. Unknown id is 404. Connected rows can also be
+        removed this way. Does not speak MCP from the client.
+      operationId: deletePlugin
+      responses:
+        "204":
+          description: Uninstalled
+        "401":
+          $ref: "#/components/responses/Error"
+        "404":
+          $ref: "#/components/responses/Error"
+
+  /v1/plugins/{id}/disconnect:
+    parameters:
+      - $ref: "#/components/parameters/Id"
+    post:
+      summary: Disconnect a plugin without uninstalling
+      description: |
+        Tears down the live MCP session and returns the catalog row to
+        `needsAuth`. Does not drop the catalog entry. Unknown id is 404.
+      operationId: disconnectPlugin
+      responses:
+        "200":
+          description: Plugin now needsAuth
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Plugin"
+        "401":
+          $ref: "#/components/responses/Error"
+        "404":
           $ref: "#/components/responses/Error"
 
   /v1/plugins/{id}/auth:
@@ -1438,6 +1534,34 @@ components:
           description: |
             `connected` when the runtime has a live MCP session.
             `needsAuth` otherwise (including disabled / not signed in).
+
+    PluginStdio:
+      type: object
+      required: [command]
+      properties:
+        command:
+          type: string
+          minLength: 1
+        args:
+          type: array
+          items:
+            type: string
+
+    PluginCreate:
+      type: object
+      required: [name]
+      description: |
+        One of `stdio` or `url` is required. Both or neither is 422.
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 80
+        stdio:
+          $ref: "#/components/schemas/PluginStdio"
+        url:
+          type: string
+          description: LAN MCP URL (http or https).
 
     PluginAuth:
       type: object

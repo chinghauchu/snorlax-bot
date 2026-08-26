@@ -15,7 +15,10 @@ import {
   SEED_CHANNEL_ID,
   createAgent,
   createChannel,
+  createPlugin,
   deleteAgent,
+  deletePlugin,
+  disconnectPlugin,
   listAgents,
   listMessages,
   listPlugins,
@@ -71,7 +74,7 @@ import { ComputerPane } from "./ComputerPane";
 import { WidgetCard } from "./WidgetCard";
 import { ConnectCard } from "./ConnectCard";
 import { HttpsText, MarkdownBody } from "./MarkdownBody";
-import { isConnect, pluginStatusLabel } from "./connect";
+import { isConnect, parsePluginArgs, pluginStatusLabel } from "./connect";
 import { isWidget } from "./widget";
 import { openOsBrowser } from "./openUrl";
 import type {
@@ -257,6 +260,14 @@ export function App() {
   const [profileSaving, setProfileSaving] = useState(false);
   const [routines, setRoutines] = useState<Routine[]>([]);
   const [plugins, setPlugins] = useState<Plugin[]>([]);
+  const [pluginAddOpen, setPluginAddOpen] = useState(false);
+  const [pluginAddName, setPluginAddName] = useState("");
+  const [pluginAddMode, setPluginAddMode] = useState<"stdio" | "url">("stdio");
+  const [pluginAddCommand, setPluginAddCommand] = useState("");
+  const [pluginAddArgs, setPluginAddArgs] = useState("");
+  const [pluginAddUrl, setPluginAddUrl] = useState("");
+  const [pluginAddSaving, setPluginAddSaving] = useState(false);
+  const [pendingUninstall, setPendingUninstall] = useState<Plugin | null>(null);
   const [computerOpen, setComputerOpen] = useState(true);
   const [workspaceTick, setWorkspaceTick] = useState(0);
 
@@ -284,6 +295,8 @@ export function App() {
   function closeSettings() {
     commitSession();
     setSettingsOpen(false);
+    setPluginAddOpen(false);
+    setPendingUninstall(null);
   }
   const active = useMemo(
     () => agents.find((a) => a.id === activeId) ?? null,
@@ -912,6 +925,73 @@ export function App() {
     } catch (err) {
       setComposerError(describeError(err));
       return false;
+    }
+  }
+
+  function openPluginAdd() {
+    setPluginAddName("");
+    setPluginAddMode("stdio");
+    setPluginAddCommand("");
+    setPluginAddArgs("");
+    setPluginAddUrl("");
+    setPluginAddOpen(true);
+  }
+
+  async function savePluginAdd() {
+    if (!session || pluginAddSaving) return;
+    const name = pluginAddName.trim();
+    if (!name) {
+      setComposerError("Plugin name is required.");
+      return;
+    }
+    setPluginAddSaving(true);
+    try {
+      if (pluginAddMode === "stdio") {
+        const command = pluginAddCommand.trim();
+        if (!command) {
+          setComposerError("Command is required.");
+          return;
+        }
+        await createPlugin(session, {
+          name,
+          stdio: { command, args: parsePluginArgs(pluginAddArgs) },
+        });
+      } else {
+        const url = pluginAddUrl.trim();
+        if (!url) {
+          setComposerError("URL is required.");
+          return;
+        }
+        await createPlugin(session, { name, url });
+      }
+      setPluginAddOpen(false);
+      await refreshPlugins();
+    } catch (err) {
+      setComposerError(describeError(err));
+    } finally {
+      setPluginAddSaving(false);
+    }
+  }
+
+  async function disconnectRow(pluginId: string) {
+    if (!session) return;
+    try {
+      await disconnectPlugin(session, pluginId);
+      await refreshPlugins();
+    } catch (err) {
+      setComposerError(describeError(err));
+    }
+  }
+
+  async function confirmUninstall() {
+    if (!session || !pendingUninstall) return;
+    const id = pendingUninstall.id;
+    setPendingUninstall(null);
+    try {
+      await deletePlugin(session, id);
+      await refreshPlugins();
+    } catch (err) {
+      setComposerError(describeError(err));
     }
   }
 
@@ -1853,7 +1933,17 @@ export function App() {
                 </span>
               </label>
               <section className="settings-plugins" aria-label="Plugins">
-                <p className="settings-plugins-header">Plugins</p>
+                <div className="settings-plugins-head">
+                  <p className="settings-plugins-header">Plugins</p>
+                  <button
+                    type="button"
+                    className="plugin-add"
+                    onClick={openPluginAdd}
+                    disabled={!session}
+                  >
+                    Add
+                  </button>
+                </div>
                 {plugins.length === 0 ? (
                   <p className="plugins-empty">No plugins yet.</p>
                 ) : (
@@ -1863,7 +1953,15 @@ export function App() {
                       <span className="plugin-status">
                         {pluginStatusLabel(plugin.status)}
                       </span>
-                      {plugin.status !== "connected" ? (
+                      {plugin.status === "connected" ? (
+                        <button
+                          type="button"
+                          className="plugin-disconnect"
+                          onClick={() => void disconnectRow(plugin.id)}
+                        >
+                          Disconnect
+                        </button>
+                      ) : (
                         <button
                           type="button"
                           className="plugin-connect"
@@ -1871,7 +1969,14 @@ export function App() {
                         >
                           Connect
                         </button>
-                      ) : null}
+                      )}
+                      <button
+                        type="button"
+                        className="plugin-uninstall"
+                        onClick={() => setPendingUninstall(plugin)}
+                      >
+                        Uninstall
+                      </button>
                     </div>
                   ))
                 )}
@@ -1928,6 +2033,146 @@ export function App() {
               >
                 Delete
               </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {pendingUninstall ? (
+        <div
+          className="modal-backdrop plugin-sheet"
+          onClick={() => setPendingUninstall(null)}
+        >
+          <div
+            className="modal confirm"
+            role="dialog"
+            aria-label="Confirm uninstall"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <p>
+              Uninstall {pendingUninstall.name}? This removes it from the
+              runtime catalog.
+            </p>
+            <div className="confirm-actions">
+              <button type="button" onClick={() => setPendingUninstall(null)}>
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="danger-fill"
+                onClick={() => void confirmUninstall()}
+              >
+                Uninstall
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {pluginAddOpen ? (
+        <div
+          className="modal-backdrop plugin-sheet"
+          onClick={() => setPluginAddOpen(false)}
+        >
+          <div
+            className="modal plugin-add-sheet"
+            role="dialog"
+            aria-label="Add plugin"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <header>
+              <h2>Add plugin</h2>
+              <button
+                type="button"
+                className="icon-btn"
+                aria-label="Close"
+                onClick={() => setPluginAddOpen(false)}
+              >
+                ×
+              </button>
+            </header>
+            <div className="profile-form">
+              <label>
+                Name
+                <input
+                  value={pluginAddName}
+                  autoFocus
+                  onChange={(e) => setPluginAddName(e.target.value)}
+                />
+              </label>
+              <fieldset>
+                <legend>Transport</legend>
+                <div
+                  className="segmented"
+                  role="radiogroup"
+                  aria-label="Plugin transport"
+                >
+                  <button
+                    type="button"
+                    role="radio"
+                    aria-checked={pluginAddMode === "stdio"}
+                    className={pluginAddMode === "stdio" ? "on" : ""}
+                    onClick={() => setPluginAddMode("stdio")}
+                  >
+                    Command
+                  </button>
+                  <button
+                    type="button"
+                    role="radio"
+                    aria-checked={pluginAddMode === "url"}
+                    className={pluginAddMode === "url" ? "on" : ""}
+                    onClick={() => setPluginAddMode("url")}
+                  >
+                    URL
+                  </button>
+                </div>
+              </fieldset>
+              {pluginAddMode === "stdio" ? (
+                <>
+                  <label>
+                    Command
+                    <input
+                      value={pluginAddCommand}
+                      spellCheck={false}
+                      autoComplete="off"
+                      onChange={(e) => setPluginAddCommand(e.target.value)}
+                    />
+                  </label>
+                  <label>
+                    Args
+                    <input
+                      value={pluginAddArgs}
+                      spellCheck={false}
+                      autoComplete="off"
+                      onChange={(e) => setPluginAddArgs(e.target.value)}
+                    />
+                  </label>
+                </>
+              ) : (
+                <label>
+                  URL
+                  <input
+                    value={pluginAddUrl}
+                    spellCheck={false}
+                    autoComplete="off"
+                    placeholder="http://127.0.0.1:8765/mcp"
+                    onChange={(e) => setPluginAddUrl(e.target.value)}
+                  />
+                </label>
+              )}
+              <div className="confirm-actions">
+                <button type="button" onClick={() => setPluginAddOpen(false)}>
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  className="primary"
+                  disabled={pluginAddSaving || !session}
+                  onClick={() => void savePluginAdd()}
+                >
+                  Save
+                </button>
+              </div>
             </div>
           </div>
         </div>
