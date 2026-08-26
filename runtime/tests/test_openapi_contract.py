@@ -67,3 +67,15 @@ def test_protocol_openapi_is_locked_v0_contract() -> None:
     assert "binary / too large" in text
     assert "computer pane" in text
     assert "320px computer pane" in text
+    assert "mcp.json" in text
+    assert "server__tool" in text
+    assert "never call MCP" in text
+    assert "SNORLAX_DATA_DIR" in text
+    assert "No MCP, no browser-use GUI" not in text
+
+
+def test_openapi_copies_match_protocol() -> None:
+    root = Path(__file__).resolve().parents[2]
+    proto = (root / "protocol" / "openapi.yaml").read_bytes()
+    assert (root / "runtime" / "openapi.yaml").read_bytes() == proto
+    assert (root / "desktop" / "openapi.yaml").read_bytes() == proto

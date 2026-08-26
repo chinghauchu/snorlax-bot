@@ -6,12 +6,12 @@ routines, MCP connectors, question widgets, attachments, desktop + iOS.
 
 ## v0 — this repository’s current slice
 
-Named agents plus runtime-owned file/shell/web tools. Meant to *run*,
-including without a GPU.
+Named agents plus runtime-owned file/shell/web tools and a runtime MCP client.
+Meant to *run*, including without a GPU.
 
 | In | Out |
 | --- | --- |
-| Seeded agent `snorlax-bot` (Snorlax 1:1, PATCH identity; DELETE 204) and channel `snorlax-bot-group` (DELETE 204, no auto-reseed, never recreate) | MCP connectors |
+| Seeded agent `snorlax-bot` (Snorlax 1:1, PATCH identity; DELETE 204) and channel `snorlax-bot-group` (DELETE 204, no auto-reseed, never recreate) | MCP marketplace UI / Settings picker |
 | Create / list / patch / delete agents | Sandbox computer GUI (browser, screenshot pane) |
 | Transcript persistence (SQLite) | Skills, “teach a task”, routines |
 | `POST .../messages` as SSE (`message.delta` / `message.done` / `tool.*` / `error`) | Question widgets |
@@ -21,19 +21,21 @@ including without a GPU.
 | Swift/SwiftUI iOS companion (chat + muted tool traces; no computer pane this slice) | Skills, “teach a task”, routines |
 | Seeded group channel + extra user-created channels + agent DMs + @mentions + v0.2 handoff threads + v0.3 identity pane + v0.4 report-back | Extra channel types / widgets |
 | Runtime-owned tools: list_dir, read_file, write_file, delete_file, shell (no extra network), web_search (configured provider), web_fetch; auto-run; sandbox under `~/.snorlax-bot`; GET workspace list/read for the desktop pane | Host Docker/SSH secrets in the tool env; Mac folder picker; approval widgets |
+| Runtime MCP client: stdio subprocess + LAN HTTP/SSE from `mcp.json` under `SNORLAX_DATA_DIR`; namespaced `server__tool`; built-ins win | Public-cloud MCP requirement; clients speaking MCP |
 | OpenAPI for `/v1` | |
 
 Default model on Spark: **70B-class FP8**, swapped via config.
 
-Locked v0.1 / v0.2 / v0.3 / v0.4 / v0.5 / v0.6 (chat layout + agent messaging + collaboration handoff + identity pane + report-back + extra channels + basic tools + computer pane): [docs/specs/v0.1-chat-and-agents.md](docs/specs/v0.1-chat-and-agents.md).
+Locked v0.1 / v0.2 / v0.3 / v0.4 / v0.5 / v0.6 / v0.7 (chat layout + agent messaging + collaboration handoff + identity pane + report-back + extra channels + basic tools + computer pane + runtime MCP client): [docs/specs/v0.1-chat-and-agents.md](docs/specs/v0.1-chat-and-agents.md).
 
 ## v1 — computer and tools
 
 - Local sandbox computer shared by all bots on the Spark (browser, filesystem,
   terminal), isolated to the machine owner, not to a single bot.
 - Tool calling through the runtime (never from the desktop straight to vLLM).
-- MCP client: stdio and LAN-reachable servers. No requirement that MCP be on
-  the public internet.
+- MCP client first slice (v0.7): stdio and LAN-reachable servers from
+  `mcp.json`. No requirement that MCP be on the public internet. Marketplace
+  UI and Settings picker stay later.
 - Attachments that tools can read; still no default VL unless a VL checkpoint
   is explicitly configured.
 

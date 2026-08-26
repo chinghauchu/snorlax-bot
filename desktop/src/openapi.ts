@@ -165,6 +165,7 @@ export interface paths {
          *     `event:error` with no saved assistant message. Live `tool.start` /
          *     `tool.done` traces stay additive. Clients that do not understand
          *     `tool.*` skip those events and may still render `kind=tool` rows from GET.
+         *     MCP tools reuse the same traces (`Used server__tool` / `Ran …`).
          */
         post: operations["postMessage"];
         delete?: never;

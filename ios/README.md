@@ -3,7 +3,8 @@
 Snorlax-Bot’s phone client. SwiftUI, iOS 18+, same locked `/v1` camelCase
 contract as desktop. Named agents, streaming transcript, muted tool traces,
 image previews that are **never** sent to the model. No computer pane / file
-browser this slice (v0.6 desktop-only).
+browser this slice (v0.6 desktop-only). MCP is runtime-owned; this client
+never speaks MCP. Tool traces (`kind=tool`) already paint as muted status.
 
 The Spark stays up when the phone sleeps. Reconnect is
 `GET /v1/agents/{id}/messages`.

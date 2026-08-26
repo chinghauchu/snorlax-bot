@@ -20,7 +20,7 @@ Concrete follow-ups after v0. Filed on GitHub against
 
 - [B1 — vLLM on GB10 70B FP8 recipe](https://github.com/chinghauchu/snorlax-bot/issues/10)
 - [B2 — Runtime-owned tool loop](https://github.com/chinghauchu/snorlax-bot/issues/14) — v0.5 built-in files/shell/web in a `~/.snorlax-bot` sandbox (not a Mac folder picker); shell has no extra network; tools auto-run; search provider is env/config; MCP stays later; computer pane first slice is v0.6
-- [B3 — MCP client: stdio and LAN, not public internet](https://github.com/chinghauchu/snorlax-bot/issues/15)
+- [B3 — MCP client: stdio and LAN, not public internet](https://github.com/chinghauchu/snorlax-bot/issues/15) — v0.7: FastAPI is the MCP client; `mcp.json` under `SNORLAX_DATA_DIR`; stdio + LAN HTTP/SSE; namespaced `server__tool`; built-ins win; desktop/iOS never speak MCP
 - [B4 — Local sandbox computer on the Spark](https://github.com/chinghauchu/snorlax-bot/issues/7) — v0.6 first slice: GET list/read of the existing tool sandbox (same `workspace_for()` roots). Full B4 (browser, per-agent VNC, 128GB Spark VM) stays later
 - [B5 — Scheduler for routines while the laptop is closed](https://github.com/chinghauchu/snorlax-bot/issues/17)
 - [B6 — Agent-to-agent messages and group threads](https://github.com/chinghauchu/snorlax-bot/issues/18) — v0.1 isolation + v0.2 handoff threads / jump chip + v0.4 report-back and extra channels

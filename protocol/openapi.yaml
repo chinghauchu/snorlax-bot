@@ -1,12 +1,12 @@
 openapi: 3.1.0
 info:
   title: Snorlax-Bot
-  version: 0.6.0
+  version: 0.7.0
   description: |
-    Locked v0.6 LAN contract. Clients use SNORLAX_URL + SNORLAX_TOKEN.
-    They never call vLLM, never call tools, and never read the Spark
-    filesystem. Additive workspace GETs are runtime reads of the existing
-    sandbox (same roots as the tool loop), not a second tool loop.
+    Locked v0.7 LAN contract. Clients use SNORLAX_URL + SNORLAX_TOKEN.
+    They never call vLLM, never call tools, never call MCP, and never read
+    the Spark filesystem. Additive workspace GETs are runtime reads of the
+    existing sandbox (same roots as the tool loop), not a second tool loop.
 
     Seeded agent: id `snorlax-bot`, name Snorlax, title Assistant, kind
     `agent`. GET/POST /v1/agents/snorlax-bot/messages is the user–Snorlax
@@ -49,8 +49,10 @@ info:
     peer's tool lines. Desktop may show a 320px computer pane (file tree +
     text preview) over those same sandbox roots. iOS sees chat/status lines
     only (no file browser this slice). No folder or path field;
-    sharedProject is a boolean toggle. No MCP, no browser-use GUI, no
-    screenshot stream, no terminal GUI, no widgets.
+    sharedProject is a boolean toggle. MCP is runtime-owned (stdio + LAN
+    from mcp.json under SNORLAX_DATA_DIR); clients never speak MCP. No
+    marketplace UI, no Settings picker, no browser-use GUI, no screenshot
+    stream, no terminal GUI, no widgets.
 
     Images persist and are returned; they are never sent to the model. No mDNS.
 
@@ -113,6 +115,18 @@ info:
     host-folder picker fields. No new SSE required; unknown events ignored.
     Seed channel DELETE stays 204. Seed identity PATCH stays 409 except
     sharedProject.
+
+    v0.7: runtime MCP client. FastAPI loads mcp.json from SNORLAX_DATA_DIR
+    (default ~/.snorlax-bot). Empty or missing file means no MCP; built-ins
+    still work. stdio subprocess servers and LAN HTTP/SSE (streamable HTTP
+    or legacy SSE). Tools join the existing OpenAI loop (auto-run, cap 8,
+    kind=tool persist, tool.start/tool.done). Namespaced as server__tool;
+    built-in names win on collision. MCP HTTP is a runtime path like
+    web_fetch, not the agent shell. Shell still has no extra network. A
+    failed MCP server start does not prevent boot. A failed MCP tool still
+    leaves a normal assistant follow-up. LAN URLs may be loopback, RFC1918,
+    or .local; 169.254.169.254 is rejected. No new client routes required.
+    Desktop/iOS never speak MCP.
   license:
     name: Apache-2.0
     identifier: Apache-2.0
@@ -360,6 +374,7 @@ paths:
         `event:error` with no saved assistant message. Live `tool.start` /
         `tool.done` traces stay additive. Clients that do not understand
         `tool.*` skip those events and may still render `kind=tool` rows from GET.
+        MCP tools reuse the same traces (`Used server__tool` / `Ran …`).
       operationId: postMessage
       requestBody:
         required: true
