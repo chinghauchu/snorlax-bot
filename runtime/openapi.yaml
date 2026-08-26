@@ -1,9 +1,9 @@
 openapi: 3.1.0
 info:
   title: Snorlax-Bot
-  version: 0.11.0
+  version: 0.12.0
   description: |
-    Locked v0.11 LAN contract. Clients use SNORLAX_URL + SNORLAX_TOKEN.
+    Locked v0.12 LAN contract. Clients use SNORLAX_URL + SNORLAX_TOKEN.
     They never call vLLM, never call tools, never call MCP, and never read
     the Spark filesystem. Additive workspace GETs are runtime reads of the
     existing sandbox (same roots as the tool loop), not a second tool loop.
@@ -56,8 +56,11 @@ info:
     marketplace UI, no Settings picker, no browser-use GUI, no screenshot
     stream, no terminal GUI. Question widgets are v0.8. Skills and cron
     routines are v0.9. MCP connect chrome is v0.10 (GET /v1/plugins +
-    POST /v1/plugins/{id}/auth + kind=connect). No Add-custom UI; hand-edited
-    mcp.json still works. Plugins list is Settings only, not the agent pane.
+    POST /v1/plugins/{id}/auth + kind=connect). MCP Add custom is v0.12
+    (POST /v1/plugins + DELETE /v1/plugins/{id}; DELETE is uninstall plus
+    disconnect). No separate disconnect endpoint.
+    Hand-edited mcp.json still works. Plugins list is Settings only, not
+    the agent pane. No marketplace catalog / public plugin store.
     Assistant markdown is v0.11 (clients render LEFT kind=message; content
     stays a plain string; runtime does not rewrite).
 
@@ -237,6 +240,26 @@ info:
     chrome, seed DELETE 204, Mac oMLX, no Mac folder picker, and
     workspaceTree.ts (never reintroduce computerPane.ts) stand. OpenAPI
     **0.11.0**.
+
+    v0.12: MCP Add custom. Runtime still owns MCP (v0.7 mcp.json stdio +
+    LAN). Clients never speak MCP or the model. Settings Plugins is
+    Settings-only and runtime-global. POST /v1/plugins body
+    `{ name, transport: "stdio" | "url", command?, args?: string[], url? }`
+    → 201 `{ id, name, status: connected|needsAuth }`. stdio: command
+    required (args optional); 422 if name or command missing. url: url
+    required; allow https and http (LAN); 422 if missing/invalid. Persist
+    into mcp.json under SNORLAX_DATA_DIR. DELETE /v1/plugins/{id}
+    uninstalls (drops the row and credentials); 204; unknown 404. Do not
+    auto-open a connect card. GET /v1/plugins and
+    POST /v1/plugins/{id}/auth stay as v0.10. kind=connect isolation
+    unchanged. DELETE /v1/plugins/{id} is uninstall plus disconnect
+    (drops the row and credentials). No separate disconnect endpoint.
+    No store, no search
+    catalog. Keep v0.8 widgets, v0.9 routines, seed DELETE 204, content
+    string. Isolation, report-back, markdown, Mac oMLX, no Mac folder
+    picker, and workspaceTree.ts (never reintroduce computerPane.ts)
+    stand. Out of scope: full Box/VNC, teach-a-task, event listeners,
+    marketplace catalog. OpenAPI **0.12.0**.
   license:
     name: Apache-2.0
     identifier: Apache-2.0
@@ -736,9 +759,11 @@ paths:
         JSON array of Plugin (not wrapped): `{ id, name, status }` where
         status is `connected` or `needsAuth`. Catalog may be empty.
         Runtime-global (not per-agent). Clients never speak MCP; this is
-        Settings chrome only, not the agent pane. No store / search /
-        uninstall this slice. Hand-edited mcp.json under SNORLAX_DATA_DIR
-        still loads stdio and LAN servers.
+        Settings chrome only, not the agent pane. Hand-edited mcp.json
+        under SNORLAX_DATA_DIR still loads stdio and LAN servers. Add
+        custom is POST this path. DELETE /v1/plugins/{id} uninstalls
+        (disconnect + drop from catalog). No separate disconnect
+        endpoint. No store / search / marketplace catalog.
       operationId: listPlugins
       responses:
         "200":
@@ -750,6 +775,53 @@ paths:
                 items:
                   $ref: "#/components/schemas/Plugin"
         "401":
+          $ref: "#/components/responses/Error"
+    post:
+      summary: Add a custom MCP plugin
+      description: |
+        Body `{ name, transport: "stdio" | "url", command?, args?: string[],
+        url? }`. Returns 201 `{ id, name, status: connected|needsAuth }`.
+        stdio: command required (args optional). 422 if name or command
+        missing. url: url required; allow https and http (LAN). 422 if
+        missing/invalid. Persists into mcp.json under SNORLAX_DATA_DIR.
+        Does not auto-open a kind=connect card. Clients never speak MCP.
+        No store / search catalog.
+      operationId: createPlugin
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PluginCreate"
+      responses:
+        "201":
+          description: Created plugin
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Plugin"
+        "401":
+          $ref: "#/components/responses/Error"
+        "422":
+          $ref: "#/components/responses/Error"
+
+  /v1/plugins/{id}:
+    parameters:
+      - $ref: "#/components/parameters/Id"
+    delete:
+      summary: Uninstall a plugin
+      description: |
+        Disconnects the live session and drops the plugin row and
+        credentials from the runtime MCP catalog. 204. Unknown id is 404.
+        Does not auto-open a connect card. No separate disconnect
+        endpoint. Clients never speak MCP.
+      operationId: deletePlugin
+      responses:
+        "204":
+          description: Uninstalled
+        "401":
+          $ref: "#/components/responses/Error"
+        "404":
           $ref: "#/components/responses/Error"
 
   /v1/plugins/{id}/auth:
@@ -1438,6 +1510,31 @@ components:
           description: |
             `connected` when the runtime has a live MCP session.
             `needsAuth` otherwise (including disabled / not signed in).
+
+    PluginCreate:
+      type: object
+      required: [name, transport]
+      description: |
+        `transport` is `stdio` or `url`. stdio requires `command` (args
+        optional). url requires `url` (http or https). Missing fields 422.
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 80
+        transport:
+          type: string
+          enum: [stdio, url]
+        command:
+          type: string
+          minLength: 1
+        args:
+          type: array
+          items:
+            type: string
+        url:
+          type: string
+          description: LAN MCP URL (http or https).
 
     PluginAuth:
       type: object

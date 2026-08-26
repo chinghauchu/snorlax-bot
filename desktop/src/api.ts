@@ -6,6 +6,7 @@ import type {
   MessageDelta,
   Plugin,
   PluginAuth,
+  PluginCreate,
   Routine,
   RoutinePatch,
   RuntimeHealth,
@@ -367,6 +368,29 @@ export async function listPlugins(session: Session): Promise<Plugin[]> {
     headers: headers(session),
   });
   return asList<Plugin>(await json<unknown>(response), "plugins");
+}
+
+export async function createPlugin(
+  session: Session,
+  body: PluginCreate,
+): Promise<Plugin> {
+  const response = await fetch(`${session.baseUrl}/v1/plugins`, {
+    method: "POST",
+    headers: headers(session, { "Content-Type": "application/json" }),
+    body: JSON.stringify(body),
+  });
+  return json<Plugin>(response);
+}
+
+export async function deletePlugin(
+  session: Session,
+  pluginId: string,
+): Promise<void> {
+  const response = await fetch(
+    `${session.baseUrl}/v1/plugins/${encodeURIComponent(pluginId)}`,
+    { method: "DELETE", headers: headers(session) },
+  );
+  await json<void>(response);
 }
 
 export async function startPluginAuth(

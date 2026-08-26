@@ -357,14 +357,51 @@ export interface paths {
          * @description JSON array of Plugin (not wrapped): `{ id, name, status }` where
          *     status is `connected` or `needsAuth`. Catalog may be empty.
          *     Runtime-global (not per-agent). Clients never speak MCP; this is
-         *     Settings chrome only, not the agent pane. No store / search /
-         *     uninstall this slice. Hand-edited mcp.json under SNORLAX_DATA_DIR
-         *     still loads stdio and LAN servers.
+         *     Settings chrome only, not the agent pane. Hand-edited mcp.json
+         *     under SNORLAX_DATA_DIR still loads stdio and LAN servers. Add
+         *     custom is POST this path. DELETE /v1/plugins/{id} uninstalls
+         *     (disconnect + drop from catalog). No separate disconnect
+         *     endpoint. No store / search / marketplace catalog.
          */
         get: operations["listPlugins"];
         put?: never;
-        post?: never;
+        /**
+         * Add a custom MCP plugin
+         * @description Body `{ name, transport: "stdio" | "url", command?, args?: string[],
+         *     url? }`. Returns 201 `{ id, name, status: connected|needsAuth }`.
+         *     stdio: command required (args optional). 422 if name or command
+         *     missing. url: url required; allow https and http (LAN). 422 if
+         *     missing/invalid. Persists into mcp.json under SNORLAX_DATA_DIR.
+         *     Does not auto-open a kind=connect card. Clients never speak MCP.
+         *     No store / search catalog.
+         */
+        post: operations["createPlugin"];
         delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/plugins/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["Id"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Uninstall a plugin
+         * @description Disconnects the live session and drops the plugin row and
+         *     credentials from the runtime MCP catalog. 204. Unknown id is 404.
+         *     Does not auto-open a connect card. No separate disconnect
+         *     endpoint. Clients never speak MCP.
+         */
+        delete: operations["deletePlugin"];
         options?: never;
         head?: never;
         patch?: never;
@@ -827,6 +864,19 @@ export interface components {
              */
             status: "connected" | "needsAuth";
         };
+        /**
+         * @description `transport` is `stdio` or `url`. stdio requires `command` (args
+         *     optional). url requires `url` (http or https). Missing fields 422.
+         */
+        PluginCreate: {
+            name: string;
+            /** @enum {string} */
+            transport: "stdio" | "url";
+            command?: string;
+            args?: string[];
+            /** @description LAN MCP URL (http or https). */
+            url?: string;
+        };
         PluginAuth: {
             /**
              * @description URL for the OS browser. OAuth callback hits the runtime.
@@ -1268,6 +1318,54 @@ export interface operations {
                 };
             };
             401: components["responses"]["Error"];
+        };
+    };
+    createPlugin: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PluginCreate"];
+            };
+        };
+        responses: {
+            /** @description Created plugin */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Plugin"];
+                };
+            };
+            401: components["responses"]["Error"];
+            422: components["responses"]["Error"];
+        };
+    };
+    deletePlugin: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["Id"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Uninstalled */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Error"];
+            404: components["responses"]["Error"];
         };
     };
     startPluginAuth: {

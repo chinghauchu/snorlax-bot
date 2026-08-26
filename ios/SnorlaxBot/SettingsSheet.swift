@@ -5,6 +5,8 @@ struct SettingsSheet: View {
     @Environment(AppModel.self) private var model
     @Environment(\.dismiss) private var dismiss
     @State private var showToken = false
+    @State private var showAdd = false
+    @State private var pendingRemove: Plugin?
 
     var body: some View {
         @Bindable var model = model
@@ -93,20 +95,33 @@ struct SettingsSheet: View {
                                 Text(plugin.status == .connected ? "Connected" : "Needs sign-in")
                                     .font(.system(size: 12))
                                     .foregroundStyle(.secondary)
-                                if plugin.status != .connected {
+                                if plugin.status == .needsAuth {
                                     Button("Connect") {
                                         Task { _ = await model.connectPlugin(id: plugin.id) }
                                     }
                                     .font(.system(size: 14))
                                 }
+                                Button("Remove") {
+                                    pendingRemove = plugin
+                                }
+                                .font(.system(size: 12))
+                                .foregroundStyle(.secondary)
                             }
                             .frame(minHeight: 44)
                         }
                     }
                 } header: {
-                    Text("Plugins")
-                        .font(.system(size: 12))
-                        .foregroundStyle(.secondary)
+                    HStack {
+                        Text("Plugins")
+                            .font(.system(size: 12))
+                            .foregroundStyle(.secondary)
+                            .textCase(nil)
+                        Spacer()
+                        Button("Add") { showAdd = true }
+                            .font(.system(size: 12))
+                            .textCase(nil)
+                            .disabled(!model.isConfigured)
+                    }
                 }
             }
             .font(.system(size: 14))
@@ -117,6 +132,25 @@ struct SettingsSheet: View {
                     Button("Done") { dismiss() }
                 }
             }
+            .sheet(isPresented: $showAdd) {
+                AddPluginSheet()
+            }
+            .confirmationDialog(
+                pendingRemove.map { "Remove \($0.name)? This disconnects it." } ?? "",
+                isPresented: Binding(
+                    get: { pendingRemove != nil },
+                    set: { if !$0 { pendingRemove = nil } }
+                ),
+                titleVisibility: .visible
+            ) {
+                Button("Remove", role: .destructive) {
+                    if let plugin = pendingRemove {
+                        Task { await model.removePlugin(id: plugin.id) }
+                    }
+                    pendingRemove = nil
+                }
+                Button("Cancel", role: .cancel) { pendingRemove = nil }
+            }
         }
         .presentationDetents([.medium, .large])
         .task {
@@ -125,5 +159,92 @@ struct SettingsSheet: View {
         .onDisappear {
             Task { await model.bootstrap() }
         }
+    }
+}
+
+private struct AddPluginSheet: View {
+    @Environment(AppModel.self) private var model
+    @Environment(\.dismiss) private var dismiss
+    @State private var name = ""
+    @State private var mode = Transport.stdio
+    @State private var command = ""
+    @State private var args = ""
+    @State private var url = ""
+    @State private var saving = false
+
+    private enum Transport: String, CaseIterable, Identifiable {
+        case stdio
+        case url = "URL"
+        var id: String { rawValue }
+    }
+
+    private var canAdd: Bool {
+        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return false }
+        if mode == .stdio {
+            return !command.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        }
+        return !url.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                TextField("Name", text: $name)
+                    .font(.system(size: 14))
+                Picker("Transport", selection: $mode) {
+                    ForEach(Transport.allCases) { item in
+                        Text(item.rawValue).tag(item)
+                    }
+                }
+                .pickerStyle(.segmented)
+                if mode == .stdio {
+                    TextField("Command", text: $command, prompt: Text("npx"))
+                        .font(.system(size: 14))
+                        .textInputAutocapitalization(.never)
+                        .autocorrectionDisabled()
+                    TextField("Arguments", text: $args, prompt: Text("-y package"))
+                        .font(.system(size: 14))
+                        .textInputAutocapitalization(.never)
+                        .autocorrectionDisabled()
+                } else {
+                    TextField("Server URL", text: $url, prompt: Text("https://"))
+                        .font(.system(size: 14))
+                        .textInputAutocapitalization(.never)
+                        .autocorrectionDisabled()
+                        .keyboardType(.URL)
+                }
+                Button("Add") {
+                    Task { await save() }
+                }
+                .frame(maxWidth: .infinity, minHeight: 44)
+                .disabled(saving || !model.isConfigured || !canAdd)
+            }
+            .navigationTitle("Add plugin")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button {
+                        dismiss()
+                    } label: {
+                        Image(systemName: "xmark")
+                    }
+                    .accessibilityLabel("Close")
+                }
+            }
+        }
+    }
+
+    private func save() async {
+        guard canAdd else { return }
+        saving = true
+        defer { saving = false }
+        let ok: Bool
+        if mode == .stdio {
+            ok = await model.addPlugin(name: name, command: command, args: args, url: nil)
+        } else {
+            ok = await model.addPlugin(name: name, command: nil, args: "", url: url)
+        }
+        if ok { dismiss() }
     }
 }

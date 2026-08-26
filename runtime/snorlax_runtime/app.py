@@ -32,6 +32,7 @@ from snorlax_runtime.schemas import (
     MessageCreate,
     Plugin,
     PluginAuth,
+    PluginCreate,
     Routine,
     RoutineCreate,
     RoutinePatch,
@@ -640,6 +641,37 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         if manager is None:
             return []
         return [Plugin.model_validate(row) for row in manager.list_public()]
+
+    @app.post(
+        "/v1/plugins",
+        response_model=Plugin,
+        status_code=status.HTTP_201_CREATED,
+    )
+    async def create_plugin(
+        request: Request,
+        payload: PluginCreate,
+        _: str = Depends(require_bearer),
+    ) -> Plugin:
+        manager = getattr(request.app.state, "mcp", None)
+        if manager is None:
+            raise _error(500, "MCP is not running")
+        try:
+            row = await manager.add_server(payload.model_dump())
+        except McpConfigError as exc:
+            raise _error(exc.status, exc.message) from exc
+        return Plugin.model_validate(row)
+
+    @app.delete("/v1/plugins/{id}", status_code=status.HTTP_204_NO_CONTENT)
+    async def delete_plugin(
+        id: str, request: Request, _: str = Depends(require_bearer)
+    ) -> None:
+        manager = getattr(request.app.state, "mcp", None)
+        if manager is None:
+            raise _error(500, "MCP is not running")
+        try:
+            await manager.remove_server(id)
+        except McpConfigError as exc:
+            raise _error(exc.status, exc.message) from exc
 
     @app.post("/v1/plugins/{id}/auth", response_model=PluginAuth)
     async def start_plugin_auth(

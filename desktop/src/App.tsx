@@ -15,7 +15,9 @@ import {
   SEED_CHANNEL_ID,
   createAgent,
   createChannel,
+  createPlugin,
   deleteAgent,
+  deletePlugin,
   listAgents,
   listMessages,
   listPlugins,
@@ -71,7 +73,7 @@ import { ComputerPane } from "./ComputerPane";
 import { WidgetCard } from "./WidgetCard";
 import { ConnectCard } from "./ConnectCard";
 import { HttpsText, MarkdownBody } from "./MarkdownBody";
-import { isConnect, pluginStatusLabel } from "./connect";
+import { isConnect, parsePluginArgs, pluginStatusLabel } from "./connect";
 import { isWidget } from "./widget";
 import { openOsBrowser } from "./openUrl";
 import type {
@@ -257,6 +259,14 @@ export function App() {
   const [profileSaving, setProfileSaving] = useState(false);
   const [routines, setRoutines] = useState<Routine[]>([]);
   const [plugins, setPlugins] = useState<Plugin[]>([]);
+  const [pluginAddOpen, setPluginAddOpen] = useState(false);
+  const [pluginAddName, setPluginAddName] = useState("");
+  const [pluginAddMode, setPluginAddMode] = useState<"stdio" | "url">("stdio");
+  const [pluginAddCommand, setPluginAddCommand] = useState("");
+  const [pluginAddArgs, setPluginAddArgs] = useState("");
+  const [pluginAddUrl, setPluginAddUrl] = useState("");
+  const [pluginAddSaving, setPluginAddSaving] = useState(false);
+  const [pendingRemove, setPendingRemove] = useState<Plugin | null>(null);
   const [computerOpen, setComputerOpen] = useState(true);
   const [workspaceTick, setWorkspaceTick] = useState(0);
 
@@ -266,6 +276,11 @@ export function App() {
   const avatarFileRef = useRef<HTMLInputElement>(null);
 
   const credsReady = session !== null;
+  const pluginAddReady =
+    pluginAddName.trim() !== "" &&
+    (pluginAddMode === "stdio"
+      ? pluginAddCommand.trim() !== ""
+      : pluginAddUrl.trim() !== "");
 
   function commitSession(url = urlInput, token = tokenInput) {
     const baseUrl = normalizeRuntimeUrl(url);
@@ -284,6 +299,8 @@ export function App() {
   function closeSettings() {
     commitSession();
     setSettingsOpen(false);
+    setPluginAddOpen(false);
+    setPendingRemove(null);
   }
   const active = useMemo(
     () => agents.find((a) => a.id === activeId) ?? null,
@@ -912,6 +929,54 @@ export function App() {
     } catch (err) {
       setComposerError(describeError(err));
       return false;
+    }
+  }
+
+  function openPluginAdd() {
+    setPluginAddName("");
+    setPluginAddMode("stdio");
+    setPluginAddCommand("");
+    setPluginAddArgs("");
+    setPluginAddUrl("");
+    setPluginAddOpen(true);
+  }
+
+  async function savePluginAdd() {
+    if (!session || pluginAddSaving || !pluginAddReady) return;
+    setPluginAddSaving(true);
+    try {
+      if (pluginAddMode === "stdio") {
+        await createPlugin(session, {
+          name: pluginAddName.trim(),
+          transport: "stdio",
+          command: pluginAddCommand.trim(),
+          args: parsePluginArgs(pluginAddArgs),
+        });
+      } else {
+        await createPlugin(session, {
+          name: pluginAddName.trim(),
+          transport: "url",
+          url: pluginAddUrl.trim(),
+        });
+      }
+      setPluginAddOpen(false);
+      await refreshPlugins();
+    } catch (err) {
+      setComposerError(describeError(err));
+    } finally {
+      setPluginAddSaving(false);
+    }
+  }
+
+  async function confirmRemove() {
+    if (!session || !pendingRemove) return;
+    const id = pendingRemove.id;
+    setPendingRemove(null);
+    try {
+      await deletePlugin(session, id);
+      await refreshPlugins();
+    } catch (err) {
+      setComposerError(describeError(err));
     }
   }
 
@@ -1853,7 +1918,17 @@ export function App() {
                 </span>
               </label>
               <section className="settings-plugins" aria-label="Plugins">
-                <p className="settings-plugins-header">Plugins</p>
+                <div className="settings-plugins-head">
+                  <p className="settings-plugins-header">Plugins</p>
+                  <button
+                    type="button"
+                    className="plugin-add"
+                    onClick={openPluginAdd}
+                    disabled={!session}
+                  >
+                    Add
+                  </button>
+                </div>
                 {plugins.length === 0 ? (
                   <p className="plugins-empty">No plugins yet.</p>
                 ) : (
@@ -1863,7 +1938,7 @@ export function App() {
                       <span className="plugin-status">
                         {pluginStatusLabel(plugin.status)}
                       </span>
-                      {plugin.status !== "connected" ? (
+                      {plugin.status === "needsAuth" ? (
                         <button
                           type="button"
                           className="plugin-connect"
@@ -1872,6 +1947,13 @@ export function App() {
                           Connect
                         </button>
                       ) : null}
+                      <button
+                        type="button"
+                        className="plugin-remove"
+                        onClick={() => setPendingRemove(plugin)}
+                      >
+                        Remove
+                      </button>
                     </div>
                   ))
                 )}
@@ -1928,6 +2010,143 @@ export function App() {
               >
                 Delete
               </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {pendingRemove ? (
+        <div
+          className="modal-backdrop plugin-sheet"
+          onClick={() => setPendingRemove(null)}
+        >
+          <div
+            className="modal confirm"
+            role="dialog"
+            aria-label="Confirm remove"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <p>Remove {pendingRemove.name}? This disconnects it.</p>
+            <div className="confirm-actions">
+              <button type="button" onClick={() => setPendingRemove(null)}>
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="danger-fill"
+                onClick={() => void confirmRemove()}
+              >
+                Remove
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {pluginAddOpen ? (
+        <div
+          className="modal-backdrop plugin-sheet"
+          onClick={() => setPluginAddOpen(false)}
+        >
+          <div
+            className="modal plugin-add-sheet"
+            role="dialog"
+            aria-label="Add plugin"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <header>
+              <h2>Add plugin</h2>
+              <button
+                type="button"
+                className="icon-btn"
+                aria-label="Close"
+                onClick={() => setPluginAddOpen(false)}
+              >
+                ×
+              </button>
+            </header>
+            <div className="profile-form">
+              <label>
+                Name
+                <input
+                  className="plugin-add-name"
+                  value={pluginAddName}
+                  autoFocus
+                  onChange={(e) => setPluginAddName(e.target.value)}
+                />
+              </label>
+              <fieldset>
+                <legend>Transport</legend>
+                <div
+                  className="segmented"
+                  role="radiogroup"
+                  aria-label="Plugin transport"
+                >
+                  <button
+                    type="button"
+                    role="radio"
+                    aria-checked={pluginAddMode === "stdio"}
+                    className={pluginAddMode === "stdio" ? "on" : ""}
+                    onClick={() => setPluginAddMode("stdio")}
+                  >
+                    stdio
+                  </button>
+                  <button
+                    type="button"
+                    role="radio"
+                    aria-checked={pluginAddMode === "url"}
+                    className={pluginAddMode === "url" ? "on" : ""}
+                    onClick={() => setPluginAddMode("url")}
+                  >
+                    URL
+                  </button>
+                </div>
+              </fieldset>
+              {pluginAddMode === "stdio" ? (
+                <>
+                  <label>
+                    Command
+                    <input
+                      value={pluginAddCommand}
+                      spellCheck={false}
+                      autoComplete="off"
+                      placeholder="npx"
+                      onChange={(e) => setPluginAddCommand(e.target.value)}
+                    />
+                  </label>
+                  <label>
+                    Arguments
+                    <input
+                      value={pluginAddArgs}
+                      spellCheck={false}
+                      autoComplete="off"
+                      placeholder="-y package"
+                      onChange={(e) => setPluginAddArgs(e.target.value)}
+                    />
+                  </label>
+                </>
+              ) : (
+                <label>
+                  Server URL
+                  <input
+                    value={pluginAddUrl}
+                    spellCheck={false}
+                    autoComplete="off"
+                    placeholder="https://"
+                    onChange={(e) => setPluginAddUrl(e.target.value)}
+                  />
+                </label>
+              )}
+              <div className="confirm-actions">
+                <button
+                  type="button"
+                  className="primary plugin-add-primary"
+                  disabled={pluginAddSaving || !session || !pluginAddReady}
+                  onClick={() => void savePluginAdd()}
+                >
+                  Add
+                </button>
+              </div>
             </div>
           </div>
         </div>

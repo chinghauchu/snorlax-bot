@@ -315,6 +315,157 @@ def test_unknown_plugin_auth_404(client) -> None:
     assert response.status_code == 404
 
 
+def test_post_plugin_stdio_201_delete_204_get_omits(tmp_path) -> None:
+    with TestClient(create_app(_settings(tmp_path))) as client:
+        created = client.post(
+            "/v1/plugins",
+            headers=AUTH,
+            json={
+                "name": "Example",
+                "transport": "stdio",
+                "command": sys.executable,
+                "args": [str(FAKE_STDIO)],
+            },
+        )
+        assert created.status_code == 201
+        row = created.json()
+        assert row["name"] == "Example"
+        assert row["id"]
+        assert row["status"] in {"connected", "needsAuth"}
+        listed = client.get("/v1/plugins", headers=AUTH)
+        assert listed.status_code == 200
+        ids = [item["id"] for item in listed.json()]
+        assert row["id"] in ids
+        catalog = json.loads((tmp_path / "mcp.json").read_text(encoding="utf-8"))
+        assert row["id"] in catalog.get("mcpServers", {})
+        assert catalog["mcpServers"][row["id"]]["command"] == sys.executable
+        seed_msgs = client.get(f"/v1/agents/{SEED}/messages", headers=AUTH).json()
+        assert not any(m.get("kind") == "connect" for m in seed_msgs)
+        started = client.post(f"/v1/plugins/{row['id']}/auth", headers=AUTH)
+        assert started.status_code == 200
+        auth_url = started.json()["authorizationUrl"]
+        deleted = client.delete(f"/v1/plugins/{row['id']}", headers=AUTH)
+        assert deleted.status_code == 204
+        after = client.get("/v1/plugins", headers=AUTH).json()
+        assert after == []
+        assert all(item["id"] != row["id"] for item in after)
+        catalog = json.loads((tmp_path / "mcp.json").read_text(encoding="utf-8"))
+        assert row["id"] not in catalog.get("mcpServers", {})
+        leftover = client.get(auth_url, follow_redirects=True)
+        assert leftover.status_code == 422
+        missing_auth = client.post(f"/v1/plugins/{row['id']}/auth", headers=AUTH)
+        assert missing_auth.status_code == 404
+        missing = client.delete(f"/v1/plugins/{row['id']}", headers=AUTH)
+        assert missing.status_code == 404
+
+
+def test_post_plugin_url_201(tmp_path) -> None:
+    with TestClient(create_app(_settings(tmp_path))) as client:
+        created = client.post(
+            "/v1/plugins",
+            headers=AUTH,
+            json={
+                "name": "Lan ping",
+                "transport": "url",
+                "url": "http://127.0.0.1:9/mcp",
+            },
+        )
+        assert created.status_code == 201
+        row = created.json()
+        assert row["name"] == "Lan ping"
+        assert row["status"] in {"connected", "needsAuth"}
+        listed = client.get("/v1/plugins", headers=AUTH).json()
+        assert any(item["id"] == row["id"] and item["name"] == "Lan ping" for item in listed)
+        catalog = json.loads((tmp_path / "mcp.json").read_text(encoding="utf-8"))
+        spec = catalog["mcpServers"][row["id"]]
+        assert spec["url"] == "http://127.0.0.1:9/mcp"
+        assert "command" not in spec
+
+
+def test_post_plugin_missing_fields_422(client) -> None:
+    missing_name = client.post(
+        "/v1/plugins",
+        headers=AUTH,
+        json={"transport": "stdio", "command": "echo"},
+    )
+    assert missing_name.status_code == 422
+    missing_command = client.post(
+        "/v1/plugins",
+        headers=AUTH,
+        json={"name": "Stdio", "transport": "stdio"},
+    )
+    assert missing_command.status_code == 422
+    missing_url = client.post(
+        "/v1/plugins",
+        headers=AUTH,
+        json={"name": "Lan", "transport": "url"},
+    )
+    assert missing_url.status_code == 422
+    blocked = client.post(
+        "/v1/plugins",
+        headers=AUTH,
+        json={
+            "name": "Meta",
+            "transport": "url",
+            "url": "http://169.254.169.254/mcp",
+        },
+    )
+    assert blocked.status_code == 422
+    bad_transport = client.post(
+        "/v1/plugins",
+        headers=AUTH,
+        json={"name": "Sse", "transport": "sse", "command": "echo"},
+    )
+    assert bad_transport.status_code == 422
+
+
+def test_auth_still_works_on_needs_auth_row(tmp_path) -> None:
+    with TestClient(create_app(_settings(tmp_path))) as client:
+        created = client.post(
+            "/v1/plugins",
+            headers=AUTH,
+            json={
+                "name": "Lan ping",
+                "transport": "url",
+                "url": "http://127.0.0.1:9/mcp",
+            },
+        )
+        assert created.status_code == 201
+        row = created.json()
+        assert row["status"] == "needsAuth"
+        started = client.post(f"/v1/plugins/{row['id']}/auth", headers=AUTH)
+        assert started.status_code == 200
+        url = started.json()["authorizationUrl"]
+        assert f"/v1/plugins/oauth/start/{row['id']}" in url
+        done = client.get(url, follow_redirects=True)
+        assert done.status_code == 200
+
+
+def test_unknown_plugin_delete_404(client) -> None:
+    deleted = client.delete("/v1/plugins/missing", headers=AUTH)
+    assert deleted.status_code == 404
+    disconnected = client.post("/v1/plugins/missing/disconnect", headers=AUTH)
+    assert disconnected.status_code == 404
+
+
+def test_clients_never_call_mcp() -> None:
+    root = Path(__file__).resolve().parents[2]
+    desktop_api = (root / "desktop" / "src" / "api.ts").read_text(encoding="utf-8")
+    ios_client = (root / "ios" / "SnorlaxBot" / "RuntimeClient.swift").read_text(
+        encoding="utf-8"
+    )
+    for source in (desktop_api, ios_client):
+        assert "v1/plugins" in source
+        assert "/disconnect" not in source
+        assert "modelcontextprotocol" not in source
+        assert "stdio_client" not in source
+        assert "streamable_http" not in source
+        assert "tools/list" not in source
+        assert "mcp.json" not in source
+        assert "JSON-RPC" not in source
+        assert "jsonrpc" not in source.lower()
+
+
 def test_content_while_connect_pending_is_409(tmp_path) -> None:
     with _client_with_mcp(tmp_path, {"example": _disabled_stdio()}) as client:
         _send(client, SEED, 'SNORLAX_TOOL example__echo {"text": "x"}')

@@ -74,6 +74,16 @@ struct RuntimeClient: Sendable {
         try await get("v1/plugins")
     }
 
+    func createPlugin(_ body: PluginCreate) async throws -> Plugin {
+        try await send("v1/plugins", method: "POST", body: body, expected: 201)
+    }
+
+    func deletePlugin(id: String) async throws {
+        let request = try makeRequest("v1/plugins/\(Self.encode(id))", method: "DELETE")
+        let (data, response) = try await URLSession.shared.data(for: request)
+        try Self.throwIfNeeded(data: data, response: response, allowed: [204])
+    }
+
     func startPluginAuth(id: String) async throws -> PluginAuth {
         try await send(
             "v1/plugins/\(Self.encode(id))/auth",

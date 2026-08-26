@@ -17,7 +17,7 @@ From public Grok Bot docs and the Aug 2026 launch:
 | Files, shell, web on a computer | v0.5: runtime tools in a workspace jail; v0.6: thin file-tree pane |
 | One user-scoped computer shared by all bots | Later: one sandbox on the Spark, shared files/logins, per-bot screen |
 | Skills (how) and routines (when) | v0.9: SKILL.md + cron (Asia/Taipei); list + enable/pause; fire LEFT 1:1 |
-| MCP + computer-use for sites without an API | v0.7: local/LAN MCP client; v0.10: connect chrome (`GET /v1/plugins` + `kind=connect`); later: sandbox browser |
+| MCP + computer-use for sites without an API | v0.7: local/LAN MCP client; v0.10: connect chrome (`GET /v1/plugins` + `kind=connect`); v0.12: Settings Add custom; later: sandbox browser |
 | Question / approval moments | v0.8: question widgets (`kind=widget`); tools stay auto-run (no approval card) |
 | Desktop + iOS, same bots | Tauri desktop now; Swift iOS companion on the LAN |
 | Cloud LLM | vLLM on GB10 (70B FP8 default; 200B-class in-range) |
@@ -221,6 +221,12 @@ messages stay plain as stored. LEFT `kind=message` is 14px markdown
 (16/14 headings, no grey bubble). User-right stays plain (`https://`
 tappable). Fenced code: language + Copy, 12px/1.45. Inline: 13px / 4px /
 accent 18%.
+
+v0.12: MCP Add custom. `POST /v1/plugins` `{ name, transport: "stdio"|"url",
+command?, args?, url? }` → 201. `DELETE /v1/plugins/{id}` uninstalls
+(204; disconnect + drop from catalog). No separate disconnect endpoint.
+Do not auto-open a connect card. GET and `POST .../auth` stay v0.10.
+Settings-only; no store. Clients never speak MCP.
 
 ## Inference interface
 

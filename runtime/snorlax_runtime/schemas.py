@@ -253,5 +253,40 @@ class Plugin(BaseModel):
     status: str
 
 
+class PluginCreate(BaseModel):
+    name: str = Field(min_length=1, max_length=80)
+    transport: str
+    command: str | None = None
+    args: list[str] | None = None
+    url: str | None = None
+
+    @model_validator(mode="after")
+    def require_transport_fields(self) -> PluginCreate:
+        name = (self.name or "").strip()
+        if not name:
+            raise ValueError("name is required")
+        self.name = name
+        kind = (self.transport or "").strip().lower()
+        if kind not in {"stdio", "url"}:
+            raise ValueError("transport must be stdio or url")
+        self.transport = kind
+        if kind == "stdio":
+            command = (self.command or "").strip()
+            if not command:
+                raise ValueError("command is required")
+            self.command = command
+            if self.args is not None and (
+                not isinstance(self.args, list)
+                or any(not isinstance(item, str) for item in self.args)
+            ):
+                raise ValueError("args must be a list of strings")
+        else:
+            url = (self.url or "").strip()
+            if not url:
+                raise ValueError("url is required")
+            self.url = url
+        return self
+
+
 class PluginAuth(BaseModel):
     authorizationUrl: str

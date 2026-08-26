@@ -98,12 +98,17 @@ clobber `list_dir` / `read_file` / `write_file` / `delete_file` / `shell` /
 still boots and logs the failure.
 
 `GET /v1/plugins` lists `{ id, name, status: connected|needsAuth }`.
-`POST /v1/plugins/{id}/auth` returns `{ authorizationUrl }` for the OS
-browser; the OAuth callback hits this process (GET, or POST complete with
-code+state). Unauthenticated MCP servers can persist a `kind=connect`
-card. `connectReply { id }` emits `connect.url` then ends; when auth
+`POST /v1/plugins` `{ name, transport: "stdio" | "url", command?,
+args?: string[], url? }` adds a custom server into `mcp.json` (201;
+422 missing/invalid). `DELETE /v1/plugins/{id}` uninstalls (204; unknown
+404; disconnect + drop from catalog; does not auto-open a connect card).
+No separate disconnect endpoint. `POST /v1/plugins/{id}/auth`
+returns `{ authorizationUrl }` for the OS browser; the OAuth callback
+hits this process (GET, or POST complete with code+state).
+Unauthenticated MCP servers can persist a `kind=connect` card.
+`connectReply { id }` emits `connect.url` then ends; when auth
 completes the card is PATCHed connected and the turn continues. Tools
-auto-run. No uninstall / store / Add-custom HTTP this slice.
+auto-run. No store / search / marketplace catalog.
 
 ## Tests
 

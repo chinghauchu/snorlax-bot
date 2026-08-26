@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 //
-// Generated from protocol/openapi.yaml (Snorlax-Bot 0.11.0).
+// Generated from protocol/openapi.yaml (Snorlax-Bot 0.12.0).
 // Do not edit by hand. Regenerate with:
 //   python3 ios/scripts/generate_v1_types.py
 //
@@ -936,6 +936,47 @@ struct Plugin: Codable, Hashable, Identifiable, Sendable {
         try container.encode(id, forKey: .id)
         try container.encode(name, forKey: .name)
         try container.encode(status, forKey: .status)
+    }
+}
+
+struct PluginCreate: Codable, Hashable, Sendable {
+    enum Transport: String, Codable, Hashable, Sendable {
+        case stdio
+        case url
+    }
+
+    var name: String
+    var transport: Transport
+    var command: String?
+    var args: [String]?
+    var url: String?
+
+    init(name: String, transport: Transport, command: String? = nil, args: [String]? = nil, url: String? = nil) {
+        self.name = name
+        self.transport = transport
+        self.command = command
+        self.args = args
+        self.url = url
+    }
+
+    enum CodingKeys: String, CodingKey { case name, transport, command, args, url }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        name = try container.decode(String.self, forKey: .name)
+        transport = try container.decode(Transport.self, forKey: .transport)
+        command = try container.decodeIfPresent(String.self, forKey: .command)
+        args = try container.decodeIfPresent([String].self, forKey: .args)
+        url = try container.decodeIfPresent(String.self, forKey: .url)
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(name, forKey: .name)
+        try container.encode(transport, forKey: .transport)
+        try container.encodeIfPresent(command, forKey: .command)
+        try container.encodeIfPresent(args, forKey: .args)
+        try container.encodeIfPresent(url, forKey: .url)
     }
 }
 

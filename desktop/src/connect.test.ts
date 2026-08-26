@@ -10,6 +10,7 @@ import {
   connectStatusOf,
   isConnect,
   isPendingConnect,
+  parsePluginArgs,
   pluginStatusLabel,
   resolvedConnectLabel,
 } from "./connect.ts";
@@ -44,6 +45,8 @@ test("connect helpers lock kind=connect status on the Message", () => {
   assert.equal(connectStatusOf(pending), "pending");
   assert.equal(pluginStatusLabel("connected"), "Connected");
   assert.equal(pluginStatusLabel("needsAuth"), "Needs sign-in");
+  assert.deepEqual(parsePluginArgs("  --foo bar  "), ["--foo", "bar"]);
+  assert.deepEqual(parsePluginArgs(""), []);
   assert.equal(resolvedConnectLabel("connected"), "Connected");
   assert.equal(resolvedConnectLabel("dismissed"), "Dismissed");
   assert.equal(isPendingConnect({ ...pending, connectStatus: "connected" }), false);
@@ -103,19 +106,30 @@ test("connect card chrome is LEFT, not a bubble, 240-320px", () => {
 
 test("plugins list is Settings only, not the agent pane", () => {
   const header = block(".settings-plugins-header");
+  const add = block(".plugin-add");
   const row = block(".plugin-row");
   const name = block(".plugin-name");
   const status = block(".plugin-status");
   const empty = block(".plugins-empty");
+  const remove = block(".plugin-remove");
+  const sheet = block(".modal.plugin-add-sheet");
+  const primary = block(".plugin-add-primary");
+  const addName = block(".plugin-add-name");
 
   assert.match(header, /font-size:\s*12px/);
   assert.match(header, /color:\s*var\(--text-muted\)/);
+  assert.match(add, /font-size:\s*12px/);
   assert.match(row, /height:\s*44px/);
   assert.match(name, /font-size:\s*14px/);
   assert.match(status, /font-size:\s*12px/);
   assert.match(status, /color:\s*var\(--text-muted\)/);
   assert.match(empty, /font-size:\s*12px/);
   assert.match(empty, /color:\s*var\(--text-muted\)/);
+  assert.match(remove, /font-size:\s*12px/);
+  assert.match(remove, /color:\s*var\(--text-muted\)/);
+  assert.match(sheet, /width:\s*320px/);
+  assert.match(primary, /min-height:\s*36px/);
+  assert.match(addName, /font-size:\s*14px/);
 
   const connectSrc = readFileSync(join(here, "connect.ts"), "utf8");
   const api = readFileSync(join(here, "api.ts"), "utf8");
@@ -125,15 +139,36 @@ test("plugins list is Settings only, not the agent pane", () => {
   assert.match(app, /pluginStatusLabel/);
   assert.match(app, /listPlugins/);
   assert.match(app, /startPluginAuth/);
+  assert.match(app, /createPlugin/);
+  assert.match(app, /transport: "stdio"/);
+  assert.match(app, /transport: "url"/);
+  assert.match(app, /deletePlugin/);
+  assert.match(app, /plugin-add/);
+  assert.match(app, /Add plugin/);
+  assert.match(app, /plugin-add-primary/);
+  assert.match(app, /placeholder="npx"/);
+  assert.match(app, /placeholder="-y package"/);
+  assert.match(app, /Server URL/);
+  assert.match(app, /placeholder="https:\/\/"/);
+  assert.match(app, /This disconnects it\./);
+  assert.match(app, /plugin-remove/);
   assert.match(app, /connectReply/);
   assert.match(app, /onConnectUrl/);
   assert.match(api, /connect\.url/);
+  assert.match(api, /\/v1\/plugins/);
+  assert.doesNotMatch(api, /\/disconnect/);
+  assert.doesNotMatch(api, /disconnectPlugin/);
+  assert.doesNotMatch(app, /disconnectPlugin/);
+  assert.doesNotMatch(app, /Uninstall/);
+  assert.doesNotMatch(app, />Disconnect</);
+  assert.doesNotMatch(api, /modelcontextprotocol/);
+  assert.doesNotMatch(api, /tools\/list/);
+  assert.doesNotMatch(api, /mcp\.json/);
   assert.match(app, /ConnectCard/);
   assert.match(app, /openOsBrowser/);
   assert.doesNotMatch(app, /info-plugins/);
   assert.doesNotMatch(app, /marketplace/);
   assert.doesNotMatch(app, /Add custom/);
-  assert.doesNotMatch(app, /uninstall/);
   assert.doesNotMatch(app, /computerPane\.ts/);
   assert.equal(existsSync(join(here, "computerPane.ts")), false);
 });
