@@ -55,6 +55,18 @@ test("tool traces are 12px muted system lines", () => {
   assert.match(trace, /color:\s*var\(--text-muted\)/);
 });
 
+test("thinking line is 12px muted like a tool trace, with a wave and reduced-motion static text", () => {
+  const thinking = block(".thinking");
+  assert.match(thinking, /font-size:\s*12px/);
+  assert.match(thinking, /color:\s*var\(--text-muted\)/);
+  assert.doesNotMatch(css, /\.typing\s*\{/);
+  assert.match(css, /@keyframes\s+thinking-wave/);
+  assert.match(
+    css,
+    /prefers-reduced-motion:\s*reduce[\s\S]*\.thinking-label \{[\s\S]*animation:\s*none/,
+  );
+});
+
 test("shared project hint is 12px muted", () => {
   const hint = block(".shared-project-hint");
   assert.match(hint, /font-size:\s*12px/);

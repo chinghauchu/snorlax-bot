@@ -58,6 +58,7 @@ import {
   loadInitialRuntimeUrl,
   normalizeRuntimeUrl,
 } from "./runtimeUrl";
+import { showThinkingLine, THINKING_LABEL } from "./thinking";
 import { ComputerPane } from "./ComputerPane";
 import type {
   Agent,
@@ -865,6 +866,14 @@ export function App() {
   );
   const showStandaloneTraces =
     liveTraces.length > 0 && liveAssistantIdx < 0;
+  const toolThisTurn = visibleMessages.some(
+    (message, index) => index > lastUserIdx && isToolLine(message),
+  );
+  const showThinking = showThinkingLine({
+    busy,
+    hasLiveAssistant: liveAssistantIdx >= 0,
+    hasLiveTool: liveTraces.length > 0 || toolThisTurn,
+  });
 
   return (
     <div className={computerOpen ? "app computer-open" : "app computer-collapsed"}>
@@ -1167,7 +1176,28 @@ export function App() {
                 ))}
               </article>
             ) : null}
-            {busy ? <p className="typing">…</p> : null}
+            {showThinking ? (
+              <article
+                className="turn left new-sender"
+                aria-live="polite"
+                aria-label={THINKING_LABEL}
+              >
+                <div className="sender-row">
+                  <Avatar
+                    src={active?.avatar ?? null}
+                    name={active?.name || "Agent"}
+                    size={20}
+                    session={session}
+                  />
+                  <span className="sender-name">
+                    {active?.name || "Agent"}
+                  </span>
+                </div>
+                <p className="thinking" role="status">
+                  <span className="thinking-label">{THINKING_LABEL}</span>
+                </p>
+              </article>
+            ) : null}
           </div>
         </div>
 
