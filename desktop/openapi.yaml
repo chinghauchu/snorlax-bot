@@ -219,17 +219,21 @@ info:
     no Mac folder picker stand. OpenAPI **0.10.0**.
 
     v0.11: assistant markdown. Clients render only. Message.content stays
-    a plain string; the runtime stores user and model text as-is and does
-    not rewrite markdown to HTML or add Message fields. Assistant LEFT
-    kind=message (from A) is 14px markdown with no grey agent bubble.
-    User-right stays plain text. Fenced code is 8px radius / 12px mono
-    with a Copy control. https:// links are accent and open safely.
-    Inline code uses the mention-chip tint. Tool lines, widget cards,
-    connect cards, thinking, and handoff are unchanged. Out of scope:
-    mermaid, math/KaTeX, raw HTML (escape/strip; never inject HTML from
-    model text). Isolation, report-back, widgets, cron, connect chrome,
-    seed DELETE 204, Mac oMLX, no Mac folder picker, and workspaceTree.ts
-    (never reintroduce computerPane.ts) stand. OpenAPI **0.11.0**.
+    a string. Do not add contentType, mime, html, or blocks[]. The runtime
+    does not rewrite assistant text to HTML or split one message into
+    many. SSE message.delta is still text chunks of that same string.
+    User messages stay plain text as stored. Clients render markdown.
+    widget, connect, tool, and routine fields stay intact. No MCP mix-in.
+    Assistant LEFT kind=message (from A) is 14px markdown with no grey
+    agent bubble. User-right stays plain text. Fenced code is 8px radius /
+    12px mono with a Copy control. https:// links are accent and open
+    safely. Inline code uses the mention-chip tint. Tool lines, widget
+    cards, connect cards, thinking, and handoff are unchanged. Out of
+    scope: mermaid, math/KaTeX, raw HTML (escape/strip; never inject HTML
+    from model text). Isolation, report-back, widgets, cron, connect
+    chrome, seed DELETE 204, Mac oMLX, no Mac folder picker, and
+    workspaceTree.ts (never reintroduce computerPane.ts) stand. OpenAPI
+    **0.11.0**.
   license:
     name: Apache-2.0
     identifier: Apache-2.0
@@ -1010,10 +1014,13 @@ components:
         content:
           type: string
           description: |
-            Plain string. Runtime stores user and model text as-is and does
-            not rewrite markdown. v0.11 clients render assistant LEFT
-            kind=message as markdown. User-right stays plain text. No new
-            Message fields.
+            Plain string. Runtime stores user and model text as-is.
+            Do not add contentType, mime, html, or blocks[]. Do not rewrite
+            assistant text to HTML or split one Message into many. SSE
+            message.delta is text chunks of this same string. User
+            messages stay plain text as stored. v0.11 clients render
+            assistant LEFT kind=message as markdown. widget, connect,
+            tool, and routineName stay. No MCP mix-in.
         images:
           type: array
           items:
@@ -1280,6 +1287,10 @@ components:
           const: assistant
         delta:
           type: string
+          description: |
+            Text chunk of the assistant Message.content string. Concatenate
+            in order to rebuild content. Not HTML, not a block, not a
+            second Message.
         senderId:
           type: string
         senderName:

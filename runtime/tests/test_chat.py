@@ -93,17 +93,47 @@ def test_markdown_content_stored_as_plain_string(client) -> None:
         json={"content": raw},
     ) as response:
         assert response.status_code == 200
-        "".join(response.iter_text())
+        events = parse_sse("".join(response.iter_text()))
+
+    deltas = [p["delta"] for n, p in events if n == "message.delta"]
+    assert deltas
+    assert all(isinstance(chunk, str) for chunk in deltas)
+    joined = "".join(deltas)
+    assert "<p>" not in joined
+    assert "<div" not in joined
+
+    done = [
+        p
+        for n, p in events
+        if n == "message.done" and p.get("role") == "assistant"
+        and p.get("kind", "message") == "message"
+    ]
+    assert len(done) == 1
+    assert done[0]["content"] == joined
+    assert done[0]["id"] == next(p["id"] for n, p in events if n == "message.delta")
 
     listed = client.get("/v1/agents/snorlax-bot/messages", headers=AUTH)
     assert listed.status_code == 200
-    user = next(m for m in listed.json() if m["role"] == "user")
+    rows = listed.json()
+    users = [m for m in rows if m["role"] == "user"]
+    assistants = [
+        m
+        for m in rows
+        if m["role"] == "assistant" and m.get("kind", "message") == "message"
+    ]
+    assert len(users) == 1
+    assert len(assistants) == 1
+    user = users[0]
+    assistant = assistants[0]
     assert user["content"] == raw
-    assert "<p>" not in user["content"]
-    assistant = next(m for m in listed.json() if m["role"] == "assistant")
     assert isinstance(assistant["content"], str)
-    assert "<p>" not in assistant["content"]
-    assert "<div" not in assistant["content"]
+    assert assistant["content"] == joined
+    for row in (user, assistant):
+        assert "contentType" not in row
+        assert "html" not in row
+        assert "blocks" not in row
+        assert "<p>" not in row["content"]
+        assert "<div" not in row["content"]
 
 
 def test_messages_oldest_first_and_before_cursor(client) -> None:
