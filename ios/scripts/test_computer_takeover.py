@@ -275,7 +275,7 @@ def test_record_without_session_not_offered() -> None:
     assert "Save as skill" not in CHAT
     assert "Save as skill" not in CONTENT
     skills = SHEET[SHEET.index("private var skillsList") : SHEET.index("private var channelPane")]
-    assert 'Button("Add")' not in skills
+    assert 'Button("Add")' in skills
     assert "New skill" not in skills
     channel = SHEET[SHEET.index("channelPane") : SHEET.index("channelEditForm")]
     assert "recordLabel" not in channel

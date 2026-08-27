@@ -416,7 +416,9 @@ def skill_wire(
     return {"id": skill_slug(skill), "name": skill.name, "body": raw}
 
 
-def _compose_patched_markdown(skill: Skill, name: str, body: str) -> str:
+def compose_skill_markdown(
+    name: str, body: str, *, description: str = ""
+) -> str:
     """Write-ready SKILL.md. Body may be full source or recipe-only."""
     title = (name or "").strip()
     text = (body or "").replace("\r\n", "\n")
@@ -425,14 +427,20 @@ def _compose_patched_markdown(skill: Skill, name: str, body: str) -> str:
     match = _FRONTMATTER.match(text if text.endswith("\n") else text + "\n")
     if match is not None:
         meta = _parse_frontmatter(match.group("meta"))
-        description = (
+        desc = (
             str(meta.get("description") or "").strip()
-            or skill.description
+            or description
             or title
         )
         recipe = match.group("body")
-        return render_skill_markdown(title, description, recipe)
-    return render_skill_markdown(title, skill.description or title, text)
+        return render_skill_markdown(title, desc, recipe)
+    return render_skill_markdown(title, description or title, text)
+
+
+def _compose_patched_markdown(skill: Skill, name: str, body: str) -> str:
+    return compose_skill_markdown(
+        name, body, description=skill.description or ""
+    )
 
 
 def patch_skill(
@@ -484,6 +492,27 @@ def delete_skill(
     if parent.name == skill_slug(skill):
         shutil.rmtree(parent, ignore_errors=True)
     return True
+
+
+def write_authored_skill(data_dir: Path, name: str, body: str) -> Skill:
+    """Persist a blank New skill as SKILL.md on the v0.9 load path.
+
+    No computer capture. Writes ``SNORLAX_DATA_DIR/skills/<slug>/SKILL.md``
+    via ``slugify_skill_name``. ``body`` is the same shape as PATCH: full
+    SKILL.md source (frontmatter plus recipe) or recipe-only.
+    """
+    markdown = compose_skill_markdown(name, body)
+    slug = slugify_skill_name((name or "").strip())
+    root = skills_dir(data_dir) / slug
+    root.mkdir(parents=True, exist_ok=True)
+    path = root / SKILL_FILENAME
+    path.write_text(markdown, encoding="utf-8")
+    skill = parse_skill_markdown(
+        markdown, source=SOURCE_SKILLS_DIR, path=f"{slug}/{SKILL_FILENAME}"
+    )
+    if skill is None:
+        raise ValueError("failed to write skill")
+    return skill
 
 
 def write_taught_skill(data_dir: Path, name: str, capture: object) -> Skill:

@@ -234,17 +234,151 @@ def test_patch_empty_name_or_body_is_422(client, tmp_path: Path) -> None:
     assert "Summarize status" in listed.json()["body"]
 
 
-def test_no_blank_skill_post(client) -> None:
-    """Create stays teach-a-task POST { name } from a capture. No empty stub."""
-    blank = client.post(
+def test_post_name_body_writes_skill_md_without_capture(
+    client, tmp_path: Path
+) -> None:
+    """Blank New skill: body present, no capture required. Listed shape."""
+    created = client.post(
         f"/v1/agents/{SEED}/skills",
         headers=AUTH,
-        json={"name": "Blank", "body": "# empty"},
+        json={"name": "Inbox triage", "body": "Sort the inbox. Keep it brief."},
     )
-    assert blank.status_code == 422
+    assert created.status_code == 201
+    assert created.json() == {"id": "inbox-triage", "name": "Inbox triage"}
+    assert "body" not in created.json()
     listed = client.get(f"/v1/agents/{SEED}/skills", headers=AUTH)
     assert listed.status_code == 200
+    assert listed.json() == [{"id": "inbox-triage", "name": "Inbox triage"}]
+    assert all(set(row) == {"id", "name"} for row in listed.json())
+    path = tmp_path / "skills" / "inbox-triage" / "SKILL.md"
+    assert path.is_file()
+    text = path.read_text(encoding="utf-8")
+    assert text.lstrip().startswith("---")
+    assert "name: Inbox triage" in text
+    assert "Sort the inbox. Keep it brief." in text
+    got = client.get(f"/v1/agents/{SEED}/skills/inbox-triage", headers=AUTH)
+    assert got.status_code == 200
+    assert got.json()["id"] == "inbox-triage"
+    assert got.json()["name"] == "Inbox triage"
+    assert "Sort the inbox. Keep it brief." in got.json()["body"]
+
+
+def test_post_name_body_accepts_full_skill_md_source(
+    client, tmp_path: Path
+) -> None:
+    source = """---
+name: Status check
+description: Weekday status check.
+---
+
+Do a short status.
+"""
+    created = client.post(
+        f"/v1/agents/{SEED}/skills",
+        headers=AUTH,
+        json={"name": "Status check", "body": source},
+    )
+    assert created.status_code == 201
+    assert created.json() == {"id": "status-check", "name": "Status check"}
+    text = (tmp_path / "skills" / "status-check" / "SKILL.md").read_text(
+        encoding="utf-8"
+    )
+    assert "name: Status check" in text
+    assert "description: Weekday status check." in text
+    assert "Do a short status." in text
+
+
+def test_post_name_without_body_is_still_record_path(client) -> None:
+    missing = client.post(
+        f"/v1/agents/{SEED}/skills",
+        headers=AUTH,
+        json={"name": "From record"},
+    )
+    assert missing.status_code == 422
+    assert missing.json() == {"error": "no pending capture"}
+    listed = client.get(f"/v1/agents/{SEED}/skills", headers=AUTH)
     assert listed.json() == []
+
+
+def test_post_empty_name_or_body_is_422(client, tmp_path: Path) -> None:
+    skills_root = tmp_path / "skills"
+    for body in (
+        {"name": "", "body": "A recipe."},
+        {"name": "   ", "body": "A recipe."},
+        {"name": "Inbox", "body": ""},
+        {"name": "Inbox", "body": "   "},
+        {"name": "", "body": ""},
+    ):
+        response = client.post(
+            f"/v1/agents/{SEED}/skills",
+            headers=AUTH,
+            json=body,
+        )
+        assert response.status_code == 422
+    listed = client.get(f"/v1/agents/{SEED}/skills", headers=AUTH)
+    assert listed.json() == []
+    after = list(skills_root.rglob("SKILL.md")) if skills_root.exists() else []
+    assert after == []
+
+
+def test_post_name_body_channel_is_409(client) -> None:
+    response = client.post(
+        f"/v1/agents/{CHANNEL}/skills",
+        headers=AUTH,
+        json={"name": "Nope", "body": "A recipe."},
+    )
+    assert response.status_code == 409
+    assert response.json() == {"error": "computer session is agent-only"}
+
+
+def test_post_name_body_missing_agent_is_404(client) -> None:
+    response = client.post(
+        "/v1/agents/no-such/skills",
+        headers=AUTH,
+        json={"name": "Nope", "body": "A recipe."},
+    )
+    assert response.status_code == 404
+
+
+def test_blank_create_does_not_consume_pending_capture(
+    client, tmp_path: Path
+) -> None:
+    opened = client.post(f"/v1/agents/{SEED}/computer/session", headers=AUTH)
+    assert opened.status_code == 201
+    assert (
+        client.post(f"/v1/agents/{SEED}/computer/record", headers=AUTH).status_code
+        == 201
+    )
+    assert (
+        client.delete(f"/v1/agents/{SEED}/computer/record", headers=AUTH).status_code
+        == 204
+    )
+    authored = client.post(
+        f"/v1/agents/{SEED}/skills",
+        headers=AUTH,
+        json={"name": "Authored", "body": "Do the authored thing."},
+    )
+    assert authored.status_code == 201
+    assert authored.json() == {"id": "authored", "name": "Authored"}
+    recorded = client.post(
+        f"/v1/agents/{SEED}/skills",
+        headers=AUTH,
+        json={"name": "From record"},
+    )
+    assert recorded.status_code == 201
+    assert recorded.json() == {"id": "from-record", "name": "From record"}
+    listed = client.get(f"/v1/agents/{SEED}/skills", headers=AUTH)
+    names = {row["id"] for row in listed.json()}
+    assert names == {"authored", "from-record"}
+    authored_text = (tmp_path / "skills" / "authored" / "SKILL.md").read_text(
+        encoding="utf-8"
+    )
+    recorded_text = (tmp_path / "skills" / "from-record" / "SKILL.md").read_text(
+        encoding="utf-8"
+    )
+    assert "Do the authored thing." in authored_text
+    assert "computer_click" in recorded_text or "Replay" in recorded_text
+    assert "Do the authored thing." not in recorded_text
 
 
 def test_invoked_skill_matches_slash_name_and_slug() -> None:

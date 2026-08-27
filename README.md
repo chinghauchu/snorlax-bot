@@ -20,7 +20,7 @@ computer. Bots live on your LAN, talk through a thin local runtime, and (in
 later versions) browse, click, schedule, and call tools without sending tokens
 off-box.
 
-v0.21 is still small: **named teammates + identity pane + group channel threads
+v0.22 is still small: **named teammates + identity pane + group channel threads
 + chat with @mentions + report-back + extra channels + built-in tools + a
 thin desktop Computer pane + a runtime MCP client + question widgets +
 skills and cron/webhook routines (Add / Remove + enable/pause + Copy webhook URL) + MCP connect chrome
@@ -31,10 +31,11 @@ identity-pane Box computer preview (Bearer PNG) + desktop Box takeover
 Save as skill inside takeover) + skill markdown editor (identity-pane
 Skills list + Edit sheet) + iOS Open/Done takeover (same v0.15 session
 protocol) + iOS Record (same v0.16 record protocol on the takeover bar) +
-composer `/` skill autocomplete (1:1 only; channel `/` is plain text)**. Header click opens agent identity (PATCH) or
+composer `/` skill autocomplete (1:1 only; channel `/` is plain text) +
+blank New skill (identity-pane Add → `POST { name, body }`)**. Header click opens agent identity (PATCH) or
 the channel member list. Agent identity lists routines with a live
 enable/pause switch, Add, Remove, and Copy for webhook URLs, then skills
-with Edit / Remove (no blank Add). 1:1s are user ↔ that agent only; a user `@chip`
+with Add / Edit / Remove. 1:1s are user ↔ that agent only; a user `@chip`
 (or agent DM) opens a handoff thread in a channel (seed `snorlax-bot-group`
 by default). B answers in the thread; A reports back in A's 1:1 as A. Seed
 `snorlax-bot` can be deleted (no auto-reseed). Users can create more
@@ -203,7 +204,7 @@ default).
 
 ## v0 vs later
 
-See [ROADMAP.md](ROADMAP.md). Short version: v0.21 is named agents plus
+See [ROADMAP.md](ROADMAP.md). Short version: v0.22 is named agents plus
 runtime-owned file/shell/web tools in a `~/.snorlax-bot` sandbox, a
 thin desktop Computer pane over that sandbox, a runtime MCP client
 (stdio + LAN from `mcp.json`), connect chrome (`GET /v1/plugins` +
@@ -212,7 +213,8 @@ question widgets in the transcript, cron XOR webhook routines
 (Add / Remove on the identity pane; fire a SKILL.md into that agent's 1:1), assistant markdown
 (clients render; content stays a plain string), desktop Box takeover,
 teach-a-task (Record inside takeover → SKILL.md), a skill markdown
-editor (identity-pane Edit sheet; no blank Add), iOS Open/Record, and
+editor (identity-pane Edit sheet), blank New skill (`POST { name, body }`),
+iOS Open/Record, and
 1:1 composer `/` skill autocomplete (Send loads SKILL.md; channel `/`
 stays plain text).
 Later: full sandbox computer GUI, MCP marketplace catalog,

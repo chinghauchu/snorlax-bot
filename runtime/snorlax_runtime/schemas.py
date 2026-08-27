@@ -372,7 +372,10 @@ class Skill(BaseModel):
 
 
 class SkillCreate(BaseModel):
+    """POST /skills. ``body`` omitted = record-to-skill; present = blank New."""
+
     name: str = Field(min_length=1, max_length=80)
+    body: str | None = None
 
     @field_validator("name")
     @classmethod
@@ -380,6 +383,16 @@ class SkillCreate(BaseModel):
         text = (value or "").strip()
         if not text:
             raise ValueError("name is required")
+        return text
+
+    @field_validator("body")
+    @classmethod
+    def body_not_blank_if_present(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        text = value.strip()
+        if not text:
+            raise ValueError("name and body are required")
         return text
 
 

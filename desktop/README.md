@@ -56,8 +56,8 @@ the transcript while the runtime runs tools (including MCP). Agent info
 pane lists cron routines (44px rows, live enable/pause switch, 12px Add /
 Remove). Webhook
 rows show muted `Webhook` plus Copy for the URL. Below that, Skills
-(44px rows, 12px muted Edit then Remove; 320px Edit skill source
-sheet; no blank Add). Settings
+(44px rows, trailing 12px Add, 12px muted Edit then Remove; 320px
+`New skill` and Edit skill source sheets). Settings
 lists runtime plugins (`Connected` / `Needs sign-in`; Add / Remove).
 The 1:1 composer `/` at a token start reuses the `@` typeahead overlay
 (240px, `--bg-elevated`, 8px radius, 36px rows, 14px name, no avatar).

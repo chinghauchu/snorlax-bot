@@ -7,7 +7,7 @@ render as LEFT cards in the speaking agent's streak (no extra sheet). Agent
 info sheet lists a 16:10 computer preview above routines (12pt labels,
 8pt radius, 12pt `Open` when `hasSandbox`; the shot is tappable) then routines (list + enable/pause
 + Copy webhook URL + 12pt Add / Remove with confirm) then skills
-(12pt Edit / Remove; Edit skill source sheet; no blank Add). Composer
+(12pt Add / Edit / Remove; Edit skill source sheet; New skill Add sheet). Composer
 `/` on a 1:1 opens the `@` typeahead family (240pt, 8pt radius, 44pt
 rows, 14pt name, no avatar); pick inserts `/name` as plain text; Send
 loads SKILL.md. Channel `/` is plain text. Empty / no match: no popup.
@@ -67,6 +67,7 @@ python3 ios/scripts/generate_v1_types.py
 python3 ios/scripts/generate_v1_types.py --check
 python3 ios/scripts/test_computer_takeover.py
 python3 ios/scripts/test_skill_autocomplete.py
+python3 ios/scripts/test_blank_new_skill.py
 ```
 
 Output: `SnorlaxBot/Generated/V1Types.swift`. Do not hand-edit that file.

@@ -1134,21 +1134,25 @@ struct Skill: Codable, Hashable, Identifiable, Sendable {
 
 struct SkillCreate: Codable, Hashable, Sendable {
     var name: String
+    var body: String?
 
-    init(name: String) {
+    init(name: String, body: String? = nil) {
         self.name = name
+        self.body = body
     }
 
-    enum CodingKeys: String, CodingKey { case name }
+    enum CodingKeys: String, CodingKey { case name, body }
 
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         name = try container.decode(String.self, forKey: .name)
+        body = try container.decodeIfPresent(String.self, forKey: .body)
     }
 
     func encode(to encoder: Encoder) throws {
         var container = encoder.container(keyedBy: CodingKeys.self)
         try container.encode(name, forKey: .name)
+        try container.encodeIfPresent(body, forKey: .body)
     }
 }
 

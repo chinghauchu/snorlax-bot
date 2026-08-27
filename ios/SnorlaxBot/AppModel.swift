@@ -528,6 +528,28 @@ final class AppModel {
         }
     }
 
+    func addSkill(agentId: String, name: String, body: String) async -> Bool {
+        let trimmedName = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        let trimmedBody = body.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedName.isEmpty, !trimmedBody.isEmpty, let client else { return false }
+        do {
+            let created = try await client.createSkill(
+                agentId: agentId,
+                name: trimmedName,
+                body: trimmedBody
+            )
+            if let index = skills.firstIndex(where: { $0.id == created.id }) {
+                skills[index] = created
+            } else {
+                skills.append(created)
+            }
+            return true
+        } catch {
+            errorMessage = error.localizedDescription
+            return false
+        }
+    }
+
     func saveSkill(agentId: String, id: String, name: String, body: String) async -> Bool {
         guard let client else { return false }
         do {

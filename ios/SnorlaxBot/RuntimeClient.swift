@@ -188,11 +188,11 @@ struct RuntimeClient: Sendable {
         try Self.throwIfNeeded(data: data, response: response, allowed: [204])
     }
 
-    func createSkill(agentId: String, name: String) async throws -> Skill {
+    func createSkill(agentId: String, name: String, body: String? = nil) async throws -> Skill {
         try await send(
             "v1/agents/\(Self.encode(agentId))\(ComputerTakeoverChrome.skillsPath)",
             method: "POST",
-            body: SkillCreate(name: name),
+            body: SkillCreate(name: name, body: body),
             expected: 201
         )
     }

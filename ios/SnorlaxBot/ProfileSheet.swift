@@ -12,6 +12,7 @@ struct ProfileSheet: View {
     @State private var pickerItem: PhotosPickerItem?
     @State private var copiedRoutineId: String?
     @State private var showAddRoutine = false
+    @State private var showAddSkill = false
     @State private var pendingRemove: PendingRemove?
     @State private var editingSkill: Skill?
 
@@ -115,6 +116,9 @@ struct ProfileSheet: View {
         }
         .sheet(isPresented: $showAddRoutine) {
             AddRoutineSheet(agentId: live.id)
+        }
+        .sheet(isPresented: $showAddSkill) {
+            AddSkillSheet(agentId: live.id)
         }
         .sheet(item: $editingSkill) { skill in
             EditSkillSheet(agentId: live.id, skill: skill)
@@ -275,11 +279,17 @@ struct ProfileSheet: View {
 
     private var skillsList: some View {
         VStack(alignment: .leading, spacing: 0) {
-            Text("Skills")
-                .font(.system(size: 12))
-                .foregroundStyle(.secondary)
-                .padding(.top, 12)
-                .padding(.bottom, 8)
+            HStack {
+                Text("Skills")
+                    .font(.system(size: 12))
+                    .foregroundStyle(.secondary)
+                Spacer(minLength: 0)
+                Button("Add") { showAddSkill = true }
+                    .font(.system(size: 12))
+                    .disabled(!model.isConfigured)
+            }
+            .padding(.top, 12)
+            .padding(.bottom, 8)
             if model.skills.isEmpty {
                 Text("No skills yet.")
                     .font(.system(size: 12))
@@ -579,6 +589,61 @@ private struct AddRoutineSheet: View {
             schedule: mode == .schedule ? cron : nil,
             webhook: mode == .webhook
         )
+        if ok { dismiss() }
+    }
+}
+
+private struct AddSkillSheet: View {
+    @Environment(AppModel.self) private var model
+    @Environment(\.dismiss) private var dismiss
+    let agentId: String
+    @State private var name = ""
+    @State private var source = ""
+    @State private var saving = false
+
+    private var canAdd: Bool {
+        !name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            && !source.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                TextField("Name", text: $name)
+                    .font(.system(size: 14))
+                TextEditor(text: $source)
+                    .font(.system(size: 12, design: .monospaced))
+                    .lineSpacing(12 * 0.45) // 12pt / 1.45
+                    .frame(minHeight: 200)
+                    .textInputAutocapitalization(.never)
+                    .autocorrectionDisabled()
+                    .accessibilityLabel("Skill source")
+                Button("Add") {
+                    Task { await save() }
+                }
+                .frame(maxWidth: .infinity, minHeight: 44)
+                .disabled(saving || !model.isConfigured || !canAdd)
+            }
+            .navigationTitle("New skill")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button {
+                        dismiss()
+                    } label: {
+                        Image(systemName: "xmark")
+                    }
+                    .accessibilityLabel("Close")
+                }
+            }
+        }
+    }
+
+    private func save() async {
+        guard canAdd else { return }
+        saving = true
+        defer { saving = false }
+        let ok = await model.addSkill(agentId: agentId, name: name, body: source)
         if ok { dismiss() }
     }
 }

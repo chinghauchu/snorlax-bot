@@ -27,6 +27,7 @@ import {
   canSubmitRoutine,
   EMPTY_SKILLS,
   EDIT_SKILL_TITLE,
+  ADD_SKILL_TITLE,
   skillRemoveConfirm,
   canSubmitSkill,
 } from "./infoPane.ts";
@@ -276,10 +277,12 @@ test("add-routine submit is name + skill + cron if schedule", () => {
   );
 });
 
-test("edit-skill submit is name + body; no blank add copy", () => {
+test("edit-skill submit is name + body; New skill sheet is the blank Add", () => {
   assert.equal(EMPTY_SKILLS, "No skills yet.");
   assert.equal(EMPTY_SKILLS, NO_SKILLS_YET);
   assert.equal(EDIT_SKILL_TITLE, "Edit skill");
+  assert.equal(ADD_SKILL_TITLE, "New skill");
+  assert.notEqual(ADD_SKILL_TITLE, "Add skill");
   assert.equal(skillRemoveConfirm("status"), "Remove status?");
   assert.equal(
     canSubmitSkill({ name: "status", body: "Summarize status." }),

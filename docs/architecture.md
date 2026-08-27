@@ -337,6 +337,17 @@ plain text. Channel `/` is plain text — no popup, no load path. Empty
 list or no match: no popup. Typeahead is existing GET `/skills`. No
 new HTTP. OpenAPI stays 0.18.0. Out: marketplace, blank New, `@skill`.
 
+v0.22: blank New skill. Runtime + desktop + iOS. Skills header
+trailing 12px Add. Empty `No skills yet.` still shows Add. 320px
+`New skill` sheet (Edit skill family): Name 14px; body textarea
+12px/1.45 mono, min-height 200px (source, not preview); primary Add
+36px / iOS 44pt disabled until name AND body; × discards. Same POST
+`/skills`, two bodies: `{ name, body }` writes SKILL.md (no capture)
+201 `{ id, name }`; `{ name }` omitted body stays record-to-skill.
+Empty name/body 422. Channel 409. GET list `{ id, name }`. GET/PATCH/
+DELETE unchanged. `/` typeahead unchanged. OpenAPI stays 0.18.0.
+Out: marketplace, `@skill`, Slack/GitHub builder.
+
 ## Inference interface
 
 ```text

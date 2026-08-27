@@ -1328,11 +1328,29 @@ button:disabled {
   padding: 0 0 12px;
 }
 
-.info-skills-header {
+.info-skills-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
   margin: 0 14px 8px;
+}
+
+.info-skills-header {
+  margin: 0;
+  flex: 1;
   font-size: 12px;
   color: var(--text-muted);
   font-weight: 500;
+}
+
+.info-skill-add {
+  border: 0;
+  background: transparent;
+  color: var(--accent);
+  font-size: 12px;
+  font-weight: 500;
+  padding: 4px 6px;
+  cursor: pointer;
 }
 
 .info-skill {
@@ -1382,7 +1400,15 @@ button:disabled {
   width: 320px;
 }
 
+.modal.skill-add-sheet {
+  width: 320px;
+}
+
 .skill-edit-name {
+  font-size: 14px;
+}
+
+.skill-add-name {
   font-size: 14px;
 }
 
@@ -1398,7 +1424,24 @@ button:disabled {
   line-height: 1.45;
 }
 
+.skill-add-body {
+  display: block;
+  width: 100%;
+  min-height: 200px;
+  box-sizing: border-box;
+  resize: vertical;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas,
+    "Liberation Mono", monospace;
+  font-size: 12px;
+  line-height: 1.45;
+}
+
 .skill-edit-save {
+  min-height: 36px;
+  padding: 0 14px;
+}
+
+.skill-add-save {
   min-height: 36px;
   padding: 0 14px;
 }

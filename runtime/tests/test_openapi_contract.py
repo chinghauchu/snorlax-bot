@@ -108,6 +108,7 @@ def test_protocol_openapi_is_locked_v0_contract() -> None:
     assert "v0.16" in text
     assert "v0.17" in text
     assert "v0.18" in text
+    assert "v0.22" in text
     assert "/v1/agents/{id}/computer" in text
     assert "/v1/agents/{id}/computer/screenshot" in text
     assert "/v1/agents/{id}/computer/session" in text
@@ -136,6 +137,9 @@ def test_protocol_openapi_is_locked_v0_contract() -> None:
     assert "Save as skill" in text
     assert "Edit skill" in text
     assert "No blank Add" in text or "No blank POST" in text
+    assert "New skill" in text
+    assert "body omitted" in text
+    assert "slugify_skill_name" in text
     assert "/v1/agents/{id}/skills/{sid}" in text
     assert "getSkill" in text
     assert "patchSkill" in text

@@ -225,9 +225,12 @@ test("iOS agent sheet matches: 16:10, 8pt, 12pt Open when hasSandbox, tap POSTs 
   assert.match(client, /deleteRoutine/);
   assert.match(model, /addRoutine/);
   assert.match(model, /removeRoutine/);
+  assert.match(model, /addSkill/);
   assert.match(model, /saveSkill/);
   assert.match(model, /removeSkill/);
   assert.match(sheet, /Edit skill/);
+  assert.match(sheet, /New skill/);
+  assert.match(sheet, /AddSkillSheet/);
   assert.match(sheet, /TextEditor/);
   assert.match(sheet, /minHeight: 200/);
   assert.match(sheet, /size: 12/);
@@ -238,19 +241,24 @@ test("iOS agent sheet matches: 16:10, 8pt, 12pt Open when hasSandbox, tap POSTs 
   );
   assert.match(skillsBlock, /Text\("Skills"\)/);
   assert.match(skillsBlock, /No skills yet\./);
+  assert.match(skillsBlock, /Button\("Add"\)/);
   assert.match(skillsBlock, /Button\("Edit"\)/);
   assert.match(skillsBlock, /Button\("Remove"\)/);
+  assert.ok(
+    skillsBlock.indexOf('Button("Add")') <
+      skillsBlock.indexOf('Button("Edit")'),
+  );
   assert.ok(
     skillsBlock.indexOf('Button("Edit")') <
       skillsBlock.indexOf('Button("Remove")'),
   );
-  assert.doesNotMatch(skillsBlock, /Button\("Add"\)/);
   assert.doesNotMatch(skillsBlock, /New skill/);
   const channelPane = sheet.slice(
     sheet.indexOf("channelPane"),
     sheet.indexOf("channelEditForm"),
   );
   assert.doesNotMatch(channelPane, /AddRoutineSheet/);
+  assert.doesNotMatch(channelPane, /AddSkillSheet/);
   assert.doesNotMatch(channelPane, /EditSkillSheet/);
   assert.doesNotMatch(channelPane, /listSkills/);
   assert.doesNotMatch(channelPane, /ComputerTakeoverView/);
