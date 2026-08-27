@@ -1176,6 +1176,8 @@ async def _generate(
             persist_tool=None if report_back or not persist else persist_tool,
             use_tools=not report_back,
             use_widget=True,
+            conversation_id=conversation_id,
+            store=store,
         )
     except InferenceError as exc:
         # Pre-tool failures only. After tools, run_tool_loop returns

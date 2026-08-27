@@ -32,7 +32,7 @@ info:
     it exists. User-created agent DELETE is still 204.
 
     Runtime-owned tools (v0.5): list_dir, read_file, write_file, delete_file,
-    shell, web_search, web_fetch. The FastAPI runtime runs a function-calling
+    shell, web_search, web_fetch. v0.28 adds watch_video (auto-run). The FastAPI runtime runs a function-calling
     loop against the local OpenAI-compat server (cap 8 rounds). Clients never
     construct tool calls. Tools auto-run (no approval cards). Question
     widgets are not tool-approval and do not gate shell/web/MCP.
@@ -581,6 +581,25 @@ info:
     store, extra channel types, transcription / watch-video tool,
     public/unauthed URLs, a second upload route. Never reintroduce
     computerPane.ts. OpenAPI **0.18.0**.
+
+    v0.28: watch-video tool. One impl PR. Spec rides this PR. **No second
+    PR.** OpenAPI stays **0.18.0**. No new client HTTP routes. No
+    /v1/chats/ resource. Desktop + iOS idle (existing kind=tool traces
+    already render). Built-in `watch_video` `{ attachmentId }` joins the
+    existing auto-run tools list (same as write_file / shell / web_fetch).
+    Lookup is this conversation only (1:1 agent id or channel id). Unknown
+    or foreign id → tool result `Error: unknown attachment id` (do not 422
+    the user POST). kind != video → `Error: not a video`. Success is plain
+    text (filename + short description, cap ~8k), never JSON, never raw or
+    base64 video bytes. done_summary: `Watched {name}` / `watch_video
+    failed`. v0.27 stands: apply_to_user_content still skips kind=video
+    bytes (short user attached {name} stub; may include attachmentId).
+    Do not auto-call on every video. Description is local: ffprobe
+    duration/size plus a few ffmpeg frames captioned by the same local
+    OpenAI-compat backend when vision is available; if frames/caption fail,
+    name + duration/size is still success. No live camera, no client
+    transcode, no second player, no VNC, no public store, no extra channel
+    types. Never reintroduce computerPane.ts. OpenAPI **0.18.0**.
   license:
     name: Apache-2.0
     identifier: Apache-2.0
@@ -793,8 +812,11 @@ paths:
         (image kinds as image input; file kinds as filename + text
         extract when text/*, else a short “user attached {name}” note).
         v0.27 video attachments persist on the message; apply_to_user_content
-        skips kind=video bytes (no transcription, no watch-video tool; a
-        short user attached {name} stub is fine).
+        skips kind=video bytes (no transcription in the user turn; a
+        short user attached {name} stub is fine). v0.28 watch-video is
+        opt-in via the built-in watch_video tool (attachmentId); the
+        runtime does not auto-call it and never puts video bytes in the
+        tool result or the user turn.
         The runtime owns the tool loop (clients never send a tools payload).
         A question card ends that agent turn: no more tokens or tools after
         `kind=widget` until the user answers or dismisses. Tools still

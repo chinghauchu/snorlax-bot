@@ -114,7 +114,8 @@ def apply_to_user_content(
     Image kinds become OpenAI image_url parts. text/* files contribute
     filename + extracted text. Other files are a short note. kind=video
     is never sent as bytes (no transcription, no in-model watch); a
-    short `user attached {name}` stub is fine.
+    short `user attached {name}` stub (plus attachmentId so watch_video
+    can be called) is fine. The agent opts in via watch_video.
     """
     text_bits: list[str] = []
     stripped = (content or "").strip()
@@ -125,7 +126,11 @@ def apply_to_user_content(
         kind = str(row.get("kind") or "file")
         name = str(row.get("name") or "file")
         if kind == "video":
-            text_bits.append(f"user attached {name}")
+            aid = str(row.get("id") or "").strip()
+            if aid:
+                text_bits.append(f"user attached {name} (attachmentId {aid})")
+            else:
+                text_bits.append(f"user attached {name}")
             continue
         mime = str(row.get("mime") or "application/octet-stream")
         data = row.get("data")

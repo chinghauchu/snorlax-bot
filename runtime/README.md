@@ -140,7 +140,10 @@ multipart `file` → 201 `kind=video` (`video/*` or a video ext). Video
 max 50MB (`Max 50MB.`); image/file stay 10MB. GET attachments on any
 `kind=message`. Runtime does not feed video bytes to the model (short
 `user attached {name}` stub). Agent `write_file` of a video under 50MB
-may bind as `kind=video`. No watch-video tool. OpenAPI stays 0.18.0.
+may bind as `kind=video`. v0.28: built-in `watch_video` `{ attachmentId }`
+(auto-run; text description into the tool result; `Watched {name}` on the
+existing kind=tool line). Do not auto-call. Video bytes still never go
+into the user turn. Desktop/iOS idle. OpenAPI stays 0.18.0.
 
 ## MCP (`mcp.json`)
 
@@ -167,7 +170,7 @@ subprocesses. A `url` is streamable HTTP on the LAN (loopback, RFC1918, or
 `.local` are fine). Use `"transport": "sse"` or a `/sse` path for legacy
 SSE. Tools are offered to the model as `server__tool` so they cannot
 clobber `list_dir` / `read_file` / `write_file` / `delete_file` / `shell` /
-`web_search` / `web_fetch`. MCP HTTP uses the runtime process (like
+`web_search` / `web_fetch` / `watch_video`. MCP HTTP uses the runtime process (like
 `web_fetch`), not the agent shell. If a server fails to start, the runtime
 still boots and logs the failure.
 
