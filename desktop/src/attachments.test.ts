@@ -11,8 +11,14 @@ import {
   MAX_ATTACHMENT_BYTES,
   MAX_VIDEO_BYTES,
   attachmentClientError,
+  clipboardBitmapName,
+  clipboardInsertText,
+  composerPasteFromClipboard,
+  filesFromClipboard,
   formatAttachmentSize,
+  pastedAttachmentName,
   userRightAttachments,
+  withPastedName,
 } from "./attachments.ts";
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -157,4 +163,121 @@ test("desktop composer attachments chrome: pending video chip, no danger line fo
   assert.doesNotMatch(app, /\/v1\/chats\//);
   assert.doesNotMatch(app, />Watch</);
   assert.doesNotMatch(app, /watch_video/);
+});
+
+test("clipboard bitmap with no filename uses image.png / jpeg jpg / gif / webp", () => {
+  assert.equal(clipboardBitmapName("image/png"), "image.png");
+  assert.equal(clipboardBitmapName("image/jpeg"), "image.jpg");
+  assert.equal(clipboardBitmapName("image/jpg"), "image.jpg");
+  assert.equal(clipboardBitmapName("image/gif"), "image.gif");
+  assert.equal(clipboardBitmapName("image/webp"), "image.webp");
+  assert.equal(pastedAttachmentName({ name: "", type: "image/png" }), "image.png");
+  assert.equal(pastedAttachmentName({ name: "", type: "image/jpeg" }), "image.jpg");
+  const named = new File([new Uint8Array(4)], "Shot from Finder.png", {
+    type: "image/png",
+  });
+  assert.equal(pastedAttachmentName(named), "Shot from Finder.png");
+  const unnamed = new File([new Uint8Array([0x89, 0x50, 0x4e, 0x47])], "", {
+    type: "image/png",
+  });
+  assert.equal(withPastedName(unnamed).name, "image.png");
+  assert.equal(withPastedName(unnamed).type, "image/png");
+});
+
+test("paste image becomes a pending file; text-only paste is not intercepted", () => {
+  const png = new File([new Uint8Array([1, 2, 3])], "", { type: "image/png" });
+  const imagePaste = composerPasteFromClipboard({
+    items: [
+      { kind: "file", type: "image/png", getAsFile: () => png },
+    ],
+    getData: () => "",
+  });
+  assert.equal(imagePaste.intercept, true);
+  assert.equal(imagePaste.files.length, 1);
+  assert.equal(imagePaste.files[0].name, "image.png");
+  assert.equal(imagePaste.text, "");
+
+  const textPaste = composerPasteFromClipboard({
+    items: [{ kind: "string", type: "text/plain", getAsFile: () => null }],
+    getData: (type) => (type === "text/plain" ? "hello" : ""),
+  });
+  assert.equal(textPaste.intercept, false);
+  assert.equal(textPaste.files.length, 0);
+  assert.equal(filesFromClipboard({ items: [] }).length, 0);
+});
+
+test("mixed clipboard queues files and keeps text; Finder file:// is not inserted", () => {
+  const img = new File([new Uint8Array([9])], "photo.png", { type: "image/png" });
+  const mixed = composerPasteFromClipboard({
+    items: [
+      { kind: "string", type: "text/plain", getAsFile: () => null },
+      { kind: "file", type: "image/png", getAsFile: () => img },
+    ],
+    getData: (type) => (type === "text/plain" ? "see this" : ""),
+  });
+  assert.equal(mixed.intercept, true);
+  assert.equal(mixed.files[0].name, "photo.png");
+  assert.equal(mixed.text, "see this");
+  const finder = new File([new Uint8Array([8])], "notes.pdf", {
+    type: "application/pdf",
+  });
+  assert.equal(clipboardInsertText("file:///Users/me/notes.pdf", [finder]), "");
+  assert.equal(clipboardInsertText("notes.pdf", [finder]), "");
+  const txt = new File([new Uint8Array([1])], "hello.txt", { type: "text/plain" });
+  const asFile = composerPasteFromClipboard({
+    items: [{ kind: "file", type: "text/plain", getAsFile: () => txt }],
+    getData: () => "",
+  });
+  assert.equal(asFile.intercept, true);
+  assert.equal(asFile.files[0].name, "hello.txt");
+});
+
+test("paste oversize still Max 10MB. / Max 50MB.; in-limit video is allowed", () => {
+  const hugeImg = composerPasteFromClipboard({
+    items: [
+      {
+        kind: "file",
+        type: "image/png",
+        getAsFile: () =>
+          new File([new Uint8Array(8)], "shot.png", { type: "image/png" }),
+      },
+    ],
+  });
+  assert.equal(
+    attachmentClientError({
+      name: hugeImg.files[0].name,
+      type: "image/png",
+      size: MAX_ATTACHMENT_BYTES + 1,
+    }),
+    ERR_MAX,
+  );
+  assert.equal(
+    attachmentClientError({
+      name: "clip.mp4",
+      type: "video/mp4",
+      size: MAX_VIDEO_BYTES + 1,
+    }),
+    ERR_MAX_VIDEO,
+  );
+  const video = new File([new Uint8Array(12)], "clip.mp4", { type: "video/mp4" });
+  const pasted = composerPasteFromClipboard({
+    items: [{ kind: "file", type: "video/mp4", getAsFile: () => video }],
+  });
+  assert.equal(pasted.intercept, true);
+  assert.equal(attachmentClientError(pasted.files[0]), null);
+});
+
+test("composer paste event fills the same pending chips; paperclip and drop stay", () => {
+  const app = readFileSync(join(here, "App.tsx"), "utf8");
+  assert.match(app, /onPaste=\{/);
+  assert.match(app, /composerPasteFromClipboard/);
+  assert.match(app, /onComposerPaste/);
+  assert.match(app, /isComposerPasteChord/);
+  assert.match(app, /addPendingFile/);
+  assert.match(app, /onDrop/);
+  assert.match(app, /function Paperclip/);
+  assert.match(app, /if \(!result\.intercept\) return/);
+  assert.doesNotMatch(app, /computerPane\.ts/);
+  assert.equal(existsSync(join(here, "computerPane.ts")), false);
+  assert.doesNotMatch(app, /\/v1\/chats\//);
 });

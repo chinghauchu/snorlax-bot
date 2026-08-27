@@ -1,4 +1,5 @@
 import {
+  ClipboardEvent,
   DragEvent,
   FormEvent,
   KeyboardEvent,
@@ -106,6 +107,7 @@ import {
 import {
   composerEnterSends,
   isComposerComposing,
+  isComposerPasteChord,
   rosterRefreshTool,
 } from "./composerKeys";
 import {
@@ -137,8 +139,10 @@ import type {
 } from "./types";
 import {
   attachmentClientError,
+  composerPasteFromClipboard,
   formatAttachmentSize,
   userRightAttachments,
+  withPastedName,
   type PendingAttachment,
 } from "./attachments";
 
@@ -446,6 +450,7 @@ export function App() {
 
   const scroller = useRef<HTMLDivElement>(null);
   const composerRef = useRef<HTMLTextAreaElement>(null);
+  const composerRootRef = useRef<HTMLElement>(null);
   const skillTypeaheadRef = useRef<HTMLUListElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const avatarFileRef = useRef<HTMLInputElement>(null);
@@ -1590,6 +1595,75 @@ export function App() {
     }
   }
 
+  function insertDraftAtCaret(text: string) {
+    const el = composerRef.current;
+    const current = draft;
+    const start = el?.selectionStart ?? current.length;
+    const end = el?.selectionEnd ?? start;
+    const next = current.slice(0, start) + text + current.slice(end);
+    pendingCaret.current = start + text.length;
+    setDraft(next);
+    syncComposerTriggers(next, start + text.length);
+  }
+
+  async function applyPastedFiles(files: File[], text: string) {
+    if (text) insertDraftAtCaret(text);
+    for (const file of files) {
+      await addPendingFile(withPastedName(file));
+    }
+  }
+
+  async function onComposerPaste(event: ClipboardEvent<HTMLElement>) {
+    if (composerDisabled || takeoverOpen) return;
+    const result = composerPasteFromClipboard(event.clipboardData);
+    if (!result.intercept) return;
+    event.preventDefault();
+    await applyPastedFiles(result.files, result.text);
+  }
+
+  async function pasteFromNavigatorClipboard() {
+    if (composerDisabled || takeoverOpen) return;
+    if (!navigator.clipboard?.read) return;
+    try {
+      const items = await navigator.clipboard.read();
+      const files: File[] = [];
+      let text = "";
+      for (const item of items) {
+        for (const type of item.types) {
+          if (type === "text/plain") {
+            const blob = await item.getType(type);
+            text += await blob.text();
+            continue;
+          }
+          if (type === "text/html") continue;
+          const blob = await item.getType(type);
+          const mime = blob.type || type;
+          files.push(
+            withPastedName(new File([blob], "", { type: mime })),
+          );
+        }
+      }
+      const result = composerPasteFromClipboard({
+        files,
+        getData: (kind) => (kind === "text/plain" ? text : ""),
+      });
+      if (!result.intercept) {
+        if (text) insertDraftAtCaret(text);
+        return;
+      }
+      await applyPastedFiles(result.files, result.text);
+    } catch {
+      /* paste permission or empty clipboard */
+    }
+  }
+
+  function onComposerBarKey(event: KeyboardEvent<HTMLElement>) {
+    if (!isComposerPasteChord(event)) return;
+    if (event.target === composerRef.current) return;
+    event.preventDefault();
+    void pasteFromNavigatorClipboard();
+  }
+
   function resizeComposer(reset = false) {
     const el = composerRef.current;
     if (!el) return;
@@ -2095,12 +2169,21 @@ export function App() {
         </div>
 
         <footer
+          ref={composerRootRef}
+          tabIndex={-1}
           className={`composer${dropTarget ? " drop-target" : ""}`}
           aria-hidden={takeoverOpen || undefined}
           onDragOver={onComposerDragOver}
           onDragEnter={onComposerDragOver}
           onDragLeave={onComposerDragLeave}
           onDrop={(event) => void onComposerDrop(event)}
+          onPaste={(event) => void onComposerPaste(event)}
+          onKeyDown={onComposerBarKey}
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget) {
+              composerRootRef.current?.focus();
+            }
+          }}
         >
           {pendingAttachments.length ? (
             <div className="pending-chips">

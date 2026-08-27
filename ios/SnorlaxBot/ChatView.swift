@@ -372,7 +372,18 @@ private struct ComposerBar: View {
                     disabled: !model.canCompose,
                     pendingCaret: $model.pendingComposerCaret,
                     focused: focused,
-                    onReturnSend: { Task { await model.send() } }
+                    onReturnSend: { Task { await model.send() } },
+                    onPasteAttachments: { items in
+                        Task {
+                            for item in items {
+                                await model.addPendingFile(
+                                    name: item.name,
+                                    mime: item.mime,
+                                    data: item.data
+                                )
+                            }
+                        }
+                    }
                 )
                 .frame(minHeight: 22, maxHeight: 120)
 

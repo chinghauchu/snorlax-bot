@@ -14,7 +14,7 @@ Concrete follow-ups after v0. Filed on GitHub against
 
 - [D1 — Desktop visual system: roster, status, empty states](https://github.com/chinghauchu/snorlax-bot/issues/11)
 - [D2 — Computer pane next to chat](https://github.com/chinghauchu/snorlax-bot/issues/12) — v0.6 first slice: 320px right file tree + text preview over the existing `~/.snorlax-bot` workspace (collapsible, default open). **v0.14:** identity-pane 16:10 Bearer PNG preview (288×180). **v0.15:** desktop Open / Done takeover overlay (no VNC / separate window). **v0.16:** Record / Stop / Save as skill on that takeover bar (desktop). **v0.19:** iOS Open / Done full-screen takeover (same v0.15 session). **v0.20:** iOS Record / Stop / Save as skill on that takeover bar (same v0.16 record protocol). File-tree column unchanged.
-- [D3 — In-stream widgets and attachment chips](https://github.com/chinghauchu/snorlax-bot/issues/8) — **v0.8 first slice:** LEFT question card chrome (desktop + iOS, no extra sheet). **v0.25:** user-right attachment chips (composer paperclip / drop; 56×56 pending image; 36px file chip; GET `attachments` on user-right; `attachmentIds` in that turn). **v0.26:** LEFT `kind=message` reuses that chrome (above markdown, 6px gap; not on tool / widget / Connect / timeline handoff). **v0.27:** video (56×56 pending poster; 220×160 player, native controls, no autoplay; 50MB). **v0.28:** `watch_video` is the existing 12px muted `Watched {name}` tool line (no Watch button, no second player; desktop/iOS idle). **v0.29:** `create_agent` / `create_channel` paint as that same 12px muted `Created {name}` tool line (not a card). Composer Enter does not send while IME is composing.
+- [D3 — In-stream widgets and attachment chips](https://github.com/chinghauchu/snorlax-bot/issues/8) — **v0.8 first slice:** LEFT question card chrome (desktop + iOS, no extra sheet). **v0.25:** user-right attachment chips (composer paperclip / drop; 56×56 pending image; 36px file chip; GET `attachments` on user-right; `attachmentIds` in that turn). **v0.26:** LEFT `kind=message` reuses that chrome (above markdown, 6px gap; not on tool / widget / Connect / timeline handoff). **v0.27:** video (56×56 pending poster; 220×160 player, native controls, no autoplay; 50MB). **v0.28:** `watch_video` is the existing 12px muted `Watched {name}` tool line (no Watch button, no second player; desktop/iOS idle). **v0.29:** `create_agent` / `create_channel` paint as that same 12px muted `Created {name}` tool line (not a card). Composer Enter does not send while IME is composing. **v0.30:** composer clipboard paste fills those same pending chips (Cmd-V / Ctrl-V / `paste` / UIPasteboard); text-only paste stays in the field; paperclip and drop unchanged.
 
 ## Backend
 
@@ -40,7 +40,10 @@ Concrete follow-ups after v0. Filed on GitHub against
   existing 12px muted `Watched {name}` tool line (no Watch button, no
   second player; desktop/iOS idle). **v0.29:** `create_agent` /
   `create_channel` are that same 12px muted `Created {name}` line;
-  composer Enter does not send while IME is composing.
+  composer Enter does not send while IME is composing. **v0.30:**
+  composer clipboard paste (Cmd-V / Ctrl-V / paste event /
+  UIPasteboard) fills those same pending chips; text-only paste stays
+  in the field; paperclip and drop unchanged.
 - Computer pane first slice is v0.6 (D2/B4): desktop file tree + preview over
   `~/.snorlax-bot` workspaces. **v0.14:** identity-pane screenshot preview.
   **v0.15:** desktop Open / Done takeover (pointer/key in 1280×800). **v0.16:**
@@ -84,3 +87,7 @@ Concrete follow-ups after v0. Filed on GitHub against
   connected (omit, do not disable). Slack 14pt `#eng` + 12pt `Channel
   the bot is in.`; GitHub `owner/name` + `One repo. No wildcards.`
   Primary Add 44pt. Copy stays webhook-only. No event picker.
+- **v0.30:** composer paste from UIPasteboard (images / videos / files)
+  fills the same pending chips as paperclip. Plain text paste stays in
+  the text field. Same 10MB / 50MB danger copy. Photos/Files paperclip
+  unchanged.

@@ -36,3 +36,15 @@ export function composerEnterSends(event: ComposerKeyEvent): boolean {
 export function rosterRefreshTool(name: string): boolean {
   return name === "create_agent" || name === "create_channel";
 }
+
+/** Cmd-V / Ctrl-V. Do not preventDefault on the textarea — the paste event owns it. */
+export function isComposerPasteChord(event: {
+  key: string;
+  metaKey?: boolean;
+  ctrlKey?: boolean;
+  altKey?: boolean;
+}): boolean {
+  if (event.altKey) return false;
+  if (!(event.metaKey || event.ctrlKey)) return false;
+  return event.key === "v" || event.key === "V";
+}

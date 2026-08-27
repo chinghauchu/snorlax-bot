@@ -20,7 +20,7 @@ computer. Bots live on your LAN, talk through a thin local runtime, and (in
 later versions) browse, click, schedule, and call tools without sending tokens
 off-box.
 
-v0.28 is still small: **named teammates + identity pane + group channel threads
+v0.30 is still small: **named teammates + identity pane + group channel threads
 + chat with @mentions + report-back + extra channels + built-in tools + a
 thin desktop Computer pane + a runtime MCP client + question widgets +
 skills and cron/webhook/Slack/GitHub routines (Add / Remove + enable/pause + Copy webhook URL; Slack/GitHub listeners when that plugin is connected) + MCP connect chrome
@@ -33,6 +33,7 @@ video attachments (composer drop/pick; 220×160 player; `kind=video`; 50MB; not 
 watch-video tool (`watch_video` `{ attachmentId }`; `Watched {name}` on the existing kind=tool line; no auto-inject; desktop/iOS idle) +
 create agent/channel tools (`create_agent` / `create_channel` wrap `POST /v1/agents`; `Created {name}` tool line; 项目 / 员工 seed skill) +
 IME-safe composer Enter (does not send while composing) +
+composer clipboard paste (Cmd-V / Ctrl-V / paste event of image/file/video → same pending chips; text-only paste stays in the field) +
 identity-pane Box computer preview (Bearer PNG) + desktop Box takeover
 (Open / Done; pointer/key in 1280×800) + teach-a-task (Record / Stop /
 Save as skill inside takeover) + skill markdown editor (identity-pane
@@ -230,7 +231,9 @@ stays plain text), and
 v0.25 chat attachments (composer paperclip / drop; user-right image +
 file chips; `POST /v1/agents/{id}/attachments` + `attachmentIds`), and
 v0.26 agent-sent attachments (LEFT `kind=message` reuses that chrome;
-runtime binds write_file / screenshot).
+runtime binds write_file / screenshot), and
+v0.30 composer clipboard paste (same pending chips; text-only paste
+stays in the field; OpenAPI stays 0.18.0).
 Later: full sandbox computer GUI, MCP marketplace catalog,
 Slack/GitHub inbound listeners.
 

@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 import Foundation
 import SwiftUI
+import UIKit
+import UniformTypeIdentifiers
 
 extension Agent {
     static let seedID = "snorlax-bot"
@@ -298,6 +300,135 @@ enum ChatAttachment {
             return String(format: "%.1f MB", mb)
         }
         return "\(Int(mb.rounded())) MB"
+    }
+}
+
+enum ComposerPasteboard {
+    struct Attachment: Sendable {
+        var name: String
+        var mime: String
+        var data: Data
+    }
+
+    static func bitmapName(mime: String) -> String {
+        switch mime.lowercased() {
+        case "image/jpeg", "image/jpg": return "image.jpg"
+        case "image/gif": return "image.gif"
+        case "image/webp": return "image.webp"
+        default: return "image.png"
+        }
+    }
+
+    static func attachments(from board: UIPasteboard) -> [Attachment] {
+        var out: [Attachment] = []
+        var seen = Set<Int>()
+
+        func add(name: String, mime: String, data: Data) {
+            guard !data.isEmpty else { return }
+            let key = data.hashValue &+ data.count
+            if seen.contains(key) { return }
+            seen.insert(key)
+            out.append(Attachment(name: name, mime: mime, data: data))
+        }
+
+        for item in board.items {
+            if let url = fileURL(from: item) {
+                let accessed = url.startAccessingSecurityScopedResource()
+                defer { if accessed { url.stopAccessingSecurityScopedResource() } }
+                if let data = try? Data(contentsOf: url), !data.isEmpty {
+                    let mime = UTType(filenameExtension: url.pathExtension)?.preferredMIMEType
+                        ?? mimeForData(data)
+                    add(name: url.lastPathComponent, mime: mime, data: data)
+                    continue
+                }
+            }
+            if let data = imageData(from: item) {
+                let mime = data.sniffedImageMIME
+                add(name: bitmapName(mime: mime), mime: mime, data: data)
+                continue
+            }
+            if let data = videoData(from: item) {
+                let mime = data.sniffedVideoMIME ?? "video/mp4"
+                add(name: "video.mp4", mime: mime, data: data)
+            }
+        }
+
+        if out.isEmpty, let image = board.image, let data = image.pngData() {
+            add(name: "image.png", mime: "image/png", data: data)
+        }
+        return out
+    }
+
+    static func shouldIntercept(_ board: UIPasteboard) -> Bool {
+        !attachments(from: board).isEmpty
+    }
+
+    static func plainText(from board: UIPasteboard, files: [Attachment]) -> String {
+        let raw = board.string ?? ""
+        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmed.isEmpty { return "" }
+        if trimmed.lowercased().hasPrefix("file://") { return "" }
+        if files.count == 1 {
+            let name = files[0].name
+            if trimmed == name || trimmed.hasSuffix("/\(name)") { return "" }
+        }
+        return raw
+    }
+
+    private static func fileURL(from item: [String: Any]) -> URL? {
+        for key in ["public.file-url", UTType.fileURL.identifier] {
+            guard let value = item[key] else { continue }
+            if let url = value as? URL, url.isFileURL { return url }
+            if let s = value as? String, let url = URL(string: s), url.isFileURL { return url }
+            if let data = value as? Data {
+                if let url = URL(dataRepresentation: data, relativeTo: nil), url.isFileURL {
+                    return url
+                }
+                if let s = String(data: data, encoding: .utf8)?
+                    .trimmingCharacters(in: .whitespacesAndNewlines),
+                   let url = URL(string: s), url.isFileURL
+                {
+                    return url
+                }
+            }
+        }
+        return nil
+    }
+
+    private static func imageData(from item: [String: Any]) -> Data? {
+        let keys = [
+            "public.png", "public.jpeg", "public.jpeg-2000", "public.gif",
+            "public.tiff", "public.webp", "public.heic", "com.apple.uikit.image",
+            UTType.png.identifier, UTType.jpeg.identifier, UTType.gif.identifier,
+            UTType.webP.identifier, UTType.image.identifier,
+        ]
+        for key in keys {
+            if let data = item[key] as? Data, !data.isEmpty { return data }
+            if let image = item[key] as? UIImage { return image.pngData() }
+        }
+        return nil
+    }
+
+    private static func videoData(from item: [String: Any]) -> Data? {
+        let keys = [
+            "public.mpeg-4", "public.movie", "com.apple.quicktime-movie",
+            UTType.mpeg4Movie.identifier, UTType.quickTimeMovie.identifier,
+            UTType.movie.identifier, UTType.video.identifier,
+        ]
+        for key in keys {
+            if let data = item[key] as? Data, !data.isEmpty { return data }
+            if let url = fileURL(from: [key: item[key] as Any]) {
+                let accessed = url.startAccessingSecurityScopedResource()
+                defer { if accessed { url.stopAccessingSecurityScopedResource() } }
+                if let data = try? Data(contentsOf: url), !data.isEmpty { return data }
+            }
+        }
+        return nil
+    }
+
+    private static func mimeForData(_ data: Data) -> String {
+        if let video = data.sniffedVideoMIME { return video }
+        return data.sniffedImageMIME
     }
 }
 

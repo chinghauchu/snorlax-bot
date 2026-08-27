@@ -25,6 +25,7 @@ CLIENT = (IOS / "RuntimeClient.swift").read_text(encoding="utf-8")
 TYPES = (IOS / "Generated" / "V1Types.swift").read_text(encoding="utf-8")
 MODELS = (IOS / "Models.swift").read_text(encoding="utf-8")
 COMPONENTS = (IOS / "Components.swift").read_text(encoding="utf-8")
+COMPOSER = (IOS / "ComposerTextView.swift").read_text(encoding="utf-8")
 
 
 def test_paperclip_photos_or_files() -> None:
@@ -128,6 +129,26 @@ def test_no_chats_resource_or_computer_pane() -> None:
     assert '"Watch"' not in CHAT
 
 
+def test_composer_pasteboard_fills_pending_chips() -> None:
+    assert "ComposerPasteboard" in MODELS
+    assert "image.png" in MODELS
+    assert "image.jpg" in MODELS
+    assert "image.gif" in MODELS
+    assert "image.webp" in MODELS
+    assert "UIPasteboard" in MODELS
+    assert "func paste(" in COMPOSER
+    assert "super.paste" in COMPOSER
+    assert "onPasteAttachments" in COMPOSER
+    assert "onPasteAttachments" in CHAT
+    assert "addPendingFile" in CHAT
+    assert 'Button("Photos")' in CHAT
+    assert 'Button("Files")' in CHAT
+    assert "Max 10MB." in MODELS
+    assert "Max 50MB." in MODELS
+    assert "computerPane.ts" not in COMPOSER
+    assert "/v1/chats/" not in COMPOSER
+
+
 def main() -> int:
     tests = [
         test_paperclip_photos_or_files,
@@ -137,6 +158,7 @@ def main() -> int:
         test_video_player_220x160_native_controls_no_autoplay,
         test_left_streak_reuses_user_right_chrome,
         test_no_chats_resource_or_computer_pane,
+        test_composer_pasteboard_fills_pending_chips,
     ]
     failed = 0
     for test in tests:
