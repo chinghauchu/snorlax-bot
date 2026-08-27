@@ -11,6 +11,8 @@ files are 36px name chips that open the Bearer URL. v0.26: LEFT
 tool / widget / Connect / timeline handoff). v0.27: Photos includes
 video; pending 56×56 poster (16pt play if no frame); 220×160 player
 (8pt radius, 1pt border, 24pt play, no autoplay, AVPlayer inline).
+v0.28: no chrome; `watch_video` is the existing 12pt muted `Watched {name}`
+tool line (no Watch button, no second player).
 Question widgets
 render as LEFT cards in the speaking agent's streak (no extra sheet). Agent
 info sheet lists a 16:10 computer preview above routines (12pt labels,

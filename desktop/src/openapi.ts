@@ -130,8 +130,11 @@ export interface paths {
          *     (image kinds as image input; file kinds as filename + text
          *     extract when text/*, else a short “user attached {name}” note).
          *     v0.27 video attachments persist on the message; apply_to_user_content
-         *     skips kind=video bytes (no transcription, no watch-video tool; a
-         *     short user attached {name} stub is fine).
+         *     skips kind=video bytes (no transcription in the user turn; a
+         *     short user attached {name} stub is fine). v0.28 watch-video is
+         *     opt-in via the built-in watch_video tool (attachmentId); the
+         *     runtime does not auto-call it and never puts video bytes in the
+         *     tool result or the user turn.
          *     The runtime owns the tool loop (clients never send a tools payload).
          *     A question card ends that agent turn: no more tokens or tools after
          *     `kind=widget` until the user answers or dismisses. Tools still

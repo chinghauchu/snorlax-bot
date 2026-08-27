@@ -123,6 +123,9 @@ def test_no_chats_resource_or_computer_pane() -> None:
     assert "computerPane.ts" not in CHAT
     assert "computerPane.ts" not in MODEL
     assert "computerPane.ts" not in CLIENT
+    assert "watch_video" not in CHAT
+    assert "Watch button" not in CHAT
+    assert '"Watch"' not in CHAT
 
 
 def main() -> int:

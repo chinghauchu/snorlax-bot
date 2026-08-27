@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0
-"""Runtime-owned built-in tools: files, shell, web. Never called by clients."""
+"""Runtime-owned built-in tools: files, shell, web, watch_video. Never called by clients."""
 
 from __future__ import annotations
 
@@ -389,6 +389,33 @@ TOOL_DEFINITIONS: list[dict[str, Any]] = [
     {
         "type": "function",
         "function": {
+            "name": "watch_video",
+            "description": (
+                "Watch a kind=video attachment on this transcript and return "
+                "a text description. Pass attachmentId from this conversation "
+                "(POST /v1/agents/{id}/attachments or message.attachments). "
+                "The agent decides when to call it. Do not call for image or "
+                "file attachments. The runtime runs this immediately "
+                "(no approval). Video bytes are not placed in the chat turn."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "attachmentId": {
+                        "type": "string",
+                        "description": (
+                            "Attachment id of a kind=video on this 1:1 or "
+                            "channel transcript."
+                        ),
+                    }
+                },
+                "required": ["attachmentId"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
             "name": "computer_click",
             "description": (
                 "Click the agent's 1280x800 sandbox display at (x, y). "
@@ -438,6 +465,8 @@ def start_summary(name: str, args: dict[str, Any]) -> str:
     if name == "web_fetch":
         host = urlparse(str(args.get("url") or "")).hostname or "url"
         return f"Fetching {host}…"
+    if name == "watch_video":
+        return "Watching video…"
     if name == "write_file":
         return f"Writing {Path(str(args.get('path') or 'file')).name}…"
     if name == "read_file":
@@ -510,9 +539,16 @@ def produced_tool_attachment(
     return None
 
 
-def done_summary(name: str, args: dict[str, Any], ok: bool) -> str:
+def done_summary(
+    name: str, args: dict[str, Any], ok: bool, result: str = ""
+) -> str:
     if not ok:
         return f"{name} failed"
+    if name == "watch_video":
+        label = (result or "").strip().splitlines()[0].strip() if result else ""
+        if not label or label.lower().startswith("error"):
+            label = str(args.get("attachmentId") or "video").strip() or "video"
+        return f"Watched {label}"
     if name == "write_file":
         return f"Wrote {_tool_path(args)}"
     if name == "read_file":
@@ -581,10 +617,26 @@ def offered_tool_definitions(*, use_tools: bool = True, use_widget: bool = True)
     return tools
 
 
-async def execute_named_tool(name: str, arguments: str, workspace: Path) -> str:
+async def execute_named_tool(
+    name: str,
+    arguments: str,
+    workspace: Path,
+    *,
+    conversation_id: str | None = None,
+    store: Any | None = None,
+    backend: Any | None = None,
+) -> str:
     """Dispatch one tool. MCP stays on the runtime event loop (not the shell)."""
     from snorlax_runtime.mcp import call_mcp_tool, is_mcp_tool
+    from snorlax_runtime.watch import watch_video_tool
 
+    if name == "watch_video":
+        return await watch_video_tool(
+            arguments,
+            conversation_id=conversation_id,
+            store=store,
+            backend=backend,
+        )
     if is_mcp_tool(name):
         return await call_mcp_tool(name, arguments)
     return await asyncio.to_thread(execute_tool, name, arguments, workspace)
@@ -619,6 +671,10 @@ def execute_tool(name: str, arguments: str, workspace: Path) -> str:
             return _await(_web_search(str(args.get("query") or "")))
         if name == "web_fetch":
             return _await(_web_fetch(str(args.get("url") or "")))
+        if name == "watch_video":
+            from snorlax_runtime.watch import ERR_UNKNOWN_ATTACHMENT
+
+            return ERR_UNKNOWN_ATTACHMENT
         if name == "computer_click":
             return _computer_click(workspace, args)
         if name == "computer_key":
@@ -1045,6 +1101,8 @@ async def run_tool_loop(
     persist_tool: PersistTool | None = None,
     use_tools: bool = True,
     use_widget: bool = True,
+    conversation_id: str | None = None,
+    store: Any | None = None,
 ) -> tuple[
     list[tuple[str, dict[str, Any]]],
     str,
@@ -1152,10 +1210,15 @@ async def run_tool_loop(
                         )
                     )
                 result = await execute_named_tool(
-                    call.name, call.arguments, workspace
+                    call.name,
+                    call.arguments,
+                    workspace,
+                    conversation_id=conversation_id,
+                    store=store,
+                    backend=backend,
                 )
                 ok = not result.startswith("Error:")
-                summary = done_summary(call.name, args, ok)
+                summary = done_summary(call.name, args, ok, result)
                 tool_outcomes.append((call.name, ok, result))
                 artifact = produced_tool_attachment(
                     call.name, args, ok=ok, workspace=workspace

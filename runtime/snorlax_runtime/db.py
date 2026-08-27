@@ -34,7 +34,7 @@ DB_FILENAME = "snorlax.db"
 
 TOOLS_PREAMBLE = (
     "You have built-in tools (list_dir, read_file, write_file, delete_file, "
-    "shell, web_search, web_fetch). Call them instead of describing the work. "
+    "shell, web_search, web_fetch, watch_video). Call them instead of describing the work. "
     "The runtime runs tools immediately — do not ask the user to approve a "
     "tool call and do not wait for a widget. Question cards are for user "
     "judgment (which approach, whether to proceed on a product decision), "
@@ -50,7 +50,9 @@ TOOLS_PREAMBLE = (
     "under the runtime data dir (not a folder on the host Mac). If another "
     "teammate needs your files, turn shared project on or put them there. "
     "If a teammate needs a user decision, report back; do not try to paint "
-    "a question card in someone else's 1:1. Skills are how-to recipes "
+    "a question card in someone else's 1:1. If the user attaches a video, "
+    "call watch_video with its attachmentId when you need a description; "
+    "do not call it for images or files. Skills are how-to recipes "
     "(SKILL.md) with no trigger of their own — follow a matching skill "
     "when you work. Routines are cron jobs that fire a skill while the "
     "user is away."
@@ -994,6 +996,26 @@ class Store:
         if not path.is_file():
             return None
         return str(row["mime"]), path.read_bytes(), str(row["name"])
+
+    async def get_attachment_row(self, attachment_id: str) -> dict[str, Any] | None:
+        cur = await self.conn.execute(
+            "SELECT id, conversation_id, message_id, kind, name, mime, size, "
+            "storage_path FROM attachments WHERE id = ?",
+            (attachment_id,),
+        )
+        row = await cur.fetchone()
+        if row is None:
+            return None
+        return {
+            "id": str(row["id"]),
+            "conversation_id": str(row["conversation_id"]),
+            "message_id": str(row["message_id"]) if row["message_id"] else None,
+            "kind": str(row["kind"]),
+            "name": str(row["name"]),
+            "mime": str(row["mime"]),
+            "size": int(row["size"] or 0),
+            "storage_path": str(row["storage_path"] or ""),
+        }
 
     async def list_attachments(self, message_id: str) -> list[dict[str, Any]]:
         cur = await self.conn.execute(

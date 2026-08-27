@@ -155,4 +155,6 @@ test("desktop composer attachments chrome: pending video chip, no danger line fo
   assert.doesNotMatch(app, /computerPane\.ts/);
   assert.equal(existsSync(join(here, "computerPane.ts")), false);
   assert.doesNotMatch(app, /\/v1\/chats\//);
+  assert.doesNotMatch(app, />Watch</);
+  assert.doesNotMatch(app, /watch_video/);
 });

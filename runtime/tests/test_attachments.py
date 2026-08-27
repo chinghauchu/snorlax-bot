@@ -1,8 +1,6 @@
 # SPDX-License-Identifier: Apache-2.0
 from __future__ import annotations
 
-from pathlib import Path
-
 from tests.conftest import AUTH, parse_sse
 
 SEED = "snorlax-bot"
@@ -485,22 +483,226 @@ def test_agent_attachment_skips_video_over_50mb() -> None:
     assert ok["kind"] == "video"
 
 
-def test_no_watch_video_tool() -> None:
+def test_watch_video_is_offered() -> None:
     from snorlax_runtime.tools import offered_tool_definitions
 
     names = [
         (row.get("function") or {}).get("name") or ""
         for row in offered_tool_definitions()
     ]
-    lowered = [n.lower().replace("-", "_") for n in names]
-    assert "watch_video" not in lowered
-    assert all("watch" not in n or "video" not in n for n in lowered)
-    source = Path(__file__).resolve().parents[1].joinpath(
-        "snorlax_runtime", "tools.py"
-    ).read_text(encoding="utf-8")
-    assert "watch_video" not in source
-    assert "watch-video" not in source
-    assert "transcri" not in source.lower()
+    assert "watch_video" in names
+
+
+def _watch_payload(attachment_id: str, **extra):
+    payload = {
+        "content": f'SNORLAX_TOOL watch_video {{"attachmentId": "{attachment_id}"}}'
+    }
+    payload.update(extra)
+    return payload
+
+
+def _watch(client, dest: str, attachment_id: str, **extra):
+    with client.stream(
+        "POST",
+        f"/v1/agents/{dest}/messages",
+        headers=AUTH,
+        json=_watch_payload(attachment_id, **extra),
+    ) as response:
+        body = "".join(response.iter_text())
+        return response.status_code, parse_sse(body)
+
+
+def test_watch_video_success_text_not_bytes(client) -> None:
+    import base64
+
+    blob = b"secret-video-bytes-do-not-send"
+    created = _upload(client, SEED, "clip.mp4", blob, "video/mp4").json()
+    with client.stream(
+        "POST",
+        f"/v1/agents/{SEED}/messages",
+        headers=AUTH,
+        json={"content": "here is a clip", "attachmentIds": [created["id"]]},
+    ) as response:
+        assert response.status_code == 200
+        "".join(response.iter_text())
+    status, events = _watch(client, SEED, created["id"])
+    assert status == 200
+    start = next(p for n, p in events if n == "tool.start")
+    done = next(p for n, p in events if n == "tool.done")
+    assert start["name"] == "watch_video"
+    assert done["name"] == "watch_video"
+    assert done["ok"] is True
+    assert done["summary"] == "Watched clip.mp4"
+    tool_msgs = [p for n, p in events if n == "message.done" and p.get("kind") == "tool"]
+    assert tool_msgs
+    assert tool_msgs[0]["content"] == "Watched clip.mp4"
+    listed = _msgs(client, SEED)
+    tools = [m for m in listed if m.get("kind") == "tool"]
+    assert tools[0]["content"] == "Watched clip.mp4"
+    last = client.app.state.backend.last_messages
+    packed = str(last)
+    tool_roles = [m for m in last if m.get("role") == "tool"]
+    assert tool_roles
+    result = str(tool_roles[0].get("content") or "")
+    assert result.startswith("clip.mp4")
+    assert not result.startswith("{")
+    assert "secret-video-bytes" not in result
+    assert blob.decode("ascii") not in result
+    assert blob.decode("ascii") not in packed
+    assert base64.b64encode(blob).decode("ascii") not in packed
+    assert base64.b64encode(blob).decode("ascii") not in result
+    assert "size:" in result
+    listed_user = [m for m in listed if m["role"] == "user"]
+    assert any(
+        (m.get("attachments") or [{}])[0].get("kind") == "video"
+        for m in listed_user
+        if m.get("attachments")
+    )
+
+
+def test_watch_video_unknown_id_tool_error_post_200(client) -> None:
+    status, events = _watch(client, SEED, "att_nope")
+    assert status == 200
+    done = next(p for n, p in events if n == "tool.done")
+    assert done["name"] == "watch_video"
+    assert done["ok"] is False
+    assert done["summary"] == "watch_video failed"
+    listed = _msgs(client, SEED)
+    users = [m for m in listed if m["role"] == "user"]
+    assert users
+    tools = [m for m in listed if m.get("kind") == "tool"]
+    assert tools
+    assert tools[0]["content"] == "watch_video failed"
+    assistants = [
+        m
+        for m in listed
+        if m["role"] == "assistant" and m.get("kind") != "tool"
+    ]
+    assert assistants
+    last = client.app.state.backend.last_messages
+    tool_roles = [m for m in last if m.get("role") == "tool"]
+    assert tool_roles
+    assert "Error: unknown attachment id" in str(tool_roles[0].get("content") or "")
+
+
+def test_watch_video_image_id_not_a_video(client) -> None:
+    created = _upload(client, SEED, "shot.png", PNG, "image/png").json()
+    status, events = _watch(client, SEED, created["id"])
+    assert status == 200
+    done = next(p for n, p in events if n == "tool.done")
+    assert done["ok"] is False
+    assert done["summary"] == "watch_video failed"
+    last = client.app.state.backend.last_messages
+    tool_roles = [m for m in last if m.get("role") == "tool"]
+    assert "Error: not a video" in str(tool_roles[0].get("content") or "")
+
+
+def test_watch_video_file_id_not_a_video(client) -> None:
+    created = _upload(client, SEED, "notes.txt", TXT, "text/plain").json()
+    status, events = _watch(client, SEED, created["id"])
+    assert status == 200
+    done = next(p for n, p in events if n == "tool.done")
+    assert done["ok"] is False
+    last = client.app.state.backend.last_messages
+    tool_roles = [m for m in last if m.get("role") == "tool"]
+    assert "Error: not a video" in str(tool_roles[0].get("content") or "")
+
+
+def test_watch_video_foreign_id_isolated(client) -> None:
+    other = client.post("/v1/agents", headers=AUTH, json={"name": "B"}).json()
+    created = _upload(client, other["id"], "clip.mp4", b"only-b", "video/mp4").json()
+    with client.stream(
+        "POST",
+        f"/v1/agents/{other['id']}/messages",
+        headers=AUTH,
+        json={"content": "for B", "attachmentIds": [created["id"]]},
+    ) as response:
+        "".join(response.iter_text())
+    status, events = _watch(client, SEED, created["id"])
+    assert status == 200
+    done = next(p for n, p in events if n == "tool.done")
+    assert done["ok"] is False
+    assert done["summary"] == "watch_video failed"
+    last = client.app.state.backend.last_messages
+    tool_roles = [m for m in last if m.get("role") == "tool"]
+    assert "Error: unknown attachment id" in str(tool_roles[0].get("content") or "")
+    seed_msgs = _msgs(client, SEED)
+    assert all(
+        created["id"] not in [a.get("id") for a in (m.get("attachments") or [])]
+        for m in seed_msgs
+    )
+
+
+def test_watch_video_channel_thread(client) -> None:
+    inbox = client.post("/v1/agents", headers=AUTH, json={"name": "Inbox"}).json()
+    blob = b"channel-clip-bytes"
+    created = _upload(client, CHANNEL, "room.mp4", blob, "video/mp4").json()
+    status, events = _send(
+        client,
+        CHANNEL,
+        f'@Inbox SNORLAX_TOOL watch_video {{"attachmentId": "{created["id"]}"}}',
+    )
+    assert status == 200
+    timeline = _msgs(client, CHANNEL)
+    assert timeline
+    thread = _msgs(client, CHANNEL, timeline[0]["id"])
+    tools = [
+        m
+        for m in thread
+        if m.get("kind") == "tool" and m["senderId"] == inbox["id"]
+    ]
+    assert tools
+    assert tools[0]["content"] == "Watched room.mp4"
+    dones = [p for n, p in events if n == "tool.done"]
+    assert any(p.get("name") == "watch_video" and p.get("ok") is True for p in dones)
+    last = client.app.state.backend.last_messages
+    packed = str(last)
+    assert blob.decode("ascii") not in packed
+    tool_roles = [m for m in last if m.get("role") == "tool"]
+    assert tool_roles
+    assert tool_roles[0]["content"].startswith("room.mp4")
+    seed_msgs = _msgs(client, SEED)
+    assert all(not m.get("attachments") for m in seed_msgs)
+
+
+def test_watch_video_not_auto_invoked(client) -> None:
+    blob = b"not-auto-watched"
+    created = _upload(client, SEED, "clip.mp4", blob, "video/mp4").json()
+    with client.stream(
+        "POST",
+        f"/v1/agents/{SEED}/messages",
+        headers=AUTH,
+        json={"content": "watch this", "attachmentIds": [created["id"]]},
+    ) as response:
+        assert response.status_code == 200
+        events = parse_sse("".join(response.iter_text()))
+    assert not any(
+        n == "tool.start" and p.get("name") == "watch_video" for n, p in events
+    )
+    assert not any(
+        n == "tool.done" and p.get("name") == "watch_video" for n, p in events
+    )
+    listed = _msgs(client, SEED)
+    assert not any(
+        m.get("kind") == "tool" and "Watched" in (m.get("content") or "")
+        for m in listed
+    )
+    last = client.app.state.backend.last_messages
+    packed = str(last)
+    assert "user attached clip.mp4" in packed
+    assert blob.decode("ascii") not in packed
+    assert not any(m.get("role") == "tool" for m in last)
+
+
+def test_no_chats_resource_on_watch_paths(client) -> None:
+    created = client.post(
+        f"/v1/chats/{SEED}/messages",
+        headers=AUTH,
+        json={"content": "hi"},
+    )
+    assert created.status_code == 404
+    missing = client.get(f"/v1/chats/{SEED}", headers=AUTH)
+    assert missing.status_code == 404
 
 
 def test_widget_row_attachments_empty(client) -> None:

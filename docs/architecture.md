@@ -186,7 +186,7 @@ seed only while that row exists.
 
 v0.5: the runtime owns a function-calling loop against oMLX/vLLM (cap 8
 rounds). Built-in tools are list_dir, read_file, write_file, delete_file,
-shell, web_search, web_fetch. 1:1 tools use the speaking agent's workspace;
+shell, web_search, web_fetch, watch_video (v0.28). 1:1 tools use the speaking agent's workspace;
 channel / handoff tools use the channel sandbox only when `sharedProject`
 is on (default off). Additive SSE `tool.start` / `tool.done` as 12px muted
 status under the LEFT streak. Tools auto-run. MCP joins that same loop
@@ -407,6 +407,15 @@ video bytes to the model (short `user attached {name}` stub). Agent
 poster + 24px play, no autoplay, native controls after click. OpenAPI
 stays 0.18.0. No `/v1/chats/`. Never reintroduce `computerPane.ts`.
 
+v0.28: watch-video tool. Built-in `watch_video` `{ attachmentId }`
+auto-runs like write_file / shell / web_fetch. Lookup is this
+conversation only. Unknown / foreign / non-video → tool error (POST
+200). Success is plain text (name + short description); chrome is the
+existing 12px muted `Watched {name}` kind=tool line. Player stays
+220×160. Do not auto-inject every video. Bytes still never go into the
+user turn. No new client routes. Desktop + iOS idle. OpenAPI stays
+0.18.0. No `/v1/chats/`. Never reintroduce `computerPane.ts`.
+
 ## Inference interface
 
 ```text
@@ -423,6 +432,8 @@ generate(messages, tools?) -> async iter[text | tool_calls]
   Only text `role`/`content` pairs (plus tool messages) are sent, except
   v0.25 `attachmentIds` image kinds which go as OpenAI `image_url` in
   that turn. v0.27 video kinds are a short name stub only (no bytes).
+  v0.28 `watch_video` may add a text description via the tool loop
+  (never video bytes).
   Legacy `MessageCreate.images` stay on disk.
 
 System prompt is assembled by the runtime from the agent’s `description`

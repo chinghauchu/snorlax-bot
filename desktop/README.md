@@ -75,6 +75,8 @@ URL. v0.26: LEFT `kind=message` reuses that chrome (above markdown,
 6px gap). v0.27: video drop/pick is a 56×56 pending poster (grey +
 16px play if no frame); transcript player 220×160, 8px radius, 1px
 border, poster + 24px play, no autoplay, native controls after click.
+v0.28: no chrome; `watch_video` is the existing 12px muted `Watched {name}`
+tool line (no Watch button, no second player).
 `@` and `/` unchanged.
 Assistant LEFT
 `kind=message` is 14px markdown (no grey bubble, 16/14 headings); user-right stays plain (`https://` tappable). Fenced code is full-turn language + Copy at 12px/1.45.
