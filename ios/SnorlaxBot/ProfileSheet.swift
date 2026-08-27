@@ -495,22 +495,47 @@ private struct AddRoutineSheet: View {
     @State private var skill = ""
     @State private var mode = Mode.schedule
     @State private var cron = ""
+    @State private var channel = ""
+    @State private var repo = ""
     @State private var skills: [Skill] = []
     @State private var saving = false
 
-    private enum Mode: String, CaseIterable, Identifiable {
+    private enum Mode: String, Identifiable {
         case schedule = "Schedule"
         case webhook = "Webhook"
+        case slack = "Slack"
+        case github = "GitHub"
         var id: String { rawValue }
+    }
+
+    private var slackOn: Bool {
+        Plugin.kindConnected("slack", plugins: model.plugins)
+    }
+
+    private var githubOn: Bool {
+        Plugin.kindConnected("github", plugins: model.plugins)
+    }
+
+    private var visibleModes: [Mode] {
+        var rows: [Mode] = [.schedule, .webhook]
+        if slackOn { rows.append(.slack) }
+        if githubOn { rows.append(.github) }
+        return rows
     }
 
     private var canAdd: Bool {
         let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty, !skill.isEmpty else { return false }
-        if mode == .schedule {
+        switch mode {
+        case .schedule:
             return !cron.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        case .webhook:
+            return true
+        case .slack:
+            return !channel.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        case .github:
+            return !repo.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
         }
-        return true
     }
 
     var body: some View {
@@ -540,17 +565,36 @@ private struct AddRoutineSheet: View {
                     }
                 }
                 Picker("When", selection: $mode) {
-                    ForEach(Mode.allCases) { item in
+                    ForEach(visibleModes) { item in
                         Text(item.rawValue).tag(item)
                     }
                 }
                 .pickerStyle(.segmented)
+                .font(.system(size: 12))
                 if mode == .schedule {
                     TextField("Cron", text: $cron, prompt: Text("0 9 * * 1-5"))
                         .font(.system(size: 14))
                         .textInputAutocapitalization(.never)
                         .autocorrectionDisabled()
                     Text("Taipei. Weekdays 9:00 is 0 9 * * 1-5.")
+                        .font(.system(size: 12))
+                        .foregroundStyle(.secondary)
+                }
+                if mode == .slack {
+                    TextField("Channel", text: $channel, prompt: Text("#eng"))
+                        .font(.system(size: 14))
+                        .textInputAutocapitalization(.never)
+                        .autocorrectionDisabled()
+                    Text("Channel the bot is in.")
+                        .font(.system(size: 12))
+                        .foregroundStyle(.secondary)
+                }
+                if mode == .github {
+                    TextField("Repo", text: $repo, prompt: Text("owner/name"))
+                        .font(.system(size: 14))
+                        .textInputAutocapitalization(.never)
+                        .autocorrectionDisabled()
+                    Text("One repo. No wildcards.")
                         .font(.system(size: 12))
                         .foregroundStyle(.secondary)
                 }
@@ -575,6 +619,11 @@ private struct AddRoutineSheet: View {
             .task {
                 skills = await model.loadSkills(for: agentId)
             }
+            .onChange(of: visibleModes.map(\.rawValue).joined()) { _, _ in
+                if !visibleModes.contains(mode) {
+                    mode = .schedule
+                }
+            }
         }
     }
 
@@ -587,7 +636,9 @@ private struct AddRoutineSheet: View {
             name: name,
             skill: skill,
             schedule: mode == .schedule ? cron : nil,
-            webhook: mode == .webhook
+            webhook: mode == .webhook,
+            slackChannel: mode == .slack ? channel : nil,
+            githubRepo: mode == .github ? repo : nil
         )
         if ok { dismiss() }
     }

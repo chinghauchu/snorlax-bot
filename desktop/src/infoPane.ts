@@ -94,7 +94,12 @@ export const CRON_PLACEHOLDER = "0 9 * * 1-5";
 export const CRON_HINT = "Taipei. Weekdays 9:00 is 0 9 * * 1-5.";
 export const NO_SKILLS_YET = "No skills yet.";
 
-export type RoutineAddMode = "schedule" | "webhook";
+export type RoutineAddMode = "schedule" | "webhook" | "slack" | "github";
+
+export const SLACK_CHANNEL_PLACEHOLDER = "#eng";
+export const GITHUB_REPO_PLACEHOLDER = "owner/name";
+export const SLACK_HINT = "Channel the bot is in.";
+export const GITHUB_HINT = "One repo. No wildcards.";
 
 export function routineRemoveConfirm(name: string): string {
   return `Remove ${name}?`;
@@ -105,10 +110,18 @@ export function canSubmitRoutine(draft: {
   skill: string;
   mode: RoutineAddMode;
   schedule?: string;
+  channel?: string;
+  repo?: string;
 }): boolean {
   if (!draft.name.trim() || !draft.skill.trim()) return false;
   if (draft.mode === "schedule") {
     return Boolean((draft.schedule || "").trim());
+  }
+  if (draft.mode === "slack") {
+    return Boolean((draft.channel || "").trim());
+  }
+  if (draft.mode === "github") {
+    return Boolean((draft.repo || "").trim());
   }
   return true;
 }
@@ -165,7 +178,7 @@ export function showsWebhookCopy(routine: RoutineTriggerLine): boolean {
   return isWebhookRoutine(routine) && Boolean((routine.webhookUrl || "").trim());
 }
 
-function pluginKindConnected(
+export function pluginKindConnected(
   plugins: PluginConnectedHint[],
   kind: string,
 ): boolean {

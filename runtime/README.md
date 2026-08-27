@@ -83,13 +83,15 @@ workspace dir.
 YAML frontmatter `name` + `description`, then markdown body.
 A skill has no trigger of its own. No marketplace catalog.
 
-Routines are cron XOR webhook on an agent (`GET /v1/agents/{id}/routines`,
+Routines are cron XOR webhook / Slack / GitHub on an agent (`GET /v1/agents/{id}/routines`,
 `POST .../routines`, `PATCH .../routines/{id}` `{ enabled }`,
 `DELETE .../routines/{id}` 204). Cron scheduler runs in this
 process (Asia/Taipei). Webhook fire is `POST` the minted `webhookUrl`
-(`/v1/hooks/{token}` in the path, no Bearer). Enabled → 204 and a
+(`/v1/hooks/{token}` in the path, no Bearer). Slack/GitHub fire when
+that MCP plugin is connected (Slack = messages in that channel;
+GitHub = pr-opened / pr-pushed / pr-merged). Enabled → a
 normal assistant Message in that agent's 1:1 with optional
-`routineName`. Paused or unknown token → 404, do not run.
+`routineName`. Paused Slack/GitHub skips. Paused or unknown webhook token → 404, do not run.
 Clients list, create, enable/pause, Remove, and Copy the webhook URL.
 
 Identity-pane Skills (below Routines) lists `{ id, name }`. Edit is
@@ -106,6 +108,11 @@ load path. No new HTTP. OpenAPI stays 0.18.0.
 v0.22: same POST `/skills`, two bodies. `{ name, body }` writes SKILL.md
 (no capture). `{ name }` omitted body stays the record path. OpenAPI
 stays 0.18.0.
+
+v0.23: POST `/routines` Slack `{ type: slack, channel }` and GitHub
+`{ type: github, repo }` → 201 when that plugin is connected; unconnected,
+empty, or wildcard repo → 422. GET omits those rows unless connected.
+Fire is the connected MCP into `fire_routine_now`. OpenAPI stays 0.18.0.
 
 ## MCP (`mcp.json`)
 

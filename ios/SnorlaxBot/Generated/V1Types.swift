@@ -997,24 +997,32 @@ struct Routine: Codable, Hashable, Identifiable, Sendable {
 
 struct RoutineTrigger: Codable, Hashable, Sendable {
     var type: String
+    var channel: String?
+    var repo: String?
     var label: String?
 
-    init(type: String, label: String? = nil) {
+    init(type: String, channel: String? = nil, repo: String? = nil, label: String? = nil) {
         self.type = type
+        self.channel = channel
+        self.repo = repo
         self.label = label
     }
 
-    enum CodingKeys: String, CodingKey { case type, label }
+    enum CodingKeys: String, CodingKey { case type, channel, repo, label }
 
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         type = try container.decode(String.self, forKey: .type)
+        channel = try container.decodeIfPresent(String.self, forKey: .channel)
+        repo = try container.decodeIfPresent(String.self, forKey: .repo)
         label = try container.decodeIfPresent(String.self, forKey: .label)
     }
 
     func encode(to encoder: Encoder) throws {
         var container = encoder.container(keyedBy: CodingKeys.self)
         try container.encode(type, forKey: .type)
+        try container.encodeIfPresent(channel, forKey: .channel)
+        try container.encodeIfPresent(repo, forKey: .repo)
         try container.encodeIfPresent(label, forKey: .label)
     }
 }

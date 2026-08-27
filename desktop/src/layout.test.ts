@@ -215,6 +215,10 @@ test("routines list is 44px rows with switch on the agent read pane", () => {
   const skillRow = block(".routine-skill-row");
   const skillEmpty = block(".routine-skill-empty");
   const cronHint = block(".routine-add-hint");
+  const channelField = block(".routine-add-channel");
+  const repoField = block(".routine-add-repo");
+  const addSeg = block(".routine-add-sheet .routine-add-segmented");
+  const addSegBtn = block(".routine-add-sheet .routine-add-segmented button");
   assert.match(header, /font-size:\s*12px/);
   assert.match(header, /color:\s*var\(--text-muted\)/);
   assert.match(add, /font-size:\s*12px/);
@@ -240,6 +244,11 @@ test("routines list is 44px rows with switch on the agent read pane", () => {
   assert.match(skillEmpty, /color:\s*var\(--text-muted\)/);
   assert.match(cronHint, /font-size:\s*12px/);
   assert.match(cronHint, /color:\s*var\(--text-muted\)/);
+  assert.match(channelField, /font-size:\s*14px/);
+  assert.match(repoField, /font-size:\s*14px/);
+  assert.match(addSeg, /flex-wrap:\s*nowrap/);
+  assert.match(addSeg, /font-size:\s*12px/);
+  assert.match(addSegBtn, /font-size:\s*12px/);
 
   const app = readFileSync(
     join(dirname(fileURLToPath(import.meta.url)), "App.tsx"),
@@ -276,11 +285,26 @@ test("routines list is 44px rows with switch on the agent read pane", () => {
   assert.match(infoPane, /Taipei\. Weekdays 9:00 is 0 9 \* \* 1-5\./);
   assert.match(app, />\s*Schedule\s*</);
   assert.match(app, />\s*Webhook\s*</);
+  assert.match(app, />\s*Slack\s*</);
+  assert.match(app, />\s*GitHub\s*</);
+  assert.match(app, /slackListenerOn/);
+  assert.match(app, /githubListenerOn/);
+  assert.match(app, /SLACK_HINT/);
+  assert.match(app, /GITHUB_HINT/);
+  assert.match(app, /SLACK_CHANNEL_PLACEHOLDER/);
+  assert.match(app, /GITHUB_REPO_PLACEHOLDER/);
+  assert.match(infoPane, /Channel the bot is in\./);
+  assert.match(infoPane, /One repo\. No wildcards\./);
+  assert.match(app, /type: "webhook"/);
+  assert.match(app, /type: "slack"/);
+  assert.match(app, /type: "github"/);
   assert.match(app, /canSubmitRoutine/);
   assert.match(app, /routine-add-primary/);
   assert.match(app, /routine-skill-row/);
   assert.match(app, /routine-skill-empty/);
-  assert.match(app, /type: "webhook"/);
+  assert.doesNotMatch(app, /pr-opened/);
+  assert.doesNotMatch(app, /eventPicker/);
+  assert.doesNotMatch(app, /disabled=\{!slackListenerOn\}/);
   assert.doesNotMatch(app, /<select/);
   assert.doesNotMatch(app, /Teach a task/);
   assert.doesNotMatch(app, /marketplace/);

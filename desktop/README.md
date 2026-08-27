@@ -55,7 +55,10 @@ Muted 12px tool traces (`Searching…` / `Wrote app.py` / `Used server__tool`) m
 the transcript while the runtime runs tools (including MCP). Agent info
 pane lists cron routines (44px rows, live enable/pause switch, 12px Add /
 Remove). Webhook
-rows show muted `Webhook` plus Copy for the URL. Below that, Skills
+rows show muted `Webhook` plus Copy for the URL. Slack/GitHub rows
+(when that plugin is connected) show `Slack #eng` / `GitHub owner/name`
+with no Copy. The Add-routine sheet adds Slack/GitHub segments only
+when connected (one 12px row; `#eng` / `owner/name`). Below that, Skills
 (44px rows, trailing 12px Add, 12px muted Edit then Remove; 320px
 `New skill` and Edit skill source sheets). Settings
 lists runtime plugins (`Connected` / `Needs sign-in`; Add / Remove).

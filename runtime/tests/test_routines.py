@@ -669,7 +669,7 @@ def test_slack_github_trigger_422_without_plugin(client, tmp_path: Path) -> None
         json={
             "name": "Slack ping",
             "skill": "status",
-            "trigger": {"type": "slack"},
+            "trigger": {"type": "slack", "channel": "#eng"},
         },
     )
     assert slack.status_code == 422
@@ -679,7 +679,7 @@ def test_slack_github_trigger_422_without_plugin(client, tmp_path: Path) -> None
         json={
             "name": "GitHub ping",
             "skill": "status",
-            "trigger": {"type": "github"},
+            "trigger": {"type": "github", "repo": "owner/name"},
         },
     )
     assert github.status_code == 422
@@ -692,13 +692,13 @@ def test_slack_github_trigger_422_without_plugin(client, tmp_path: Path) -> None
         json={
             "name": "GitHub ping",
             "skill": "status",
-            "trigger": {"type": "github"},
+            "trigger": {"type": "github", "repo": "owner/name"},
         },
     )
     assert needs_auth.status_code == 422
 
 
-def test_slack_github_trigger_422_when_plugin_connected(
+def test_slack_github_trigger_201_when_plugin_connected(
     client, tmp_path: Path
 ) -> None:
     _write_status_skill(tmp_path)
@@ -711,12 +711,28 @@ def test_slack_github_trigger_422_when_plugin_connected(
         json={
             "name": "Slack ping",
             "skill": "status",
-            "trigger": {"type": "slack", "label": "Slack #eng"},
+            "trigger": {"type": "slack", "channel": "#eng", "label": "ignored"},
         },
     )
-    assert slack.status_code == 422
+    assert slack.status_code == 201
+    row = slack.json()
+    assert row["name"] == "Slack ping"
+    assert row["skill"] == "status"
+    assert row["enabled"] is True
+    assert row["kind"] == "slack"
+    assert row["label"] == "Slack #eng"
+    assert "webhookUrl" not in row
+    assert "schedule" not in row
+    assert "scheduleLabel" not in row
+    assert "trigger" not in row
+    listed_slack = client.get(f"/v1/agents/{SEED}/routines", headers=AUTH)
+    assert listed_slack.status_code == 200
+    assert any(item["kind"] == "slack" for item in listed_slack.json())
     client.app.state.mcp = _FakePlugins(
-        [{"id": "github", "name": "GitHub", "status": "connected"}]
+        [
+            {"id": "slack", "name": "Slack", "status": "connected"},
+            {"id": "github", "name": "GitHub", "status": "connected"},
+        ]
     )
     github = client.post(
         f"/v1/agents/{SEED}/routines",
@@ -724,10 +740,250 @@ def test_slack_github_trigger_422_when_plugin_connected(
         json={
             "name": "GitHub ping",
             "skill": "status",
-            "trigger": {"type": "github", "label": "GitHub owner/repo"},
+            "trigger": {"type": "github", "repo": "owner/name"},
         },
     )
-    assert github.status_code == 422
+    assert github.status_code == 201
+    grown = github.json()
+    assert grown["kind"] == "github"
+    assert grown["label"] == "GitHub owner/name"
+    assert "webhookUrl" not in grown
+    listed = client.get(f"/v1/agents/{SEED}/routines", headers=AUTH)
+    assert listed.status_code == 200
+    kinds = {item["kind"] for item in listed.json()}
+    assert "slack" in kinds
+    assert "github" in kinds
+
+
+def test_slack_github_empty_or_wildcard_is_422(client, tmp_path: Path) -> None:
+    _write_status_skill(tmp_path)
+    client.app.state.mcp = _FakePlugins(
+        [
+            {"id": "slack", "name": "Slack", "status": "connected"},
+            {"id": "github", "name": "GitHub", "status": "connected"},
+        ]
+    )
+    missing_channel = client.post(
+        f"/v1/agents/{SEED}/routines",
+        headers=AUTH,
+        json={
+            "name": "Slack ping",
+            "skill": "status",
+            "trigger": {"type": "slack"},
+        },
+    )
+    assert missing_channel.status_code == 422
+    empty_channel = client.post(
+        f"/v1/agents/{SEED}/routines",
+        headers=AUTH,
+        json={
+            "name": "Slack ping",
+            "skill": "status",
+            "trigger": {"type": "slack", "channel": "  "},
+        },
+    )
+    assert empty_channel.status_code == 422
+    missing_repo = client.post(
+        f"/v1/agents/{SEED}/routines",
+        headers=AUTH,
+        json={
+            "name": "GitHub ping",
+            "skill": "status",
+            "trigger": {"type": "github"},
+        },
+    )
+    assert missing_repo.status_code == 422
+    wildcard = client.post(
+        f"/v1/agents/{SEED}/routines",
+        headers=AUTH,
+        json={
+            "name": "GitHub ping",
+            "skill": "status",
+            "trigger": {"type": "github", "repo": "owner/*"},
+        },
+    )
+    assert wildcard.status_code == 422
+    extra_path = client.post(
+        f"/v1/agents/{SEED}/routines",
+        headers=AUTH,
+        json={
+            "name": "GitHub ping",
+            "skill": "status",
+            "trigger": {"type": "github", "repo": "owner/name/extra"},
+        },
+    )
+    assert extra_path.status_code == 422
+
+
+def _inbound(client, event: dict) -> list:
+    from snorlax_runtime.listeners import fire_inbound_event
+
+    async def _run():
+        return await fire_inbound_event(
+            event,
+            store=client.app.state.store,
+            backend=client.app.state.backend,
+            manager=client.app.state.mcp,
+        )
+
+    assert client.portal is not None
+    return client.portal.call(_run)
+
+
+def test_slack_inbound_fires_left_one_to_one(client, tmp_path: Path) -> None:
+    _write_status_skill(tmp_path)
+    client.app.state.mcp = _FakePlugins(
+        [{"id": "slack", "name": "Slack", "status": "connected"}]
+    )
+    created = client.post(
+        f"/v1/agents/{SEED}/routines",
+        headers=AUTH,
+        json={
+            "name": "Slack ping",
+            "skill": "status",
+            "trigger": {"type": "slack", "channel": "#eng"},
+        },
+    )
+    assert created.status_code == 201
+    before = client.get(f"/v1/agents/{SEED}/messages", headers=AUTH).json()
+    fired = _inbound(
+        client, {"kind": "slack", "type": "message", "channel": "eng"}
+    )
+    assert fired
+    after = client.get(f"/v1/agents/{SEED}/messages", headers=AUTH).json()
+    new = [m for m in after if m["id"] not in {row["id"] for row in before}]
+    assistant = [
+        m
+        for m in new
+        if m["role"] == "assistant" and m.get("kind") == "message"
+    ]
+    assert assistant, after
+    row = assistant[-1]
+    assert row["senderId"] == SEED
+    assert row["agentId"] == SEED
+    assert row["kind"] == "message"
+    assert row["routineName"] == "Slack ping"
+    miss = _inbound(
+        client, {"kind": "slack", "type": "message", "channel": "#ops"}
+    )
+    assert miss == []
+
+
+def test_github_inbound_fires_pr_events_only(client, tmp_path: Path) -> None:
+    _write_status_skill(tmp_path)
+    client.app.state.mcp = _FakePlugins(
+        [{"id": "github", "name": "GitHub", "status": "connected"}]
+    )
+    created = client.post(
+        f"/v1/agents/{SEED}/routines",
+        headers=AUTH,
+        json={
+            "name": "PR ping",
+            "skill": "status",
+            "trigger": {"type": "github", "repo": "owner/name"},
+        },
+    )
+    assert created.status_code == 201
+    before = client.get(f"/v1/agents/{SEED}/messages", headers=AUTH).json()
+    assert _inbound(
+        client,
+        {"kind": "github", "repo": "owner/name", "event": "pr-opened"},
+    )
+    assert _inbound(
+        client,
+        {"kind": "github", "repo": "owner/name", "event": "pr-pushed"},
+    )
+    assert _inbound(
+        client,
+        {"kind": "github", "repo": "owner/name", "event": "pr-merged"},
+    )
+    skipped = _inbound(
+        client,
+        {"kind": "github", "repo": "owner/name", "event": "issue-opened"},
+    )
+    assert skipped == []
+    other_repo = _inbound(
+        client,
+        {"kind": "github", "repo": "other/name", "event": "pr-opened"},
+    )
+    assert other_repo == []
+    after = client.get(f"/v1/agents/{SEED}/messages", headers=AUTH).json()
+    new = [
+        m
+        for m in after
+        if m["id"] not in {row["id"] for row in before}
+        and m["role"] == "assistant"
+        and m.get("kind") == "message"
+    ]
+    assert len(new) == 3
+    assert all(m["senderId"] == SEED for m in new)
+    assert all(m.get("routineName") == "PR ping" for m in new)
+
+
+def test_slack_paused_does_not_fire(client, tmp_path: Path) -> None:
+    _write_status_skill(tmp_path)
+    client.app.state.mcp = _FakePlugins(
+        [{"id": "slack", "name": "Slack", "status": "connected"}]
+    )
+    created = client.post(
+        f"/v1/agents/{SEED}/routines",
+        headers=AUTH,
+        json={
+            "name": "Slack ping",
+            "skill": "status",
+            "trigger": {"type": "slack", "channel": "#eng"},
+        },
+    )
+    routine = created.json()
+    paused = client.patch(
+        f"/v1/agents/{SEED}/routines/{routine['id']}",
+        headers=AUTH,
+        json={"enabled": False},
+    )
+    assert paused.status_code == 200
+    assert paused.json()["enabled"] is False
+    assert paused.json()["kind"] == "slack"
+    before = client.get(f"/v1/agents/{SEED}/messages", headers=AUTH).json()
+    fired = _inbound(
+        client, {"kind": "slack", "type": "message", "channel": "#eng"}
+    )
+    assert fired == []
+    after = client.get(f"/v1/agents/{SEED}/messages", headers=AUTH).json()
+    assert [m["id"] for m in after] == [m["id"] for m in before]
+
+
+def test_slack_github_cron_ticker_does_not_fire_listener(
+    client, tmp_path: Path
+) -> None:
+    _write_status_skill(tmp_path)
+    client.app.state.mcp = _FakePlugins(
+        [
+            {"id": "slack", "name": "Slack", "status": "connected"},
+            {"id": "github", "name": "GitHub", "status": "connected"},
+        ]
+    )
+    client.post(
+        f"/v1/agents/{SEED}/routines",
+        headers=AUTH,
+        json={
+            "name": "Slack ping",
+            "skill": "status",
+            "trigger": {"type": "slack", "channel": "#eng"},
+        },
+    )
+    client.post(
+        f"/v1/agents/{SEED}/routines",
+        headers=AUTH,
+        json={
+            "name": "PR ping",
+            "skill": "status",
+            "trigger": {"type": "github", "repo": "owner/name"},
+        },
+    )
+    before = client.get(f"/v1/agents/{SEED}/messages", headers=AUTH).json()
+    _fire(client, _weekdays_nine())
+    after = client.get(f"/v1/agents/{SEED}/messages", headers=AUTH).json()
+    assert [m["id"] for m in after] == [m["id"] for m in before]
 
 
 def test_get_omits_slack_github_when_plugin_not_connected(

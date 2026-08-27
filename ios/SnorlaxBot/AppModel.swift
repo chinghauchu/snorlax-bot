@@ -473,12 +473,30 @@ final class AppModel {
         name: String,
         skill: String,
         schedule: String?,
-        webhook: Bool
+        webhook: Bool,
+        slackChannel: String? = nil,
+        githubRepo: String? = nil
     ) async -> Bool {
         guard let client else { return false }
         do {
             let body: RoutineCreate
-            if webhook {
+            if let channel = slackChannel?.trimmingCharacters(in: .whitespacesAndNewlines),
+               !channel.isEmpty
+            {
+                body = RoutineCreate(
+                    name: name,
+                    skill: skill,
+                    trigger: RoutineTrigger(type: "slack", channel: channel)
+                )
+            } else if let repo = githubRepo?.trimmingCharacters(in: .whitespacesAndNewlines),
+                      !repo.isEmpty
+            {
+                body = RoutineCreate(
+                    name: name,
+                    skill: skill,
+                    trigger: RoutineTrigger(type: "github", repo: repo)
+                )
+            } else if webhook {
                 body = RoutineCreate(
                     name: name,
                     skill: skill,

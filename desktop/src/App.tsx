@@ -65,6 +65,7 @@ import {
   fallbackRosterSelection,
   infoPaneKind,
   nextRosterSelection,
+  pluginKindConnected,
   routineMutedLine,
   routineRemoveConfirm,
   skillRemoveConfirm,
@@ -74,6 +75,10 @@ import {
   showsWebhookCopy,
   visiblePaneRoutines,
   webhookCopyText,
+  SLACK_CHANNEL_PLACEHOLDER,
+  GITHUB_REPO_PLACEHOLDER,
+  SLACK_HINT,
+  GITHUB_HINT,
 } from "./infoPane";
 import {
   USER_SENDER_ID,
@@ -401,10 +406,12 @@ export function App() {
   const [routineAddOpen, setRoutineAddOpen] = useState(false);
   const [routineAddName, setRoutineAddName] = useState("");
   const [routineAddSkill, setRoutineAddSkill] = useState("");
-  const [routineAddMode, setRoutineAddMode] = useState<"schedule" | "webhook">(
-    "schedule",
-  );
+  const [routineAddMode, setRoutineAddMode] = useState<
+    "schedule" | "webhook" | "slack" | "github"
+  >("schedule");
   const [routineAddCron, setRoutineAddCron] = useState("");
+  const [routineAddChannel, setRoutineAddChannel] = useState("");
+  const [routineAddRepo, setRoutineAddRepo] = useState("");
   const [routineAddSaving, setRoutineAddSaving] = useState(false);
   const [pendingRoutineRemove, setPendingRoutineRemove] =
     useState<Routine | null>(null);
@@ -447,11 +454,20 @@ export function App() {
     (pluginAddMode === "stdio"
       ? pluginAddCommand.trim() !== ""
       : pluginAddUrl.trim() !== "");
+  const slackListenerOn = pluginKindConnected(plugins, "slack");
+  const githubListenerOn = pluginKindConnected(plugins, "github");
+  const routineAddKind =
+    (routineAddMode === "slack" && !slackListenerOn) ||
+    (routineAddMode === "github" && !githubListenerOn)
+      ? "schedule"
+      : routineAddMode;
   const routineAddReady = canSubmitRoutine({
     name: routineAddName,
     skill: routineAddSkill,
-    mode: routineAddMode,
+    mode: routineAddKind,
     schedule: routineAddCron,
+    channel: routineAddChannel,
+    repo: routineAddRepo,
   });
   const skillEditReady = canSubmitSkill({
     name: skillEditName,
@@ -883,6 +899,8 @@ export function App() {
     setRoutineAddSkill("");
     setRoutineAddMode("schedule");
     setRoutineAddCron("");
+    setRoutineAddChannel("");
+    setRoutineAddRepo("");
     setRoutineAddOpen(true);
     void loadSkills(active.id);
   }
@@ -894,17 +912,32 @@ export function App() {
       const created = await createRoutine(
         session,
         active.id,
-        routineAddMode === "webhook"
+        routineAddKind === "webhook"
           ? {
               name: routineAddName.trim(),
               skill: routineAddSkill,
               trigger: { type: "webhook" },
             }
-          : {
-              name: routineAddName.trim(),
-              skill: routineAddSkill,
-              schedule: routineAddCron.trim(),
-            },
+          : routineAddKind === "slack"
+            ? {
+                name: routineAddName.trim(),
+                skill: routineAddSkill,
+                trigger: {
+                  type: "slack",
+                  channel: routineAddChannel.trim(),
+                },
+              }
+            : routineAddKind === "github"
+              ? {
+                  name: routineAddName.trim(),
+                  skill: routineAddSkill,
+                  trigger: { type: "github", repo: routineAddRepo.trim() },
+                }
+              : {
+                  name: routineAddName.trim(),
+                  skill: routineAddSkill,
+                  schedule: routineAddCron.trim(),
+                },
       );
       setRoutines((prev) => [...prev, created]);
       setRoutineAddOpen(false);
@@ -2783,15 +2816,15 @@ export function App() {
               <fieldset>
                 <legend>When</legend>
                 <div
-                  className="segmented"
+                  className="segmented routine-add-segmented"
                   role="radiogroup"
                   aria-label="Routine trigger"
                 >
                   <button
                     type="button"
                     role="radio"
-                    aria-checked={routineAddMode === "schedule"}
-                    className={routineAddMode === "schedule" ? "on" : ""}
+                    aria-checked={routineAddKind === "schedule"}
+                    className={routineAddKind === "schedule" ? "on" : ""}
                     onClick={() => setRoutineAddMode("schedule")}
                   >
                     Schedule
@@ -2799,15 +2832,37 @@ export function App() {
                   <button
                     type="button"
                     role="radio"
-                    aria-checked={routineAddMode === "webhook"}
-                    className={routineAddMode === "webhook" ? "on" : ""}
+                    aria-checked={routineAddKind === "webhook"}
+                    className={routineAddKind === "webhook" ? "on" : ""}
                     onClick={() => setRoutineAddMode("webhook")}
                   >
                     Webhook
                   </button>
+                  {slackListenerOn ? (
+                    <button
+                      type="button"
+                      role="radio"
+                      aria-checked={routineAddKind === "slack"}
+                      className={routineAddKind === "slack" ? "on" : ""}
+                      onClick={() => setRoutineAddMode("slack")}
+                    >
+                      Slack
+                    </button>
+                  ) : null}
+                  {githubListenerOn ? (
+                    <button
+                      type="button"
+                      role="radio"
+                      aria-checked={routineAddKind === "github"}
+                      className={routineAddKind === "github" ? "on" : ""}
+                      onClick={() => setRoutineAddMode("github")}
+                    >
+                      GitHub
+                    </button>
+                  ) : null}
                 </div>
               </fieldset>
-              {routineAddMode === "schedule" ? (
+              {routineAddKind === "schedule" ? (
                 <label>
                   Cron
                   <input
@@ -2819,6 +2874,34 @@ export function App() {
                     onChange={(e) => setRoutineAddCron(e.target.value)}
                   />
                   <p className="routine-add-hint">{CRON_HINT}</p>
+                </label>
+              ) : null}
+              {routineAddKind === "slack" ? (
+                <label>
+                  Channel
+                  <input
+                    className="routine-add-channel"
+                    value={routineAddChannel}
+                    spellCheck={false}
+                    autoComplete="off"
+                    placeholder={SLACK_CHANNEL_PLACEHOLDER}
+                    onChange={(e) => setRoutineAddChannel(e.target.value)}
+                  />
+                  <p className="routine-add-hint">{SLACK_HINT}</p>
+                </label>
+              ) : null}
+              {routineAddKind === "github" ? (
+                <label>
+                  Repo
+                  <input
+                    className="routine-add-repo"
+                    value={routineAddRepo}
+                    spellCheck={false}
+                    autoComplete="off"
+                    placeholder={GITHUB_REPO_PLACEHOLDER}
+                    onChange={(e) => setRoutineAddRepo(e.target.value)}
+                  />
+                  <p className="routine-add-hint">{GITHUB_HINT}</p>
                 </label>
               ) : null}
               <div className="confirm-actions">

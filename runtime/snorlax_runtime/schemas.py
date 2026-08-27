@@ -297,9 +297,19 @@ class KeyEvent(BaseModel):
 
 class RoutineTrigger(BaseModel):
     type: str = Field(description="webhook, slack, or github.")
+    channel: str | None = Field(
+        default=None,
+        max_length=80,
+        description="Slack channel (e.g. #eng). Required when type=slack.",
+    )
+    repo: str | None = Field(
+        default=None,
+        max_length=80,
+        description="GitHub owner/name. Required when type=github. No wildcards.",
+    )
     label: str | None = Field(
         default=None,
-        description='Optional Slack/GitHub display, e.g. "Slack #eng".',
+        description="Ignored on POST. GET Routine.label is Slack {channel} / GitHub {repo}.",
         max_length=80,
     )
 
@@ -309,8 +319,12 @@ class RoutineTrigger(BaseModel):
         if kind not in {"webhook", "slack", "github"}:
             raise ValueError("trigger.type must be webhook, slack, or github")
         self.type = kind
-        if self.label is not None:
-            self.label = self.label.strip() or None
+        if self.channel is not None:
+            self.channel = self.channel.strip() or None
+        if self.repo is not None:
+            self.repo = self.repo.strip() or None
+        # Output-only on GET Routine. Clients do not POST label.
+        self.label = None
         return self
 
 

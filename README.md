@@ -20,10 +20,10 @@ computer. Bots live on your LAN, talk through a thin local runtime, and (in
 later versions) browse, click, schedule, and call tools without sending tokens
 off-box.
 
-v0.22 is still small: **named teammates + identity pane + group channel threads
+v0.23 is still small: **named teammates + identity pane + group channel threads
 + chat with @mentions + report-back + extra channels + built-in tools + a
 thin desktop Computer pane + a runtime MCP client + question widgets +
-skills and cron/webhook routines (Add / Remove + enable/pause + Copy webhook URL) + MCP connect chrome
+skills and cron/webhook/Slack/GitHub routines (Add / Remove + enable/pause + Copy webhook URL; Slack/GitHub listeners when that plugin is connected) + MCP connect chrome
 (Settings plugins list + `kind=connect` card) + assistant markdown +
 MCP Add custom (Settings POST / DELETE; no separate disconnect) +
 identity-pane Box computer preview (Bearer PNG) + desktop Box takeover

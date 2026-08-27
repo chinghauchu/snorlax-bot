@@ -1673,6 +1673,25 @@ button:disabled {
   font-size: 14px;
 }
 
+.routine-add-channel {
+  font-size: 14px;
+}
+
+.routine-add-repo {
+  font-size: 14px;
+}
+
+.routine-add-sheet .routine-add-segmented {
+  flex-wrap: nowrap;
+  font-size: 12px;
+}
+
+.routine-add-sheet .routine-add-segmented button {
+  font-size: 12px;
+  white-space: nowrap;
+  padding: 4px 6px;
+}
+
 .routine-add-hint {
   margin: 0;
   font-size: 12px;

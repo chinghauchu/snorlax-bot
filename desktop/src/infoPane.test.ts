@@ -25,6 +25,11 @@ import {
   CRON_HINT,
   NO_SKILLS_YET,
   canSubmitRoutine,
+  pluginKindConnected,
+  SLACK_CHANNEL_PLACEHOLDER,
+  GITHUB_REPO_PLACEHOLDER,
+  SLACK_HINT,
+  GITHUB_HINT,
   EMPTY_SKILLS,
   EDIT_SKILL_TITLE,
   ADD_SKILL_TITLE,
@@ -272,6 +277,67 @@ test("add-routine submit is name + skill + cron if schedule", () => {
       name: "Inbox ping",
       skill: "status",
       mode: "webhook",
+    }),
+    true,
+  );
+  assert.equal(SLACK_CHANNEL_PLACEHOLDER, "#eng");
+  assert.equal(GITHUB_REPO_PLACEHOLDER, "owner/name");
+  assert.equal(SLACK_HINT, "Channel the bot is in.");
+  assert.equal(GITHUB_HINT, "One repo. No wildcards.");
+  assert.equal(
+    pluginKindConnected(
+      [{ id: "slack", name: "Slack", status: "connected" }],
+      "slack",
+    ),
+    true,
+  );
+  assert.equal(
+    pluginKindConnected(
+      [{ id: "slack", name: "Slack", status: "needsAuth" }],
+      "slack",
+    ),
+    false,
+  );
+  assert.equal(
+    pluginKindConnected(
+      [{ id: "github", name: "GitHub", status: "connected" }],
+      "github",
+    ),
+    true,
+  );
+  assert.equal(
+    canSubmitRoutine({
+      name: "Slack ping",
+      skill: "status",
+      mode: "slack",
+      channel: "",
+    }),
+    false,
+  );
+  assert.equal(
+    canSubmitRoutine({
+      name: "Slack ping",
+      skill: "status",
+      mode: "slack",
+      channel: "#eng",
+    }),
+    true,
+  );
+  assert.equal(
+    canSubmitRoutine({
+      name: "PR ping",
+      skill: "status",
+      mode: "github",
+      repo: "",
+    }),
+    false,
+  );
+  assert.equal(
+    canSubmitRoutine({
+      name: "PR ping",
+      skill: "status",
+      mode: "github",
+      repo: "owner/name",
     }),
     true,
   );
