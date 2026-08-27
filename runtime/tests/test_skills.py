@@ -3,7 +3,14 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from tests.conftest import AUTH
+from snorlax_runtime.skills import (
+    find_skill,
+    invoked_skill,
+    parse_skill_markdown,
+    skill_ask_from_turn,
+    slash_rest,
+)
+from tests.conftest import AUTH, parse_sse
 
 SEED = "snorlax-bot"
 CHANNEL = "snorlax-bot-group"
@@ -25,12 +32,38 @@ Do a short status.
 Keep it brief.
 """
 
+KNOWN_SKILL = """---
+name: known-skill
+description: Named recipe loaded by /known-skill.
+---
+
+KNOWN_SKILL_RECIPE_BODY
+"""
+
+OTHER_SKILL = """---
+name: other-skill
+description: A different recipe that must not be the invoked one.
+---
+
+OTHER_SKILL_RECIPE_BODY
+"""
+
 
 def _write_status_skill(tmp_path: Path) -> Path:
     path = tmp_path / "skills" / "status" / "SKILL.md"
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(STATUS_SKILL, encoding="utf-8")
     return path
+
+
+def _write_known_and_other_skills(tmp_path: Path) -> None:
+    for slug, text in (
+        ("known-skill", KNOWN_SKILL),
+        ("other-skill", OTHER_SKILL),
+    ):
+        path = tmp_path / "skills" / slug / "SKILL.md"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(text, encoding="utf-8")
 
 
 def test_get_skill_body_is_full_skill_md_source(client, tmp_path: Path) -> None:
@@ -212,3 +245,123 @@ def test_no_blank_skill_post(client) -> None:
     listed = client.get(f"/v1/agents/{SEED}/skills", headers=AUTH)
     assert listed.status_code == 200
     assert listed.json() == []
+
+
+def test_invoked_skill_matches_slash_name_and_slug() -> None:
+    skill = parse_skill_markdown(
+        STATUS_SKILL, source="skillsDir", path="status/SKILL.md"
+    )
+    assert skill is not None
+    assert find_skill([skill], "status") is skill
+    assert find_skill([skill], "STATUS") is skill
+    assert invoked_skill([skill], "/status") is skill
+    assert invoked_skill([skill], "/status please") is skill
+    assert invoked_skill([skill], "please /status") is skill
+    assert invoked_skill([skill], "/STATUS") is skill
+    named = parse_skill_markdown(
+        PATCHED_SKILL, source="skillsDir", path="status-check/SKILL.md"
+    )
+    assert named is not None
+    assert find_skill([named], "Status check") is named
+    assert find_skill([named], "status-check") is named
+    assert invoked_skill([named], "/Status check") is named
+    assert invoked_skill([named], "/status-check extra") is named
+    assert invoked_skill([skill], "status") is None
+    assert invoked_skill([skill], "/nope") is None
+    assert invoked_skill([skill], "/") is None
+    assert slash_rest("/status extra") == "status extra"
+    assert skill_ask_from_turn(
+        [{"role": "user", "content": "/status"}], None
+    ) == "/status"
+
+
+def _capture_generate(client):
+    captured: list[list[dict]] = []
+    backend = client.app.state.backend
+    original = backend.generate
+
+    async def wrapped(messages, tools=None):
+        captured.append(list(messages))
+        async for part in original(messages, tools=tools):
+            yield part
+
+    backend.generate = wrapped
+    return captured
+
+
+def test_one_to_one_known_skill_slash_injects_recipe(client, tmp_path: Path) -> None:
+    """1:1 POST /known-skill injects that SKILL.md, not only the catalog dump."""
+    _write_known_and_other_skills(tmp_path)
+    listed = client.get(f"/v1/agents/{SEED}/skills", headers=AUTH)
+    assert listed.status_code == 200
+    names = {row["id"] for row in listed.json()}
+    assert "known-skill" in names
+    captured = _capture_generate(client)
+    with client.stream(
+        "POST",
+        f"/v1/agents/{SEED}/messages",
+        headers=AUTH,
+        json={"content": "/known-skill"},
+    ) as response:
+        assert response.status_code == 200
+        parse_sse("".join(response.iter_text()))
+    stored = client.get(f"/v1/agents/{SEED}/messages", headers=AUTH).json()
+    user = stored[0]
+    assert user["role"] == "user"
+    assert user["content"] == "/known-skill"
+    assert user.get("kind", "message") == "message"
+    blob = "\n".join(
+        str(m.get("content") or "") for msgs in captured for m in msgs
+    )
+    assert "### Invoked skill: known-skill" in blob
+    assert "KNOWN_SKILL_RECIPE_BODY" in blob
+    assert "The user invoked skill known-skill" in blob
+    assert "### Invoked skill: other-skill" not in blob
+
+
+def test_unknown_slash_foo_does_not_inject(client, tmp_path: Path) -> None:
+    _write_known_and_other_skills(tmp_path)
+    captured = _capture_generate(client)
+    with client.stream(
+        "POST",
+        f"/v1/agents/{SEED}/messages",
+        headers=AUTH,
+        json={"content": "/foo"},
+    ) as response:
+        assert response.status_code == 200
+        parse_sse("".join(response.iter_text()))
+    stored = client.get(f"/v1/agents/{SEED}/messages", headers=AUTH).json()
+    assert stored[0]["content"] == "/foo"
+    assert stored[0]["role"] == "user"
+    assert stored[0].get("kind", "message") == "message"
+    blob = "\n".join(
+        str(m.get("content") or "") for msgs in captured for m in msgs
+    )
+    assert "The user invoked skill" not in blob
+    assert "### Invoked skill:" not in blob
+
+
+def test_channel_known_skill_slash_does_not_load(client, tmp_path: Path) -> None:
+    _write_known_and_other_skills(tmp_path)
+    listed = client.get(f"/v1/agents/{CHANNEL}/skills", headers=AUTH)
+    assert listed.status_code == 409
+    captured = _capture_generate(client)
+    with client.stream(
+        "POST",
+        f"/v1/agents/{CHANNEL}/messages",
+        headers=AUTH,
+        json={"content": "/known-skill @Snorlax", "mentions": [SEED]},
+    ) as response:
+        assert response.status_code == 200
+        parse_sse("".join(response.iter_text()))
+    users = [
+        m
+        for m in client.get(f"/v1/agents/{CHANNEL}/messages", headers=AUTH).json()
+        if m["role"] == "user"
+    ]
+    assert users[-1]["content"] == "/known-skill @Snorlax"
+    blob = "\n".join(
+        str(m.get("content") or "") for msgs in captured for m in msgs
+    )
+    assert "### Invoked skill:" not in blob
+    assert "The user invoked skill" not in blob

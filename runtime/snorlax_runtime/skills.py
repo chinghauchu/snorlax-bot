@@ -167,6 +167,86 @@ def _read_file(path: Path, *, source: str, root: Path) -> Skill | None:
     return parse_skill_markdown(text, source=source, path=rel)
 
 
+_SLASH_TOKEN = re.compile(r"(?:^|\s)/")
+
+
+def slash_rest(content: str) -> str | None:
+    """Text after a token-start ``/``, or None.
+
+    Unknown names stay a normal user message — this helper does not error.
+    """
+    text = content or ""
+    match = _SLASH_TOKEN.search(text)
+    if match is None:
+        return None
+    rest = text[match.end() :]
+    if not rest or rest[0].isspace():
+        return None
+    return rest
+
+
+def _slash_name_candidates(rest: str) -> list[str]:
+    """Longest-first ``/Name`` / ``/slug`` candidates for ``find_skill``.
+
+    Names may contain spaces (``/Status check``). First whitespace token
+    still matches a slug (``/known-skill please``).
+    """
+    line = (rest or "").split("\n", 1)[0].strip()
+    if not line:
+        return []
+    parts = line.split()
+    return [" ".join(parts[:i]) for i in range(len(parts), 0, -1)]
+
+
+def invoked_skill(skills: list[Skill], content: str) -> Skill | None:
+    """Match ``/slug`` or ``/Name`` at a token start (1:1 load path).
+
+    Uses ``find_skill`` (slug or frontmatter name, case-insensitive).
+    No match → None (plain user text, not an error). Channel callers skip.
+    """
+    text = content or ""
+    for match in _SLASH_TOKEN.finditer(text):
+        rest = text[match.end() :]
+        if not rest or rest[0].isspace():
+            continue
+        for candidate in _slash_name_candidates(rest):
+            found = find_skill(skills, candidate)
+            if found is not None:
+                return found
+    return None
+
+
+def skill_ask_from_turn(
+    transcript: list[dict[str, Any]],
+    wake_pack: dict[str, Any] | None,
+) -> str:
+    """User ask that may start with ``/name``. Skip JSON wake packs."""
+    if wake_pack and wake_pack.get("userAsk") is not None:
+        return str(wake_pack.get("userAsk") or "")
+    for item in reversed(transcript or []):
+        if item.get("role") != "user":
+            continue
+        content = str(item.get("content") or "")
+        stripped = content.lstrip()
+        if stripped.startswith("{") and stripped.endswith("}"):
+            continue
+        return content
+    return ""
+
+
+def skill_invoke_preamble(skill: Skill) -> str:
+    """Load this SKILL.md into the current turn (user ``/name`` invoke)."""
+    body = skill.body
+    if len(body) > MAX_BODY_CHARS:
+        body = body[: MAX_BODY_CHARS - 1] + "…"
+    return (
+        f"The user invoked skill {skill.name} with /{skill.name}. "
+        "Follow this SKILL.md recipe for this turn instead of inventing "
+        "a new procedure.\n\n"
+        f"### Invoked skill: {skill.name}\n{skill.description}\n\n{body}"
+    ).strip()
+
+
 def skills_preamble(skills: list[Skill]) -> str:
     if not skills:
         return ""

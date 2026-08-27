@@ -7,7 +7,11 @@ render as LEFT cards in the speaking agent's streak (no extra sheet). Agent
 info sheet lists a 16:10 computer preview above routines (12pt labels,
 8pt radius, 12pt `Open` when `hasSandbox`; the shot is tappable) then routines (list + enable/pause
 + Copy webhook URL + 12pt Add / Remove with confirm) then skills
-(12pt Edit / Remove; Edit skill source sheet; no blank Add). Full-screen Open
+(12pt Edit / Remove; Edit skill source sheet; no blank Add). Composer
+`/` on a 1:1 opens the `@` typeahead family (240pt, 8pt radius, 44pt
+rows, 14pt name, no avatar); pick inserts `/name` as plain text; Send
+loads SKILL.md. Channel `/` is plain text. Empty / no match: no popup.
+Full-screen Open
 adds Keyboard + Done plus Record / Stop / Save as skill (v0.16 HTTP; discard
 writes nothing). Settings lists runtime plugins (Add / Remove; OS browser via
 `ASWebAuthenticationSession`). No
@@ -62,6 +66,7 @@ Wire types are generated from [../protocol/openapi.yaml](../protocol/openapi.yam
 python3 ios/scripts/generate_v1_types.py
 python3 ios/scripts/generate_v1_types.py --check
 python3 ios/scripts/test_computer_takeover.py
+python3 ios/scripts/test_skill_autocomplete.py
 ```
 
 Output: `SnorlaxBot/Generated/V1Types.swift`. Do not hand-edit that file.
@@ -71,6 +76,7 @@ Output: `SnorlaxBot/Generated/V1Types.swift`. Do not hand-edit that file.
 - `SnorlaxBot/SnorlaxBotApp.swift` — entry, theme, accent
 - `SnorlaxBot/ContentView.swift` — iPhone stack / iPad split chrome
 - `SnorlaxBot/AppModel.swift` — roster, chat, settings persistence
+- `SnorlaxBot/SkillPicker.swift` — v0.21 1:1 composer `/` trigger + filter
 - `SnorlaxBot/ProfileSheet.swift` — identity / channel pane; agent routines + skills lists
 - `SnorlaxBot/ComputerSession.swift` — v0.19 Open chrome + v0.20 Record chrome + letterbox pointer map
 - `SnorlaxBot/ComputerTakeover.swift` — full-screen Open (Keyboard + Done + Record/Stop/Save as skill)
