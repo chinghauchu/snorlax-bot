@@ -10,14 +10,18 @@ struct ComposerTextView: UIViewRepresentable {
     var disabled: Bool
     @Binding var pendingCaret: Int?
     var focused: FocusState<Bool>.Binding
+    var onReturnSend: (() -> Void)? = nil
 
     func makeCoordinator() -> Coordinator {
         Coordinator(self)
     }
 
-    func makeUIView(context: Context) -> UITextView {
-        let view = UITextView()
+    func makeUIView(context: Context) -> ComposerUITextView {
+        let view = ComposerUITextView()
         view.delegate = context.coordinator
+        view.onReturnSend = { [coordinator = context.coordinator] in
+            coordinator.parent.onReturnSend?()
+        }
         view.font = .systemFont(ofSize: 14)
         view.backgroundColor = .clear
         view.textContainerInset = UIEdgeInsets(top: 4, left: 0, bottom: 4, right: 0)
@@ -28,8 +32,11 @@ struct ComposerTextView: UIViewRepresentable {
         return view
     }
 
-    func updateUIView(_ view: UITextView, context: Context) {
+    func updateUIView(_ view: ComposerUITextView, context: Context) {
         context.coordinator.parent = self
+        view.onReturnSend = { [coordinator = context.coordinator] in
+            coordinator.parent.onReturnSend?()
+        }
         view.isEditable = !disabled
         view.isUserInteractionEnabled = !disabled
         if view.text != text {
@@ -123,5 +130,38 @@ struct ComposerTextView: UIViewRepresentable {
         func textViewDidEndEditing(_ textView: UITextView) {
             parent.focused.wrappedValue = false
         }
+
+        func textView(_ textView: UITextView, shouldChangeTextIn range: NSRange, replacementText text: String) -> Bool {
+            // IME: ignore Enter/return while marked text is composing.
+            if textView.markedTextRange != nil {
+                return true
+            }
+            return true
+        }
+    }
+}
+
+/// Hardware Return sends after composition commits. Shift+Return stays newline.
+/// Software Return still inserts a newline (send button unchanged).
+final class ComposerUITextView: UITextView {
+    var onReturnSend: (() -> Void)?
+
+    override func pressesBegan(_ presses: Set<UIPress>, with event: UIPressesEvent?) {
+        for press in presses {
+            guard let key = press.key else { continue }
+            if key.keyCode == .keyboardReturn || key.keyCode == .keyboardReturnOrEnter {
+                if markedTextRange != nil {
+                    super.pressesBegan(presses, with: event)
+                    return
+                }
+                if key.modifierFlags.contains(.shift) {
+                    super.pressesBegan(presses, with: event)
+                    return
+                }
+                onReturnSend?()
+                return
+            }
+        }
+        super.pressesBegan(presses, with: event)
     }
 }

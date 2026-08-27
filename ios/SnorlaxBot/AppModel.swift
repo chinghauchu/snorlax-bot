@@ -855,6 +855,15 @@ final class AppModel {
         }
     }
 
+    func refreshRosterQuietly() async {
+        guard let client, isConfigured else { return }
+        do {
+            agents = try await client.listAgents()
+        } catch {
+            /* keep current roster */
+        }
+    }
+
     func handleSceneActive() async {
         guard isConfigured else { return }
         if agents.isEmpty {
@@ -895,7 +904,7 @@ final class AppModel {
             }
         case .error(let message):
             errorMessage = message
-        case .tool(let id, let summary, _, let senderId, let senderName):
+        case .tool(let id, let name, let summary, let done, let senderId, let senderName):
             if onTimeline { return }
             if let index = toolTraces.firstIndex(where: { $0.id == id }) {
                 toolTraces[index].summary = summary
@@ -910,6 +919,9 @@ final class AppModel {
                         senderName: senderName
                     )
                 )
+            }
+            if done, name == "create_agent" || name == "create_channel" {
+                Task { await refreshRosterQuietly() }
             }
         case .connectUrl(let url, _):
             if let resolved = client?.resolve(url) ?? URL(string: url) {

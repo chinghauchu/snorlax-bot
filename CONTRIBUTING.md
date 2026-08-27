@@ -14,7 +14,7 @@ NVIDIA DGX Spark.
   in CI and on machines without a 70B checkpoint. `omlx` is the Mac-local
   OpenAI-compat path. `vllm` is the Spark path. Neither is a development
   dependency.
-- **Keep v0.28 small.** Named teammates, identity pane, seeded group plus extra
+- **Keep v0.29 small.** Named teammates, identity pane, seeded group plus extra
   channels, @mentions, 1:1 isolation, channel handoff threads, report-back,
   runtime-owned file/shell/web tools in a `~/.snorlax-bot` sandbox (auto-run,
   no extra shell network, configured search provider), a thin desktop
@@ -49,7 +49,7 @@ NVIDIA DGX Spark.
   on assistant `kind=message`; LEFT chrome matches user-right; runtime
   binds write_file / screenshot), and v0.27 video attachments (`kind=video`;
   50MB; clients play; not fed to the model), and v0.28 `watch_video`
-  (`Watched {name}` on the existing kind=tool line; no Watch button; desktop/iOS idle). Full sandbox
+  (`Watched {name}` on the existing kind=tool line; no Watch button; desktop/iOS idle), and v0.29 IME-safe composer Enter plus `create_agent` / `create_channel` (wrap `POST /v1/agents`; `Created {name}`; 项目 / 员工 seed skill). Full sandbox
   computer GUI (VNC), public marketplace / search, and extra channel types
   are later — see [ROADMAP.md](ROADMAP.md).
 
@@ -67,7 +67,9 @@ NVIDIA DGX Spark.
   images go in that turn; v0.26 agent-sent write_file / screenshot files
   bind onto the assistant `kind=message`; v0.27 video ids persist on
   the message but are not sent as bytes; v0.28 `watch_video` describes a
-  video as text when the agent calls it; legacy `images[]` persist
+  video as text when the agent calls it; v0.29 `create_agent` /
+  `create_channel` wrap existing `POST /v1/agents` (`Created {name}`
+  tool line); legacy `images[]` persist
   off-model.
 
 If a change needs to break the OpenAPI contract, update
@@ -75,7 +77,7 @@ If a change needs to break the OpenAPI contract, update
 PR and add a runtime test. Do not reintroduce `instructions`, snake_case
 `created_at`, or `{ agents: [] }` / `{ messages: [] }` /
 `{ attachments: [] }` list-endpoint wrappers. Message.attachments and
-`POST /v1/agents/{id}/attachments` are in-contract (v0.25 / v0.26 / v0.27 / v0.28).
+`POST /v1/agents/{id}/attachments` are in-contract (v0.25 / v0.26 / v0.27 / v0.28 / v0.29).
 
 ## Development
 

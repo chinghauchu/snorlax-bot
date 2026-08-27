@@ -150,6 +150,11 @@ does not send video bytes to the model. v0.28: built-in `watch_video`
 existing kind=tool line). No new routes. Desktop/iOS idle. OpenAPI
 stays 0.18.0.
 
+v0.29 IME Enter + create agent/channel tools: Enter does not send while
+IME is composing. Built-in `create_agent` / `create_channel` wrap
+existing `POST /v1/agents`. `Created {name}` on the existing kind=tool
+line. No new routes. OpenAPI stays 0.18.0.
+
 A copy is also kept at `runtime/openapi.yaml` and `desktop/openapi.yaml`
 so those trees are self-contained. Do not let the files diverge.
 

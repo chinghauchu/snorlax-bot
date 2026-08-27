@@ -416,6 +416,16 @@ existing 12px muted `Watched {name}` kind=tool line. Player stays
 user turn. No new client routes. Desktop + iOS idle. OpenAPI stays
 0.18.0. No `/v1/chats/`. Never reintroduce `computerPane.ts`.
 
+v0.29: IME Enter + create agent/channel tools. Composer Enter does not
+send while IME is composing (`isComposing` / `keyCode 229` /
+`markedTextRange`). Built-in `create_agent` / `create_channel` wrap
+existing `POST /v1/agents` (`kind=channel` for the latter). Tool line
+is `Created {name}`. Empty name / unknown memberIds are tool errors
+(user POST 200). Isolation: creating B does not paint B into A's 1:1.
+Seed SKILL.md: 项目 → `create_channel`, 员工 → `create_agent`. No new
+routes. OpenAPI stays 0.18.0. No `/v1/chats/`. Never reintroduce
+`computerPane.ts`.
+
 ## Inference interface
 
 ```text

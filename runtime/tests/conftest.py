@@ -11,6 +11,20 @@ from snorlax_runtime.config import Settings
 
 TOKEN = "test-token-snorlax"
 AUTH = {"Authorization": f"Bearer {TOKEN}"}
+SEED_SKILL_ID = "teammates"
+
+
+def without_seed_skills(rows: list) -> list:
+    return [row for row in rows if row.get("id") != SEED_SKILL_ID]
+
+
+def skill_md_files(root) -> list:
+    from pathlib import Path
+
+    path = Path(root)
+    if not path.exists():
+        return []
+    return [p for p in path.rglob("SKILL.md") if p.parent.name != SEED_SKILL_ID]
 
 
 @pytest.fixture(autouse=True)

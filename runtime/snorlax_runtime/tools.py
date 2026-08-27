@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0
-"""Runtime-owned built-in tools: files, shell, web, watch_video. Never called by clients."""
+"""Runtime-owned built-in tools: files, shell, web, watch_video, create_agent, create_channel. Never called by clients."""
 
 from __future__ import annotations
 
@@ -416,6 +416,62 @@ TOOL_DEFINITIONS: list[dict[str, Any]] = [
     {
         "type": "function",
         "function": {
+            "name": "create_agent",
+            "description": (
+                "Create a teammate (员工) via existing POST /v1/agents "
+                "(kind=agent). Pass name (required), optional title and "
+                "description. Do not use this for a 项目 / channel — that "
+                "is create_channel. The runtime runs this immediately "
+                "(no approval)."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "name": {
+                        "type": "string",
+                        "description": "Display name for the new agent.",
+                    },
+                    "title": {"type": "string"},
+                    "description": {"type": "string"},
+                },
+                "required": ["name"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "create_channel",
+            "description": (
+                "Create a 项目 / channel via existing POST /v1/agents with "
+                "kind=channel. Pass name (required) and optional memberIds "
+                "(agent ids). Empty or omitted memberIds snapshots the "
+                "current agent roster. Do not invent extra channel types. "
+                "The runtime runs this immediately (no approval)."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "name": {
+                        "type": "string",
+                        "description": "Display name for the new channel.",
+                    },
+                    "memberIds": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": (
+                            "Agent ids. Empty or omitted snapshots every "
+                            "current agent."
+                        ),
+                    },
+                },
+                "required": ["name"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
             "name": "computer_click",
             "description": (
                 "Click the agent's 1280x800 sandbox display at (x, y). "
@@ -467,6 +523,8 @@ def start_summary(name: str, args: dict[str, Any]) -> str:
         return f"Fetching {host}…"
     if name == "watch_video":
         return "Watching video…"
+    if name in {"create_agent", "create_channel"}:
+        return "Creating…"
     if name == "write_file":
         return f"Writing {Path(str(args.get('path') or 'file')).name}…"
     if name == "read_file":
@@ -549,6 +607,13 @@ def done_summary(
         if not label or label.lower().startswith("error"):
             label = str(args.get("attachmentId") or "video").strip() or "video"
         return f"Watched {label}"
+    if name in {"create_agent", "create_channel"}:
+        label = str(args.get("name") or "").strip()
+        if not label:
+            first = (result or "").strip().splitlines()[0].strip() if result else ""
+            if first.lower().startswith("created "):
+                label = first[8:].strip()
+        return f"Created {label}" if label else "Created"
     if name == "write_file":
         return f"Wrote {_tool_path(args)}"
     if name == "read_file":
@@ -628,6 +693,7 @@ async def execute_named_tool(
 ) -> str:
     """Dispatch one tool. MCP stays on the runtime event loop (not the shell)."""
     from snorlax_runtime.mcp import call_mcp_tool, is_mcp_tool
+    from snorlax_runtime.roster import create_agent_tool, create_channel_tool
     from snorlax_runtime.watch import watch_video_tool
 
     if name == "watch_video":
@@ -637,6 +703,10 @@ async def execute_named_tool(
             store=store,
             backend=backend,
         )
+    if name == "create_agent":
+        return await create_agent_tool(arguments, store=store)
+    if name == "create_channel":
+        return await create_channel_tool(arguments, store=store)
     if is_mcp_tool(name):
         return await call_mcp_tool(name, arguments)
     return await asyncio.to_thread(execute_tool, name, arguments, workspace)
@@ -675,6 +745,8 @@ def execute_tool(name: str, arguments: str, workspace: Path) -> str:
             from snorlax_runtime.watch import ERR_UNKNOWN_ATTACHMENT
 
             return ERR_UNKNOWN_ATTACHMENT
+        if name in {"create_agent", "create_channel"}:
+            return "Error: missing name"
         if name == "computer_click":
             return _computer_click(workspace, args)
         if name == "computer_key":

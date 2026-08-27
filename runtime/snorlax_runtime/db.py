@@ -34,7 +34,8 @@ DB_FILENAME = "snorlax.db"
 
 TOOLS_PREAMBLE = (
     "You have built-in tools (list_dir, read_file, write_file, delete_file, "
-    "shell, web_search, web_fetch, watch_video). Call them instead of describing the work. "
+    "shell, web_search, web_fetch, watch_video, create_agent, create_channel). "
+    "Call them instead of describing the work. "
     "The runtime runs tools immediately — do not ask the user to approve a "
     "tool call and do not wait for a widget. Question cards are for user "
     "judgment (which approach, whether to proceed on a product decision), "
@@ -52,7 +53,10 @@ TOOLS_PREAMBLE = (
     "If a teammate needs a user decision, report back; do not try to paint "
     "a question card in someone else's 1:1. If the user attaches a video, "
     "call watch_video with its attachmentId when you need a description; "
-    "do not call it for images or files. Skills are how-to recipes "
+    "do not call it for images or files. A 员工 / employee / teammate is "
+    "create_agent; a 项目 / project / channel is create_channel (same "
+    "POST /v1/agents, kind=channel). Do not invent a second create API. "
+    "Skills are how-to recipes "
     "(SKILL.md) with no trigger of their own — follow a matching skill "
     "when you work. Routines are cron jobs that fire a skill while the "
     "user is away."
@@ -178,6 +182,7 @@ CREATE TABLE IF NOT EXISTS attachments (
 """
 
 ROSTER_SEEDED_KEY = "roster_seeded"
+SKILLS_SEEDED_KEY = "skills_seeded"
 
 
 class Store:
@@ -199,6 +204,7 @@ class Store:
         await self._migrate()
         await self._conn.commit()
         await self._seed()
+        await self._seed_skills()
 
     async def close(self) -> None:
         if self._conn is not None:
@@ -293,6 +299,33 @@ class Store:
             "INSERT OR REPLACE INTO meta (key, value) VALUES (?, ?)",
             (ROSTER_SEEDED_KEY, "1"),
         )
+
+    async def _skills_already_seeded(self) -> bool:
+        cur = await self.conn.execute(
+            "SELECT value FROM meta WHERE key = ?", (SKILLS_SEEDED_KEY,)
+        )
+        row = await cur.fetchone()
+        return row is not None and str(row["value"]) == "1"
+
+    async def _mark_skills_seeded(self) -> None:
+        await self.conn.execute(
+            "INSERT OR REPLACE INTO meta (key, value) VALUES (?, ?)",
+            (SKILLS_SEEDED_KEY, "1"),
+        )
+
+    async def _seed_skills(self) -> None:
+        """Write the teammates SKILL.md once (v0.9 load path). Never overwrite.
+
+        Existing DBs without the meta flag pick it up once, then lock — same
+        as roster seed. User DELETE of that skill is not recreated.
+        """
+        if await self._skills_already_seeded():
+            return
+        from snorlax_runtime.skills import write_seed_skills
+
+        write_seed_skills(self.data_dir)
+        await self._mark_skills_seeded()
+        await self.conn.commit()
 
     async def _seed(self) -> None:
         """Insert seed agent + channel only on first empty DB. Never auto-reseed.

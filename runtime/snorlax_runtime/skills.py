@@ -19,6 +19,23 @@ SOURCE_SKILLS_DIR = "skillsDir"
 MAX_SKILLS = 24
 MAX_WALK_DEPTH = 6
 MAX_BODY_CHARS = 8000
+SEED_TEAMMATES_SLUG = "teammates"
+SEED_TEAMMATES_MARKDOWN = """---
+name: teammates
+description: Create a 员工 (agent) with create_agent or a 项目 (channel) with create_channel.
+---
+
+Pick the matching built-in tool. Do not invent a second create API.
+These wrap existing POST /v1/agents (no extra channel types).
+
+- 员工 / employee / teammate / person → `create_agent` `{ name, title?, description? }`
+- 项目 / project / room / channel → `create_channel` `{ name, memberIds? }`
+  (`kind=channel` on that same POST). Empty memberIds snapshots the roster.
+
+The tool line is `Created {name}`. Empty name or unknown member ids are
+tool errors (the user send stays 200). Isolation stands: creating B does
+not paint B into A's 1:1.
+"""
 
 _FRONTMATTER = re.compile(
     r"\A---[ \t]*\n(?P<meta>.*?)\n---[ \t]*\n?(?P<body>.*)\Z",
@@ -48,6 +65,20 @@ class Skill:
 
 def skills_dir(data_dir: Path) -> Path:
     return data_dir / SKILLS_DIRNAME
+
+
+def write_seed_skills(data_dir: Path) -> None:
+    """Seed the v0.9 teammates SKILL.md once. Missing file only; never overwrite.
+
+    项目 → create_channel, 员工 → create_agent so the model picks the
+    right tool. No Settings chrome.
+    """
+    root = skills_dir(data_dir) / SEED_TEAMMATES_SLUG
+    path = root / SKILL_FILENAME
+    if path.is_file():
+        return
+    root.mkdir(parents=True, exist_ok=True)
+    path.write_text(SEED_TEAMMATES_MARKDOWN, encoding="utf-8")
 
 
 def parse_skill_markdown(

@@ -73,6 +73,8 @@ BUILTIN_TOOL_NAMES = frozenset(
         "web_search",
         "web_fetch",
         "watch_video",
+        "create_agent",
+        "create_channel",
         "computer_click",
         "computer_key",
     }
