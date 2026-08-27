@@ -1,7 +1,7 @@
 [project]
 name = "snorlax-runtime"
 version = "0.18.0"
-description = "Snorlax-Bot FastAPI runtime — agents, transcripts, LAN auth, built-in tools, MCP client, plugins chrome (add custom), question widgets, skills with markdown editor, cron XOR webhook routines with create/delete chrome, per-agent computer preview, desktop takeover, and teach-a-task recording in front of oMLX or vLLM."
+description = "Snorlax-Bot FastAPI runtime — agents, transcripts, LAN auth, built-in tools, MCP client, plugins chrome (add custom), question widgets, skills with markdown editor, cron XOR webhook/Slack/GitHub routines with create/delete chrome, per-agent computer preview, desktop takeover, and teach-a-task recording in front of oMLX or vLLM."
 readme = "README.md"
 license = { text = "Apache-2.0" }
 authors = [{ name = "Chinghau Chu" }]

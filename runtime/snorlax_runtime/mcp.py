@@ -77,6 +77,18 @@ class McpConfigError(Exception):
         self.status = status
 
 
+def _inbound_handler(server_name: str):
+    async def handler(message: Any) -> None:
+        from snorlax_runtime.listeners import handle_mcp_message
+
+        try:
+            await handle_mcp_message(server_name, message)
+        except Exception:  # noqa: BLE001 — inbound must not kill the session
+            log.exception("MCP inbound %s failed", server_name)
+
+    return handler
+
+
 def get_mcp_manager() -> McpManager | None:
     return _manager
 
@@ -498,6 +510,7 @@ class McpManager:
                         name="snorlax-bot",
                         version=__version__,
                     ),
+                    message_handler=_inbound_handler(name),
                 )
             )
             await asyncio.wait_for(session.initialize(), timeout=INIT_TIMEOUT)
@@ -907,6 +920,27 @@ def plugin_is_connected(name: str) -> bool:
     if manager is None or name not in manager.records:
         return False
     return manager.public_row(name).get("status") == STATUS_CONNECTED
+
+
+def plugin_kind_connected(manager: object | None, kind: str) -> bool:
+    """True when GET /v1/plugins has a connected row whose id/name matches kind."""
+    if manager is None:
+        return False
+    listed = getattr(manager, "list_public", None)
+    if not callable(listed):
+        return False
+    needle = kind.strip().lower()
+    if not needle:
+        return False
+    for row in listed() or []:
+        if not isinstance(row, dict):
+            continue
+        if str(row.get("status") or "") != STATUS_CONNECTED:
+            continue
+        blob = f"{row.get('id', '')} {row.get('name', '')}".lower()
+        if needle in blob:
+            return True
+    return False
 
 
 def is_mcp_tool(name: str) -> bool:

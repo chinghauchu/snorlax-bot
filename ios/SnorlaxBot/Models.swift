@@ -160,6 +160,17 @@ extension Message {
     }
 }
 
+extension Plugin {
+    static func kindConnected(_ kind: String, plugins: [Plugin]) -> Bool {
+        let needle = kind.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !needle.isEmpty else { return false }
+        return plugins.contains { row in
+            row.status == .connected &&
+                "\(row.id) \(row.name)".localizedCaseInsensitiveContains(needle)
+        }
+    }
+}
+
 extension Routine {
     var isWebhook: Bool {
         kind == .webhook

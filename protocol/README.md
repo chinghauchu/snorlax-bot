@@ -113,6 +113,14 @@ v0.22 blank New skill: same `POST /v1/agents/{id}/skills`, two bodies.
 omitted stays record-to-skill. Channel 409. GET list still `{ id, name }`.
 OpenAPI stays 0.18.0.
 
+v0.23 Slack/GitHub inbound listeners: same POST `/v1/agents/{id}/routines`.
+Slack `{ type: slack, channel }` → 201 `kind=slack` `label="Slack {channel}"`
+(no webhookUrl). GitHub `{ type: github, repo }` (`owner/name`, no
+wildcards) → `kind=github` `label="GitHub {repo}"`. Unconnected plugin,
+empty channel/repo, or wildcards 422. GET omits those rows unless
+connected. Fire is the connected MCP (no extra HTTP route). OpenAPI
+stays 0.18.0.
+
 A copy is also kept at `runtime/openapi.yaml` and `desktop/openapi.yaml`
 so those trees are self-contained. Do not let the files diverge.
 

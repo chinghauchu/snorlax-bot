@@ -204,6 +204,11 @@ test("iOS agent sheet matches: 16:10, 8pt, 12pt Open when hasSandbox, tap POSTs 
   assert.match(sheet, /minHeight: 44/);
   assert.match(sheet, /Schedule/);
   assert.match(sheet, /Webhook/);
+  assert.match(sheet, /Slack/);
+  assert.match(sheet, /GitHub/);
+  assert.match(sheet, /Channel the bot is in\./);
+  assert.match(sheet, /One repo\. No wildcards\./);
+  assert.match(sheet, /visibleModes/);
   assert.match(sheet, /showsWebhookCopy/);
   const routinesBlock = sheet.slice(
     sheet.indexOf("private var routinesList"),
@@ -224,6 +229,8 @@ test("iOS agent sheet matches: 16:10, 8pt, 12pt Open when hasSandbox, tap POSTs 
   assert.match(client, /createRoutine/);
   assert.match(client, /deleteRoutine/);
   assert.match(model, /addRoutine/);
+  assert.match(model, /slackChannel/);
+  assert.match(model, /githubRepo/);
   assert.match(model, /removeRoutine/);
   assert.match(model, /addSkill/);
   assert.match(model, /saveSkill/);

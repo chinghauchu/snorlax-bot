@@ -61,7 +61,12 @@ from snorlax_runtime.connect import (
     STATUS_PENDING as CONNECT_PENDING,
 )
 from snorlax_runtime.token import resolve_token, write_token_file
-from snorlax_runtime.mcp import McpConfigError, start_mcp, stop_mcp
+from snorlax_runtime.mcp import (
+    McpConfigError,
+    plugin_kind_connected,
+    start_mcp,
+    stop_mcp,
+)
 from snorlax_runtime.tools import (
     BinaryFileError,
     PathJailError,
@@ -78,7 +83,9 @@ def _error(status_code: int, message: str) -> HTTPException:
 
 log = logging.getLogger("snorlax.app")
 
-PLUGIN_CONNECTED = "connected"
+
+def _plugin_kind_connected(manager: object | None, kind: str) -> bool:
+    return plugin_kind_connected(manager, kind)
 
 
 def _base_url(request: Request) -> str:
@@ -117,24 +124,6 @@ def _routine_out(row: dict, base_url: str) -> Routine:
         webhookUrl=webhook_url,
         label=label,
     )
-
-
-def _plugin_kind_connected(manager: object | None, kind: str) -> bool:
-    if manager is None:
-        return False
-    listed = getattr(manager, "list_public", None)
-    if not callable(listed):
-        return False
-    needle = kind.strip().lower()
-    for row in listed() or []:
-        if not isinstance(row, dict):
-            continue
-        if str(row.get("status") or "") != PLUGIN_CONNECTED:
-            continue
-        blob = f"{row.get('id', '')} {row.get('name', '')}".lower()
-        if needle in blob:
-            return True
-    return False
 
 
 def _connect_html() -> HTMLResponse:
@@ -217,6 +206,14 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             api_key=settings.inference_api_key,
             send_auth=settings.inference_send_auth,
         )
+        from snorlax_runtime.listeners import bind_runtime
+
+        bind_runtime(
+            store=store,
+            backend=app.state.backend,
+            get_mcp=lambda: getattr(app.state, "mcp", None),
+            max_tool_rounds=settings.tool_max_rounds,
+        )
         scheduler_task = None
         if settings.scheduler:
             from snorlax_runtime.scheduler import run_scheduler
@@ -254,6 +251,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             except asyncio.CancelledError:
                 pass
         await stop_mcp(mcp)
+        from snorlax_runtime.listeners import unbind_runtime
+
+        unbind_runtime()
         await store.close()
 
     app = FastAPI(
@@ -639,23 +639,57 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             raise _error(422, "unknown skill")
         trigger = payload.trigger
         if trigger is not None:
-            kind = trigger.type
-            if kind != "webhook":
-                raise _error(
-                    422,
-                    f"{kind} trigger is not available this slice",
-                )
-            key = secrets.token_urlsafe(32)
-            row = await store.create_routine(
-                agent_id=id,
-                name=payload.name.strip(),
-                skill=skill_slug(matched),
-                cron="",
-                schedule_label="",
-                trigger_type="webhook",
-                webhook_key=key,
+            from snorlax_runtime.listeners import (
+                github_label,
+                github_repo_valid,
+                slack_label,
             )
-            return _routine_out(row, _base_url(request))
+
+            kind = trigger.type
+            manager = getattr(request.app.state, "mcp", None)
+            if kind == "webhook":
+                key = secrets.token_urlsafe(32)
+                row = await store.create_routine(
+                    agent_id=id,
+                    name=payload.name.strip(),
+                    skill=skill_slug(matched),
+                    cron="",
+                    schedule_label="",
+                    trigger_type="webhook",
+                    webhook_key=key,
+                )
+                return _routine_out(row, _base_url(request))
+            if kind == "slack":
+                channel = (trigger.channel or "").strip()
+                if not channel:
+                    raise _error(422, "channel is required")
+                if not _plugin_kind_connected(manager, "slack"):
+                    raise _error(422, "slack plugin is not connected")
+                row = await store.create_routine(
+                    agent_id=id,
+                    name=payload.name.strip(),
+                    skill=skill_slug(matched),
+                    cron=channel,
+                    schedule_label=slack_label(channel),
+                    trigger_type="slack",
+                )
+                return _routine_out(row, _base_url(request))
+            if kind == "github":
+                repo = (trigger.repo or "").strip()
+                if not github_repo_valid(repo):
+                    raise _error(422, "repo must be owner/name")
+                if not _plugin_kind_connected(manager, "github"):
+                    raise _error(422, "github plugin is not connected")
+                row = await store.create_routine(
+                    agent_id=id,
+                    name=payload.name.strip(),
+                    skill=skill_slug(matched),
+                    cron=repo,
+                    schedule_label=github_label(repo),
+                    trigger_type="github",
+                )
+                return _routine_out(row, _base_url(request))
+            raise _error(422, f"{kind} trigger is not available")
         try:
             cron, label = parse_schedule(payload.schedule or "")
         except CronError as exc:

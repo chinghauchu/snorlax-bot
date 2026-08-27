@@ -16,7 +16,7 @@ From public Grok Bot docs and the Aug 2026 launch:
 | Message a bot like a coworker | `POST /v1/agents/{id}/messages` (SSE) |
 | Files, shell, web on a computer | v0.5: runtime tools in a workspace jail; v0.6: thin file-tree pane |
 | One user-scoped computer shared by all bots | Later: one sandbox on the Spark, shared files/logins, per-bot screen |
-| Skills (how) and routines (when) | v0.9: SKILL.md + cron (Asia/Taipei); v0.13: cron XOR webhook; v0.17: Add / Remove on the identity pane; v0.18: identity-pane skill markdown editor; v0.21: 1:1 composer `/` loads that SKILL.md (channel `/` stays text); fire LEFT 1:1 |
+| Skills (how) and routines (when) | v0.9: SKILL.md + cron (Asia/Taipei); v0.13: cron XOR webhook; v0.17: Add / Remove on the identity pane; v0.18: identity-pane skill markdown editor; v0.21: 1:1 composer `/` loads that SKILL.md (channel `/` stays text); v0.23: Slack/GitHub inbound listeners when that plugin is connected; fire LEFT 1:1 |
 | MCP + computer-use for sites without an API | v0.7: local/LAN MCP client; v0.10: connect chrome (`GET /v1/plugins` + `kind=connect`); v0.12: Settings Add custom; later: sandbox browser |
 | Question / approval moments | v0.8: question widgets (`kind=widget`); tools stay auto-run (no approval card) |
 | Desktop + iOS, same bots | Tauri desktop now; Swift iOS companion on the LAN |
@@ -347,6 +347,20 @@ trailing 12px Add. Empty `No skills yet.` still shows Add. 320px
 Empty name/body 422. Channel 409. GET list `{ id, name }`. GET/PATCH/
 DELETE unchanged. `/` typeahead unchanged. OpenAPI stays 0.18.0.
 Out: marketplace, `@skill`, Slack/GitHub builder.
+
+v0.23: Slack/GitHub inbound listeners. Runtime + desktop + iOS. Same
+POST `/routines`, cron XOR trigger. Slack `{ type: slack, channel }`
+→ 201 `kind=slack` `label="Slack {channel}"` (no webhookUrl). GitHub
+`{ type: github, repo }` (`owner/name`, no wildcards) → `kind=github`
+`label="GitHub {repo}"`. Unconnected / empty / wildcards 422. GET
+omits those rows unless the plugin is connected. Pause skips. Fire
+via the connected MCP into that agent’s 1:1 as A (Slack = messages in
+that channel; GitHub = pr-opened / pr-pushed / pr-merged). Add-routine
+sheet: Slack/GitHub segments only when connected (one 12px row; omit,
+do not disable). Slack `#eng` + `Channel the bot is in.`; GitHub
+`owner/name` + `One repo. No wildcards.` Copy stays webhook-only. No
+event picker. No Connect CTA. OpenAPI stays 0.18.0. Out: marketplace,
+VNC, extra channel types. Never reintroduce `computerPane.ts`.
 
 ## Inference interface
 

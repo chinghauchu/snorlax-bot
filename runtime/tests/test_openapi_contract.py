@@ -109,6 +109,10 @@ def test_protocol_openapi_is_locked_v0_contract() -> None:
     assert "v0.17" in text
     assert "v0.18" in text
     assert "v0.22" in text
+    assert "v0.23" in text
+    assert "type: slack, channel" in text
+    assert "owner/name" in text
+    assert "no wildcards" in text.lower()
     assert "/v1/agents/{id}/computer" in text
     assert "/v1/agents/{id}/computer/screenshot" in text
     assert "/v1/agents/{id}/computer/session" in text

@@ -229,13 +229,15 @@ export interface paths {
          *     is 404. kind=channel is 409 (routines are agent-only). Used by
          *     the agent info pane (list + enable/pause + Copy for webhook
          *     URL). v0.17: trailing 12px `Add` opens a 320px Add routine
-         *     sheet (name + 44px SKILL.md rows + segmented Schedule/Webhook).
-         *     Every row has muted 12px `Remove` (`Remove {name}?`). Pause
-         *     stays. No edit-in-place. Humanized trigger
-         *     line (`Webhook` / `Weekdays 9:00`) is a client concern. Webhook
+         *     sheet (name + 44px SKILL.md rows + segmented Schedule/Webhook;
+         *     v0.23 adds Slack/GitHub segments only when that plugin is
+         *     connected). Every row has muted 12px `Remove` (`Remove {name}?`).
+         *     Pause stays. No edit-in-place. Humanized trigger
+         *     line (`Webhook` / `Weekdays 9:00` / `Slack #eng` /
+         *     `GitHub owner/name`) is a client concern. Webhook
          *     rows show 12px muted Copy left of Remove, then the pause switch
          *     (`Copied` for 1.5s); do not paint webhookUrl. Slack/GitHub rows
-         *     have no Copy and no builder UI. Do not emit Connect cards from
+         *     have no Copy. Do not emit Connect cards from
          *     the pane.
          */
         get: operations["listRoutines"];
@@ -247,11 +249,14 @@ export interface paths {
          *     Webhook: `{ name, skill, trigger: { type: webhook } }` — 201
          *     with `webhookUrl` (token in the path). POST of an event routine
          *     without a trigger is 422. POST with both schedule and trigger is
-         *     422. Slack/GitHub `{ type: slack|github }` is 422 (no builder
-         *     this slice). Webhook works with zero plugins. 422 missing
-         *     name/skill, unknown skill, bad cron, or channel id. Missing
-         *     agent is 404. Pause stays PATCH `{ enabled }`. DELETE is a
-         *     separate operation.
+         *     422. Slack: `{ name, skill, trigger: { type: slack, channel } }`
+         *     → 201 `kind=slack` `label="Slack {channel}"` (no webhookUrl).
+         *     GitHub: `{ type: github, repo }` (`owner/name`, no wildcards) →
+         *     201 `kind=github` `label="GitHub {repo}"`. Unconnected plugin,
+         *     empty channel/repo, or wildcards → 422. Webhook works with zero
+         *     plugins. 422 missing name/skill, unknown skill, bad cron, or
+         *     channel id. Missing agent is 404. Pause stays PATCH `{ enabled }`.
+         *     DELETE is a separate operation.
          */
         post: operations["createRoutine"];
         delete?: never;
@@ -1251,9 +1256,13 @@ export interface components {
             label?: string;
         };
         RoutineTrigger: {
-            /** @description webhook, slack, or github. webhook always works (zero plugins). slack/github is 422 this slice (no builder). inbound Slack/GitHub delivery is not in this slice. */
+            /** @description webhook, slack, or github. webhook always works (zero plugins). slack/github require GET /v1/plugins status=connected else 422. inbound Slack/GitHub delivery is the connected MCP plugin (no extra HTTP route). */
             type: string;
-            /** @description Optional Slack/GitHub display, e.g. Slack */
+            /** @description Slack channel (e.g. `#eng`). Required when type=slack. Empty is 422. */
+            channel?: string;
+            /** @description GitHub `owner/name`. Required when type=github. One repo, no wildcards. Empty/wildcard is 422. */
+            repo?: string;
+            /** @description Ignored on POST. GET Routine.label is `Slack {channel}` / `GitHub {repo}`. */
             label?: string;
         };
         RoutineCreate: {
