@@ -1083,7 +1083,6 @@ async def _generate(
     routine_name: str | None = None,
 ) -> tuple[list[tuple[str, dict[str, Any]]], dict[str, Any] | None]:
     from snorlax_runtime.inference import InferenceError
-    from snorlax_runtime.scheduler import is_routine_pack
     from snorlax_runtime.skills import (
         invoked_skill,
         load_skills,
@@ -1107,7 +1106,9 @@ async def _generate(
     loaded = load_skills(store.data_dir, workspace)
     extra = skills_preamble(loaded)
     invoke = ""
-    if not is_group and not is_routine_pack(wake_pack):
+    # v0.21: 1:1 user POST only. Channel `/` stays plain text. Handoff /
+    # routine wake packs already carry their own skill body.
+    if not is_group and wake_pack is None:
         matched = invoked_skill(
             loaded, skill_ask_from_turn(transcript, wake_pack)
         )

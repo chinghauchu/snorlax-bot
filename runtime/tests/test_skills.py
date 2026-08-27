@@ -4,6 +4,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from snorlax_runtime.skills import (
+    find_skill,
     invoked_skill,
     parse_skill_markdown,
     skill_ask_from_turn,
@@ -31,12 +32,38 @@ Do a short status.
 Keep it brief.
 """
 
+KNOWN_SKILL = """---
+name: known-skill
+description: Named recipe loaded by /known-skill.
+---
+
+KNOWN_SKILL_RECIPE_BODY
+"""
+
+OTHER_SKILL = """---
+name: other-skill
+description: A different recipe that must not be the invoked one.
+---
+
+OTHER_SKILL_RECIPE_BODY
+"""
+
 
 def _write_status_skill(tmp_path: Path) -> Path:
     path = tmp_path / "skills" / "status" / "SKILL.md"
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(STATUS_SKILL, encoding="utf-8")
     return path
+
+
+def _write_known_and_other_skills(tmp_path: Path) -> None:
+    for slug, text in (
+        ("known-skill", KNOWN_SKILL),
+        ("other-skill", OTHER_SKILL),
+    ):
+        path = tmp_path / "skills" / slug / "SKILL.md"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(text, encoding="utf-8")
 
 
 def test_get_skill_body_is_full_skill_md_source(client, tmp_path: Path) -> None:
@@ -225,6 +252,8 @@ def test_invoked_skill_matches_slash_name_and_slug() -> None:
         STATUS_SKILL, source="skillsDir", path="status/SKILL.md"
     )
     assert skill is not None
+    assert find_skill([skill], "status") is skill
+    assert find_skill([skill], "STATUS") is skill
     assert invoked_skill([skill], "/status") is skill
     assert invoked_skill([skill], "/status please") is skill
     assert invoked_skill([skill], "please /status") is skill
@@ -233,6 +262,8 @@ def test_invoked_skill_matches_slash_name_and_slug() -> None:
         PATCHED_SKILL, source="skillsDir", path="status-check/SKILL.md"
     )
     assert named is not None
+    assert find_skill([named], "Status check") is named
+    assert find_skill([named], "status-check") is named
     assert invoked_skill([named], "/Status check") is named
     assert invoked_skill([named], "/status-check extra") is named
     assert invoked_skill([skill], "status") is None
@@ -244,8 +275,7 @@ def test_invoked_skill_matches_slash_name_and_slug() -> None:
     ) == "/status"
 
 
-def test_slash_name_loads_skill_md_into_turn(client, tmp_path: Path) -> None:
-    _write_status_skill(tmp_path)
+def _capture_generate(client):
     captured: list[list[dict]] = []
     backend = client.app.state.backend
     original = backend.generate
@@ -256,37 +286,42 @@ def test_slash_name_loads_skill_md_into_turn(client, tmp_path: Path) -> None:
             yield part
 
     backend.generate = wrapped
+    return captured
+
+
+def test_one_to_one_known_skill_slash_injects_recipe(client, tmp_path: Path) -> None:
+    """1:1 POST /known-skill injects that SKILL.md, not only the catalog dump."""
+    _write_known_and_other_skills(tmp_path)
+    listed = client.get(f"/v1/agents/{SEED}/skills", headers=AUTH)
+    assert listed.status_code == 200
+    names = {row["id"] for row in listed.json()}
+    assert "known-skill" in names
+    captured = _capture_generate(client)
     with client.stream(
         "POST",
         f"/v1/agents/{SEED}/messages",
         headers=AUTH,
-        json={"content": "/status please"},
+        json={"content": "/known-skill"},
     ) as response:
         assert response.status_code == 200
         parse_sse("".join(response.iter_text()))
-    listed = client.get(f"/v1/agents/{SEED}/messages", headers=AUTH).json()
-    assert listed[0]["role"] == "user"
-    assert listed[0]["content"] == "/status please"
+    stored = client.get(f"/v1/agents/{SEED}/messages", headers=AUTH).json()
+    user = stored[0]
+    assert user["role"] == "user"
+    assert user["content"] == "/known-skill"
+    assert user.get("kind", "message") == "message"
     blob = "\n".join(
         str(m.get("content") or "") for msgs in captured for m in msgs
     )
-    assert "The user invoked skill status" in blob
-    assert "### Invoked skill: status" in blob
-    assert "Summarize status in a few lines." in blob
+    assert "### Invoked skill: known-skill" in blob
+    assert "KNOWN_SKILL_RECIPE_BODY" in blob
+    assert "The user invoked skill known-skill" in blob
+    assert "### Invoked skill: other-skill" not in blob
 
 
-def test_unknown_slash_name_is_normal_user_message(client, tmp_path: Path) -> None:
-    _write_status_skill(tmp_path)
-    captured: list[list[dict]] = []
-    backend = client.app.state.backend
-    original = backend.generate
-
-    async def wrapped(messages, tools=None):
-        captured.append(list(messages))
-        async for part in original(messages, tools=tools):
-            yield part
-
-    backend.generate = wrapped
+def test_unknown_slash_foo_does_not_inject(client, tmp_path: Path) -> None:
+    _write_known_and_other_skills(tmp_path)
+    captured = _capture_generate(client)
     with client.stream(
         "POST",
         f"/v1/agents/{SEED}/messages",
@@ -295,9 +330,10 @@ def test_unknown_slash_name_is_normal_user_message(client, tmp_path: Path) -> No
     ) as response:
         assert response.status_code == 200
         parse_sse("".join(response.iter_text()))
-    listed = client.get(f"/v1/agents/{SEED}/messages", headers=AUTH).json()
-    assert listed[0]["content"] == "/foo"
-    assert listed[0]["role"] == "user"
+    stored = client.get(f"/v1/agents/{SEED}/messages", headers=AUTH).json()
+    assert stored[0]["content"] == "/foo"
+    assert stored[0]["role"] == "user"
+    assert stored[0].get("kind", "message") == "message"
     blob = "\n".join(
         str(m.get("content") or "") for msgs in captured for m in msgs
     )
@@ -305,25 +341,16 @@ def test_unknown_slash_name_is_normal_user_message(client, tmp_path: Path) -> No
     assert "### Invoked skill:" not in blob
 
 
-def test_channel_slash_stays_plain_text_no_load_path(client, tmp_path: Path) -> None:
-    _write_status_skill(tmp_path)
+def test_channel_known_skill_slash_does_not_load(client, tmp_path: Path) -> None:
+    _write_known_and_other_skills(tmp_path)
     listed = client.get(f"/v1/agents/{CHANNEL}/skills", headers=AUTH)
     assert listed.status_code == 409
-    captured: list[list[dict]] = []
-    backend = client.app.state.backend
-    original = backend.generate
-
-    async def wrapped(messages, tools=None):
-        captured.append(list(messages))
-        async for part in original(messages, tools=tools):
-            yield part
-
-    backend.generate = wrapped
+    captured = _capture_generate(client)
     with client.stream(
         "POST",
         f"/v1/agents/{CHANNEL}/messages",
         headers=AUTH,
-        json={"content": "/status @Snorlax", "mentions": [SEED]},
+        json={"content": "/known-skill @Snorlax", "mentions": [SEED]},
     ) as response:
         assert response.status_code == 200
         parse_sse("".join(response.iter_text()))
@@ -332,7 +359,7 @@ def test_channel_slash_stays_plain_text_no_load_path(client, tmp_path: Path) -> 
         for m in client.get(f"/v1/agents/{CHANNEL}/messages", headers=AUTH).json()
         if m["role"] == "user"
     ]
-    assert users[-1]["content"] == "/status @Snorlax"
+    assert users[-1]["content"] == "/known-skill @Snorlax"
     blob = "\n".join(
         str(m.get("content") or "") for msgs in captured for m in msgs
     )

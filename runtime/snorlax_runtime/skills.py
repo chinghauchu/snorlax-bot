@@ -185,34 +185,23 @@ def slash_rest(content: str) -> str | None:
     return rest
 
 
-def _match_skill_rest(skills: list[Skill], rest: str) -> Skill | None:
-    matches: list[tuple[int, Skill]] = []
-    folded = rest.casefold()
-    for skill in skills:
-        for key in (skill.name, skill_slug(skill)):
-            token = (key or "").strip()
-            if not token:
-                continue
-            key_fold = token.casefold()
-            if (
-                rest == token
-                or rest.startswith(token + " ")
-                or rest.startswith(token + "\n")
-                or folded == key_fold
-                or folded.startswith(key_fold + " ")
-                or folded.startswith(key_fold + "\n")
-            ):
-                matches.append((len(token), skill))
-    if not matches:
-        return None
-    matches.sort(key=lambda item: (-item[0], item[1].name))
-    return matches[0][1]
+def _slash_name_candidates(rest: str) -> list[str]:
+    """Longest-first ``/Name`` / ``/slug`` candidates for ``find_skill``.
+
+    Names may contain spaces (``/Status check``). First whitespace token
+    still matches a slug (``/known-skill please``).
+    """
+    line = (rest or "").split("\n", 1)[0].strip()
+    if not line:
+        return []
+    parts = line.split()
+    return [" ".join(parts[:i]) for i in range(len(parts), 0, -1)]
 
 
 def invoked_skill(skills: list[Skill], content: str) -> Skill | None:
     """Match ``/slug`` or ``/Name`` at a token start (1:1 load path).
 
-    Longest name/slug prefix wins so ``/status-check`` is not ``status``.
+    Uses ``find_skill`` (slug or frontmatter name, case-insensitive).
     No match → None (plain user text, not an error). Channel callers skip.
     """
     text = content or ""
@@ -220,9 +209,10 @@ def invoked_skill(skills: list[Skill], content: str) -> Skill | None:
         rest = text[match.end() :]
         if not rest or rest[0].isspace():
             continue
-        found = _match_skill_rest(skills, rest)
-        if found is not None:
-            return found
+        for candidate in _slash_name_candidates(rest):
+            found = find_skill(skills, candidate)
+            if found is not None:
+                return found
     return None
 
 
