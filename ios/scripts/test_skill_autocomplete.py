@@ -92,7 +92,7 @@ def test_insert_is_plain_text_not_chip() -> None:
 
 def test_reuses_mention_overlay_placement() -> None:
     bar = CHAT[CHAT.index("private struct ComposerBar") : CHAT.index("private struct MessageBubble")]
-    assert bar.index("skillMenuOpen") < bar.index("mentionQuery")
+    assert bar.index("skillMenuOpen") < bar.index("else if let query = mentionQuery")
     assert bar.index("skillMenuOpen") < bar.index("ComposerTextView")
     assert "frame(width: SkillPicker.popupWidth" in bar
     assert "RoundedRectangle(cornerRadius: SkillPicker.cornerRadius)" in bar
