@@ -77,6 +77,9 @@ URL. v0.26: LEFT `kind=message` reuses that chrome (above markdown,
 border, poster + 24px play, no autoplay, native controls after click.
 v0.28: no chrome; `watch_video` is the existing 12px muted `Watched {name}`
 tool line (no Watch button, no second player).
+v0.30: composer clipboard paste (Cmd-V / Ctrl-V and the `paste` event)
+fills those same pending chips; bitmap with no filename is `image.png`
+(jpeg / gif / webp extensions); text-only paste stays in the textarea.
 `@` and `/` unchanged.
 Assistant LEFT
 `kind=message` is 14px markdown (no grey bubble, 16/14 headings); user-right stays plain (`https://` tappable). Fenced code is full-turn language + Copy at 12px/1.45.

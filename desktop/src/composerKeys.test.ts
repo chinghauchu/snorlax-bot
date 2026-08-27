@@ -7,6 +7,7 @@ import test from "node:test";
 import {
   composerEnterSends,
   isComposerComposing,
+  isComposerPasteChord,
   rosterRefreshTool,
 } from "./composerKeys.ts";
 
@@ -81,4 +82,14 @@ test("create_agent / create_channel refresh the roster", () => {
   assert.equal(rosterRefreshTool("create_agent"), true);
   assert.equal(rosterRefreshTool("create_channel"), true);
   assert.equal(rosterRefreshTool("watch_video"), false);
+});
+
+test("Cmd-V / Ctrl-V is a paste chord; text-only does not preventDefault in the helper", () => {
+  assert.equal(isComposerPasteChord({ key: "v", metaKey: true }), true);
+  assert.equal(isComposerPasteChord({ key: "V", ctrlKey: true }), true);
+  assert.equal(isComposerPasteChord({ key: "v" }), false);
+  assert.equal(isComposerPasteChord({ key: "v", metaKey: true, altKey: true }), false);
+  assert.equal(isComposerPasteChord({ key: "Enter", metaKey: true }), false);
+  assert.match(app, /isComposerPasteChord/);
+  assert.match(app, /onPaste=/);
 });

@@ -11,6 +11,7 @@ struct ComposerTextView: UIViewRepresentable {
     @Binding var pendingCaret: Int?
     var focused: FocusState<Bool>.Binding
     var onReturnSend: (() -> Void)? = nil
+    var onPasteAttachments: (([ComposerPasteboard.Attachment]) -> Void)? = nil
 
     func makeCoordinator() -> Coordinator {
         Coordinator(self)
@@ -21,6 +22,9 @@ struct ComposerTextView: UIViewRepresentable {
         view.delegate = context.coordinator
         view.onReturnSend = { [coordinator = context.coordinator] in
             coordinator.parent.onReturnSend?()
+        }
+        view.onPasteAttachments = { [coordinator = context.coordinator] files in
+            coordinator.parent.onPasteAttachments?(files)
         }
         view.font = .systemFont(ofSize: 14)
         view.backgroundColor = .clear
@@ -36,6 +40,9 @@ struct ComposerTextView: UIViewRepresentable {
         context.coordinator.parent = self
         view.onReturnSend = { [coordinator = context.coordinator] in
             coordinator.parent.onReturnSend?()
+        }
+        view.onPasteAttachments = { [coordinator = context.coordinator] files in
+            coordinator.parent.onPasteAttachments?(files)
         }
         view.isEditable = !disabled
         view.isUserInteractionEnabled = !disabled
@@ -145,6 +152,27 @@ struct ComposerTextView: UIViewRepresentable {
 /// Software Return still inserts a newline (send button unchanged).
 final class ComposerUITextView: UITextView {
     var onReturnSend: (() -> Void)?
+    var onPasteAttachments: (([ComposerPasteboard.Attachment]) -> Void)?
+
+    override func paste(_ sender: Any?) {
+        let files = ComposerPasteboard.attachments(from: .general)
+        if files.isEmpty {
+            super.paste(sender)
+            return
+        }
+        onPasteAttachments?(files)
+        let text = ComposerPasteboard.plainText(from: .general, files: files)
+        if !text.isEmpty {
+            insertText(text)
+        }
+    }
+
+    override func canPerformAction(_ action: Selector, withSender sender: Any?) -> Bool {
+        if action == #selector(paste(_:)), ComposerPasteboard.shouldIntercept(.general) {
+            return true
+        }
+        return super.canPerformAction(action, withSender: sender)
+    }
 
     override func pressesBegan(_ presses: Set<UIPress>, with event: UIPressesEvent?) {
         for press in presses {
