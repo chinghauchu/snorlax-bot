@@ -634,17 +634,9 @@ private struct MessageBubble: View {
                     .background(Color.accentColor.opacity(0.22), in: RoundedRectangle(cornerRadius: 16))
                 }
                 .padding(.horizontal, 12)
-                .sheet(isPresented: Binding(
-                    get: { shareURL != nil },
-                    set: { if !$0 { shareURL = nil } }
-                )) {
-                    if let shareURL {
-                        AttachmentShareSheet(url: shareURL)
-                    }
-                }
             } else {
                 VStack(alignment: .leading, spacing: 6) {
-                    messageImages
+                    userAttachments
                     if !message.content.isEmpty {
                         AssistantMarkdown(
                             text: message.displayContent,
@@ -673,6 +665,14 @@ private struct MessageBubble: View {
         .frame(maxWidth: .infinity, alignment: isUser ? .trailing : .leading)
         .accessibilityElement(children: .combine)
         .accessibilityLabel(isUser ? "You" : message.senderName)
+        .sheet(isPresented: Binding(
+            get: { shareURL != nil },
+            set: { if !$0 { shareURL = nil } }
+        )) {
+            if let shareURL {
+                AttachmentShareSheet(url: shareURL)
+            }
+        }
     }
 
     @ViewBuilder
@@ -680,62 +680,50 @@ private struct MessageBubble: View {
         let atts = message.userRightAttachments
         let images = atts.filter { $0.kind == .image }
         let files = atts.filter { $0.kind == .file }
-        ForEach(images) { image in
-            RemoteImage(urlString: image.url, mime: "image/*")
-                .frame(maxWidth: 220, maxHeight: 160)
-                .clipShape(RoundedRectangle(cornerRadius: 8))
-        }
-        if images.isEmpty {
-            ForEach(Array(localPreviews.enumerated()), id: \.offset) { _, data in
-                if let image = UIImage(data: data) {
-                    Image(uiImage: image)
-                        .resizable()
-                        .scaledToFit()
+        if images.isEmpty && files.isEmpty && localPreviews.isEmpty {
+            EmptyView()
+        } else {
+            VStack(alignment: .leading, spacing: 6) {
+                ForEach(images) { image in
+                    RemoteImage(urlString: image.url, mime: "image/*")
                         .frame(maxWidth: 220, maxHeight: 160)
                         .clipShape(RoundedRectangle(cornerRadius: 8))
                 }
-            }
-        }
-        ForEach(files) { file in
-            Button {
-                Task {
-                    if let url = await model.openAttachment(file) {
-                        shareURL = url
+                if images.isEmpty {
+                    ForEach(Array(localPreviews.enumerated()), id: \.offset) { _, data in
+                        if let image = UIImage(data: data) {
+                            Image(uiImage: image)
+                                .resizable()
+                                .scaledToFit()
+                                .frame(maxWidth: 220, maxHeight: 160)
+                                .clipShape(RoundedRectangle(cornerRadius: 8))
+                        }
                     }
                 }
-            } label: {
-                Text(file.name)
-                    .font(.system(size: 13))
-                    .foregroundStyle(.primary)
-                    .lineLimit(1)
-                    .padding(.horizontal, 10)
-                    .frame(height: 36)
-                    .frame(minHeight: 44)
+                ForEach(files) { file in
+                    Button {
+                        Task {
+                            if let url = await model.openAttachment(file) {
+                                shareURL = url
+                            }
+                        }
+                    } label: {
+                        Text(file.name)
+                            .font(.system(size: 13))
+                            .foregroundStyle(.primary)
+                            .lineLimit(1)
+                            .padding(.horizontal, 10)
+                            .frame(height: 36)
+                            .frame(minHeight: 44)
+                    }
+                    .buttonStyle(.plain)
+                    .background(
+                        RoundedRectangle(cornerRadius: 8)
+                            .stroke(Color(uiColor: .separator), lineWidth: 1)
+                    )
+                    .accessibilityLabel(file.name)
+                }
             }
-            .buttonStyle(.plain)
-            .background(
-                RoundedRectangle(cornerRadius: 8)
-                    .stroke(Color(uiColor: .separator), lineWidth: 1)
-            )
-            .accessibilityLabel(file.name)
-        }
-    }
-
-    @ViewBuilder
-    private var messageImages: some View {
-        ForEach(Array(localPreviews.enumerated()), id: \.offset) { _, data in
-            if let image = UIImage(data: data) {
-                Image(uiImage: image)
-                    .resizable()
-                    .scaledToFit()
-                    .frame(maxWidth: 220, maxHeight: 160)
-                    .clipShape(RoundedRectangle(cornerRadius: 8))
-            }
-        }
-        ForEach(message.images) { image in
-            RemoteImage(urlString: image.url, mime: image.mime)
-                .frame(maxWidth: 220, maxHeight: 160)
-                .clipShape(RoundedRectangle(cornerRadius: 8))
         }
     }
 }

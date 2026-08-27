@@ -6,8 +6,9 @@ Paperclip opens Photos or Files. Pending chips wrap above the bar with
 6pt gap. Image thumb 56×56 + 20px ×. File chip 36px, 13pt name, 12pt
 muted size. iOS chips 44pt hit. Send on if text or any chip. Over 10MB
 and video share the 12pt danger line. User-right images 220×160; files
-are 36px name chips that open the Bearer URL. No /v1/chats/. Never
-reintroduce computerPane.ts.
+are 36px name chips that open the Bearer URL. v0.26: LEFT kind=message
+reuses that same chrome. No /v1/chats/. Never reintroduce
+computerPane.ts.
 """
 
 from __future__ import annotations
@@ -67,6 +68,28 @@ def test_user_right_image_and_file_chip() -> None:
     assert "var attachments: [Attachment]" in TYPES
 
 
+def test_left_streak_reuses_user_right_chrome() -> None:
+    assert CHAT.count("userAttachments") >= 2
+    assert "maxWidth: 220" in CHAT
+    assert "maxHeight: 160" in CHAT
+    assert ".frame(height: 36)" in CHAT
+    assert ".font(.system(size: 13))" in CHAT
+    assert ".frame(minHeight: 44)" in CHAT or ".frame(width: 44, height: 44)" in CHAT
+    assert "AssistantMarkdown" in CHAT
+    assert "VStack(alignment: .leading, spacing: 6)" in CHAT
+    handoff = CHAT[CHAT.find("private struct HandoffTimelineRow") :]
+    assert "userAttachments" not in handoff
+    assert "WidgetCardView" in CHAT
+    widget_block = CHAT[CHAT.find("message.isWidget") : CHAT.find("message.isConnect")]
+    assert "userAttachments" not in widget_block
+    tool_block = CHAT[CHAT.find("message.isToolLine") : CHAT.find("message.isWidget")]
+    assert "userAttachments" not in tool_block
+    connect_block = CHAT[CHAT.find("message.isConnect") : CHAT.find("} else if threadRoot")]
+    assert "userAttachments" not in connect_block
+    assert "onDrop" not in CHAT
+    assert "agentPicker" not in CHAT
+
+
 def test_no_chats_resource_or_computer_pane() -> None:
     assert "/v1/chats/" not in CHAT
     assert "/v1/chats/" not in CLIENT
@@ -82,6 +105,7 @@ def main() -> int:
         test_pending_chips_wrap_and_sizes,
         test_send_text_or_chip,
         test_user_right_image_and_file_chip,
+        test_left_streak_reuses_user_right_chrome,
         test_no_chats_resource_or_computer_pane,
     ]
     failed = 0

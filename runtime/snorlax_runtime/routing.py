@@ -47,6 +47,30 @@ log = logging.getLogger("snorlax.routing")
 MAX_HOP = 3
 MAX_PEER_SENDS = 4
 
+
+async def _bind_produced_attachments(
+    store: Store, conversation_id: str, produced: list[dict[str, Any]]
+) -> list[str]:
+    """Create attachment rows for runtime-produced files (unbound until
+    add_message). Skip empty/video/oversize already filtered upstream.
+    """
+    from snorlax_runtime.attachments import AttachmentError
+
+    ids: list[str] = []
+    for item in produced:
+        try:
+            row = await store.add_attachment(
+                conversation_id=conversation_id,
+                name=str(item.get("name") or "file"),
+                mime=str(item.get("mime") or "application/octet-stream"),
+                data=bytes(item.get("data") or b""),
+                kind=str(item.get("kind") or "file"),
+            )
+        except AttachmentError:
+            continue
+        ids.append(str(row["id"]))
+    return ids
+
 # @Name at a token boundary. Unique prefix matching is case-insensitive.
 AT_RE = re.compile(r"(?<![A-Za-z0-9_])@([A-Za-z][A-Za-z0-9._-]*)")
 
@@ -1141,7 +1165,7 @@ async def _generate(
         )
 
     try:
-        events, raw, widget, connect = await run_tool_loop(
+        events, raw, widget, connect, produced = await run_tool_loop(
             backend,
             transcript,
             workspace=workspace,
@@ -1162,6 +1186,11 @@ async def _generate(
         return events, None
 
     content = strip_involve_kicker(raw)
+    attachment_ids: list[str] = []
+    if persist and produced:
+        attachment_ids = await _bind_produced_attachments(
+            store, conversation_id, produced
+        )
     if widget is not None:
         persist_widget = persist and not (is_group and not thread_id)
         if persist_widget:
@@ -1188,6 +1217,7 @@ async def _generate(
                     mentions=[],
                     reply_to=thread_id if is_group else None,
                     routine_name=routine_name,
+                    attachment_ids=attachment_ids,
                 )
                 if stream:
                     events.append(("message.done", saved_text))
@@ -1262,6 +1292,7 @@ async def _generate(
                     mentions=[],
                     reply_to=thread_id if is_group else None,
                     routine_name=routine_name,
+                    attachment_ids=attachment_ids,
                 )
                 if stream:
                     events.append(("message.done", saved_text))
@@ -1326,6 +1357,7 @@ async def _generate(
             mentions=mentions,
             reply_to=thread_id if is_group else None,
             routine_name=routine_name,
+            attachment_ids=attachment_ids,
         )
     else:
         saved = {

@@ -4,6 +4,8 @@
 from __future__ import annotations
 
 import base64
+import mimetypes
+from pathlib import Path
 from typing import Any
 
 MAX_ATTACHMENT_BYTES = 10 * 1024 * 1024
@@ -37,6 +39,39 @@ def _ext(name: str) -> str:
     if "." not in raw:
         return ""
     return "." + raw.rsplit(".", 1)[-1]
+
+
+def mime_for_filename(name: str) -> str:
+    mime, _ = mimetypes.guess_type(name or "")
+    guessed = (mime or "").split(";")[0].strip().lower()
+    return guessed or "application/octet-stream"
+
+
+def agent_attachment_from_bytes(
+    name: str, data: bytes, mime: str = ""
+) -> dict[str, Any] | None:
+    """Public attachment payload for runtime-produced files, or None to skip.
+
+    Skip empty, over 10MB, and video. kind is image for image/* (including
+    a written path whose mime/ext is image), else file.
+    """
+    raw = data if isinstance(data, (bytes, bytearray)) else b""
+    if not raw or len(raw) > MAX_ATTACHMENT_BYTES:
+        return None
+    filename = Path(name or "file").name or "file"
+    guessed = (mime or "").split(";")[0].strip().lower() or mime_for_filename(
+        filename
+    )
+    try:
+        kind = attachment_kind(guessed, filename)
+    except AttachmentError:
+        return None
+    return {
+        "name": filename,
+        "mime": guessed,
+        "data": bytes(raw),
+        "kind": kind,
+    }
 
 
 def attachment_kind(mime: str, filename: str = "") -> str:

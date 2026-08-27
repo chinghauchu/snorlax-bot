@@ -71,7 +71,8 @@ Composer paperclip stays; desktop also drop onto the composer (accent
 1px highlight). Pending chips wrap above the bar (56×56 image thumb;
 36px file chip). Send is on if there’s text or any chip. User-right
 images stay 220×160; files are 36px name chips that open the Bearer
-URL. `@` and `/` unchanged.
+URL. v0.26: LEFT `kind=message` reuses that chrome (above markdown,
+6px gap). `@` and `/` unchanged.
 Assistant LEFT
 `kind=message` is 14px markdown (no grey bubble, 16/14 headings); user-right stays plain (`https://` tappable). Fenced code is full-turn language + Copy at 12px/1.45.
 iOS has no file-tree computer pane; the agent sheet shows the same preview.

@@ -42,6 +42,38 @@ test("size label and user-right split image vs file", () => {
   assert.equal(atts[1].kind, "file");
 });
 
+test("left streak reuses user-right attachment chrome: 220x160 image, 36px file chip", () => {
+  const css = readFileSync(join(here, "styles.css"), "utf8");
+  const app = readFileSync(join(here, "App.tsx"), "utf8");
+  assert.match(css, /\.bubble-image\s*\{[^}]*max-width:\s*220px/);
+  assert.match(css, /\.bubble-image\s*\{[^}]*max-height:\s*160px/);
+  assert.match(css, /\.file-chip\s*\{[^}]*height:\s*36px/);
+  assert.match(css, /\.file-chip\s*\{[^}]*border-radius:\s*8px/);
+  assert.match(css, /\.file-chip\s*\{[^}]*font-size:\s*13px/);
+  assert.match(css, /\.message-atts\s*\{[^}]*flex-direction:\s*column/);
+  assert.match(css, /\.message-atts\s*\{[^}]*align-items:\s*flex-start/);
+  assert.match(css, /\.message-atts\s*\{[^}]*gap:\s*6px/);
+  assert.match(css, /\.assistant-md\s*\{[^}]*gap:\s*6px/);
+  assert.match(css, /\.assistant-md\s*\{[^}]*align-items:\s*flex-start/);
+  assert.match(app, /function MessageAttachmentChrome/);
+  assert.match(app, /className="assistant-md"/);
+  assert.match(app, /className="message-atts"/);
+  const chromeUses = app.split("<MessageAttachmentChrome").length - 1;
+  assert.equal(chromeUses, 2);
+  assert.match(app, /userRightAttachments/);
+  const mdIdx = app.indexOf('className="assistant-md"');
+  const chromeIdx = app.indexOf("<MessageAttachmentChrome", mdIdx);
+  const markdownIdx = app.indexOf("<MarkdownBody", mdIdx);
+  assert.ok(chromeIdx > 0 && markdownIdx > chromeIdx);
+  assert.doesNotMatch(app, /handoff-row[\s\S]{0,800}MessageAttachmentChrome/);
+  assert.doesNotMatch(app, /handoff-card[\s\S]{0,400}MessageAttachmentChrome/);
+  assert.doesNotMatch(app, /className="tool-trace"[\s\S]{0,200}MessageAttachmentChrome/);
+  assert.doesNotMatch(app, /<WidgetCard[\s\S]{0,400}MessageAttachmentChrome/);
+  assert.doesNotMatch(app, /<ConnectCard[\s\S]{0,400}MessageAttachmentChrome/);
+  assert.doesNotMatch(app, /onDrop=\{[^}]*bubble/);
+  assert.doesNotMatch(app, /agentPicker|agent-side picker/);
+});
+
 test("desktop composer attachments chrome: 56px thumb, 36px file chip, wrap 6px", () => {
   const css = readFileSync(join(here, "styles.css"), "utf8");
   const app = readFileSync(join(here, "App.tsx"), "utf8");

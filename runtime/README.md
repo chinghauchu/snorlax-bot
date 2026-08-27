@@ -124,9 +124,16 @@ v0.25: `POST /v1/agents/{id}/attachments` (Bearer, multipart field
 `file`) → 201 `{ id, kind, name, url, size }`. `url` is Bearer
 `GET /v1/attachments/{id}`. Over 10MB or `video/*` → 422. Message POST
 adds `attachmentIds[]`; empty content is ok if that list is non-empty.
-GET message grows `attachments` on user-right only. Runtime includes
+GET message grows `attachments` on user-right. Runtime includes
 them in that turn. Legacy `{ mime, data }` images stay off-model. No
 `/v1/chats/` resource. OpenAPI stays 0.18.0.
+
+v0.26: GET `attachments` on any `kind=message` (agent LEFT too).
+`kind=tool` / `widget` / `connect` stay `[]`. After a turn, runtime
+binds sandbox `write_file` and computer screenshot onto that assistant
+`kind=message` (same store + Bearer GET). Screenshot is `kind=image`.
+`write_file` is `kind=file` unless the path is an image. Composer POST
+/ `attachmentIds` unchanged. No new routes. OpenAPI stays 0.18.0.
 
 ## MCP (`mcp.json`)
 

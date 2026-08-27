@@ -536,11 +536,29 @@ info:
     rows only; assistant rows are `[]`. Runtime includes them in that
     turn (image bytes / file text). Existing MessageCreate
     `images: [{ mime, data }]` and GET /v1/images/{id} stay (legacy
-    images persist off-model). Out: agent-sent attachments, video,
-    public/unauthed URLs, a second upload route. Isolation, report-back,
-    widgets, markdown, MCP, computer preview/takeover/record, seed
-    DELETE 204, Mac oMLX, no Mac folder picker, workspaceTree.ts
-    (never reintroduce computerPane.ts) stand. OpenAPI **0.18.0**.
+    images persist off-model). Out: video, public/unauthed URLs, a
+    second upload route. Isolation, report-back, widgets, markdown, MCP,
+    computer preview/takeover/record, seed DELETE 204, Mac oMLX, no Mac
+    folder picker, workspaceTree.ts (never reintroduce computerPane.ts)
+    stand. OpenAPI **0.18.0**.
+
+    v0.26: agent-sent attachments. One impl PR covering runtime +
+    desktop + iOS. Spec rides this PR. **No second PR.** OpenAPI stays
+    **0.18.0**. No new client HTTP routes. No /v1/chats/ resource.
+    GET messages: any kind=message row (user-right or agent LEFT) may
+    include `attachments: [{ id, kind, name, url, size }]`. kind=tool,
+    widget, and connect stay `[]`. Composer and POST
+    `/v1/agents/{id}/attachments` plus MessageCreate.attachmentIds stay
+    user-only. After a turn, if the agent used write_file or a computer
+    screenshot, the runtime copies those files onto that assistant
+    kind=message (same attachment table + Bearer GET
+    `/v1/attachments/{id}`). Screenshot → kind=image. write_file →
+    kind=file, or kind=image if the written path is image/*. Skip
+    video/* and over 10MB. Bind onto the kind=message, never the tool
+    trace. Isolation: attachments ride the message. Out: video, VNC,
+    public store, extra channel types, agent drag-drop, public/unauthed
+    URLs, a second upload route, agent-sent video. Never reintroduce
+    computerPane.ts. OpenAPI **0.18.0**.
   license:
     name: Apache-2.0
     identifier: Apache-2.0
@@ -1619,9 +1637,10 @@ paths:
         `{ id, kind, name, url, size }`. kind is `image` for image/*
         (not video), else `file`. url is GET /v1/attachments/{id} on
         this host (Bearer). Over 10MB → 422 `Max 10MB.`. video/* → 422
-        `Video isn’t supported yet.`. Empty file 422. User-right only
-        this slice — bind via MessageCreate.attachmentIds on the next
-        send. Agent-sent attachments wait.
+        `Video isn’t supported yet.`. Empty file 422. User composer
+        bind via MessageCreate.attachmentIds on the next send.
+        Runtime may also bind write_file / screenshot files onto the
+        assistant kind=message (v0.26). No agent upload route.
       operationId: postAttachment
       requestBody:
         required: true
@@ -1946,8 +1965,9 @@ components:
           items:
             $ref: "#/components/schemas/Attachment"
           description: |
-            User-right only this slice. Assistant rows are []. v0.25
-            uploads bound via attachmentIds. Not a list-endpoint wrapper.
+            kind=message rows (user-right or agent LEFT). kind=tool,
+            widget, and connect are []. Same shape as v0.25.
+            Not a list-endpoint wrapper.
         createdAt:
           type: string
           format: date-time
@@ -2170,8 +2190,9 @@ components:
             Ids from POST /v1/agents/{id}/attachments on this same
             conversation. Unknown or foreign ids 422 (do not 404 the
             send). Empty content is ok if this list is non-empty.
-            Runtime includes them in that turn. Assistant rows never
-            persist attachments this slice.
+            Runtime includes them in that turn. POST attachmentIds stay
+            user-only. Runtime-produced write_file / screenshot files
+            bind onto the assistant kind=message (v0.26), not this field.
         mentions:
           type: array
           items:

@@ -463,6 +463,52 @@ def _tool_path(args: dict[str, Any]) -> str:
     return raw.replace("\\", "/")
 
 
+def produced_tool_attachment(
+    name: str,
+    args: dict[str, Any],
+    *,
+    ok: bool,
+    workspace: Path,
+) -> dict[str, Any] | None:
+    """Bytes to bind onto the assistant kind=message after this tool.
+
+    write_file → the workspace file (kind=file, or kind=image if the path
+    is image/*). computer_click / computer_key → one Box screenshot
+    (kind=image). Skip failures, empty, video, and over 10MB.
+    """
+    if not ok:
+        return None
+    from snorlax_runtime.attachments import agent_attachment_from_bytes
+
+    if name == "write_file":
+        path = _tool_path(args)
+        try:
+            target = resolve_in_workspace(workspace, path)
+        except PathJailError:
+            return None
+        if not target.is_file():
+            return None
+        payload = agent_attachment_from_bytes(Path(path).name, target.read_bytes())
+        if payload is not None:
+            payload["slot"] = "file"
+        return payload
+    if name in {"computer_click", "computer_key"}:
+        from snorlax_runtime.computer import agent_id_from_workspace, current_hub
+
+        hub = current_hub()
+        agent_id = agent_id_from_workspace(workspace)
+        if hub is None or not agent_id:
+            return None
+        png = hub.screenshot_png(agent_id)
+        if not png:
+            return None
+        payload = agent_attachment_from_bytes("screenshot.png", png, "image/png")
+        if payload is not None:
+            payload["slot"] = "screenshot"
+        return payload
+    return None
+
+
 def done_summary(name: str, args: dict[str, Any], ok: bool) -> str:
     if not ok:
         return f"{name} failed"
@@ -999,7 +1045,11 @@ async def run_tool_loop(
     use_tools: bool = True,
     use_widget: bool = True,
 ) -> tuple[
-    list[tuple[str, dict[str, Any]]], str, dict[str, Any] | None, dict[str, Any] | None
+    list[tuple[str, dict[str, Any]]],
+    str,
+    dict[str, Any] | None,
+    dict[str, Any] | None,
+    list[dict[str, Any]],
 ]:
     """Execute OpenAI-compat tool rounds. Yields SSE-shaped (event, payload) list.
 
@@ -1029,6 +1079,8 @@ async def run_tool_loop(
     tool_outcomes: list[tuple[str, bool, str]] = []
     widget: dict[str, Any] | None = None
     connect: dict[str, Any] | None = None
+    produced_files: list[dict[str, Any]] = []
+    last_shot: dict[str, Any] | None = None
     offered = offered_tool_definitions(use_tools=use_tools, use_widget=use_widget)
 
     while True:
@@ -1104,6 +1156,14 @@ async def run_tool_loop(
                 ok = not result.startswith("Error:")
                 summary = done_summary(call.name, args, ok)
                 tool_outcomes.append((call.name, ok, result))
+                artifact = produced_tool_attachment(
+                    call.name, args, ok=ok, workspace=workspace
+                )
+                if artifact is not None:
+                    if artifact.get("slot") == "screenshot":
+                        last_shot = artifact
+                    else:
+                        produced_files.append(artifact)
                 saved_tool: dict[str, Any] | None = None
                 if persist_tool is not None:
                     persisted = persist_tool(summary, tool_id)
@@ -1194,6 +1254,9 @@ async def run_tool_loop(
         break
 
     content = "".join(final_parts)
+    produced = list(produced_files)
+    if last_shot is not None:
+        produced.append(last_shot)
     if widget is not None or connect is not None:
         # The card is not a fake-token stream. Preamble text (if any) still
         # streams as a normal LEFT bubble before the card.
@@ -1202,7 +1265,7 @@ async def run_tool_loop(
 
             for token in _tokenize(content):
                 events.append(("message.delta", {**sender, "delta": token}))
-        return events, content, widget, connect
+        return events, content, widget, connect, produced
     if stream and content:
         from snorlax_runtime.inference import _tokenize
 
@@ -1218,7 +1281,7 @@ async def run_tool_loop(
             )
     elif stream:
         pass
-    return events, content, None, None
+    return events, content, None, None, produced
 
 
 def _parse_args(raw: str) -> dict[str, Any]:

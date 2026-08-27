@@ -382,8 +382,19 @@ GET message grows `attachments` on user-right only. Runtime includes
 them in that turn. Legacy `{ mime, data }` images stay off-model.
 Composer paperclip / desktop drop; pending chips wrap 6px; user-right
 220×160 images and 36px file chips. Channel and 1:1. OpenAPI stays
-0.18.0. No `/v1/chats/`. Out: agent-sent attachments, video, public
+0.18.0. No `/v1/chats/`. Out: video, public
 URLs, VNC. Never reintroduce `computerPane.ts`.
+
+v0.26: agent-sent attachments. GET `attachments` on any `kind=message`
+(user-right or agent LEFT). `kind=tool` / `widget` / `connect` stay
+`[]`. Runtime binds `write_file` and computer screenshot onto that
+assistant `kind=message` (same `{ id, kind, name, url, size }`, Bearer
+GET). Screenshot is `kind=image`. write_file is `kind=file` unless the
+path is an image. Composer / POST `attachmentIds` unchanged. LEFT
+chrome matches user-right (above markdown, 6px gap; 220×160 / 36px
+chips). Not on the timeline handoff card. OpenAPI stays 0.18.0.
+No `/v1/chats/`. Out: video, VNC, public URLs, agent drag-drop.
+Never reintroduce `computerPane.ts`.
 
 ## Inference interface
 
