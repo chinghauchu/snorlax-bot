@@ -1,6 +1,8 @@
 # SPDX-License-Identifier: Apache-2.0
 from __future__ import annotations
 
+from pathlib import Path
+
 from tests.conftest import AUTH, parse_sse
 
 SEED = "snorlax-bot"
@@ -49,12 +51,27 @@ def test_upload_over_10mb_422(client) -> None:
     created = _upload(client, SEED, "big.bin", huge, "application/octet-stream")
     assert created.status_code == 422
     assert created.json()["error"] == "Max 10MB."
+    image = _upload(client, SEED, "big.png", huge, "image/png")
+    assert image.status_code == 422
+    assert image.json()["error"] == "Max 10MB."
 
 
-def test_upload_video_422(client) -> None:
+def test_upload_video_201_kind_video(client) -> None:
     created = _upload(client, SEED, "clip.mp4", b"not-really-video", "video/mp4")
+    assert created.status_code == 201
+    body = created.json()
+    assert body["kind"] == "video"
+    assert body["name"] == "clip.mp4"
+    assert body["size"] == len(b"not-really-video")
+    assert body["url"] == f"/v1/attachments/{body['id']}"
+    assert set(body) == {"id", "kind", "name", "url", "size"}
+
+
+def test_upload_video_over_50mb_422(client) -> None:
+    huge = b"x" * (50 * 1024 * 1024 + 1)
+    created = _upload(client, SEED, "clip.mp4", huge, "video/mp4")
     assert created.status_code == 422
-    assert created.json()["error"] == "Video isn’t supported yet."
+    assert created.json()["error"] == "Max 50MB."
 
 
 def test_upload_empty_file_422(client) -> None:
@@ -101,7 +118,66 @@ def test_message_attachment_ids_empty_content_200(client) -> None:
     assert "hello from notes.txt" in deltas
 
 
-def test_unknown_attachment_id_422(client) -> None:
+def test_empty_content_plus_video_attachment_200(client) -> None:
+    blob = b"not-really-video"
+    created = _upload(client, SEED, "clip.mp4", blob, "video/mp4").json()
+    with client.stream(
+        "POST",
+        f"/v1/agents/{SEED}/messages",
+        headers=AUTH,
+        json={"content": "", "attachmentIds": [created["id"]]},
+    ) as response:
+        assert response.status_code == 200
+        "".join(response.iter_text())
+    listed = client.get(f"/v1/agents/{SEED}/messages", headers=AUTH).json()
+    users = [m for m in listed if m["role"] == "user"]
+    assert users
+    row = users[0]
+    assert row["content"] == ""
+    att = row["attachments"][0]
+    assert att["kind"] == "video"
+    assert att["id"] == created["id"]
+    assert att["name"] == "clip.mp4"
+    assert att["url"] == created["url"]
+    assert att["size"] == len(blob)
+    assert set(att) == {"id", "kind", "name", "url", "size"}
+    fetched = client.get(att["url"], headers=AUTH)
+    assert fetched.status_code == 200
+    assert fetched.content == blob
+    denied = client.get(att["url"])
+    assert denied.status_code == 401
+
+
+def test_video_bytes_not_fed_to_model(client) -> None:
+    blob = b"secret-video-bytes-do-not-send"
+    created = _upload(client, SEED, "clip.mp4", blob, "video/mp4").json()
+    with client.stream(
+        "POST",
+        f"/v1/agents/{SEED}/messages",
+        headers=AUTH,
+        json={"content": "watch this", "attachmentIds": [created["id"]]},
+    ) as response:
+        assert response.status_code == 200
+        "".join(response.iter_text())
+    last = client.app.state.backend.last_messages
+    packed = str(last)
+    assert blob.decode("ascii") not in packed
+    assert "secret-video-bytes" not in packed
+    import base64
+
+    assert base64.b64encode(blob).decode("ascii") not in packed
+    assert "image_url" not in packed
+    assert "user attached clip.mp4" in packed
+
+
+def test_unknown_video_id_422(client) -> None:
+    missing = client.post(
+        f"/v1/agents/{SEED}/messages",
+        headers=AUTH,
+        json={"content": "", "attachmentIds": ["att_nope"]},
+    )
+    assert missing.status_code == 422
+    assert missing.json()["error"] == "Unknown attachment id"
     missing = client.post(
         f"/v1/agents/{SEED}/messages",
         headers=AUTH,
@@ -201,6 +277,50 @@ def test_channel_thread_only(client) -> None:
 def test_missing_agent_404(client) -> None:
     missing = _upload(client, "no-such", "shot.png", PNG, "image/png")
     assert missing.status_code == 404
+
+
+def test_video_one_to_one_isolation(client) -> None:
+    other = client.post("/v1/agents", headers=AUTH, json={"name": "B"}).json()
+    created = _upload(client, SEED, "clip.mp4", b"only-a", "video/mp4").json()
+    with client.stream(
+        "POST",
+        f"/v1/agents/{SEED}/messages",
+        headers=AUTH,
+        json={"content": "for A only", "attachmentIds": [created["id"]]},
+    ) as response:
+        "".join(response.iter_text())
+    a_msgs = client.get(f"/v1/agents/{SEED}/messages", headers=AUTH).json()
+    b_msgs = client.get(f"/v1/agents/{other['id']}/messages", headers=AUTH).json()
+    assert a_msgs[0]["attachments"][0]["kind"] == "video"
+    assert a_msgs[0]["attachments"][0]["id"] == created["id"]
+    assert all(not m.get("attachments") for m in b_msgs)
+
+
+def test_channel_video_thread_speaking_agent_only(client) -> None:
+    inbox = client.post("/v1/agents", headers=AUTH, json={"name": "Inbox"}).json()
+    status, _events = _send(
+        client,
+        CHANNEL,
+        "@Inbox Write a file named room.mp4 containing shared-clip",
+    )
+    assert status == 200
+    timeline = _msgs(client, CHANNEL)
+    assert timeline
+    thread = _msgs(client, CHANNEL, timeline[0]["id"])
+    tools = [m for m in thread if m.get("kind") == "tool"]
+    assert tools
+    assert all(m.get("attachments") == [] for m in tools)
+    speaking = [
+        m
+        for m in thread
+        if m["senderId"] == inbox["id"] and m.get("kind", "message") == "message"
+    ]
+    assert speaking
+    att = speaking[-1]["attachments"][0]
+    assert att["name"] == "room.mp4"
+    assert att["kind"] == "video"
+    seed_msgs = _msgs(client, SEED)
+    assert all(not m.get("attachments") for m in seed_msgs)
 
 
 def test_no_chats_resource(client) -> None:
@@ -323,18 +443,64 @@ def test_assistant_empty_attachments_when_no_files(client) -> None:
     assert assistants[0]["attachments"] == []
 
 
-def test_assistant_skips_video_write(client) -> None:
+def test_assistant_write_video_binds_kind_video(client) -> None:
     status, _events = _send(
         client, SEED, "Write a file named clip.mp4 containing fake-video"
     )
     assert status == 200
     listed = _msgs(client, SEED)
+    tools = [m for m in listed if m.get("kind") == "tool"]
+    assert tools
+    assert all(m["attachments"] == [] for m in tools)
     assistants = [
         m
         for m in listed
         if m["role"] == "assistant" and m.get("kind", "message") == "message"
     ]
-    assert assistants[-1]["attachments"] == []
+    assert assistants
+    att = assistants[-1]["attachments"][0]
+    assert att["kind"] == "video"
+    assert att["name"] == "clip.mp4"
+    assert att["url"] == f"/v1/attachments/{att['id']}"
+    fetched = client.get(att["url"], headers=AUTH)
+    assert fetched.status_code == 200
+    assert fetched.content == b"fake-video"
+    denied = client.get(att["url"])
+    assert denied.status_code == 401
+    last = client.app.state.backend.last_messages
+    packed = str(last)
+    assert "fake-video" not in packed or "clip.mp4" in packed
+    import base64
+
+    assert base64.b64encode(b"fake-video").decode("ascii") not in packed
+
+
+def test_agent_attachment_skips_video_over_50mb() -> None:
+    from snorlax_runtime.attachments import agent_attachment_from_bytes
+
+    huge = b"x" * (50 * 1024 * 1024 + 1)
+    assert agent_attachment_from_bytes("clip.mp4", huge, "video/mp4") is None
+    ok = agent_attachment_from_bytes("clip.mp4", b"fake", "video/mp4")
+    assert ok is not None
+    assert ok["kind"] == "video"
+
+
+def test_no_watch_video_tool() -> None:
+    from snorlax_runtime.tools import offered_tool_definitions
+
+    names = [
+        (row.get("function") or {}).get("name") or ""
+        for row in offered_tool_definitions()
+    ]
+    lowered = [n.lower().replace("-", "_") for n in names]
+    assert "watch_video" not in lowered
+    assert all("watch" not in n or "video" not in n for n in lowered)
+    source = Path(__file__).resolve().parents[1].joinpath(
+        "snorlax_runtime", "tools.py"
+    ).read_text(encoding="utf-8")
+    assert "watch_video" not in source
+    assert "watch-video" not in source
+    assert "transcri" not in source.lower()
 
 
 def test_widget_row_attachments_empty(client) -> None:

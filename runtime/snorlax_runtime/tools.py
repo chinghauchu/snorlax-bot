@@ -472,9 +472,10 @@ def produced_tool_attachment(
 ) -> dict[str, Any] | None:
     """Bytes to bind onto the assistant kind=message after this tool.
 
-    write_file → the workspace file (kind=file, or kind=image if the path
-    is image/*). computer_click / computer_key → one Box screenshot
-    (kind=image). Skip failures, empty, video, and over 10MB.
+    write_file → the workspace file (kind=file, kind=image if the path
+    is image/*, kind=video if the path is video/* or a video ext).
+    computer_click / computer_key → one Box screenshot (kind=image).
+    Skip failures, empty, and oversize (video 50MB, else 10MB).
     """
     if not ok:
         return None

@@ -396,6 +396,17 @@ chips). Not on the timeline handoff card. OpenAPI stays 0.18.0.
 No `/v1/chats/`. Out: video, VNC, public URLs, agent drag-drop.
 Never reintroduce `computerPane.ts`.
 
+v0.27: video attachments. Lift the v0.25 `video/*` 422. Same POST
+`/v1/agents/{id}/attachments` → 201 `{ id, kind: "video", name, url,
+size }`. Video max 50MB (`Max 50MB.`); image/file stay 10MB. GET
+attachments on any `kind=message` (user-right and agent LEFT).
+`kind=tool` / `widget` / `connect` stay `[]`. Runtime does not feed
+video bytes to the model (short `user attached {name}` stub). Agent
+`write_file` of a video under 50MB may bind as `kind=video`. Composer:
+56×56 pending poster; transcript 220×160, 8px radius, 1px border,
+poster + 24px play, no autoplay, native controls after click. OpenAPI
+stays 0.18.0. No `/v1/chats/`. Never reintroduce `computerPane.ts`.
+
 ## Inference interface
 
 ```text
@@ -411,7 +422,8 @@ generate(messages, tools?) -> async iter[text | tool_calls]
 - `vllm` — Spark `POST {VLLM_BASE_URL}/chat/completions` with `stream: true`.
   Only text `role`/`content` pairs (plus tool messages) are sent, except
   v0.25 `attachmentIds` image kinds which go as OpenAI `image_url` in
-  that turn. Legacy `MessageCreate.images` stay on disk.
+  that turn. v0.27 video kinds are a short name stub only (no bytes).
+  Legacy `MessageCreate.images` stay on disk.
 
 System prompt is assembled by the runtime from the agent’s `description`
 plus a tools preamble. The desktop cannot inject a hidden system prompt

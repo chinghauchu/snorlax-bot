@@ -142,6 +142,12 @@ v0.26 agent-sent attachments: GET `attachments` on any `kind=message`
 `kind=message`. Composer POST / `attachmentIds` unchanged. No new
 routes. OpenAPI stays 0.18.0.
 
+v0.27 video attachments: lift the v0.25 `video/*` 422. Same POST
+`/v1/agents/{id}/attachments` → 201 `kind=video`. Video max 50MB;
+image/file stay 10MB. GET attachments on any `kind=message`. Runtime
+does not send video bytes to the model. No watch-video tool. OpenAPI
+stays 0.18.0.
+
 A copy is also kept at `runtime/openapi.yaml` and `desktop/openapi.yaml`
 so those trees are self-contained. Do not let the files diverge.
 

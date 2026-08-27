@@ -1020,7 +1020,15 @@ class Store:
         for row in await cur.fetchall():
             mid = str(row["message_id"] or "")
             path = Path(row["storage_path"]) if row["storage_path"] else None
-            data = path.read_bytes() if path is not None and path.is_file() else b""
+            # Do not load video bytes into the model turn.
+            if str(row["kind"]) == "video":
+                data = b""
+            else:
+                data = (
+                    path.read_bytes()
+                    if path is not None and path.is_file()
+                    else b""
+                )
             item = self._attachment_public(row)
             item["mime"] = str(row["mime"])
             item["data"] = data

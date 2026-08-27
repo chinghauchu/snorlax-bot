@@ -236,6 +236,7 @@ struct Attachment: Codable, Hashable, Identifiable, Sendable {
     enum Kind: String, Codable, Hashable, Sendable {
         case image
         case file
+        case video
     }
 
     var id: String

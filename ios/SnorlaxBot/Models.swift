@@ -256,6 +256,7 @@ struct PendingChatAttachment: Identifiable, Sendable {
     var url: String
     var size: Int
     var previewData: Data?
+    var posterImage: UIImage?
 
     var asAttachment: Attachment {
         Attachment(id: id, kind: kind, name: name, url: url, size: size)
@@ -264,21 +265,26 @@ struct PendingChatAttachment: Identifiable, Sendable {
 
 enum ChatAttachment {
     static let maxBytes = 10 * 1024 * 1024
+    static let maxVideoBytes = 50 * 1024 * 1024
     static let errMax = "Max 10MB."
-    static let errVideo = "Video isn’t supported yet."
+    static let errMaxVideo = "Max 50MB."
 
-    static func clientError(name: String, mime: String, size: Int) -> String? {
+    static func isVideo(name: String, mime: String) -> Bool {
         let mime = mime.lowercased()
         let lowered = name.lowercased()
-        if mime.hasPrefix("video/")
+        return mime.hasPrefix("video/")
             || lowered.hasSuffix(".mp4")
             || lowered.hasSuffix(".mov")
             || lowered.hasSuffix(".m4v")
             || lowered.hasSuffix(".webm")
             || lowered.hasSuffix(".avi")
             || lowered.hasSuffix(".mkv")
-        {
-            return errVideo
+    }
+
+    static func clientError(name: String, mime: String, size: Int) -> String? {
+        if isVideo(name: name, mime: mime) {
+            if size > maxVideoBytes { return errMaxVideo }
+            return nil
         }
         if size > maxBytes { return errMax }
         return nil
@@ -354,8 +360,21 @@ extension Data {
         {
             return "image/webp"
         }
-        if count >= 12, self[4..<8] == Data("ftyp".utf8) { return "image/heic" }
+        if count >= 12, self[4..<8] == Data("ftyp".utf8) {
+            let brand = String(data: self[8..<12], encoding: .ascii)?.lowercased() ?? ""
+            if ["heic", "heif", "mif1", "msf1"].contains(brand) { return "image/heic" }
+        }
         return "image/jpeg"
+    }
+
+    var sniffedVideoMIME: String? {
+        if count >= 12, self[4..<8] == Data("ftyp".utf8) {
+            let brand = String(data: self[8..<12], encoding: .ascii)?.lowercased() ?? ""
+            if ["heic", "heif", "mif1", "msf1"].contains(brand) { return nil }
+            return "video/mp4"
+        }
+        if starts(with: [0x1A, 0x45, 0xDF, 0xA3]) { return "video/webm" }
+        return nil
     }
 }
 

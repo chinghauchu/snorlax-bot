@@ -135,6 +135,13 @@ binds sandbox `write_file` and computer screenshot onto that assistant
 `write_file` is `kind=file` unless the path is an image. Composer POST
 / `attachmentIds` unchanged. No new routes. OpenAPI stays 0.18.0.
 
+v0.27: video attachments. Lift the v0.25 `video/*` 422. Same POST
+multipart `file` → 201 `kind=video` (`video/*` or a video ext). Video
+max 50MB (`Max 50MB.`); image/file stay 10MB. GET attachments on any
+`kind=message`. Runtime does not feed video bytes to the model (short
+`user attached {name}` stub). Agent `write_file` of a video under 50MB
+may bind as `kind=video`. No watch-video tool. OpenAPI stays 0.18.0.
+
 ## MCP (`mcp.json`)
 
 The runtime is the MCP client. Desktop and iOS never speak MCP. Put

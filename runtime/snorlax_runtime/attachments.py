@@ -9,8 +9,9 @@ from pathlib import Path
 from typing import Any
 
 MAX_ATTACHMENT_BYTES = 10 * 1024 * 1024
+MAX_VIDEO_BYTES = 50 * 1024 * 1024
 ERR_MAX = "Max 10MB."
-ERR_VIDEO = "Video isn’t supported yet."
+ERR_MAX_VIDEO = "Max 50MB."
 ERR_EMPTY = "Empty file."
 ERR_UNKNOWN = "Unknown attachment id"
 
@@ -47,24 +48,31 @@ def mime_for_filename(name: str) -> str:
     return guessed or "application/octet-stream"
 
 
+def max_bytes_for_kind(kind: str) -> int:
+    return MAX_VIDEO_BYTES if kind == "video" else MAX_ATTACHMENT_BYTES
+
+
+def err_max_for_kind(kind: str) -> str:
+    return ERR_MAX_VIDEO if kind == "video" else ERR_MAX
+
+
 def agent_attachment_from_bytes(
     name: str, data: bytes, mime: str = ""
 ) -> dict[str, Any] | None:
     """Public attachment payload for runtime-produced files, or None to skip.
 
-    Skip empty, over 10MB, and video. kind is image for image/* (including
-    a written path whose mime/ext is image), else file.
+    Skip empty and oversize (video 50MB, image/file 10MB). kind is image for
+    image/*, video for video/* or a video extension, else file.
     """
     raw = data if isinstance(data, (bytes, bytearray)) else b""
-    if not raw or len(raw) > MAX_ATTACHMENT_BYTES:
+    if not raw:
         return None
     filename = Path(name or "file").name or "file"
     guessed = (mime or "").split(";")[0].strip().lower() or mime_for_filename(
         filename
     )
-    try:
-        kind = attachment_kind(guessed, filename)
-    except AttachmentError:
+    kind = attachment_kind(guessed, filename)
+    if len(raw) > max_bytes_for_kind(kind):
         return None
     return {
         "name": filename,
@@ -75,11 +83,11 @@ def agent_attachment_from_bytes(
 
 
 def attachment_kind(mime: str, filename: str = "") -> str:
-    """image for image/* (not video); file otherwise. video/* raises."""
+    """image for image/*; video for video/* or a video ext; else file."""
     mime = (mime or "").split(";")[0].strip().lower()
     ext = _ext(filename)
     if mime.startswith("video/") or ext in VIDEO_EXTS:
-        raise AttachmentError(ERR_VIDEO)
+        return "video"
     if mime.startswith("image/"):
         return "image"
     if ext in IMAGE_EXTS:
@@ -104,7 +112,9 @@ def apply_to_user_content(
     """Include this turn's attachments for the model.
 
     Image kinds become OpenAI image_url parts. text/* files contribute
-    filename + extracted text. Other files are a short note.
+    filename + extracted text. Other files are a short note. kind=video
+    is never sent as bytes (no transcription, no in-model watch); a
+    short `user attached {name}` stub is fine.
     """
     text_bits: list[str] = []
     stripped = (content or "").strip()
@@ -114,6 +124,9 @@ def apply_to_user_content(
     for row in attachments:
         kind = str(row.get("kind") or "file")
         name = str(row.get("name") or "file")
+        if kind == "video":
+            text_bits.append(f"user attached {name}")
+            continue
         mime = str(row.get("mime") or "application/octet-stream")
         data = row.get("data")
         raw = data if isinstance(data, (bytes, bytearray)) else b""

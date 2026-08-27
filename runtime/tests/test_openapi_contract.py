@@ -68,6 +68,7 @@ def test_protocol_openapi_is_locked_v0_contract() -> None:
     assert "v0.24" in text
     assert "v0.25" in text
     assert "v0.26" in text
+    assert "v0.27" in text
     assert "assistant kind=message" in text or "agent LEFT" in text
     assert "kind=tool" in text
     assert "/v1/agents/{id}/attachments" in text
@@ -75,7 +76,11 @@ def test_protocol_openapi_is_locked_v0_contract() -> None:
     assert "/v1/chats/{id}" not in text
     assert "attachmentIds" in text
     assert "Max 10MB." in text
+    assert "Max 50MB." in text
     assert "Video isn’t supported yet." in text
+    assert "enum: [image, file, video]" in text
+    assert "apply_to_user_content skips kind=video" in text
+    assert "watch-video" in text
     assert "No separate disconnect" in text or "uninstall plus disconnect" in text
     assert "PluginCreate" in text
     assert 'transport: "stdio" | "url"' in text or "transport: \"stdio\"" in text or "enum: [stdio, url]" in text
