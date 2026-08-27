@@ -544,7 +544,7 @@ export async function stopComputerRecord(
 export async function createSkill(
   session: Session,
   agentId: string,
-  body: { name: string },
+  body: { name: string; body?: string },
 ): Promise<{ id: string; name: string }> {
   const response = await fetch(
     `${session.baseUrl}/v1/agents/${encodeURIComponent(agentId)}/skills`,

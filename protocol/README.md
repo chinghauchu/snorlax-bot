@@ -107,6 +107,12 @@ existing `GET /v1/agents/{id}/skills` `{ id, name }` (channel 409).
 1:1 Send of `/slug` or `/Name` injects that SKILL.md into the turn.
 Unknown `/foo` and channel `/` stay plain text. OpenAPI stays 0.18.0.
 
+v0.22 blank New skill: same `POST /v1/agents/{id}/skills`, two bodies.
+`{ name, body }` (body present) writes SKILL.md with no capture → 201
+`{ id, name }`. Empty name or empty body 422. `{ name }` with body
+omitted stays record-to-skill. Channel 409. GET list still `{ id, name }`.
+OpenAPI stays 0.18.0.
+
 A copy is also kept at `runtime/openapi.yaml` and `desktop/openapi.yaml`
 so those trees are self-contained. Do not let the files diverge.
 

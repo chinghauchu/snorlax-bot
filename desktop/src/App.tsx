@@ -17,6 +17,7 @@ import {
   createChannel,
   createPlugin,
   createRoutine,
+  createSkill,
   deleteAgent,
   deletePlugin,
   deleteRoutine,
@@ -68,6 +69,7 @@ import {
   routineRemoveConfirm,
   skillRemoveConfirm,
   EDIT_SKILL_TITLE,
+  ADD_SKILL_TITLE,
   SHARED_PROJECT_HINT,
   showsWebhookCopy,
   visiblePaneRoutines,
@@ -414,6 +416,10 @@ export function App() {
   const [skillEditName, setSkillEditName] = useState("");
   const [skillEditBody, setSkillEditBody] = useState("");
   const [skillEditSaving, setSkillEditSaving] = useState(false);
+  const [skillAddOpen, setSkillAddOpen] = useState(false);
+  const [skillAddName, setSkillAddName] = useState("");
+  const [skillAddBody, setSkillAddBody] = useState("");
+  const [skillAddSaving, setSkillAddSaving] = useState(false);
   const [plugins, setPlugins] = useState<Plugin[]>([]);
   const [pluginAddOpen, setPluginAddOpen] = useState(false);
   const [pluginAddName, setPluginAddName] = useState("");
@@ -450,6 +456,10 @@ export function App() {
   const skillEditReady = canSubmitSkill({
     name: skillEditName,
     body: skillEditBody,
+  });
+  const skillAddReady = canSubmitSkill({
+    name: skillAddName,
+    body: skillAddBody,
   });
 
   function commitSession(url = urlInput, token = tokenInput) {
@@ -914,6 +924,39 @@ export function App() {
       setRoutines((prev) => prev.filter((row) => row.id !== id));
     } catch (err) {
       setComposerError(describeError(err));
+    }
+  }
+
+  function openSkillAdd() {
+    if (!active || active.kind === "channel") return;
+    setSkillAddName("");
+    setSkillAddBody("");
+    setSkillAddOpen(true);
+  }
+
+  async function saveSkillAdd() {
+    if (!session || !active || skillAddSaving || !skillAddReady) return;
+    setSkillAddSaving(true);
+    try {
+      const created = await createSkill(session, active.id, {
+        name: skillAddName.trim(),
+        body: skillAddBody.trim(),
+      });
+      setRoutineSkills((prev) => {
+        const next = prev.filter((row) => row.id !== created.id);
+        return [...next, created];
+      });
+      if (skillAgentId === active.id) {
+        setComposerSkills((prev) => {
+          const next = prev.filter((row) => row.id !== created.id);
+          return [...next, created];
+        });
+      }
+      setSkillAddOpen(false);
+    } catch (err) {
+      setComposerError(describeError(err));
+    } finally {
+      setSkillAddSaving(false);
     }
   }
 
@@ -2263,7 +2306,17 @@ export function App() {
               )}
             </section>
             <section className="info-skills" aria-label="Skills">
-              <p className="info-skills-header">Skills</p>
+              <div className="info-skills-head">
+                <p className="info-skills-header">Skills</p>
+                <button
+                  type="button"
+                  className="info-skill-add"
+                  onClick={openSkillAdd}
+                  disabled={!session}
+                >
+                  Add
+                </button>
+              </div>
               {routineSkills.length === 0 ? (
                 <p className="info-skill-empty">{NO_SKILLS_YET}</p>
               ) : (
@@ -2864,6 +2917,63 @@ export function App() {
                   onClick={() => void saveSkillEdit()}
                 >
                   Save
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {skillAddOpen ? (
+        <div
+          className="modal-backdrop plugin-sheet"
+          onClick={() => setSkillAddOpen(false)}
+        >
+          <div
+            className="modal plugin-add-sheet skill-edit-sheet skill-add-sheet"
+            role="dialog"
+            aria-label={ADD_SKILL_TITLE}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <header>
+              <h2>{ADD_SKILL_TITLE}</h2>
+              <button
+                type="button"
+                className="icon-btn"
+                aria-label="Close"
+                onClick={() => setSkillAddOpen(false)}
+              >
+                ×
+              </button>
+            </header>
+            <div className="profile-form">
+              <label>
+                Name
+                <input
+                  className="skill-add-name"
+                  value={skillAddName}
+                  autoFocus
+                  onChange={(e) => setSkillAddName(e.target.value)}
+                />
+              </label>
+              <label>
+                Body
+                <textarea
+                  className="skill-add-body"
+                  value={skillAddBody}
+                  spellCheck={false}
+                  autoComplete="off"
+                  onChange={(e) => setSkillAddBody(e.target.value)}
+                />
+              </label>
+              <div className="confirm-actions">
+                <button
+                  type="button"
+                  className="primary skill-edit-save skill-add-save"
+                  disabled={skillAddSaving || !session || !skillAddReady}
+                  onClick={() => void saveSkillAdd()}
+                >
+                  Add
                 </button>
               </div>
             </div>

@@ -53,3 +53,4 @@ jobs:
           python3 ios/scripts/generate_v1_types.py --check
           python3 ios/scripts/test_computer_takeover.py
           python3 ios/scripts/test_skill_autocomplete.py
+          python3 ios/scripts/test_blank_new_skill.py

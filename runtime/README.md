@@ -24,6 +24,9 @@ capture (422 empty name / no pending capture). GET may include
 `PATCH` `{ name, body }` is 200 (write in place; prefer keep id).
 `DELETE .../skills/{sid}` is 204 (no routine cascade). Empty name/body
 422. Channel 409. List stays `{ id, name }`.
+`POST /v1/agents/{id}/skills { name, body }` (body present) writes a
+blank New SKILL.md with no capture (201 `{ id, name }`). `{ name }` with
+body omitted is still the record path.
 
 Contract: [../protocol/openapi.yaml](../protocol/openapi.yaml) (copy:
 [openapi.yaml](openapi.yaml)).
@@ -92,13 +95,17 @@ Clients list, create, enable/pause, Remove, and Copy the webhook URL.
 Identity-pane Skills (below Routines) lists `{ id, name }`. Edit is
 `GET` then `PATCH /skills/{sid}` `{ name, body }` (full SKILL.md source
 including frontmatter plus recipe, not a rendered preview). Remove is
-`DELETE` 204. Create stays teach-a-task `POST /skills { name }` — no
-blank Add.
+`DELETE` 204. Blank New is `POST /skills { name, body }` (no capture).
+Record-to-skill stays `POST /skills { name }` from a pending capture.
 
 v0.21: a 1:1 user message that starts a token with `/slug` or `/Name`
 injects that SKILL.md into the turn (catalog preamble still lists every
 skill). Unknown `/foo` stays the user's text. Channel `/` is never a
 load path. No new HTTP. OpenAPI stays 0.18.0.
+
+v0.22: same POST `/skills`, two bodies. `{ name, body }` writes SKILL.md
+(no capture). `{ name }` omitted body stays the record path. OpenAPI
+stays 0.18.0.
 
 ## MCP (`mcp.json`)
 

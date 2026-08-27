@@ -115,6 +115,7 @@ export function canSubmitRoutine(draft: {
 
 export const EMPTY_SKILLS = "No skills yet.";
 export const EDIT_SKILL_TITLE = "Edit skill";
+export const ADD_SKILL_TITLE = "New skill";
 
 export function skillRemoveConfirm(name: string): string {
   return `Remove ${name}?`;

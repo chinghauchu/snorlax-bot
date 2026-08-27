@@ -767,7 +767,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         request: Request,
         _: str = Depends(require_bearer),
     ) -> Skill:
-        from snorlax_runtime.skills import skill_slug, write_taught_skill
+        from snorlax_runtime.skills import (
+            skill_slug,
+            write_authored_skill,
+            write_taught_skill,
+        )
 
         store: Store = request.app.state.store
         conversation = await store.get_agent(id)
@@ -777,6 +781,14 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             channel_status=409,
             reason="computer session is agent-only",
         )
+        if "body" in payload.model_fields_set:
+            try:
+                skill = write_authored_skill(
+                    store.data_dir, payload.name, payload.body or ""
+                )
+            except ValueError as exc:
+                raise _error(422, str(exc)) from exc
+            return Skill(id=skill_slug(skill), name=skill.name)
         try:
             capture = _computer(request).take_capture(id)
             skill = write_taught_skill(store.data_dir, payload.name, capture)

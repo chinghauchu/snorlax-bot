@@ -339,24 +339,32 @@ export interface paths {
          *     never read the host disk. v0.17 Add-routine picker reuses this
          *     list (`id` is the POST skill). v0.18 GET/PATCH/DELETE of one
          *     skill is `/skills/{sid}`; this list stays `{ id, name }` (no
-         *     body). No blank Add / no empty POST.
+         *     body). v0.22 blank New is POST `{ name, body }` (same list
+         *     shape); body omitted still teach-a-task.
          */
         get: operations["listSkills"];
         put?: never;
         /**
-         * Save a recorded demonstration as SKILL.md
-         * @description Body `{ name }`. Writes SKILL.md from the capture stopped with
-         *     DELETE `/computer/record` (same v0.9 load path:
-         *     SNORLAX_DATA_DIR/skills/<slug>/SKILL.md). 201 Skill `{ id, name }`.
-         *     Discard is skip this POST — no SKILL.md. Empty name or no pending
-         *     capture (still recording, never recorded, or discarded by next
-         *     record / session end) is 422 (`no pending capture` / name).
-         *     kind=channel is 409. Missing agent is 404. Capture includes
-         *     pointer/key plus screenshot context so the skill is runnable
-         *     later via v0.9 (computer_click / computer_key). Not an empty
-         *     stub. v0.18 does not add a blank POST; create stays this
-         *     teach-a-task path. Edit is GET/PATCH `/skills/{sid}`. No
-         *     marketplace.
+         * Create a skill (blank New or recorded demonstration)
+         * @description One route, two bodies. Discriminate on `body` omitted vs present.
+         *     Do not treat omitted body as blank create. No second POST path.
+         *
+         *     `{ name, body }` (body present, non-empty) is blank New skill.
+         *     Writes SNORLAX_DATA_DIR/skills/<slug>/SKILL.md via
+         *     slugify_skill_name. **201** Skill `{ id, name }` (listed shape,
+         *     not SkillBody). No computer capture required. `body` is the
+         *     same shape as PATCH: full SKILL.md source (frontmatter plus
+         *     recipe) or recipe-only. Empty name or empty body → **422**.
+         *
+         *     `{ name }` with body omitted is still record-to-skill. Writes
+         *     SKILL.md from the capture stopped with DELETE `/computer/record`
+         *     (same v0.9 load path). 201 Skill `{ id, name }`. Discard is skip
+         *     this POST — no SKILL.md. Empty name or no pending capture
+         *     (still recording, never recorded, or discarded by next record /
+         *     session end) is 422 (`no pending capture` / name).
+         *
+         *     kind=channel is 409. Missing agent is 404. Edit is GET/PATCH
+         *     `/skills/{sid}`. No marketplace.
          */
         post: operations["createSkill"];
         delete?: never;
@@ -393,9 +401,9 @@ export interface paths {
          * Remove a skill
          * @description `DELETE /v1/agents/{id}/skills/{sid}` → **204**, gone from GET.
          *     Unknown sid is 404. kind=channel is 409. Missing agent is 404.
-         *     Confirm chrome is `Remove {name}?`. No blank Add. Does not
-         *     cascade-delete routines that still name the skill; those stay
-         *     until a later 422 on use.
+         *     Confirm chrome is `Remove {name}?`. Does not cascade-delete
+         *     routines that still name the skill; those stay until a later
+         *     422 on use.
          */
         delete: operations["deleteSkill"];
         options?: never;
@@ -406,8 +414,9 @@ export interface paths {
          *     SKILL.md in place. Keep the slug / skill `id` unless a name
          *     change truly requires a new slug — prefer keep `id` stable.
          *     Empty name or body is **422**. kind=channel is 409. Missing
-         *     agent is 404. Unknown sid is 404. Not a blank create — POST
-         *     `/skills { name }` stays teach-a-task.
+         *     agent is 404. Unknown sid is 404. Blank New is POST `/skills
+         *     { name, body }` (body present). `{ name }` omitted body stays
+         *     teach-a-task.
          */
         patch: operations["patchSkill"];
         trace?: never;
@@ -1278,10 +1287,18 @@ export interface components {
         SkillCreate: {
             /**
              * @description Display name for the saved SKILL.md (frontmatter name).
-             *     Writes SNORLAX_DATA_DIR/skills/<slug>/SKILL.md from the
-             *     stopped capture. Discard is omit this POST.
+             *     With `body` omitted, writes SNORLAX_DATA_DIR/skills/<slug>/SKILL.md
+             *     from the stopped capture. Discard is omit this POST.
              */
             name: string;
+            /**
+             * @description When present and non-empty, write SKILL.md from this source
+             *     (blank New skill; no capture required). Same shape as PATCH
+             *     body: full SKILL.md source (frontmatter plus recipe) or
+             *     recipe-only. Empty is 422. When omitted, teach-a-task from
+             *     the pending capture (unchanged).
+             */
+            body?: string;
         };
         SkillBody: {
             /**
