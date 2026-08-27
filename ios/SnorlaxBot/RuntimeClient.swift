@@ -118,6 +118,53 @@ struct RuntimeClient: Sendable {
         try await get("v1/agents/\(Self.encode(agentId))/computer")
     }
 
+    func openComputerSession(agentId: String) async throws -> ComputerSession {
+        let request = try makeRequest(
+            "v1/agents/\(Self.encode(agentId))/computer/session",
+            method: "POST"
+        )
+        let (data, response) = try await URLSession.shared.data(for: request)
+        try Self.throwIfNeeded(data: data, response: response, allowed: [201, 200])
+        do {
+            return try decoder.decode(ComputerSession.self, from: data)
+        } catch {
+            throw RuntimeError.decoding
+        }
+    }
+
+    func closeComputerSession(agentId: String, sessionId: String? = nil) async throws {
+        let suffix: String
+        if let sessionId, !sessionId.isEmpty {
+            suffix = "computer/session/\(Self.encode(sessionId))"
+        } else {
+            suffix = "computer/session"
+        }
+        let request = try makeRequest(
+            "v1/agents/\(Self.encode(agentId))/\(suffix)",
+            method: "DELETE"
+        )
+        let (data, response) = try await URLSession.shared.data(for: request)
+        try Self.throwIfNeeded(data: data, response: response, allowed: [204])
+    }
+
+    func postComputerPointer(agentId: String, event: PointerEvent) async throws {
+        try await sendEmpty(
+            "v1/agents/\(Self.encode(agentId))/computer/pointer",
+            method: "POST",
+            body: event,
+            allowed: [200]
+        )
+    }
+
+    func postComputerKey(agentId: String, event: KeyEvent) async throws {
+        try await sendEmpty(
+            "v1/agents/\(Self.encode(agentId))/computer/key",
+            method: "POST",
+            body: event,
+            allowed: [200]
+        )
+    }
+
     func listPlugins() async throws -> [Plugin] {
         try await get("v1/plugins")
     }
@@ -309,6 +356,17 @@ struct RuntimeClient: Sendable {
         } catch {
             throw RuntimeError.decoding
         }
+    }
+
+    private func sendEmpty<Body: Encodable>(
+        _ path: String,
+        method: String,
+        body: Body,
+        allowed: [Int]
+    ) async throws {
+        let request = try makeRequest(path, method: method, body: body)
+        let (data, response) = try await URLSession.shared.data(for: request)
+        try Self.throwIfNeeded(data: data, response: response, allowed: allowed)
     }
 
     private func send<Body: Encodable, T: Decodable>(
