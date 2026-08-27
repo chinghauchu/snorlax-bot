@@ -52,6 +52,7 @@ Concrete follow-ups after v0. Filed on GitHub against
   (12pt Open when `hasSandbox`; 16:10 shot also Opens; Keyboard maps to
   `POST …/key`; Done `DELETE` session). Channel 409.
 - **v0.20:** takeover bar **Record / Stop / Save as skill** (12pt muted
-  `Record` left of `Done`; Stop is `--danger` + 6pt dot; Done disabled
-  while recording; Save sheet; × / Cancel discards). Same v0.16 HTTP.
-  Record only inside a takeover session. No blank New skill.
+  `Record` left of `Done`; Keyboard stays trailing; Stop is `--danger`
+  + 6pt dot; Done disabled while recording; **no Esc**; Save sheet is
+  Edit-skill family, 14pt name, 44pt Save; × / Cancel discards). Same
+  v0.16 HTTP. Record only inside a takeover session. No blank New skill.

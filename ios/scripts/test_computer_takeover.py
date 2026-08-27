@@ -48,6 +48,10 @@ def done_disabled(recording: bool) -> bool:
     return recording
 
 
+def escape_stops_record() -> bool:
+    return False
+
+
 def save_disabled(name: str) -> bool:
     return not (name or "").strip()
 
@@ -187,6 +191,7 @@ def test_record_stop_save_chrome() -> None:
     assert record_control_label(True) == "Stop"
     assert done_disabled(True) is True
     assert done_disabled(False) is False
+    assert escape_stops_record() is False
     assert save_disabled("") is True
     assert save_disabled("   ") is True
     assert save_disabled("Demo") is False
@@ -194,31 +199,43 @@ def test_record_stop_save_chrome() -> None:
     assert 'static let stopLabel = "Stop"' in CHROME
     assert 'static let saveAsSkillTitle = "Save as skill"' in CHROME
     assert 'static let saveLabel = "Save"' in CHROME
-    assert 'static let savedLabel = "Saved"' in CHROME
     assert 'static let cancelLabel = "Cancel"' in CHROME
     assert "static let recordDotSize: CGFloat = 6" in CHROME
     assert "static let labelSize: CGFloat = 12" in CHROME
-    assert "static let savedFeedbackMs = 1500" in CHROME
+    assert "static let barHeight: CGFloat = 52" in CHROME
+    assert "static let saveButtonHeight: CGFloat = 44" in CHROME
+    assert "static let skillNameSize: CGFloat = 14" in CHROME
     assert "--danger" in CHROME
     assert "ff6b6b" in CHROME
     assert "static func recordControlLabel(recording: Bool) -> String" in CHROME
     assert "static func doneDisabled(recording: Bool) -> Bool" in CHROME
     assert "static func saveDisabled(name: String) -> Bool" in CHROME
+    assert "static func escapeStopsRecord() -> Bool" in CHROME
+    assert "false" in CHROME[CHROME.index("func escapeStopsRecord") : CHROME.index("func saveDisabled")]
     assert "recordControlLabel" in TAKEOVER
     assert "doneDisabled" in TAKEOVER
-    record_btn = TAKEOVER.index("recordControl")
-    done_btn = TAKEOVER.index("ComputerTakeoverChrome.doneLabel")
-    assert record_btn < done_btn
+    bar = TAKEOVER[TAKEOVER.index("private var bar") : TAKEOVER.index("private var recordControl")]
+    assert "Keyboard stays trailing" in bar or "Keyboard stays trailing" in TAKEOVER
+    assert bar.index("keyboardLabel") < bar.index("recordControl")
+    assert bar.index("recordControl") < bar.index("doneLabel")
     assert "RecordDot" in TAKEOVER
     assert "accessibilityReduceMotion" in TAKEOVER
+    assert "No Esc" in TAKEOVER
+    assert "stopCapture" not in TAKEOVER[TAKEOVER.index(".onKeyPress(.escape)") : TAKEOVER.index(".onKeyPress(.escape)") + 160]
     assert "SaveAsSkillSheet" in TAKEOVER
     assert "saveAsSkillTitle" in TAKEOVER
-    assert "skillNameSize" in TAKEOVER or "skillNameSize" in CHROME
+    assert "skillNameSize" in TAKEOVER
     assert "saveButtonHeight" in TAKEOVER
     assert "saveDisabled" in TAKEOVER
     assert "cancelLabel" in TAKEOVER
     assert 'Image(systemName: "xmark")' in TAKEOVER
-    assert "savedLabel" in TAKEOVER
+    sheet = TAKEOVER[TAKEOVER.index("private struct SaveAsSkillSheet") :]
+    assert "NavigationStack" in sheet
+    assert "Form" in sheet
+    assert 'TextField("Name"' in sheet
+    assert "skillNameSize" in sheet
+    assert "saveButtonHeight" in sheet
+    assert "Same family as Edit skill" in sheet or "Edit skill" in TAKEOVER
     assert 'static let recordPath = "/computer/record"' in CHROME
     assert "ComputerTakeoverChrome.recordPath" in CLIENT
     assert "computer/record" not in CLIENT
@@ -235,7 +252,6 @@ def test_record_stop_save_chrome() -> None:
     assert "startComputerRecord" in TAKEOVER
     assert "stopComputerRecord" in TAKEOVER
     assert "saveRecordedSkill" in TAKEOVER
-    # Keyboard / tap-click / pan-move / Done from v0.19 stay.
     assert "keyboardLabel" in TAKEOVER
     assert "doneLabel" in TAKEOVER
 

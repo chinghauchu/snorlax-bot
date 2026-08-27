@@ -318,12 +318,14 @@ v0.20: iOS Record. iOS only. Desktop Record/Stop/Save stays v0.16.
 Runtime protocol unchanged: reuse v0.16 POST/DELETE `/computer/record`
 then `POST /skills { name }`. Discard is omit that POST. OpenAPI stays
 0.18.0. Takeover bar: 12pt muted Record left of primary Done.
-Recording: 12pt `--danger` Stop plus a 6pt danger dot (static if
-Reduce Motion); Done disabled while recording. Stop opens Save as
-skill sheet; × / Cancel discards — no SKILL.md. Save writes that
-agent's skill and returns to takeover with Record muted again.
-Optional 1.5s Saved. Keyboard / tap-click / pan-move / Done from
-v0.19 stay. Record only inside a takeover session. Channel 409.
+Keyboard stays trailing (v0.19). Recording: 12pt `--danger` Stop plus
+a 6pt danger dot (static if Reduce Motion); Done disabled while
+recording. No Esc — Stop is the only way out of record. Stop opens
+Save as skill sheet (Edit skill family; Name 14pt; Save 44pt);
+× / Cancel discards — no SKILL.md. Save writes that agent's skill
+(v0.18 list, no extra chrome) and returns to takeover with Record
+muted again. Keyboard / tap-click / pan-move / Done from v0.19 stay.
+Record only inside a takeover session. Channel 409.
 
 ## Inference interface
 

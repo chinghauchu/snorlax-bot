@@ -24,6 +24,10 @@ struct ComputerTakeoverView: View {
         .ignoresSafeArea(edges: .bottom)
         .interactiveDismissDisabled(true)
         .navigationBarBackButtonHidden(true) // Swipe-back disabled.
+        .onKeyPress(.escape) {
+            // No Esc — Stop is the only way out of record.
+            .handled
+        }
         .task(id: agent.id) {
             while !Task.isCancelled, model.computerTakeoverOpen {
                 await model.loadComputer(for: agent.id)
@@ -56,6 +60,7 @@ struct ComputerTakeoverView: View {
                     .foregroundStyle(.secondary)
             }
             Spacer(minLength: 8)
+            // Keyboard stays trailing (v0.19). Record is 12pt muted left of Done.
             Button(ComputerTakeoverChrome.keyboardLabel) {
                 keyboardOn.toggle()
             }
@@ -84,6 +89,7 @@ struct ComputerTakeoverView: View {
 
     /// 12pt muted Record left of primary Done. Recording: 12pt --danger Stop
     /// plus a 6pt danger dot (static if Reduce Motion).
+    /// No Esc — Stop is the only way out of record.
     private var recordControl: some View {
         Button {
             if recording {
@@ -226,7 +232,7 @@ private struct RecordDot: View {
     }
 }
 
-/// Same family as Add plugin / Edit skill. × / Cancel discards — no SKILL.md.
+/// Same family as Edit skill. × / Cancel discards — no SKILL.md.
 private struct SaveAsSkillSheet: View {
     @Binding var name: String
     @Binding var saving: Bool
@@ -240,17 +246,14 @@ private struct SaveAsSkillSheet: View {
                     .font(.system(size: ComputerTakeoverChrome.skillNameSize))
                     .textInputAutocapitalization(.never)
                     .autocorrectionDisabled()
-                HStack {
-                    Button(ComputerTakeoverChrome.cancelLabel) {
-                        onCancel()
-                    }
-                    Button(ComputerTakeoverChrome.saveLabel) {
-                        onSave()
-                    }
-                    .buttonStyle(.borderedProminent)
-                    .frame(maxWidth: .infinity, minHeight: ComputerTakeoverChrome.saveButtonHeight)
-                    .disabled(saving || ComputerTakeoverChrome.saveDisabled(name: name))
+                Button(ComputerTakeoverChrome.cancelLabel) {
+                    onCancel()
                 }
+                Button(ComputerTakeoverChrome.saveLabel) {
+                    onSave()
+                }
+                .frame(maxWidth: .infinity, minHeight: ComputerTakeoverChrome.saveButtonHeight)
+                .disabled(saving || ComputerTakeoverChrome.saveDisabled(name: name))
             }
             .navigationTitle(ComputerTakeoverChrome.saveAsSkillTitle)
             .navigationBarTitleDisplayMode(.inline)

@@ -63,6 +63,11 @@ enum ComputerTakeoverChrome {
         recording
     }
 
+    /// iOS has no Esc. Stop is the only way out of record (Done is disabled).
+    static func escapeStopsRecord() -> Bool {
+        false
+    }
+
     static func saveDisabled(name: String) -> Bool {
         name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
