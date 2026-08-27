@@ -132,9 +132,15 @@ v0.25 chat attachments: `POST /v1/agents/{id}/attachments` (Bearer,
 multipart field `file`) → 201 `{ id, kind, name, url, size }`. `url` is
 Bearer `GET /v1/attachments/{id}`. Over 10MB or `video/*` → 422.
 Message POST adds `attachmentIds[]`; empty content is ok if that list
-is non-empty. GET message grows `attachments` on user-right only.
-Runtime includes them in that turn. Legacy `{ mime, data }` images stay
+is non-empty. GET message grows `attachments` on user-right. Runtime
+includes them in that turn. Legacy `{ mime, data }` images stay
 off-model. No `/v1/chats/` resource. OpenAPI stays 0.18.0.
+
+v0.26 agent-sent attachments: GET `attachments` on any `kind=message`
+(user-right or agent LEFT). `kind=tool` / `widget` / `connect` stay
+`[]`. Runtime binds write_file / screenshot onto that assistant
+`kind=message`. Composer POST / `attachmentIds` unchanged. No new
+routes. OpenAPI stays 0.18.0.
 
 A copy is also kept at `runtime/openapi.yaml` and `desktop/openapi.yaml`
 so those trees are self-contained. Do not let the files diverge.

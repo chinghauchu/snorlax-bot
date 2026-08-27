@@ -839,9 +839,10 @@ export interface paths {
          *     `{ id, kind, name, url, size }`. kind is `image` for image/*
          *     (not video), else `file`. url is GET /v1/attachments/{id} on
          *     this host (Bearer). Over 10MB → 422 `Max 10MB.`. video/* → 422
-         *     `Video isn’t supported yet.`. Empty file 422. User-right only
-         *     this slice — bind via MessageCreate.attachmentIds on the next
-         *     send. Agent-sent attachments wait.
+         *     `Video isn’t supported yet.`. Empty file 422. User composer
+         *     bind via MessageCreate.attachmentIds on the next send.
+         *     Runtime may also bind write_file / screenshot files onto the
+         *     assistant kind=message (v0.26). No agent upload route.
          */
         post: operations["postAttachment"];
         delete?: never;
@@ -1032,8 +1033,9 @@ export interface components {
             content: string;
             images: components["schemas"]["ImageOut"][];
             /**
-             * @description User-right only this slice. Assistant rows are []. v0.25
-             *     uploads bound via attachmentIds. Not a list-endpoint wrapper.
+             * @description kind=message rows (user-right or agent LEFT). kind=tool,
+             *     widget, and connect are []. Same shape as v0.25.
+             *     Not a list-endpoint wrapper.
              */
             attachments: components["schemas"]["Attachment"][];
             /** Format: date-time */
@@ -1202,8 +1204,9 @@ export interface components {
              * @description Ids from POST /v1/agents/{id}/attachments on this same
              *     conversation. Unknown or foreign ids 422 (do not 404 the
              *     send). Empty content is ok if this list is non-empty.
-             *     Runtime includes them in that turn. Assistant rows never
-             *     persist attachments this slice.
+             *     Runtime includes them in that turn. POST attachmentIds stay
+             *     user-only. Runtime-produced write_file / screenshot files
+             *     bind onto the assistant kind=message (v0.26), not this field.
              */
             attachmentIds?: string[];
             /**

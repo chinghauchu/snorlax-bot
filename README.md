@@ -20,7 +20,7 @@ computer. Bots live on your LAN, talk through a thin local runtime, and (in
 later versions) browse, click, schedule, and call tools without sending tokens
 off-box.
 
-v0.24 is still small: **named teammates + identity pane + group channel threads
+v0.26 is still small: **named teammates + identity pane + group channel threads
 + chat with @mentions + report-back + extra channels + built-in tools + a
 thin desktop Computer pane + a runtime MCP client + question widgets +
 skills and cron/webhook/Slack/GitHub routines (Add / Remove + enable/pause + Copy webhook URL; Slack/GitHub listeners when that plugin is connected) + MCP connect chrome
@@ -28,6 +28,7 @@ skills and cron/webhook/Slack/GitHub routines (Add / Remove + enable/pause + Cop
 MCP Add custom (Settings POST / DELETE; no separate disconnect) +
 curated plugin catalog (Settings Catalog Slack/GitHub Add; not a store) +
 chat attachments (composer paperclip / drop; user-right image + file chips; `attachmentIds` in that turn) +
+agent-sent attachments (LEFT `kind=message` reuses that chrome; runtime binds write_file / screenshot) +
 identity-pane Box computer preview (Bearer PNG) + desktop Box takeover
 (Open / Done; pointer/key in 1280×800) + teach-a-task (Record / Stop /
 Save as skill inside takeover) + skill markdown editor (identity-pane
@@ -201,13 +202,13 @@ snorlax-runtime
 ```
 
 Default Spark model is **70B-class FP8**, config-swappable. v0.25
-`attachmentIds` images are included in that turn; legacy
-`MessageCreate.images` persist off-model. Video and agent-sent
-attachments wait.
+`attachmentIds` images are included in that turn; v0.26 agent-sent
+`write_file` / screenshot files bind onto the assistant `kind=message`.
+Legacy `MessageCreate.images` persist off-model. Video wait.
 
 ## v0 vs later
 
-See [ROADMAP.md](ROADMAP.md). Short version: v0.25 is named agents plus
+See [ROADMAP.md](ROADMAP.md). Short version: v0.26 is named agents plus
 runtime-owned file/shell/web tools in a `~/.snorlax-bot` sandbox, a
 thin desktop Computer pane over that sandbox, a runtime MCP client
 (stdio + LAN from `mcp.json`), connect chrome (`GET /v1/plugins` +
@@ -223,7 +224,9 @@ iOS Open/Record, and
 1:1 composer `/` skill autocomplete (Send loads SKILL.md; channel `/`
 stays plain text), and
 v0.25 chat attachments (composer paperclip / drop; user-right image +
-file chips; `POST /v1/agents/{id}/attachments` + `attachmentIds`).
+file chips; `POST /v1/agents/{id}/attachments` + `attachmentIds`), and
+v0.26 agent-sent attachments (LEFT `kind=message` reuses that chrome;
+runtime binds write_file / screenshot).
 Later: full sandbox computer GUI, MCP marketplace catalog,
 Slack/GitHub inbound listeners.
 

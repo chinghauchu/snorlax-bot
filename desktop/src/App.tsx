@@ -1974,32 +1974,11 @@ export function App() {
                       />
                     ) : mine ? (
                       <div className="bubble user">
-                        {userRightAttachments(message)
-                          .filter((row) => row.kind === "image")
-                          .map((image) => (
-                            <AuthedImg
-                              key={image.id}
-                              className="bubble-image"
-                              src={resolveMediaUrl(
-                                session?.baseUrl ?? "",
-                                image.url,
-                              )}
-                              session={session}
-                              alt=""
-                            />
-                          ))}
-                        {userRightAttachments(message)
-                          .filter((row) => row.kind === "file")
-                          .map((file) => (
-                            <button
-                              key={file.id}
-                              type="button"
-                              className="file-chip"
-                              onClick={() => void openAttachedFile(file)}
-                            >
-                              {file.name}
-                            </button>
-                          ))}
+                        <MessageAttachmentChrome
+                          message={message}
+                          session={session}
+                          onOpenFile={openAttachedFile}
+                        />
                         {message.content ? (
                           <pre>
                             <MentionText
@@ -2015,15 +1994,11 @@ export function App() {
                       </div>
                     ) : (
                       <div className="assistant-md">
-                        {message.images.map((image) => (
-                          <AuthedImg
-                            key={image.id}
-                            className="bubble-image"
-                            src={resolveMediaUrl(session?.baseUrl ?? "", image.url)}
-                            session={session}
-                            alt=""
-                          />
-                        ))}
+                        <MessageAttachmentChrome
+                          message={message}
+                          session={session}
+                          onOpenFile={openAttachedFile}
+                        />
                         {message.content ? (
                           <MarkdownBody
                             text={displayBody(
@@ -3400,6 +3375,44 @@ function Avatar({
         <span>{displayInitials(name)}</span>
       )}
     </span>
+  );
+}
+
+function MessageAttachmentChrome({
+  message,
+  session,
+  onOpenFile,
+}: {
+  message: ChatMessage;
+  session: Session | null;
+  onOpenFile: (file: { name: string; url: string }) => void;
+}) {
+  const atts = userRightAttachments(message);
+  const images = atts.filter((row) => row.kind === "image");
+  const files = atts.filter((row) => row.kind === "file");
+  if (!images.length && !files.length) return null;
+  return (
+    <div className="message-atts">
+      {images.map((image) => (
+        <AuthedImg
+          key={image.id}
+          className="bubble-image"
+          src={resolveMediaUrl(session?.baseUrl ?? "", image.url)}
+          session={session}
+          alt=""
+        />
+      ))}
+      {files.map((file) => (
+        <button
+          key={file.id}
+          type="button"
+          className="file-chip"
+          onClick={() => void onOpenFile(file)}
+        >
+          {file.name}
+        </button>
+      ))}
+    </div>
   );
 }
 

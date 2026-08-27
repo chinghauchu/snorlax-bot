@@ -358,6 +358,7 @@ button:disabled {
   display: flex;
   flex-direction: column;
   align-items: flex-start;
+  gap: 6px;
 }
 
 .bubble.agent {
@@ -376,6 +377,10 @@ button:disabled {
   width: 100%;
   max-width: 100%;
   align-self: stretch;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
   background: none;
   border: none;
   padding: 0;
@@ -544,6 +549,18 @@ button:disabled {
   border-radius: 8px;
   margin-bottom: 6px;
   object-fit: cover;
+}
+
+.message-atts {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+}
+
+.message-atts .bubble-image,
+.message-atts .file-chip {
+  margin-bottom: 0;
 }
 
 .file-chip {

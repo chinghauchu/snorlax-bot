@@ -879,7 +879,7 @@ class Store:
             "images": await self.list_images(message["id"]),
             "attachments": (
                 await self.list_attachments(message["id"])
-                if (message.get("sender_id") or USER_SENDER_ID) == USER_SENDER_ID
+                if kind == "message"
                 else []
             ),
             "createdAt": message["created_at"],

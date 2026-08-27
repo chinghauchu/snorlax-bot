@@ -67,6 +67,9 @@ def test_protocol_openapi_is_locked_v0_contract() -> None:
     assert "PluginCatalogEntry" in text
     assert "v0.24" in text
     assert "v0.25" in text
+    assert "v0.26" in text
+    assert "assistant kind=message" in text or "agent LEFT" in text
+    assert "kind=tool" in text
     assert "/v1/agents/{id}/attachments" in text
     assert "/v1/attachments/{id}" in text
     assert "/v1/chats/{id}" not in text
