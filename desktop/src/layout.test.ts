@@ -397,3 +397,30 @@ test("skills list is 44px rows with Edit then Remove, no blank Add, Edit sheet i
   assert.doesNotMatch(app, /info-skill-add/);
   assert.doesNotMatch(css, /info-skill-add/);
 });
+
+test("composer slash skill picker reuses @ typeahead: 240px, 8px radius, 36px rows", () => {
+  const list = block(".typeahead");
+  const skills = block(".typeahead.skills");
+  const row = block(".typeahead.skills button");
+  assert.match(list, /width:\s*240px/);
+  assert.match(list, /background:\s*var\(--bg-elevated\)/);
+  assert.match(list, /border:\s*1px\s+solid\s+var\(--border\)/);
+  assert.match(skills, /border-radius:\s*8px/);
+  assert.match(row, /height:\s*36px/);
+  assert.match(row, /font-size:\s*14px/);
+  const app = readFileSync(
+    join(dirname(fileURLToPath(import.meta.url)), "App.tsx"),
+    "utf8",
+  );
+  assert.match(app, /typeahead skills/);
+  assert.match(app, /composerSkillAgentId/);
+  assert.match(app, /skillPopupOpen/);
+  assert.match(app, /insertSkill/);
+  assert.match(app, /listSkills\(session, skillAgentId\)/);
+  const skillList = app.slice(
+    app.indexOf("{skillMenuOpen ?"),
+    app.indexOf("mentionOpen && mentionCandidates"),
+  );
+  assert.doesNotMatch(skillList, /Avatar/);
+  assert.doesNotMatch(app, /computerPane\.ts/);
+});

@@ -19,7 +19,7 @@ struct ChatView: View {
         VStack(spacing: 0) {
             transcript
             Divider()
-            ComposerBar(agentName: agent.name, focused: $composerFocused)
+            ComposerBar(agentName: agent.name, isChannel: agent.isChannel, focused: $composerFocused)
         }
         .navigationTitle(agent.name)
         .navigationBarTitleDisplayMode(.inline)
@@ -149,6 +149,7 @@ struct ChatView: View {
             .onChange(of: model.isSending) { _, _ in
                 proxy.scrollTo("bottom", anchor: .bottom)
             }
+            .simultaneousGesture(TapGesture().onEnded { model.dismissSkillPicker() })
         }
     }
 
@@ -252,6 +253,7 @@ struct ChatView: View {
 
 private struct ComposerBar: View {
     let agentName: String
+    var isChannel: Bool
     var focused: FocusState<Bool>.Binding
     @Environment(AppModel.self) private var model
     @State private var pickerItem: PhotosPickerItem?
@@ -286,7 +288,33 @@ private struct ComposerBar: View {
                     .accessibilityLabel("Remove image")
                 }
             }
-            if let query = mentionQuery {
+            if !isChannel, model.skillMenuOpen() {
+                let candidates = model.skillCandidates()
+                VStack(alignment: .leading, spacing: 0) {
+                    ForEach(candidates) { skill in
+                        Button {
+                            model.insertSkill(skill)
+                        } label: {
+                            Text(skill.name)
+                                .font(.system(size: SkillPicker.nameSize))
+                                .foregroundStyle(.primary)
+                                .frame(
+                                    maxWidth: .infinity,
+                                    minHeight: SkillPicker.rowHeight,
+                                    alignment: .leading
+                                )
+                                .padding(.horizontal, 10)
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+                .frame(width: SkillPicker.popupWidth, alignment: .leading)
+                .background(.bar, in: RoundedRectangle(cornerRadius: SkillPicker.cornerRadius))
+                .overlay(
+                    RoundedRectangle(cornerRadius: SkillPicker.cornerRadius)
+                        .stroke(Color(uiColor: .separator), lineWidth: 1)
+                )
+            } else if let query = mentionQuery {
                 let candidates = model.mentionCandidates(query: query)
                 if !candidates.isEmpty {
                     VStack(alignment: .leading, spacing: 0) {

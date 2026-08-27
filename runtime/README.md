@@ -95,6 +95,11 @@ including frontmatter plus recipe, not a rendered preview). Remove is
 `DELETE` 204. Create stays teach-a-task `POST /skills { name }` — no
 blank Add.
 
+v0.21: a 1:1 user message that starts a token with `/slug` or `/Name`
+injects that SKILL.md into the turn (catalog preamble still lists every
+skill). Unknown `/foo` stays the user's text. Channel `/` is never a
+load path. No new HTTP. OpenAPI stays 0.18.0.
+
 ## MCP (`mcp.json`)
 
 The runtime is the MCP client. Desktop and iOS never speak MCP. Put

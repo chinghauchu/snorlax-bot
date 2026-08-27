@@ -102,6 +102,11 @@ v0.20 iOS Record: same v0.16 `POST/DELETE /computer/record` then
 `POST /skills { name }` as desktop. iOS now POSTs them from the
 takeover bar. Discard is omit the skills POST. OpenAPI stays 0.18.0.
 
+v0.21 composer `/` skill autocomplete: no new HTTP. Typeahead list is
+existing `GET /v1/agents/{id}/skills` `{ id, name }` (channel 409).
+1:1 Send of `/slug` or `/Name` injects that SKILL.md into the turn.
+Unknown `/foo` and channel `/` stay plain text. OpenAPI stays 0.18.0.
+
 A copy is also kept at `runtime/openapi.yaml` and `desktop/openapi.yaml`
 so those trees are self-contained. Do not let the files diverge.
 

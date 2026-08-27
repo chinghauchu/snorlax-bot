@@ -52,3 +52,4 @@ jobs:
           pip install -r ios/scripts/requirements.txt
           python3 ios/scripts/generate_v1_types.py --check
           python3 ios/scripts/test_computer_takeover.py
+          python3 ios/scripts/test_skill_autocomplete.py

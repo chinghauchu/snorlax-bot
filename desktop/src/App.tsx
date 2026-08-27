@@ -86,6 +86,13 @@ import {
   splitMentions,
 } from "./mentions";
 import {
+  composerSkillAgentId,
+  filterSkills,
+  insertSkill,
+  skillPopupOpen,
+  skillTrigger,
+} from "./skillsPicker";
+import {
   loadInitialRuntimeUrl,
   normalizeRuntimeUrl,
 } from "./runtimeUrl";
@@ -371,6 +378,10 @@ export function App() {
   const [mentionOpen, setMentionOpen] = useState(false);
   const [mentionQuery, setMentionQuery] = useState("");
   const [mentionIndex, setMentionIndex] = useState(0);
+  const [composerSkills, setComposerSkills] = useState<Skill[]>([]);
+  const [skillOpen, setSkillOpen] = useState(false);
+  const [skillQuery, setSkillQuery] = useState("");
+  const [skillIndex, setSkillIndex] = useState(0);
   const pickedMentions = useRef(new Map<string, string>());
   const lastExtraChannelId = useRef<string | null>(null);
   const pendingCaret = useRef<number | null>(null);
@@ -419,6 +430,7 @@ export function App() {
 
   const scroller = useRef<HTMLDivElement>(null);
   const composerRef = useRef<HTMLTextAreaElement>(null);
+  const skillTypeaheadRef = useRef<HTMLUListElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const avatarFileRef = useRef<HTMLInputElement>(null);
 
@@ -474,6 +486,18 @@ export function App() {
       active?.kind === "channel",
     );
   }, [agents, mentionQuery, active]);
+  const skillAgentId = useMemo(
+    () => composerSkillAgentId(active),
+    [active],
+  );
+  const skillCandidates = useMemo(
+    () => filterSkills(composerSkills, skillQuery),
+    [composerSkills, skillQuery],
+  );
+  const skillMenuOpen =
+    skillOpen &&
+    skillPopupOpen(composerSkills, skillQuery, active) &&
+    !mentionOpen;
 
   function syncMentionTrigger(value: string, caret: number) {
     const trigger = mentionTrigger(value, caret);
@@ -481,9 +505,34 @@ export function App() {
       setMentionOpen(false);
       return;
     }
+    setSkillOpen(false);
     setMentionQuery(trigger.query);
     setMentionIndex(0);
     setMentionOpen(true);
+  }
+
+  function syncSkillTrigger(value: string, caret: number) {
+    if (active?.kind === "channel") {
+      setSkillOpen(false);
+      return;
+    }
+    if (mentionTrigger(value, caret)) {
+      setSkillOpen(false);
+      return;
+    }
+    const trigger = skillTrigger(value, caret);
+    if (!trigger) {
+      setSkillOpen(false);
+      return;
+    }
+    setSkillQuery(trigger.query);
+    setSkillIndex(0);
+    setSkillOpen(true);
+  }
+
+  function syncComposerTriggers(value: string, caret: number) {
+    syncMentionTrigger(value, caret);
+    syncSkillTrigger(value, caret);
   }
 
   function pickMention(candidate: { id: string; name: string }) {
@@ -494,6 +543,15 @@ export function App() {
     pendingCaret.current = next.caret;
     setDraft(next.text);
     setMentionOpen(false);
+  }
+
+  function pickSkill(candidate: { id: string; name: string }) {
+    const el = composerRef.current;
+    const caret = el?.selectionStart ?? draft.length;
+    const next = insertSkill(draft, caret, candidate.name);
+    pendingCaret.current = next.caret;
+    setDraft(next.text);
+    setSkillOpen(false);
   }
 
   function canDelete(agent: Agent) {
@@ -543,6 +601,15 @@ export function App() {
       }
       setContextMenu(null);
       setCreateMenuOpen(false);
+      if (
+        !(
+          target instanceof Element &&
+          (target.closest(".typeahead") ||
+            target.closest(".composer-field"))
+        )
+      ) {
+        setSkillOpen(false);
+      }
     };
     const onKey = (event: globalThis.KeyboardEvent) => {
       if (event.key !== "Escape") return;
@@ -601,6 +668,25 @@ export function App() {
     }
     void loadRoster(session);
   }, [session, loadRoster]);
+
+  useEffect(() => {
+    if (!session || !skillAgentId) {
+      setComposerSkills([]);
+      setSkillOpen(false);
+      return;
+    }
+    let cancelled = false;
+    void listSkills(session, skillAgentId)
+      .then((rows) => {
+        if (!cancelled) setComposerSkills(rows);
+      })
+      .catch(() => {
+        if (!cancelled) setComposerSkills([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [session, skillAgentId]);
 
   useEffect(() => {
     if (!session) {
@@ -1345,6 +1431,30 @@ export function App() {
         return;
       }
     }
+    if (skillMenuOpen && skillCandidates.length > 0) {
+      if (event.key === "ArrowDown") {
+        event.preventDefault();
+        setSkillIndex((i) => (i + 1) % skillCandidates.length);
+        return;
+      }
+      if (event.key === "ArrowUp") {
+        event.preventDefault();
+        setSkillIndex(
+          (i) => (i - 1 + skillCandidates.length) % skillCandidates.length,
+        );
+        return;
+      }
+      if (event.key === "Enter" || event.key === "Tab") {
+        event.preventDefault();
+        pickSkill(skillCandidates[skillIndex] ?? skillCandidates[0]);
+        return;
+      }
+      if (event.key === "Escape") {
+        event.preventDefault();
+        setSkillOpen(false);
+        return;
+      }
+    }
     if (event.key === "Enter" && !event.shiftKey) {
       event.preventDefault();
       void onSend();
@@ -1817,7 +1927,26 @@ export function App() {
               </button>
             </div>
           ) : null}
-          {mentionOpen && mentionCandidates.length > 0 ? (
+          {skillMenuOpen ? (
+            <ul className="typeahead skills" role="listbox" ref={skillTypeaheadRef}>
+              {skillCandidates.map((candidate, index) => (
+                <li key={candidate.id}>
+                  <button
+                    type="button"
+                    role="option"
+                    aria-selected={index === skillIndex}
+                    className={index === skillIndex ? "on" : ""}
+                    onMouseDown={(e) => {
+                      e.preventDefault();
+                      pickSkill(candidate);
+                    }}
+                  >
+                    <span>{candidate.name}</span>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          ) : mentionOpen && mentionCandidates.length > 0 ? (
             <ul className="typeahead" role="listbox">
               {mentionCandidates.map((candidate, index) => (
                 <li key={candidate.id}>
@@ -1880,16 +2009,22 @@ export function App() {
                 }
                 onChange={(e) => {
                   setDraft(e.target.value);
-                  syncMentionTrigger(e.target.value, e.target.selectionStart);
+                  syncComposerTriggers(e.target.value, e.target.selectionStart);
                   resizeComposer();
                   syncComposerScroll();
                 }}
                 onScroll={syncComposerScroll}
                 onKeyUp={(e) =>
-                  syncMentionTrigger(e.currentTarget.value, e.currentTarget.selectionStart)
+                  syncComposerTriggers(
+                    e.currentTarget.value,
+                    e.currentTarget.selectionStart,
+                  )
                 }
                 onClick={(e) =>
-                  syncMentionTrigger(e.currentTarget.value, e.currentTarget.selectionStart)
+                  syncComposerTriggers(
+                    e.currentTarget.value,
+                    e.currentTarget.selectionStart,
+                  )
                 }
                 onKeyDown={onComposerKey}
               />

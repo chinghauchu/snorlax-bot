@@ -3,7 +3,13 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from tests.conftest import AUTH
+from snorlax_runtime.skills import (
+    invoked_skill,
+    parse_skill_markdown,
+    skill_ask_from_turn,
+    slash_rest,
+)
+from tests.conftest import AUTH, parse_sse
 
 SEED = "snorlax-bot"
 CHANNEL = "snorlax-bot-group"
@@ -212,3 +218,123 @@ def test_no_blank_skill_post(client) -> None:
     listed = client.get(f"/v1/agents/{SEED}/skills", headers=AUTH)
     assert listed.status_code == 200
     assert listed.json() == []
+
+
+def test_invoked_skill_matches_slash_name_and_slug() -> None:
+    skill = parse_skill_markdown(
+        STATUS_SKILL, source="skillsDir", path="status/SKILL.md"
+    )
+    assert skill is not None
+    assert invoked_skill([skill], "/status") is skill
+    assert invoked_skill([skill], "/status please") is skill
+    assert invoked_skill([skill], "please /status") is skill
+    assert invoked_skill([skill], "/STATUS") is skill
+    named = parse_skill_markdown(
+        PATCHED_SKILL, source="skillsDir", path="status-check/SKILL.md"
+    )
+    assert named is not None
+    assert invoked_skill([named], "/Status check") is named
+    assert invoked_skill([named], "/status-check extra") is named
+    assert invoked_skill([skill], "status") is None
+    assert invoked_skill([skill], "/nope") is None
+    assert invoked_skill([skill], "/") is None
+    assert slash_rest("/status extra") == "status extra"
+    assert skill_ask_from_turn(
+        [{"role": "user", "content": "/status"}], None
+    ) == "/status"
+
+
+def test_slash_name_loads_skill_md_into_turn(client, tmp_path: Path) -> None:
+    _write_status_skill(tmp_path)
+    captured: list[list[dict]] = []
+    backend = client.app.state.backend
+    original = backend.generate
+
+    async def wrapped(messages, tools=None):
+        captured.append(list(messages))
+        async for part in original(messages, tools=tools):
+            yield part
+
+    backend.generate = wrapped
+    with client.stream(
+        "POST",
+        f"/v1/agents/{SEED}/messages",
+        headers=AUTH,
+        json={"content": "/status please"},
+    ) as response:
+        assert response.status_code == 200
+        parse_sse("".join(response.iter_text()))
+    listed = client.get(f"/v1/agents/{SEED}/messages", headers=AUTH).json()
+    assert listed[0]["role"] == "user"
+    assert listed[0]["content"] == "/status please"
+    blob = "\n".join(
+        str(m.get("content") or "") for msgs in captured for m in msgs
+    )
+    assert "The user invoked skill status" in blob
+    assert "### Invoked skill: status" in blob
+    assert "Summarize status in a few lines." in blob
+
+
+def test_unknown_slash_name_is_normal_user_message(client, tmp_path: Path) -> None:
+    _write_status_skill(tmp_path)
+    captured: list[list[dict]] = []
+    backend = client.app.state.backend
+    original = backend.generate
+
+    async def wrapped(messages, tools=None):
+        captured.append(list(messages))
+        async for part in original(messages, tools=tools):
+            yield part
+
+    backend.generate = wrapped
+    with client.stream(
+        "POST",
+        f"/v1/agents/{SEED}/messages",
+        headers=AUTH,
+        json={"content": "/foo"},
+    ) as response:
+        assert response.status_code == 200
+        parse_sse("".join(response.iter_text()))
+    listed = client.get(f"/v1/agents/{SEED}/messages", headers=AUTH).json()
+    assert listed[0]["content"] == "/foo"
+    assert listed[0]["role"] == "user"
+    blob = "\n".join(
+        str(m.get("content") or "") for msgs in captured for m in msgs
+    )
+    assert "The user invoked skill" not in blob
+    assert "### Invoked skill:" not in blob
+
+
+def test_channel_slash_stays_plain_text_no_load_path(client, tmp_path: Path) -> None:
+    _write_status_skill(tmp_path)
+    listed = client.get(f"/v1/agents/{CHANNEL}/skills", headers=AUTH)
+    assert listed.status_code == 409
+    captured: list[list[dict]] = []
+    backend = client.app.state.backend
+    original = backend.generate
+
+    async def wrapped(messages, tools=None):
+        captured.append(list(messages))
+        async for part in original(messages, tools=tools):
+            yield part
+
+    backend.generate = wrapped
+    with client.stream(
+        "POST",
+        f"/v1/agents/{CHANNEL}/messages",
+        headers=AUTH,
+        json={"content": "/status @Snorlax", "mentions": [SEED]},
+    ) as response:
+        assert response.status_code == 200
+        parse_sse("".join(response.iter_text()))
+    users = [
+        m
+        for m in client.get(f"/v1/agents/{CHANNEL}/messages", headers=AUTH).json()
+        if m["role"] == "user"
+    ]
+    assert users[-1]["content"] == "/status @Snorlax"
+    blob = "\n".join(
+        str(m.get("content") or "") for msgs in captured for m in msgs
+    )
+    assert "### Invoked skill:" not in blob
+    assert "The user invoked skill" not in blob

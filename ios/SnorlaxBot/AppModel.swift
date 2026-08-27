@@ -40,7 +40,13 @@ final class AppModel {
     var unreadChannelIDs: Set<String> = []
     var lastExtraChannelID: String?
     var localPreviews: [String: [Data]] = [:]
-    var draft = ""
+    var draft = "" {
+        didSet {
+            if SkillPicker.query(in: draft) == nil {
+                skillPickerDismissed = false
+            }
+        }
+    }
     var pendingImage: PendingImage?
     var isSending = false
     var errorMessage: String?
@@ -50,6 +56,8 @@ final class AppModel {
     var showProfile = false
     var routines: [Routine] = []
     var skills: [Skill] = []
+    var composerSkills: [Skill] = []
+    var skillPickerDismissed = false
     var plugins: [Plugin] = []
     var computerPreview: ComputerPreview?
     var computerImage: UIImage?
@@ -156,6 +164,7 @@ final class AppModel {
         guard isConfigured, let client else {
             messages = []
             localPreviews = [:]
+            composerSkills = []
             return
         }
         do {
@@ -165,6 +174,7 @@ final class AppModel {
             errorMessage = error.localizedDescription
             messages = []
         }
+        await loadComposerSkills()
     }
 
     func createAgent() async {
@@ -303,6 +313,22 @@ final class AppModel {
         } catch {
             skills = []
             errorMessage = error.localizedDescription
+        }
+    }
+
+    func composerSkillAgentID() -> String? {
+        SkillPicker.agentId(conversation: selectedAgent)
+    }
+
+    func loadComposerSkills() async {
+        guard let client, let id = composerSkillAgentID() else {
+            composerSkills = []
+            return
+        }
+        do {
+            composerSkills = try await client.listSkills(agentId: id)
+        } catch {
+            composerSkills = []
         }
     }
 
@@ -877,6 +903,44 @@ final class AppModel {
             draft += "@\(agent.name) "
             pendingComposerCaret = draft.utf16.count
         }
+    }
+
+    func skillQuery() -> String? {
+        SkillPicker.query(in: draft)
+    }
+
+    func skillCandidates() -> [Skill] {
+        guard let query = skillQuery() else { return [] }
+        return SkillPicker.filter(composerSkills, query: query)
+    }
+
+    func skillMenuOpen() -> Bool {
+        !skillPickerDismissed &&
+            SkillPicker.popupOpen(
+                skills: composerSkills,
+                query: skillQuery(),
+                isChannel: selectedAgent?.isChannel == true
+            )
+    }
+
+    func dismissSkillPicker() {
+        skillPickerDismissed = true
+    }
+
+    func insertSkill(_ skill: Skill) {
+        skillPickerDismissed = false
+        if let range = SkillPicker.triggerRange(in: draft) {
+            let rest = String(draft[range.upperBound...])
+            let pad = rest.first == " " ? "" : " "
+            let prefix = String(draft[..<range.lowerBound])
+            let token = "/\(skill.name)\(pad)"
+            draft = "\(prefix)\(token)\(rest)"
+            pendingComposerCaret = (prefix + token).utf16.count
+        } else {
+            draft += "/\(skill.name) "
+            pendingComposerCaret = draft.utf16.count
+        }
+        skillPickerDismissed = true
     }
 
     var composerChipNames: [String] {

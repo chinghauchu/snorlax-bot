@@ -1083,7 +1083,14 @@ async def _generate(
     routine_name: str | None = None,
 ) -> tuple[list[tuple[str, dict[str, Any]]], dict[str, Any] | None]:
     from snorlax_runtime.inference import InferenceError
-    from snorlax_runtime.skills import load_skills, skills_preamble
+    from snorlax_runtime.scheduler import is_routine_pack
+    from snorlax_runtime.skills import (
+        invoked_skill,
+        load_skills,
+        skill_ask_from_turn,
+        skill_invoke_preamble,
+        skills_preamble,
+    )
     from snorlax_runtime.tools import MAX_TOOL_ROUNDS, run_tool_loop, workspace_for
 
     assistant_id = new_id("msg")
@@ -1097,12 +1104,22 @@ async def _generate(
         wake_pack=wake_pack,
     )
     workspace = workspace_for(store.data_dir, conversation or agent, agent["id"])
-    extra = skills_preamble(load_skills(store.data_dir, workspace))
-    if extra and transcript and transcript[0].get("role") == "system":
-        if "### Skill:" not in transcript[0].get("content", ""):
-            transcript[0]["content"] = (
-                transcript[0]["content"] + "\n\n" + extra
-            ).strip()
+    loaded = load_skills(store.data_dir, workspace)
+    extra = skills_preamble(loaded)
+    invoke = ""
+    if not is_group and not is_routine_pack(wake_pack):
+        matched = invoked_skill(
+            loaded, skill_ask_from_turn(transcript, wake_pack)
+        )
+        if matched is not None:
+            invoke = skill_invoke_preamble(matched)
+    if transcript and transcript[0].get("role") == "system":
+        system = transcript[0].get("content", "")
+        if extra and "### Skill:" not in system:
+            system = (system + "\n\n" + extra).strip()
+        if invoke and "### Invoked skill:" not in system:
+            system = (system + "\n\n" + invoke).strip()
+        transcript[0]["content"] = system
     events: list[tuple[str, dict[str, Any]]] = []
 
     async def persist_tool(content: str, message_id: str) -> dict[str, Any]:

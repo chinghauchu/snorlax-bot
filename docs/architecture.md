@@ -16,7 +16,7 @@ From public Grok Bot docs and the Aug 2026 launch:
 | Message a bot like a coworker | `POST /v1/agents/{id}/messages` (SSE) |
 | Files, shell, web on a computer | v0.5: runtime tools in a workspace jail; v0.6: thin file-tree pane |
 | One user-scoped computer shared by all bots | Later: one sandbox on the Spark, shared files/logins, per-bot screen |
-| Skills (how) and routines (when) | v0.9: SKILL.md + cron (Asia/Taipei); v0.13: cron XOR webhook; v0.17: Add / Remove on the identity pane; v0.18: identity-pane skill markdown editor; fire LEFT 1:1 |
+| Skills (how) and routines (when) | v0.9: SKILL.md + cron (Asia/Taipei); v0.13: cron XOR webhook; v0.17: Add / Remove on the identity pane; v0.18: identity-pane skill markdown editor; v0.21: 1:1 composer `/` loads that SKILL.md (channel `/` stays text); fire LEFT 1:1 |
 | MCP + computer-use for sites without an API | v0.7: local/LAN MCP client; v0.10: connect chrome (`GET /v1/plugins` + `kind=connect`); v0.12: Settings Add custom; later: sandbox browser |
 | Question / approval moments | v0.8: question widgets (`kind=widget`); tools stay auto-run (no approval card) |
 | Desktop + iOS, same bots | Tauri desktop now; Swift iOS companion on the LAN |
@@ -326,6 +326,16 @@ Save as skill sheet (Edit skill family; Name 14pt; Save 44pt);
 (v0.18 list, no extra chrome) and returns to takeover with Record
 muted again. Keyboard / tap-click / pan-move / Done from v0.19 stay.
 Record only inside a takeover session. Channel 409.
+
+v0.21: composer `/` skill autocomplete. Runtime + desktop + iOS. 1:1
+agent composer only. `/` at a token start opens the existing `@`
+typeahead overlay (240px / 240pt, `--bg-elevated`, 1px border, 8px /
+8pt radius; rows 36px / 44pt; name 14px / 14pt; no avatar; filter by
+name). Pick inserts `/name` as plain text. Send injects that agent's
+SKILL.md into the 1:1 turn (`/slug` or `/Name`). Unknown `/foo` stays
+plain text. Channel `/` is plain text — no popup, no load path. Empty
+list or no match: no popup. Typeahead is existing GET `/skills`. No
+new HTTP. OpenAPI stays 0.18.0. Out: marketplace, blank New, `@skill`.
 
 ## Inference interface
 
