@@ -6,6 +6,7 @@ export type AgentPatch = components["schemas"]["AgentPatch"];
 export type ChatMessage = components["schemas"]["Message"];
 export type MessageImage = components["schemas"]["ImageOut"];
 export type ImageIn = components["schemas"]["ImageIn"];
+export type Attachment = components["schemas"]["Attachment"];
 export type MessageDelta = components["schemas"]["MessageDelta"];
 export type ToolTrace = components["schemas"]["ToolTrace"];
 export type RuntimeHealth = components["schemas"]["Health"];

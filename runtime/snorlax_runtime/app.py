@@ -7,7 +7,7 @@ import secrets
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
-from fastapi import Body, Depends, FastAPI, HTTPException, Query, Request, status
+from fastapi import Body, Depends, FastAPI, File, HTTPException, Query, Request, UploadFile, status
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Response, StreamingResponse
@@ -32,6 +32,7 @@ from snorlax_runtime.schemas import (
     Agent,
     AgentCreate,
     AgentPatch,
+    Attachment,
     ComputerPreview,
     ComputerRecording,
     ComputerSession,
@@ -481,6 +482,15 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         except MentionError as exc:
             raise _error(422, exc.message) from exc
         images = [img.model_dump() for img in payload.images]
+        attachment_ids = [aid.strip() for aid in payload.attachmentIds if (aid or "").strip()]
+        if attachment_ids:
+            from snorlax_runtime.attachments import AttachmentError
+
+            try:
+                await store.lookup_pending_attachments(id, attachment_ids)
+            except AttachmentError as exc:
+                raise _error(422, exc.message) from exc
+        has_user_payload = bool((payload.content or "").strip() or attachment_ids)
         backend = request.app.state.backend
         stored_reply_to = None
         if is_group and payload.replyTo:
@@ -538,11 +548,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 manager = getattr(request.app.state, "mcp", None)
                 if manager is None or plugin_id not in manager.records:
                     raise _error(404, f"plugin {plugin_id!r} not found")
-        elif (payload.content or "").strip() and pending is not None:
+        elif has_user_payload and pending is not None:
             body = pending.get("widget") or {}
             if not body.get("dismissOnMoveOn"):
                 raise _error(409, PENDING_ERROR)
-        elif (payload.content or "").strip() and pending_connect is not None:
+        elif has_user_payload and pending_connect is not None:
             raise _error(409, CONNECT_PENDING_ERROR)
 
         async def events() -> AsyncIterator[bytes]:
@@ -552,6 +562,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 conversation=conversation,
                 content=payload.content or "",
                 images=images,
+                attachment_ids=attachment_ids,
                 mentions=mentions,
                 reply_to=payload.replyTo,
                 preferred_channel_id=payload.channelId,
@@ -1294,6 +1305,71 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             raise _error(404, f"Image {id!r} not found")
         mime, body = found
         return Response(content=body, media_type=mime)
+
+    @app.post(
+        "/v1/agents/{id}/attachments",
+        response_model=Attachment,
+        status_code=status.HTTP_201_CREATED,
+    )
+    async def post_attachment(
+        id: str,
+        request: Request,
+        file: UploadFile = File(...),
+        _: str = Depends(require_bearer),
+    ) -> Attachment:
+        from snorlax_runtime.attachments import (
+            ERR_EMPTY,
+            ERR_MAX,
+            MAX_ATTACHMENT_BYTES,
+            AttachmentError,
+            attachment_kind,
+        )
+
+        store: Store = request.app.state.store
+        conversation = await store.get_agent(id)
+        if conversation is None:
+            raise _error(404, f"Agent {id!r} not found")
+        length = request.headers.get("content-length")
+        if length and length.isdigit() and int(length) > MAX_ATTACHMENT_BYTES:
+            raise _error(422, ERR_MAX)
+        chunks: list[bytes] = []
+        total = 0
+        while True:
+            chunk = await file.read(64 * 1024)
+            if not chunk:
+                break
+            total += len(chunk)
+            if total > MAX_ATTACHMENT_BYTES:
+                raise _error(422, ERR_MAX)
+            chunks.append(chunk)
+        data = b"".join(chunks)
+        if not data:
+            raise _error(422, ERR_EMPTY)
+        name = (file.filename or "file").strip() or "file"
+        mime = (file.content_type or "application/octet-stream").split(";")[0].strip()
+        try:
+            kind = attachment_kind(mime, name)
+        except AttachmentError as exc:
+            raise _error(422, exc.message) from exc
+        row = await store.add_attachment(
+            conversation_id=id,
+            name=name,
+            mime=mime or "application/octet-stream",
+            data=data,
+            kind=kind,
+        )
+        return Attachment.model_validate(row)
+
+    @app.get("/v1/attachments/{id}")
+    async def get_attachment(
+        id: str, request: Request, _: str = Depends(require_bearer)
+    ) -> Response:
+        store: Store = request.app.state.store
+        found = await store.get_attachment_bytes(id)
+        if found is None:
+            raise _error(404, f"Attachment {id!r} not found")
+        mime, body, _name = found
+        return Response(content=body, media_type=mime or "application/octet-stream")
 
     return app
 

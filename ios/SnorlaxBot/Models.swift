@@ -120,13 +120,18 @@ extension Message {
         return raw
     }
 
-    static func optimisticUser(agentId: String, content: String) -> Message {
+    static func optimisticUser(
+        agentId: String,
+        content: String,
+        attachments: [Attachment] = []
+    ) -> Message {
         Message(
             id: "local-\(UUID().uuidString)",
             agentId: agentId,
             role: .user,
             content: content,
             images: [],
+            attachments: attachments,
             createdAt: Date(),
             senderId: "user",
             senderName: "User",
@@ -150,6 +155,7 @@ extension Message {
             role: .assistant,
             content: content,
             images: [],
+            attachments: [],
             createdAt: Date(),
             senderId: senderId,
             senderName: senderName,
@@ -157,6 +163,13 @@ extension Message {
             hop: 0,
             mentions: []
         )
+    }
+
+    var userRightAttachments: [Attachment] {
+        if !attachments.isEmpty { return attachments }
+        return images.map {
+            Attachment(id: $0.id, kind: .image, name: $0.id, url: $0.url, size: 0)
+        }
     }
 }
 
@@ -236,12 +249,49 @@ extension Routine {
     }
 }
 
-struct PendingImage: Sendable {
-    var mime: String
-    var data: Data
+struct PendingChatAttachment: Identifiable, Sendable {
+    var id: String
+    var kind: Attachment.Kind
+    var name: String
+    var url: String
+    var size: Int
+    var previewData: Data?
 
-    var asInput: ImageIn {
-        ImageIn(mime: mime, data: data.base64EncodedString())
+    var asAttachment: Attachment {
+        Attachment(id: id, kind: kind, name: name, url: url, size: size)
+    }
+}
+
+enum ChatAttachment {
+    static let maxBytes = 10 * 1024 * 1024
+    static let errMax = "Max 10MB."
+    static let errVideo = "Video isn’t supported yet."
+
+    static func clientError(name: String, mime: String, size: Int) -> String? {
+        let mime = mime.lowercased()
+        let lowered = name.lowercased()
+        if mime.hasPrefix("video/")
+            || lowered.hasSuffix(".mp4")
+            || lowered.hasSuffix(".mov")
+            || lowered.hasSuffix(".m4v")
+            || lowered.hasSuffix(".webm")
+            || lowered.hasSuffix(".avi")
+            || lowered.hasSuffix(".mkv")
+        {
+            return errVideo
+        }
+        if size > maxBytes { return errMax }
+        return nil
+    }
+
+    static func formatSize(_ bytes: Int) -> String {
+        if bytes < 1024 { return "\(bytes) B" }
+        if bytes < 1024 * 1024 { return "\(Int((Double(bytes) / 1024.0).rounded())) KB" }
+        let mb = Double(bytes) / (1024.0 * 1024.0)
+        if mb < 10 {
+            return String(format: "%.1f MB", mb)
+        }
+        return "\(Int(mb.rounded())) MB"
     }
 }
 

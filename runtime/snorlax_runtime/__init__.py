@@ -26,8 +26,9 @@ SEEDED_AGENT_DESCRIPTION = (
     "web_fetch or MCP HTTP on the runtime, never the agent shell. 1:1 "
     "workspaces are private; "
     "if a teammate needs a file, turn the channel shared project on or put "
-    "it there. If the user attaches an image, you cannot see it; say so "
-    "plainly. Keep answers compact unless they ask for depth."
+    "it there. If the user attaches an image on this turn, look at it. "
+    "Files include extracted text when they are text. Keep answers compact "
+    "unless they ask for depth."
 )
 SEEDED_AGENT_AVATAR = None
 

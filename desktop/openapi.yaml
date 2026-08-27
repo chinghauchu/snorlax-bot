@@ -520,6 +520,27 @@ info:
     Add. Isolation, report-back, widgets, markdown, MCP, computer
     preview/takeover/record, seed DELETE 204, Mac oMLX, no Mac folder
     picker, workspaceTree.ts stand. OpenAPI **0.18.0**.
+
+    v0.25: chat attachments. One impl PR covering runtime + desktop +
+    iOS. Spec rides this PR. **No second PR.** OpenAPI stays **0.18.0**.
+    POST /v1/agents/{id}/attachments (Bearer, multipart field `file`)
+    → 201 `{ id, kind, name, url, size }`. `{id}` is the same
+    conversation as /messages (kind=agent 1:1 or kind=channel). Missing
+    404. kind is `image` for image/* (not video), else `file`. url is
+    Bearer GET /v1/attachments/{id} (same host). Over 10MB → 422
+    `Max 10MB.`. video/* → 422 `Video isn’t supported yet.`. Empty
+    file 422. No /v1/chats/ resource. Message POST adds optional
+    `attachmentIds[]`. Empty content is ok if that list is non-empty.
+    Unknown or foreign ids → 422 (do not 404 the send). GET messages
+    include `attachments: [{ id, kind, name, url, size }]` on user-right
+    rows only; assistant rows are `[]`. Runtime includes them in that
+    turn (image bytes / file text). Existing MessageCreate
+    `images: [{ mime, data }]` and GET /v1/images/{id} stay (legacy
+    images persist off-model). Out: agent-sent attachments, video,
+    public/unauthed URLs, a second upload route. Isolation, report-back,
+    widgets, markdown, MCP, computer preview/takeover/record, seed
+    DELETE 204, Mac oMLX, no Mac folder picker, workspaceTree.ts
+    (never reintroduce computerPane.ts) stand. OpenAPI **0.18.0**.
   license:
     name: Apache-2.0
     identifier: Apache-2.0
@@ -726,7 +747,11 @@ paths:
     post:
       summary: Send a user message and stream agent replies
       description: |
-        SSE. Images are stored and returned; never forwarded to vLLM.
+        SSE. Legacy MessageCreate `images: [{ mime, data }]` are stored
+        and returned at GET /v1/images/{id}; they are never forwarded to
+        the model. v0.25 `attachmentIds` are included in that turn
+        (image kinds as image input; file kinds as filename + text
+        extract when text/*, else a short “user attached {name}” note).
         The runtime owns the tool loop (clients never send a tools payload).
         A question card ends that agent turn: no more tokens or tools after
         `kind=widget` until the user answers or dismisses. Tools still
@@ -1582,6 +1607,70 @@ paths:
         "404":
           $ref: "#/components/responses/Error"
 
+  /v1/agents/{id}/attachments:
+    parameters:
+      - $ref: "#/components/parameters/Id"
+    post:
+      summary: Upload a chat attachment
+      description: |
+        Bearer. Multipart field `file`. `{id}` is the same conversation
+        as POST /v1/agents/{id}/messages (kind=agent 1:1 or kind=channel).
+        Missing conversation 404. No /v1/chats/ resource. 201
+        `{ id, kind, name, url, size }`. kind is `image` for image/*
+        (not video), else `file`. url is GET /v1/attachments/{id} on
+        this host (Bearer). Over 10MB → 422 `Max 10MB.`. video/* → 422
+        `Video isn’t supported yet.`. Empty file 422. User-right only
+        this slice — bind via MessageCreate.attachmentIds on the next
+        send. Agent-sent attachments wait.
+      operationId: postAttachment
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file]
+              properties:
+                file:
+                  type: string
+                  format: binary
+      responses:
+        "201":
+          description: Created attachment
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Attachment"
+        "401":
+          $ref: "#/components/responses/Error"
+        "404":
+          $ref: "#/components/responses/Error"
+        "422":
+          $ref: "#/components/responses/Error"
+
+  /v1/attachments/{id}:
+    get:
+      summary: Fetch attachment bytes
+      description: |
+        Bearer. Supports Attachment.url / Message.attachments[].url.
+        Content-Type is the stored mime. 404 unknown. No unauthenticated
+        fetch. Not /v1/chats/.
+      operationId: getAttachment
+      parameters:
+        - $ref: "#/components/parameters/Id"
+      responses:
+        "200":
+          description: Attachment bytes
+          content:
+            application/octet-stream:
+              schema:
+                type: string
+                format: binary
+        "401":
+          $ref: "#/components/responses/Error"
+        "404":
+          $ref: "#/components/responses/Error"
+
   /v1/images/{id}:
     get:
       summary: Fetch persisted image bytes
@@ -1771,6 +1860,26 @@ components:
           type: string
           description: Base64 image bytes. Persisted; never sent to the model.
 
+    Attachment:
+      type: object
+      required: [id, kind, name, url, size]
+      properties:
+        id:
+          type: string
+        kind:
+          type: string
+          enum: [image, file]
+          description: image for image/* (not video); else file.
+        name:
+          type: string
+        url:
+          type: string
+          description: Bearer GET /v1/attachments/{id} on this host.
+        size:
+          type: integer
+          minimum: 0
+          description: Byte length.
+
     Mention:
       type: object
       required: [id, name]
@@ -1799,6 +1908,7 @@ components:
           role,
           content,
           images,
+          attachments,
           createdAt,
           senderId,
           senderName,
@@ -1831,6 +1941,13 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/ImageOut"
+        attachments:
+          type: array
+          items:
+            $ref: "#/components/schemas/Attachment"
+          description: |
+            User-right only this slice. Assistant rows are []. v0.25
+            uploads bound via attachmentIds. Not a list-endpoint wrapper.
         createdAt:
           type: string
           format: date-time
@@ -2035,8 +2152,9 @@ components:
           minLength: 0
           maxLength: 32000
           description: |
-            User text. Required unless widgetReply or connectReply. Empty
-            is allowed only for a widgetReply or connectReply post. A
+            User text. Required unless widgetReply, connectReply, or a
+            non-empty attachmentIds list (image-only / file-only send).
+            Empty is allowed for those posts. A
             normal send while a question is pending is 409 unless
             dismissOnMoveOn. A send while a connect card is pending is
             409 until connect or dismiss.
@@ -2044,6 +2162,16 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/ImageIn"
+        attachmentIds:
+          type: array
+          items:
+            type: string
+          description: |
+            Ids from POST /v1/agents/{id}/attachments on this same
+            conversation. Unknown or foreign ids 422 (do not 404 the
+            send). Empty content is ok if this list is non-empty.
+            Runtime includes them in that turn. Assistant rows never
+            persist attachments this slice.
         mentions:
           type: array
           items:

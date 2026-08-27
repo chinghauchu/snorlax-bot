@@ -3,6 +3,7 @@ import type {
   AgentPatch,
   ChatMessage,
   ImageIn,
+  Attachment,
   MessageDelta,
   Plugin,
   PluginAuth,
@@ -301,11 +302,13 @@ export async function sendMessage(
   extra?: {
     widgetReply?: { id: string; values?: string[]; dismissed?: boolean };
     connectReply?: { id?: string; dismissed?: boolean };
+    attachmentIds?: string[];
   },
 ): Promise<void> {
   const body: {
     content: string;
     images: ImageIn[];
+    attachmentIds?: string[];
     mentions?: string[];
     replyTo?: string;
     channelId?: string;
@@ -320,6 +323,7 @@ export async function sendMessage(
   if (channelId) body.channelId = channelId;
   if (extra?.widgetReply) body.widgetReply = extra.widgetReply;
   if (extra?.connectReply) body.connectReply = extra.connectReply;
+  if (extra?.attachmentIds?.length) body.attachmentIds = extra.attachmentIds;
   const response = await fetch(
     `${session.baseUrl}/v1/agents/${encodeURIComponent(agentId)}/messages`,
     {
@@ -344,6 +348,35 @@ export async function sendMessage(
     for (const chunk of chunks) dispatchSse(chunk, handlers);
   }
   if (buffer.trim()) dispatchSse(buffer, handlers);
+}
+
+export async function uploadAttachment(
+  session: Session,
+  agentId: string,
+  file: File,
+): Promise<Attachment> {
+  const body = new FormData();
+  body.append("file", file, file.name);
+  const response = await fetch(
+    `${session.baseUrl}/v1/agents/${encodeURIComponent(agentId)}/attachments`,
+    {
+      method: "POST",
+      headers: headers(session),
+      body,
+    },
+  );
+  return json<Attachment>(response);
+}
+
+export async function fetchAttachmentBlob(
+  session: Session,
+  url: string,
+): Promise<Blob> {
+  const response = await fetch(resolveMediaUrl(session.baseUrl, url), {
+    headers: headers(session),
+  });
+  if (!response.ok) throw await parseError(response);
+  return response.blob();
 }
 
 function dispatchSse(raw: string, handlers: StreamHandlers): void {

@@ -2,7 +2,11 @@
 
 Snorlax-Bot’s phone client. SwiftUI, iOS 18+, same locked `/v1` camelCase
 contract as desktop. Named agents, streaming transcript, muted tool traces,
-image previews that are **never** sent to the model. Question widgets
+image previews that are **never** sent to the model via legacy
+`images[]`. v0.25 `attachmentIds` images **are** included in that turn.
+Composer paperclip: Photos or Files. Pending chips wrap above the bar
+(56×56 image; 36px file; 44pt hit). User-right images stay 220×160;
+files are 36px name chips that open the Bearer URL. Question widgets
 render as LEFT cards in the speaking agent's streak (no extra sheet). Agent
 info sheet lists a 16:10 computer preview above routines (12pt labels,
 8pt radius, 12pt `Open` when `hasSandbox`; the shot is tappable) then routines (list + enable/pause

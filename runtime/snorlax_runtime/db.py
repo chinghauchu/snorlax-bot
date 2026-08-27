@@ -88,6 +88,10 @@ def image_url(image_id: str) -> str:
     return f"/v1/images/{image_id}"
 
 
+def attachment_url(attachment_id: str) -> str:
+    return f"/v1/attachments/{attachment_id}"
+
+
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS agents (
     id TEXT PRIMARY KEY,
@@ -155,6 +159,20 @@ CREATE TABLE IF NOT EXISTS routines (
 
 CREATE UNIQUE INDEX IF NOT EXISTS routines_webhook_key
 ON routines(webhook_key) WHERE webhook_key IS NOT NULL;
+
+CREATE TABLE IF NOT EXISTS attachments (
+    id TEXT PRIMARY KEY,
+    conversation_id TEXT NOT NULL,
+    message_id TEXT,
+    kind TEXT NOT NULL,
+    name TEXT NOT NULL,
+    mime TEXT NOT NULL,
+    size INTEGER NOT NULL,
+    storage_path TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    FOREIGN KEY (conversation_id) REFERENCES agents(id) ON DELETE CASCADE,
+    FOREIGN KEY (message_id) REFERENCES messages(id) ON DELETE CASCADE
+);
 """
 
 ROSTER_SEEDED_KEY = "roster_seeded"
@@ -165,11 +183,13 @@ class Store:
         self.data_dir = data_dir
         self.db_path = data_dir / DB_FILENAME
         self.images_dir = data_dir / "images"
+        self.attachments_dir = data_dir / "attachments"
         self._conn: aiosqlite.Connection | None = None
 
     async def connect(self) -> None:
         self.data_dir.mkdir(parents=True, exist_ok=True)
         self.images_dir.mkdir(parents=True, exist_ok=True)
+        self.attachments_dir.mkdir(parents=True, exist_ok=True)
         self._conn = await aiosqlite.connect(self.db_path)
         self._conn.row_factory = aiosqlite.Row
         await self._conn.execute("PRAGMA foreign_keys = ON")
@@ -857,6 +877,11 @@ class Store:
             "role": message["role"],
             "content": message["content"],
             "images": await self.list_images(message["id"]),
+            "attachments": (
+                await self.list_attachments(message["id"])
+                if (message.get("sender_id") or USER_SENDER_ID) == USER_SENDER_ID
+                else []
+            ),
             "createdAt": message["created_at"],
             "senderId": message.get("sender_id") or USER_SENDER_ID,
             "senderName": message.get("sender_name") or USER_SENDER_NAME,
@@ -904,6 +929,155 @@ class Store:
             return None
         return str(row["mime"]), path.read_bytes()
 
+    def _attachment_public(self, row: Any) -> dict[str, Any]:
+        return {
+            "id": row["id"],
+            "kind": row["kind"],
+            "name": row["name"],
+            "url": attachment_url(row["id"]),
+            "size": int(row["size"] or 0),
+        }
+
+    async def add_attachment(
+        self,
+        *,
+        conversation_id: str,
+        name: str,
+        mime: str,
+        data: bytes,
+        kind: str,
+    ) -> dict[str, Any]:
+        from snorlax_runtime.attachments import AttachmentError, ERR_EMPTY
+
+        if not data:
+            raise AttachmentError(ERR_EMPTY)
+        attachment_id = new_id("att")
+        created = utcnow()
+        path = self.attachments_dir / attachment_id
+        path.write_bytes(data)
+        await self.conn.execute(
+            "INSERT INTO attachments "
+            "(id, conversation_id, message_id, kind, name, mime, size, "
+            "storage_path, created_at) "
+            "VALUES (?, ?, NULL, ?, ?, ?, ?, ?, ?)",
+            (
+                attachment_id,
+                conversation_id,
+                kind,
+                name,
+                mime,
+                len(data),
+                str(path),
+                created,
+            ),
+        )
+        await self.conn.commit()
+        return {
+            "id": attachment_id,
+            "kind": kind,
+            "name": name,
+            "url": attachment_url(attachment_id),
+            "size": len(data),
+        }
+
+    async def get_attachment_bytes(
+        self, attachment_id: str
+    ) -> tuple[str, bytes, str] | None:
+        cur = await self.conn.execute(
+            "SELECT mime, storage_path, name FROM attachments WHERE id = ?",
+            (attachment_id,),
+        )
+        row = await cur.fetchone()
+        if row is None or not row["storage_path"]:
+            return None
+        path = Path(row["storage_path"])
+        if not path.is_file():
+            return None
+        return str(row["mime"]), path.read_bytes(), str(row["name"])
+
+    async def list_attachments(self, message_id: str) -> list[dict[str, Any]]:
+        cur = await self.conn.execute(
+            "SELECT id, kind, name, mime, size FROM attachments "
+            "WHERE message_id = ? ORDER BY created_at ASC",
+            (message_id,),
+        )
+        return [self._attachment_public(row) for row in await cur.fetchall()]
+
+    async def attachments_for_messages(
+        self, message_ids: list[str]
+    ) -> dict[str, list[dict[str, Any]]]:
+        if not message_ids:
+            return {}
+        placeholders = ",".join("?" * len(message_ids))
+        cur = await self.conn.execute(
+            "SELECT id, conversation_id, message_id, kind, name, mime, size, "
+            "storage_path FROM attachments "
+            f"WHERE message_id IN ({placeholders}) "
+            "ORDER BY created_at ASC",
+            tuple(message_ids),
+        )
+        out: dict[str, list[dict[str, Any]]] = {mid: [] for mid in message_ids}
+        for row in await cur.fetchall():
+            mid = str(row["message_id"] or "")
+            path = Path(row["storage_path"]) if row["storage_path"] else None
+            data = path.read_bytes() if path is not None and path.is_file() else b""
+            item = self._attachment_public(row)
+            item["mime"] = str(row["mime"])
+            item["data"] = data
+            out.setdefault(mid, []).append(item)
+        return out
+
+    async def lookup_pending_attachments(
+        self, conversation_id: str, ids: list[str]
+    ) -> list[dict[str, Any]]:
+        from snorlax_runtime.attachments import AttachmentError, ERR_UNKNOWN
+
+        if not ids:
+            return []
+        seen: set[str] = set()
+        ordered: list[str] = []
+        for raw in ids:
+            aid = (raw or "").strip()
+            if not aid or aid in seen:
+                continue
+            seen.add(aid)
+            ordered.append(aid)
+        if not ordered:
+            return []
+        placeholders = ",".join("?" * len(ordered))
+        cur = await self.conn.execute(
+            "SELECT id, conversation_id, message_id, kind, name, mime, size "
+            f"FROM attachments WHERE id IN ({placeholders})",
+            tuple(ordered),
+        )
+        rows = {str(row["id"]): row for row in await cur.fetchall()}
+        found: list[dict[str, Any]] = []
+        for aid in ordered:
+            row = rows.get(aid)
+            if row is None:
+                raise AttachmentError(ERR_UNKNOWN)
+            if str(row["conversation_id"]) != conversation_id:
+                raise AttachmentError(ERR_UNKNOWN)
+            if row["message_id"]:
+                raise AttachmentError(ERR_UNKNOWN)
+            found.append(self._attachment_public(row))
+        return found
+
+    async def bind_attachments(
+        self, conversation_id: str, message_id: str, ids: list[str]
+    ) -> list[dict[str, Any]]:
+        pending = await self.lookup_pending_attachments(conversation_id, ids)
+        if not pending:
+            return []
+        for row in pending:
+            await self.conn.execute(
+                "UPDATE attachments SET message_id = ? "
+                "WHERE id = ? AND conversation_id = ? AND message_id IS NULL",
+                (message_id, row["id"], conversation_id),
+            )
+        await self.conn.commit()
+        return await self.list_attachments(message_id)
+
     async def add_message(
         self,
         *,
@@ -911,6 +1085,7 @@ class Store:
         role: str,
         content: str,
         images: list[dict[str, Any]] | None = None,
+        attachment_ids: list[str] | None = None,
         message_id: str | None = None,
         sender_id: str | None = None,
         sender_name: str | None = None,
@@ -955,6 +1130,11 @@ class Store:
         stored_connect = (
             json.dumps(connect, ensure_ascii=False) if connect is not None else None
         )
+        pending_atts = []
+        if attachment_ids:
+            pending_atts = await self.lookup_pending_attachments(
+                agent_id, attachment_ids
+            )
         await self.conn.execute(
             "INSERT INTO messages "
             "(id, agent_id, role, content, created_at, sender_id, sender_name, "
@@ -987,6 +1167,12 @@ class Store:
         )
         for image in images or []:
             await self._add_image(message_id, image)
+        for row in pending_atts:
+            await self.conn.execute(
+                "UPDATE attachments SET message_id = ? "
+                "WHERE id = ? AND conversation_id = ? AND message_id IS NULL",
+                (message_id, row["id"], agent_id),
+            )
         await self.conn.commit()
         cur = await self.conn.execute(
             "SELECT * FROM messages WHERE id = ?", (message_id,)
@@ -1194,8 +1380,11 @@ class Store:
         *,
         thread_id: str | None = None,
         wake_pack: dict[str, Any] | None = None,
-    ) -> list[dict[str, str]]:
-        """Text-only history. Images are omitted on purpose (no VL)."""
+    ) -> list[dict[str, Any]]:
+        """Conversation history for the model. Attachment images/files on
+        user turns are included (image bytes / file text). Legacy
+        MessageCreate.images stay off-model.
+        """
         conversation = await self.get_agent(conversation_id)
         assert conversation is not None
         speaker = (
@@ -1266,7 +1455,7 @@ class Store:
                 f"{tools_preamble()}\n\n"
                 f"{speaker['description'] or ''}"
             ).strip()
-            messages: list[dict[str, str]] = [
+            messages: list[dict[str, Any]] = [
                 {"role": "system", "content": system},
             ]
             if thread_id:
@@ -1307,11 +1496,15 @@ class Store:
             )
             return messages
         cur = await self.conn.execute(
-            "SELECT sender_id, sender_name, role, content, kind, widget, connect FROM messages "
-            "WHERE agent_id = ? ORDER BY created_at ASC",
+            "SELECT id, sender_id, sender_name, role, content, kind, widget, connect "
+            "FROM messages WHERE agent_id = ? ORDER BY created_at ASC",
             (conversation_id,),
         )
-        for row in await cur.fetchall():
+        rows = list(await cur.fetchall())
+        by_msg = await self.attachments_for_messages(
+            [str(row["id"]) for row in rows]
+        )
+        for row in rows:
             sender = row["sender_id"]
             if not is_group and sender not in {USER_SENDER_ID, who}:
                 continue
@@ -1320,30 +1513,42 @@ class Store:
                 "handoff",
             }:
                 continue
-            self._append_turn(messages, row, who)
+            self._append_turn(
+                messages, row, who, attachments=by_msg.get(str(row["id"])) or []
+            )
         return messages
 
     async def _append_thread_turns(
         self,
-        messages: list[dict[str, str]],
+        messages: list[dict[str, Any]],
         conversation_id: str,
         thread_id: str,
         who: str,
     ) -> None:
         root_id = await self.resolve_thread_root(conversation_id, thread_id)
         cur = await self.conn.execute(
-            "SELECT sender_id, sender_name, role, content, kind, widget, connect FROM messages "
-            "WHERE agent_id = ? AND (id = ? OR reply_to = ?) "
+            "SELECT id, sender_id, sender_name, role, content, kind, widget, connect "
+            "FROM messages WHERE agent_id = ? AND (id = ? OR reply_to = ?) "
             "ORDER BY created_at ASC",
             (conversation_id, root_id, root_id),
         )
-        for row in await cur.fetchall():
+        rows = list(await cur.fetchall())
+        by_msg = await self.attachments_for_messages(
+            [str(row["id"]) for row in rows]
+        )
+        for row in rows:
             if (row["kind"] or "message") in {"handoff", "tool"}:
                 continue
-            self._append_turn(messages, row, who)
+            self._append_turn(
+                messages, row, who, attachments=by_msg.get(str(row["id"])) or []
+            )
 
     def _append_turn(
-        self, messages: list[dict[str, str]], row: Any, who: str
+        self,
+        messages: list[dict[str, Any]],
+        row: Any,
+        who: str,
+        attachments: list[dict[str, Any]] | None = None,
     ) -> None:
         sender = row["sender_id"]
         kind = row["kind"] if "kind" in row.keys() else "message"
@@ -1401,15 +1606,12 @@ class Store:
             return
         if sender == who:
             messages.append({"role": "assistant", "content": body})
-        elif sender == USER_SENDER_ID:
-            messages.append({"role": "user", "content": body})
-        else:
-            messages.append(
-                {
-                    "role": "user",
-                    "content": f"{row['sender_name']}: {body}",
-                }
-            )
+            return
+        from snorlax_runtime.attachments import apply_to_user_content
+
+        text = body if sender == USER_SENDER_ID else f"{row['sender_name']}: {body}"
+        content = apply_to_user_content(text, attachments or [])
+        messages.append({"role": "user", "content": content})
 
 
 def dump_json(value: Any) -> str:

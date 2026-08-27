@@ -120,6 +120,14 @@ Catalog Add is existing `POST /v1/plugins`. Omit a row when that kind
 is already in `GET /v1/plugins`. Both installed → 200 `[]`. Not a
 store. OpenAPI stays 0.18.0.
 
+v0.25: `POST /v1/agents/{id}/attachments` (Bearer, multipart field
+`file`) → 201 `{ id, kind, name, url, size }`. `url` is Bearer
+`GET /v1/attachments/{id}`. Over 10MB or `video/*` → 422. Message POST
+adds `attachmentIds[]`; empty content is ok if that list is non-empty.
+GET message grows `attachments` on user-right only. Runtime includes
+them in that turn. Legacy `{ mime, data }` images stay off-model. No
+`/v1/chats/` resource. OpenAPI stays 0.18.0.
+
 ## MCP (`mcp.json`)
 
 The runtime is the MCP client. Desktop and iOS never speak MCP. Put

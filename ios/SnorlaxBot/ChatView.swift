@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 import SwiftUI
 import PhotosUI
+import UniformTypeIdentifiers
+import UIKit
 
 struct ChatView: View {
     let agentID: String
@@ -257,6 +259,9 @@ private struct ComposerBar: View {
     var focused: FocusState<Bool>.Binding
     @Environment(AppModel.self) private var model
     @State private var pickerItem: PhotosPickerItem?
+    @State private var attachMenu = false
+    @State private var showPhotos = false
+    @State private var showFiles = false
 
     private var mentionQuery: String? {
         let draft = model.draft
@@ -268,25 +273,27 @@ private struct ComposerBar: View {
         return String(after)
     }
 
+    private var canSend: Bool {
+        let trimmed = model.draft.trimmingCharacters(in: .whitespacesAndNewlines)
+        return model.canCompose
+            && model.attachError == nil
+            && (!trimmed.isEmpty || !model.pendingAttachments.isEmpty)
+    }
+
     var body: some View {
         @Bindable var model = model
         VStack(alignment: .leading, spacing: 8) {
-            if let pending = model.pendingImage, let uiImage = UIImage(data: pending.data) {
-                HStack {
-                    Image(uiImage: uiImage)
-                        .resizable()
-                        .scaledToFill()
-                        .frame(width: 48, height: 48)
-                        .clipShape(RoundedRectangle(cornerRadius: 8))
-                    Spacer()
-                    Button {
-                        model.pendingImage = nil
-                    } label: {
-                        Image(systemName: "xmark.circle.fill")
-                            .foregroundStyle(.secondary)
+            if !model.pendingAttachments.isEmpty {
+                FlowWrap(spacing: 6) {
+                    ForEach(model.pendingAttachments) { row in
+                        pendingChip(row)
                     }
-                    .accessibilityLabel("Remove image")
                 }
+            }
+            if let error = model.attachError, !error.isEmpty {
+                Text(error)
+                    .font(.system(size: 12))
+                    .foregroundStyle(Color.red)
             }
             if !isChannel, model.skillMenuOpen() {
                 let candidates = model.skillCandidates()
@@ -344,13 +351,19 @@ private struct ComposerBar: View {
                 }
             }
             HStack(alignment: .bottom, spacing: 8) {
-                PhotosPicker(selection: $pickerItem, matching: .images) {
-                    Image(systemName: "photo")
-                        .font(.system(size: 18))
-                        .frame(width: 36, height: 36)
+                Button {
+                    attachMenu = true
+                } label: {
+                    Image(systemName: "paperclip")
+                        .font(.system(size: 16))
+                        .frame(width: 44, height: 44)
                 }
                 .disabled(!model.canCompose)
-                .accessibilityLabel("Attach image")
+                .accessibilityLabel("Attach")
+                .confirmationDialog("Attach", isPresented: $attachMenu) {
+                    Button("Photos") { showPhotos = true }
+                    Button("Files") { showFiles = true }
+                }
 
                 ComposerTextView(
                     text: $model.draft,
@@ -368,7 +381,7 @@ private struct ComposerBar: View {
                     Image(systemName: "arrow.up.circle.fill")
                         .font(.system(size: 28))
                 }
-                .disabled(!model.canCompose || model.draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                .disabled(!canSend)
                 .accessibilityLabel("Send")
             }
             if let error = model.composerError, !error.isEmpty {
@@ -380,18 +393,137 @@ private struct ComposerBar: View {
         .padding(.horizontal, 12)
         .padding(.vertical, 8)
         .background(.bar)
+        .photosPicker(isPresented: $showPhotos, selection: $pickerItem, matching: .images)
+        .fileImporter(isPresented: $showFiles, allowedContentTypes: [.item], allowsMultipleSelection: false) { result in
+            if case .success(let url) = result {
+                Task { await loadFile(url) }
+            }
+        }
         .onChange(of: pickerItem) { _, item in
             guard let item else { return }
-            Task { await load(item) }
+            Task { await loadPhoto(item) }
         }
     }
 
-    private func load(_ item: PhotosPickerItem) async {
+    @ViewBuilder
+    private func pendingChip(_ row: PendingChatAttachment) -> some View {
+        if row.kind == .image, let data = row.previewData, let uiImage = UIImage(data: data) {
+            ZStack(alignment: .topTrailing) {
+                Image(uiImage: uiImage)
+                    .resizable()
+                    .scaledToFill()
+                    .frame(width: 56, height: 56)
+                    .clipShape(RoundedRectangle(cornerRadius: 8))
+                Button {
+                    model.removePending(id: row.id)
+                } label: {
+                    Image(systemName: "xmark")
+                        .font(.system(size: 9, weight: .bold))
+                        .frame(width: 20, height: 20)
+                        .contentShape(Rectangle())
+                }
+                .frame(width: 44, height: 44)
+                .accessibilityLabel("Remove \(row.name)")
+            }
+            .frame(width: 56, height: 56)
+        } else {
+            HStack(spacing: 6) {
+                VStack(alignment: .leading, spacing: 0) {
+                    Text(row.name)
+                        .font(.system(size: 13))
+                        .lineLimit(1)
+                    Text(ChatAttachment.formatSize(row.size))
+                        .font(.system(size: 12))
+                        .foregroundStyle(.secondary)
+                }
+                Button {
+                    model.removePending(id: row.id)
+                } label: {
+                    Image(systemName: "xmark")
+                        .font(.system(size: 9, weight: .bold))
+                        .frame(width: 20, height: 20)
+                        .contentShape(Rectangle())
+                }
+                .frame(width: 44, height: 44)
+                .accessibilityLabel("Remove \(row.name)")
+            }
+            .padding(.leading, 10)
+            .frame(height: 36)
+            .frame(minHeight: 44)
+            .background(
+                RoundedRectangle(cornerRadius: 8)
+                    .stroke(Color(uiColor: .separator), lineWidth: 1)
+            )
+        }
+    }
+
+    private func loadPhoto(_ item: PhotosPickerItem) async {
         guard let data = try? await item.loadTransferable(type: Data.self) else { return }
+        let mime = data.sniffedImageMIME
         await MainActor.run {
-            model.pendingImage = PendingImage(mime: data.sniffedImageMIME, data: data)
             pickerItem = nil
         }
+        await model.addPendingFile(name: "photo", mime: mime, data: data)
+    }
+
+    private func loadFile(_ url: URL) async {
+        let accessed = url.startAccessingSecurityScopedResource()
+        defer { if accessed { url.stopAccessingSecurityScopedResource() } }
+        guard let data = try? Data(contentsOf: url) else { return }
+        let mime = UTType(filenameExtension: url.pathExtension)?.preferredMIMEType
+            ?? "application/octet-stream"
+        await model.addPendingFile(name: url.lastPathComponent, mime: mime, data: data)
+    }
+}
+
+private struct FlowWrap: Layout {
+    var spacing: CGFloat = 6
+
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+        arrange(proposal: proposal, subviews: subviews).size
+    }
+
+    func placeSubviews(
+        in bounds: CGRect,
+        proposal: ProposedViewSize,
+        subviews: Subviews,
+        cache: inout ()
+    ) {
+        let result = arrange(
+            proposal: ProposedViewSize(width: bounds.width, height: bounds.height),
+            subviews: subviews
+        )
+        for (subview, origin) in zip(subviews, result.origins) {
+            subview.place(
+                at: CGPoint(x: bounds.minX + origin.x, y: bounds.minY + origin.y),
+                proposal: .unspecified
+            )
+        }
+    }
+
+    private func arrange(
+        proposal: ProposedViewSize,
+        subviews: Subviews
+    ) -> (size: CGSize, origins: [CGPoint]) {
+        let maxWidth = proposal.width ?? .infinity
+        var origins: [CGPoint] = []
+        var x: CGFloat = 0
+        var y: CGFloat = 0
+        var rowHeight: CGFloat = 0
+        var width: CGFloat = 0
+        for subview in subviews {
+            let size = subview.sizeThatFits(.unspecified)
+            if x > 0, x + size.width > maxWidth {
+                x = 0
+                y += rowHeight + spacing
+                rowHeight = 0
+            }
+            origins.append(CGPoint(x: x, y: y))
+            rowHeight = max(rowHeight, size.height)
+            x += size.width + spacing
+            width = max(width, x - spacing)
+        }
+        return (CGSize(width: width, height: y + rowHeight), origins)
     }
 }
 
@@ -403,6 +535,8 @@ private struct MessageBubble: View {
     var threadRoot = false
     var toolTraces: [LiveToolTrace] = []
     var onJump: ((HandoffRef) -> Void)?
+    @Environment(AppModel.self) private var model
+    @State private var shareURL: URL?
 
     private var isUser: Bool { message.isFromUser }
 
@@ -488,7 +622,7 @@ private struct MessageBubble: View {
                 HStack(alignment: .top, spacing: 0) {
                     Spacer(minLength: 48)
                     VStack(alignment: .leading, spacing: 6) {
-                        messageImages
+                        userAttachments
                         if !message.content.isEmpty {
                             MentionLabel(text: message.displayContent, names: agents.filter { !$0.isChannel }.map(\.name), links: true)
                                 .font(.system(size: 14))
@@ -500,6 +634,14 @@ private struct MessageBubble: View {
                     .background(Color.accentColor.opacity(0.22), in: RoundedRectangle(cornerRadius: 16))
                 }
                 .padding(.horizontal, 12)
+                .sheet(isPresented: Binding(
+                    get: { shareURL != nil },
+                    set: { if !$0 { shareURL = nil } }
+                )) {
+                    if let shareURL {
+                        AttachmentShareSheet(url: shareURL)
+                    }
+                }
             } else {
                 VStack(alignment: .leading, spacing: 6) {
                     messageImages
@@ -534,22 +676,78 @@ private struct MessageBubble: View {
     }
 
     @ViewBuilder
+    private var userAttachments: some View {
+        let atts = message.userRightAttachments
+        let images = atts.filter { $0.kind == .image }
+        let files = atts.filter { $0.kind == .file }
+        ForEach(images) { image in
+            RemoteImage(urlString: image.url, mime: "image/*")
+                .frame(maxWidth: 220, maxHeight: 160)
+                .clipShape(RoundedRectangle(cornerRadius: 8))
+        }
+        if images.isEmpty {
+            ForEach(Array(localPreviews.enumerated()), id: \.offset) { _, data in
+                if let image = UIImage(data: data) {
+                    Image(uiImage: image)
+                        .resizable()
+                        .scaledToFit()
+                        .frame(maxWidth: 220, maxHeight: 160)
+                        .clipShape(RoundedRectangle(cornerRadius: 8))
+                }
+            }
+        }
+        ForEach(files) { file in
+            Button {
+                Task {
+                    if let url = await model.openAttachment(file) {
+                        shareURL = url
+                    }
+                }
+            } label: {
+                Text(file.name)
+                    .font(.system(size: 13))
+                    .foregroundStyle(.primary)
+                    .lineLimit(1)
+                    .padding(.horizontal, 10)
+                    .frame(height: 36)
+                    .frame(minHeight: 44)
+            }
+            .buttonStyle(.plain)
+            .background(
+                RoundedRectangle(cornerRadius: 8)
+                    .stroke(Color(uiColor: .separator), lineWidth: 1)
+            )
+            .accessibilityLabel(file.name)
+        }
+    }
+
+    @ViewBuilder
     private var messageImages: some View {
         ForEach(Array(localPreviews.enumerated()), id: \.offset) { _, data in
             if let image = UIImage(data: data) {
                 Image(uiImage: image)
                     .resizable()
                     .scaledToFit()
-                    .frame(maxWidth: 220, maxHeight: 220)
-                    .clipShape(RoundedRectangle(cornerRadius: 12))
+                    .frame(maxWidth: 220, maxHeight: 160)
+                    .clipShape(RoundedRectangle(cornerRadius: 8))
             }
         }
         ForEach(message.images) { image in
             RemoteImage(urlString: image.url, mime: image.mime)
-                .frame(maxWidth: 220, maxHeight: 220)
-                .clipShape(RoundedRectangle(cornerRadius: 12))
+                .frame(maxWidth: 220, maxHeight: 160)
+                .clipShape(RoundedRectangle(cornerRadius: 8))
         }
     }
+}
+
+private struct AttachmentShareSheet: UIViewControllerRepresentable {
+    let url: URL
+
+    func makeUIViewController(context: Context) -> UIActivityViewController {
+        UIActivityViewController(activityItems: [url], applicationActivities: nil)
+    }
+
+    func updateUIViewController(_ uiViewController: UIActivityViewController, context: Context) {}
 }
 
 private struct HandoffTimelineRow: View {
