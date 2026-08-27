@@ -6,7 +6,7 @@ from pathlib import Path
 from tests.conftest import AUTH
 
 
-FORBIDDEN = ("instructions", "created_at", "attachments", "AgentList")
+FORBIDDEN = ("instructions", "created_at", "AgentList")
 
 
 def test_protocol_openapi_is_locked_v0_contract() -> None:
@@ -66,6 +66,13 @@ def test_protocol_openapi_is_locked_v0_contract() -> None:
     assert "/v1/plugins/{id}/disconnect" not in text
     assert "PluginCatalogEntry" in text
     assert "v0.24" in text
+    assert "v0.25" in text
+    assert "/v1/agents/{id}/attachments" in text
+    assert "/v1/attachments/{id}" in text
+    assert "/v1/chats/{id}" not in text
+    assert "attachmentIds" in text
+    assert "Max 10MB." in text
+    assert "Video isn’t supported yet." in text
     assert "No separate disconnect" in text or "uninstall plus disconnect" in text
     assert "PluginCreate" in text
     assert 'transport: "stdio" | "url"' in text or "transport: \"stdio\"" in text or "enum: [stdio, url]" in text
@@ -197,7 +204,7 @@ def test_protocol_openapi_is_locked_v0_contract() -> None:
 
 def test_message_content_stays_a_string_no_blocks() -> None:
     import yaml
-    from snorlax_runtime.schemas import Message, MessageDelta
+    from snorlax_runtime.schemas import Message, MessageCreate, MessageDelta
 
     root = Path(__file__).resolve().parents[2]
     doc = yaml.safe_load(
@@ -213,6 +220,11 @@ def test_message_content_stays_a_string_no_blocks() -> None:
     assert "widget" in props
     assert "connect" in props
     assert "routineName" in props
+    assert "attachments" in props
+    assert "attachments" in Message.model_fields
+    assert "attachmentIds" in MessageCreate.model_fields
+    assert "attachments" in props
+    assert "attachmentIds" in MessageCreate.model_fields
     assert Message.model_fields["content"].annotation is str
     assert MessageDelta.model_fields["delta"].annotation is str
     assert "widget" in Message.model_fields

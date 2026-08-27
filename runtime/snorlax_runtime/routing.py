@@ -374,6 +374,7 @@ async def run_user_turn(
     connect_reply: dict[str, Any] | None = None,
     resume_connect: dict[str, Any] | None = None,
     auth_base_url: str | None = None,
+    attachment_ids: list[str] | None = None,
 ) -> AsyncIterator[tuple[str, dict[str, Any]]]:
     """Persist the user message, then route hop-0 and peer work.
 
@@ -409,7 +410,7 @@ async def run_user_turn(
     pending_connect_row = await store.pending_connect(
         origin_id, thread_id=stored_reply_to if is_group else None
     )
-    persist_user = bool((content or "").strip())
+    persist_user = bool((content or "").strip() or attachment_ids)
     wake_agent = False
     resolved_connect: dict[str, Any] | None = None
     if resume_connect is not None:
@@ -527,6 +528,7 @@ async def run_user_turn(
             role="user",
             content=content,
             images=images,
+            attachment_ids=attachment_ids,
             sender_id=USER_SENDER_ID,
             sender_name=USER_SENDER_NAME,
             sender_avatar=None,

@@ -10,6 +10,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from snorlax_runtime.attachments import content_text
+
 SKILL_FILENAME = "SKILL.md"
 SKILLS_DIRNAME = "skills"
 SOURCE_WORKSPACE = "workspace"
@@ -226,7 +228,7 @@ def skill_ask_from_turn(
     for item in reversed(transcript or []):
         if item.get("role") != "user":
             continue
-        content = str(item.get("content") or "")
+        content = content_text(item.get("content"))
         stripped = content.lstrip()
         if stripped.startswith("{") and stripped.endswith("}"):
             continue

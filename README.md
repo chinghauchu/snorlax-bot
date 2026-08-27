@@ -27,6 +27,7 @@ skills and cron/webhook/Slack/GitHub routines (Add / Remove + enable/pause + Cop
 (Settings plugins list + `kind=connect` card) + assistant markdown +
 MCP Add custom (Settings POST / DELETE; no separate disconnect) +
 curated plugin catalog (Settings Catalog Slack/GitHub Add; not a store) +
+chat attachments (composer paperclip / drop; user-right image + file chips; `attachmentIds` in that turn) +
 identity-pane Box computer preview (Bearer PNG) + desktop Box takeover
 (Open / Done; pointer/key in 1280×800) + teach-a-task (Record / Stop /
 Save as skill inside takeover) + skill markdown editor (identity-pane
@@ -199,13 +200,14 @@ export SNORLAX_MODEL=meta-llama/Llama-3.3-70B-Instruct-FP8
 snorlax-runtime
 ```
 
-Default Spark model is **70B-class FP8**, config-swappable. Images may be
-attached and persisted; they are **not** sent to the model in v0 (no vision
-default).
+Default Spark model is **70B-class FP8**, config-swappable. v0.25
+`attachmentIds` images are included in that turn; legacy
+`MessageCreate.images` persist off-model. Video and agent-sent
+attachments wait.
 
 ## v0 vs later
 
-See [ROADMAP.md](ROADMAP.md). Short version: v0.24 is named agents plus
+See [ROADMAP.md](ROADMAP.md). Short version: v0.25 is named agents plus
 runtime-owned file/shell/web tools in a `~/.snorlax-bot` sandbox, a
 thin desktop Computer pane over that sandbox, a runtime MCP client
 (stdio + LAN from `mcp.json`), connect chrome (`GET /v1/plugins` +
@@ -219,7 +221,9 @@ teach-a-task (Record inside takeover → SKILL.md), a skill markdown
 editor (identity-pane Edit sheet), blank New skill (`POST { name, body }`),
 iOS Open/Record, and
 1:1 composer `/` skill autocomplete (Send loads SKILL.md; channel `/`
-stays plain text).
+stays plain text), and
+v0.25 chat attachments (composer paperclip / drop; user-right image +
+file chips; `POST /v1/agents/{id}/attachments` + `attachmentIds`).
 Later: full sandbox computer GUI, MCP marketplace catalog,
 Slack/GitHub inbound listeners.
 

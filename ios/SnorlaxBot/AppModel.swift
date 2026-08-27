@@ -47,7 +47,8 @@ final class AppModel {
             }
         }
     }
-    var pendingImage: PendingImage?
+    var pendingAttachments: [PendingChatAttachment] = []
+    var attachError: String?
     var isSending = false
     var errorMessage: String?
     var composerError: String?
@@ -155,6 +156,8 @@ final class AppModel {
         }
         selectedAgentID = id
         threadID = thread
+        attachError = nil
+        pendingAttachments = []
         if push, navigationPath.last != id {
             navigationPath = [id]
         }
@@ -604,18 +607,25 @@ final class AppModel {
     func send() async {
         guard let client, let agent = selectedAgent else { return }
         let content = draft.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !content.isEmpty else { return }
-        let image = pendingImage
+        let chips = pendingAttachments
+        guard !content.isEmpty || !chips.isEmpty else { return }
+        guard attachError == nil else { return }
         let mentionIDs = mentionIDs(in: content)
         draft = ""
         pendingComposerCaret = 0
         pickedMentions = [:]
-        pendingImage = nil
+        pendingAttachments = []
+        attachError = nil
         composerError = nil
 
-        let user = Message.optimisticUser(agentId: agent.id, content: content)
-        if let data = image?.data {
-            localPreviews[user.id] = [data]
+        let user = Message.optimisticUser(
+            agentId: agent.id,
+            content: content,
+            attachments: chips.map(\.asAttachment)
+        )
+        let previews = chips.compactMap(\.previewData)
+        if !previews.isEmpty {
+            localPreviews[user.id] = previews
         }
         messages.append(user)
         toolTraces = []
@@ -626,10 +636,11 @@ final class AppModel {
             try await client.sendMessage(
                 agentId: agent.id,
                 content: content,
-                images: image.map { [$0.asInput] } ?? [],
+                images: [],
                 mentions: mentionIDs,
                 replyTo: agent.isChannel ? threadID : nil,
-                channelId: agent.isChannel ? nil : lastExtraChannelID
+                channelId: agent.isChannel ? nil : lastExtraChannelID,
+                attachmentIds: chips.map(\.id)
             ) { [weak self] event in
                 Task { @MainActor in
                     self?.handle(event, agentId: agent.id)
@@ -652,6 +663,7 @@ final class AppModel {
                 composerError = message
                 messages.removeAll { $0.id == user.id }
                 draft = content
+                pendingAttachments = chips
             } else {
                 errorMessage = error.localizedDescription
             }
@@ -1016,6 +1028,58 @@ final class AppModel {
 
     var composerChipNames: [String] {
         Array(pickedMentions.keys)
+    }
+
+    func addPendingFile(name: String, mime: String, data: Data) async {
+        guard let client, let agent = selectedAgent else { return }
+        if let err = ChatAttachment.clientError(name: name, mime: mime, size: data.count) {
+            attachError = err
+            return
+        }
+        attachError = nil
+        do {
+            let row = try await client.uploadAttachment(
+                agentId: agent.id,
+                fileName: name,
+                mime: mime,
+                data: data
+            )
+            let preview = row.kind == .image ? data : nil
+            pendingAttachments.append(
+                PendingChatAttachment(
+                    id: row.id,
+                    kind: row.kind,
+                    name: row.name,
+                    url: row.url,
+                    size: row.size,
+                    previewData: preview
+                )
+            )
+        } catch {
+            if let runtime = error as? RuntimeError, case .http(_, let message) = runtime {
+                attachError = message
+            } else {
+                attachError = error.localizedDescription
+            }
+        }
+    }
+
+    func removePending(id: String) {
+        pendingAttachments.removeAll { $0.id == id }
+        attachError = nil
+    }
+
+    func openAttachment(_ att: Attachment) async -> URL? {
+        guard let client, let url = client.resolve(att.url) else { return nil }
+        do {
+            let data = try await client.data(from: url)
+            let tmp = FileManager.default.temporaryDirectory.appendingPathComponent(att.name)
+            try data.write(to: tmp, options: .atomic)
+            return tmp
+        } catch {
+            composerError = error.localizedDescription
+            return nil
+        }
     }
 
     private func prunePreviews() {

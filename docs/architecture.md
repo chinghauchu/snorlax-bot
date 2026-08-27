@@ -373,6 +373,18 @@ header). Custom Add stays. `GET /v1/plugins` still `{ id, name, status }`
 only. OpenAPI stays 0.18.0. Out: public store, search, VNC, extra
 channel types. Never reintroduce `computerPane.ts`.
 
+v0.25: chat attachments. Runtime + desktop + iOS.
+`POST /v1/agents/{id}/attachments` (Bearer, multipart field `file`) →
+201 `{ id, kind, name, url, size }`. `url` is Bearer
+`GET /v1/attachments/{id}`. Over 10MB or `video/*` → 422. Message POST
+adds `attachmentIds[]`; empty content is ok if that list is non-empty.
+GET message grows `attachments` on user-right only. Runtime includes
+them in that turn. Legacy `{ mime, data }` images stay off-model.
+Composer paperclip / desktop drop; pending chips wrap 6px; user-right
+220×160 images and 36px file chips. Channel and 1:1. OpenAPI stays
+0.18.0. No `/v1/chats/`. Out: agent-sent attachments, video, public
+URLs, VNC. Never reintroduce `computerPane.ts`.
+
 ## Inference interface
 
 ```text
@@ -386,8 +398,9 @@ generate(messages, tools?) -> async iter[text | tool_calls]
   with `stream: true` and a tools array). Distinct from vLLM. No Bearer to
   localhost by default.
 - `vllm` — Spark `POST {VLLM_BASE_URL}/chat/completions` with `stream: true`.
-  Only text `role`/`content` pairs (plus tool messages) are sent. Images stay
-  on disk.
+  Only text `role`/`content` pairs (plus tool messages) are sent, except
+  v0.25 `attachmentIds` image kinds which go as OpenAI `image_url` in
+  that turn. Legacy `MessageCreate.images` stay on disk.
 
 System prompt is assembled by the runtime from the agent’s `description`
 plus a tools preamble. The desktop cannot inject a hidden system prompt

@@ -124,7 +124,11 @@ export interface paths {
         put?: never;
         /**
          * Send a user message and stream agent replies
-         * @description SSE. Images are stored and returned; never forwarded to vLLM.
+         * @description SSE. Legacy MessageCreate `images: [{ mime, data }]` are stored
+         *     and returned at GET /v1/images/{id}; they are never forwarded to
+         *     the model. v0.25 `attachmentIds` are included in that turn
+         *     (image kinds as image input; file kinds as filename + text
+         *     extract when text/*, else a short “user attached {name}” note).
          *     The runtime owns the tool loop (clients never send a tools payload).
          *     A question card ends that agent turn: no more tokens or tools after
          *     `kind=widget` until the user answers or dismisses. Tools still
@@ -816,6 +820,58 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/agents/{id}/attachments": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["Id"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Upload a chat attachment
+         * @description Bearer. Multipart field `file`. `{id}` is the same conversation
+         *     as POST /v1/agents/{id}/messages (kind=agent 1:1 or kind=channel).
+         *     Missing conversation 404. No /v1/chats/ resource. 201
+         *     `{ id, kind, name, url, size }`. kind is `image` for image/*
+         *     (not video), else `file`. url is GET /v1/attachments/{id} on
+         *     this host (Bearer). Over 10MB → 422 `Max 10MB.`. video/* → 422
+         *     `Video isn’t supported yet.`. Empty file 422. User-right only
+         *     this slice — bind via MessageCreate.attachmentIds on the next
+         *     send. Agent-sent attachments wait.
+         */
+        post: operations["postAttachment"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/attachments/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Fetch attachment bytes
+         * @description Bearer. Supports Attachment.url / Message.attachments[].url.
+         *     Content-Type is the stored mime. 404 unknown. No unauthenticated
+         *     fetch. Not /v1/chats/.
+         */
+        get: operations["getAttachment"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/images/{id}": {
         parameters: {
             query?: never;
@@ -933,6 +989,19 @@ export interface components {
             /** @description Base64 image bytes. Persisted; never sent to the model. */
             data: string;
         };
+        Attachment: {
+            id: string;
+            /**
+             * @description image for image/* (not video); else file.
+             * @enum {string}
+             */
+            kind: "image" | "file";
+            name: string;
+            /** @description Bearer GET /v1/attachments/{id} on this host. */
+            url: string;
+            /** @description Byte length. */
+            size: number;
+        };
         Mention: {
             /** @description Agent id, or `everyone` for @everyone. */
             id: string;
@@ -962,6 +1031,11 @@ export interface components {
              */
             content: string;
             images: components["schemas"]["ImageOut"][];
+            /**
+             * @description User-right only this slice. Assistant rows are []. v0.25
+             *     uploads bound via attachmentIds. Not a list-endpoint wrapper.
+             */
+            attachments: components["schemas"]["Attachment"][];
             /** Format: date-time */
             createdAt: string;
             /** @description `user` or an agent id. Layout uses senderId === user → right; else left. */
@@ -1115,14 +1189,23 @@ export interface components {
         };
         MessageCreate: {
             /**
-             * @description User text. Required unless widgetReply or connectReply. Empty
-             *     is allowed only for a widgetReply or connectReply post. A
+             * @description User text. Required unless widgetReply, connectReply, or a
+             *     non-empty attachmentIds list (image-only / file-only send).
+             *     Empty is allowed for those posts. A
              *     normal send while a question is pending is 409 unless
              *     dismissOnMoveOn. A send while a connect card is pending is
              *     409 until connect or dismiss.
              */
             content?: string;
             images?: components["schemas"]["ImageIn"][];
+            /**
+             * @description Ids from POST /v1/agents/{id}/attachments on this same
+             *     conversation. Unknown or foreign ids 422 (do not 404 the
+             *     send). Empty content is ok if this list is non-empty.
+             *     Runtime includes them in that turn. Assistant rows never
+             *     persist attachments this slice.
+             */
+            attachmentIds?: string[];
             /**
              * @description Agent ids from typeahead chips. Unresolved `@text` is omitted
              *     and is not a mention. Unknown chip ids 422. Runtime also
@@ -2327,6 +2410,62 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["PluginAuth"];
+                };
+            };
+            401: components["responses"]["Error"];
+            404: components["responses"]["Error"];
+        };
+    };
+    postAttachment: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["Id"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": {
+                    /** Format: binary */
+                    file: string;
+                };
+            };
+        };
+        responses: {
+            /** @description Created attachment */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Attachment"];
+                };
+            };
+            401: components["responses"]["Error"];
+            404: components["responses"]["Error"];
+            422: components["responses"]["Error"];
+        };
+    };
+    getAttachment: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["Id"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Attachment bytes */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/octet-stream": string;
                 };
             };
             401: components["responses"]["Error"];

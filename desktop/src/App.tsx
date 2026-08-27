@@ -1,4 +1,5 @@
 import {
+  DragEvent,
   FormEvent,
   KeyboardEvent,
   MouseEvent,
@@ -34,6 +35,8 @@ import {
   patchSkill,
   resolveMediaUrl,
   sendMessage,
+  uploadAttachment,
+  fetchAttachmentBlob,
   startPluginAuth,
   waitUntilPluginConnected,
   openComputerSession,
@@ -127,6 +130,12 @@ import type {
   Skill,
   ThemePref,
 } from "./types";
+import {
+  attachmentClientError,
+  formatAttachmentSize,
+  userRightAttachments,
+  type PendingAttachment,
+} from "./attachments";
 
 const URL_KEY = "snorlax.runtimeUrl";
 const TOKEN_KEY = "snorlax.token";
@@ -170,12 +179,6 @@ const ACCENT_SWATCHES = [
   "#ff6b6b",
   "#f2f2f3",
 ];
-
-type PendingImage = {
-  mime: string;
-  data: string;
-  previewUrl: string;
-};
 
 type ContextMenu = { x: number; y: number; agent: Agent };
 
@@ -222,19 +225,6 @@ function describeError(err: unknown): string {
     return "Cannot reach the runtime. Check the Runtime URL in Settings.";
   }
   return err instanceof Error ? err.message : "Unknown error";
-}
-
-function fileToBase64(file: File): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onerror = () => reject(reader.error);
-    reader.onload = () => {
-      const result = String(reader.result ?? "");
-      const comma = result.indexOf(",");
-      resolve(comma >= 0 ? result.slice(comma + 1) : result);
-    };
-    reader.readAsDataURL(file);
-  });
 }
 
 function fileToDataUrl(file: File): Promise<string> {
@@ -380,7 +370,11 @@ export function App() {
     { id: string; summary: string; senderId?: string; senderName?: string }[]
   >([]);
   const [draft, setDraft] = useState("");
-  const [pendingImage, setPendingImage] = useState<PendingImage | null>(null);
+  const [pendingAttachments, setPendingAttachments] = useState<
+    PendingAttachment[]
+  >([]);
+  const [attachError, setAttachError] = useState<string | null>(null);
+  const [dropTarget, setDropTarget] = useState(false);
   const [busy, setBusy] = useState(false);
   const [composerError, setComposerError] = useState<string | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -747,6 +741,13 @@ export function App() {
     setActiveId(id);
     setThreadId(thread);
     setComposerError(null);
+    setAttachError(null);
+    setPendingAttachments((prev) => {
+      for (const row of prev) {
+        if (row.previewUrl) URL.revokeObjectURL(row.previewUrl);
+      }
+      return [];
+    });
     setProfileOpen(false);
     setProfileEditing(false);
     const agent = agents.find((a) => a.id === id);
@@ -1172,12 +1173,15 @@ export function App() {
     content: string;
     images?: ImageIn[];
     localImages?: ChatMessage["images"];
+    attachments?: ChatMessage["attachments"];
     mentionIds?: string[];
     optimisticUser?: boolean;
-  extra?: {
-    widgetReply?: { id: string; values?: string[]; dismissed?: boolean };
-    connectReply?: { id?: string; dismissed?: boolean };
-  };
+    restoreAttachments?: PendingAttachment[];
+    extra?: {
+      widgetReply?: { id: string; values?: string[]; dismissed?: boolean };
+      connectReply?: { id?: string; dismissed?: boolean };
+      attachmentIds?: string[];
+    };
   }) {
     if (!session || !active || busy) return;
     const content = opts.content;
@@ -1194,6 +1198,7 @@ export function App() {
         role: "user",
         content,
         images: localImages,
+        attachments: opts.attachments ?? [],
         createdAt: new Date().toISOString(),
         senderId: USER_SENDER_ID,
         senderName: "User",
@@ -1219,6 +1224,7 @@ export function App() {
                 role: "assistant",
                 content: delta,
                 images: [],
+                attachments: [],
                 createdAt: new Date().toISOString(),
                 senderId: sender?.senderId || active.id,
                 senderName: sender?.senderName || active.name,
@@ -1305,12 +1311,20 @@ export function App() {
         }
       }
       pickedMentions.current.clear();
+      if (opts.restoreAttachments) {
+        for (const row of opts.restoreAttachments) {
+          if (row.previewUrl) URL.revokeObjectURL(row.previewUrl);
+        }
+      }
     } catch (err) {
       if (err instanceof ApiError && (err.status === 422 || err.status === 409)) {
         setComposerError(err.message);
         if (userMsg) {
           setMessages((prev) => prev.filter((m) => m.id !== userMsg!.id));
           if (content) setDraft(content);
+          if (opts.restoreAttachments?.length) {
+            setPendingAttachments(opts.restoreAttachments);
+          }
         }
       } else {
         setComposerError(describeError(err));
@@ -1324,30 +1338,27 @@ export function App() {
   async function onSend() {
     if (!session || !active || busy) return;
     const content = draft.trim();
-    if (!content && !pendingImage) return;
-    if (!content) return;
+    const chips = pendingAttachments;
+    if (!content && chips.length === 0) return;
+    if (attachError) return;
     setDraft("");
     setComposerError(null);
-    const images: ImageIn[] = pendingImage
-      ? [{ mime: pendingImage.mime, data: pendingImage.data }]
-      : [];
-    const localImages = pendingImage
-      ? [
-          {
-            id: `local-img-${Date.now()}`,
-            mime: pendingImage.mime,
-            url: pendingImage.previewUrl,
-          },
-        ]
-      : [];
-    setPendingImage(null);
+    setAttachError(null);
+    setPendingAttachments([]);
     resizeComposer(true);
     await submitTurn({
       content,
-      images,
-      localImages,
+      attachments: chips.map(({ id, kind, name, url, size }) => ({
+        id,
+        kind,
+        name,
+        url,
+        size,
+      })),
       mentionIds: mentionIdsInText(content, pickedMentions.current),
       optimisticUser: true,
+      restoreAttachments: chips,
+      extra: { attachmentIds: chips.map((row) => row.id) },
     });
   }
 
@@ -1575,15 +1586,76 @@ export function App() {
     if (!reset) el.style.height = `${Math.min(el.scrollHeight, 160)}px`;
   }
 
+  async function addPendingFile(file: File) {
+    if (!session || !active) return;
+    const err = attachmentClientError(file);
+    if (err) {
+      setAttachError(err);
+      return;
+    }
+    setAttachError(null);
+    try {
+      const row = await uploadAttachment(session, active.id, file);
+      const previewUrl =
+        row.kind === "image" ? URL.createObjectURL(file) : undefined;
+      setPendingAttachments((prev) => [...prev, { ...row, previewUrl }]);
+    } catch (caught) {
+      setAttachError(
+        caught instanceof ApiError ? caught.message : describeError(caught),
+      );
+    }
+  }
+
   async function onPickFile(file: File | undefined) {
-    if (!file || !file.type.startsWith("image/")) return;
-    const data = await fileToBase64(file);
-    const previewUrl = URL.createObjectURL(file);
-    setPendingImage((prev) => {
-      if (prev) URL.revokeObjectURL(prev.previewUrl);
-      return { mime: file.type, data, previewUrl };
-    });
+    if (!file) return;
+    await addPendingFile(file);
     if (fileRef.current) fileRef.current.value = "";
+  }
+
+  function onComposerDragOver(event: DragEvent<HTMLElement>) {
+    event.preventDefault();
+    event.dataTransfer.dropEffect = "copy";
+    setDropTarget(true);
+  }
+
+  function onComposerDragLeave(event: DragEvent<HTMLElement>) {
+    const next = event.relatedTarget;
+    if (next instanceof Node && event.currentTarget.contains(next)) return;
+    setDropTarget(false);
+  }
+
+  async function onComposerDrop(event: DragEvent<HTMLElement>) {
+    event.preventDefault();
+    setDropTarget(false);
+    const files = Array.from(event.dataTransfer.files);
+    for (const file of files) {
+      await addPendingFile(file);
+    }
+  }
+
+  async function openAttachedFile(row: {
+    name: string;
+    url: string;
+  }) {
+    if (!session) return;
+    try {
+      const blob = await fetchAttachmentBlob(session, row.url);
+      const href = URL.createObjectURL(blob);
+      window.open(href, "_blank", "noopener");
+    } catch (caught) {
+      setComposerError(
+        caught instanceof ApiError ? caught.message : describeError(caught),
+      );
+    }
+  }
+
+  function removePending(id: string) {
+    setPendingAttachments((prev) => {
+      const found = prev.find((row) => row.id === id);
+      if (found?.previewUrl) URL.revokeObjectURL(found.previewUrl);
+      return prev.filter((row) => row.id !== id);
+    });
+    setAttachError(null);
   }
 
   async function onPickAvatar(file: File | undefined) {
@@ -1902,15 +1974,32 @@ export function App() {
                       />
                     ) : mine ? (
                       <div className="bubble user">
-                        {message.images.map((image) => (
-                          <AuthedImg
-                            key={image.id}
-                            className="bubble-image"
-                            src={resolveMediaUrl(session?.baseUrl ?? "", image.url)}
-                            session={session}
-                            alt=""
-                          />
-                        ))}
+                        {userRightAttachments(message)
+                          .filter((row) => row.kind === "image")
+                          .map((image) => (
+                            <AuthedImg
+                              key={image.id}
+                              className="bubble-image"
+                              src={resolveMediaUrl(
+                                session?.baseUrl ?? "",
+                                image.url,
+                              )}
+                              session={session}
+                              alt=""
+                            />
+                          ))}
+                        {userRightAttachments(message)
+                          .filter((row) => row.kind === "file")
+                          .map((file) => (
+                            <button
+                              key={file.id}
+                              type="button"
+                              className="file-chip"
+                              onClick={() => void openAttachedFile(file)}
+                            >
+                              {file.name}
+                            </button>
+                          ))}
                         {message.content ? (
                           <pre>
                             <MentionText
@@ -2017,23 +2106,49 @@ export function App() {
           </div>
         </div>
 
-        <footer className="composer" aria-hidden={takeoverOpen || undefined}>
-          {pendingImage ? (
-            <div className="attach-preview">
-              <img src={pendingImage.previewUrl} alt="Attachment preview" />
-              <button
-                type="button"
-                className="icon-btn tiny"
-                aria-label="Remove image"
-                onClick={() => {
-                  URL.revokeObjectURL(pendingImage.previewUrl);
-                  setPendingImage(null);
-                }}
-              >
-                ×
-              </button>
+        <footer
+          className={`composer${dropTarget ? " drop-target" : ""}`}
+          aria-hidden={takeoverOpen || undefined}
+          onDragOver={onComposerDragOver}
+          onDragEnter={onComposerDragOver}
+          onDragLeave={onComposerDragLeave}
+          onDrop={(event) => void onComposerDrop(event)}
+        >
+          {pendingAttachments.length ? (
+            <div className="pending-chips">
+              {pendingAttachments.map((row) =>
+                row.kind === "image" ? (
+                  <div key={row.id} className="pending-thumb">
+                    <img src={row.previewUrl} alt={row.name} />
+                    <button
+                      type="button"
+                      className="pending-x"
+                      aria-label={`Remove ${row.name}`}
+                      onClick={() => removePending(row.id)}
+                    >
+                      ×
+                    </button>
+                  </div>
+                ) : (
+                  <div key={row.id} className="pending-file">
+                    <span className="pending-file-name">{row.name}</span>
+                    <span className="pending-file-size">
+                      {formatAttachmentSize(row.size)}
+                    </span>
+                    <button
+                      type="button"
+                      className="pending-x"
+                      aria-label={`Remove ${row.name}`}
+                      onClick={() => removePending(row.id)}
+                    >
+                      ×
+                    </button>
+                  </div>
+                ),
+              )}
             </div>
           ) : null}
+          {attachError ? <p className="attach-error">{attachError}</p> : null}
           {skillMenuOpen ? (
             <ul className="typeahead skills" role="listbox" ref={skillTypeaheadRef}>
               {skillCandidates.map((candidate, index) => (
@@ -2083,7 +2198,7 @@ export function App() {
             <button
               type="button"
               className="icon-btn"
-              aria-label="Attach image"
+              aria-label="Attach file"
               disabled={composerDisabled}
               onClick={() => fileRef.current?.click()}
             >
@@ -2092,7 +2207,6 @@ export function App() {
             <input
               ref={fileRef}
               type="file"
-              accept="image/*"
               hidden
               onChange={(e) => void onPickFile(e.target.files?.[0])}
             />
@@ -2140,7 +2254,12 @@ export function App() {
               type="button"
               className="send"
               aria-label="Send"
-              disabled={composerDisabled || !draft.trim() || !active}
+              disabled={
+                composerDisabled ||
+                !active ||
+                Boolean(attachError) ||
+                (!draft.trim() && pendingAttachments.length === 0)
+              }
               onClick={() => void onSend()}
             >
               <SendIcon />
@@ -3326,7 +3445,7 @@ function AuthedImg({
 
 function Paperclip() {
   return (
-    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden>
+    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" aria-hidden>
       <path
         d="M21.44 11.05 12.25 20.24a6 6 0 1 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 1 1-2.82-2.83l8.49-8.48"
         stroke="currentColor"

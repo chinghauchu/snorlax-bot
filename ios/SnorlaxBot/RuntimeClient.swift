@@ -244,6 +244,45 @@ struct RuntimeClient: Sendable {
         return try await get("v1/agents/\(Self.encode(agentId))/messages", query: items)
     }
 
+    func uploadAttachment(
+        agentId: String,
+        fileName: String,
+        mime: String,
+        data: Data
+    ) async throws -> Attachment {
+        var request = try makeRequest(
+            "v1/agents/\(Self.encode(agentId))/attachments",
+            method: "POST"
+        )
+        let boundary = "Boundary-\(UUID().uuidString)"
+        request.setValue(
+            "multipart/form-data; boundary=\(boundary)",
+            forHTTPHeaderField: "Content-Type"
+        )
+        let safeName = fileName
+            .replacingOccurrences(of: "\"", with: "_")
+            .replacingOccurrences(of: "\r", with: "")
+            .replacingOccurrences(of: "\n", with: "")
+        let type = mime.isEmpty ? "application/octet-stream" : mime
+        var body = Data()
+        func append(_ text: String) {
+            body.append(Data(text.utf8))
+        }
+        append("--\(boundary)\r\n")
+        append("Content-Disposition: form-data; name=\"file\"; filename=\"\(safeName)\"\r\n")
+        append("Content-Type: \(type)\r\n\r\n")
+        body.append(data)
+        append("\r\n--\(boundary)--\r\n")
+        request.httpBody = body
+        let (responseData, response) = try await URLSession.shared.data(for: request)
+        try Self.throwIfNeeded(data: responseData, response: response, allowed: [201, 200])
+        do {
+            return try decoder.decode(Attachment.self, from: responseData)
+        } catch {
+            throw RuntimeError.decoding
+        }
+    }
+
     func sendMessage(
         agentId: String,
         content: String,
@@ -253,6 +292,7 @@ struct RuntimeClient: Sendable {
         channelId: String? = nil,
         widgetReply: WidgetReply? = nil,
         connectReply: ConnectReply? = nil,
+        attachmentIds: [String] = [],
         onEvent: @escaping @Sendable (StreamEvent) -> Void
     ) async throws {
         var request = try makeRequest(
@@ -261,6 +301,7 @@ struct RuntimeClient: Sendable {
             body: MessageCreate(
                 content: content,
                 images: images.isEmpty ? nil : images,
+                attachmentIds: attachmentIds.isEmpty ? nil : attachmentIds,
                 mentions: mentions.isEmpty ? nil : mentions,
                 replyTo: replyTo,
                 channelId: channelId,

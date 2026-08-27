@@ -14,7 +14,7 @@ Concrete follow-ups after v0. Filed on GitHub against
 
 - [D1 — Desktop visual system: roster, status, empty states](https://github.com/chinghauchu/snorlax-bot/issues/11)
 - [D2 — Computer pane next to chat](https://github.com/chinghauchu/snorlax-bot/issues/12) — v0.6 first slice: 320px right file tree + text preview over the existing `~/.snorlax-bot` workspace (collapsible, default open). **v0.14:** identity-pane 16:10 Bearer PNG preview (288×180). **v0.15:** desktop Open / Done takeover overlay (no VNC / separate window). **v0.16:** Record / Stop / Save as skill on that takeover bar (desktop). **v0.19:** iOS Open / Done full-screen takeover (same v0.15 session). **v0.20:** iOS Record / Stop / Save as skill on that takeover bar (same v0.16 record protocol). File-tree column unchanged.
-- [D3 — In-stream widgets and attachment chips](https://github.com/chinghauchu/snorlax-bot/issues/8) — **v0.8 first slice:** LEFT question card chrome (desktop + iOS, no extra sheet). Attachment-chip VL treatment stays later.
+- [D3 — In-stream widgets and attachment chips](https://github.com/chinghauchu/snorlax-bot/issues/8) — **v0.8 first slice:** LEFT question card chrome (desktop + iOS, no extra sheet). **v0.25:** user-right attachment chips (composer paperclip / drop; 56×56 pending image; 36px file chip; GET `attachments` on user-right; `attachmentIds` in that turn). Agent-sent attachments and video wait.
 
 ## Backend
 
@@ -30,8 +30,9 @@ Concrete follow-ups after v0. Filed on GitHub against
 - [F1 — Streaming markdown without flicker](https://github.com/chinghauchu/snorlax-bot/issues/6) — **v0.11:** clients render assistant LEFT `kind=message` as 14px markdown (no grey bubble; 16/14 headings); user-right stays plain (`https://` tappable); fenced code full-turn language + Copy at 12px/1.45; inline code 13px / 4px / accent 18%. Content stays a plain string (no new Message fields). Mermaid / math / raw HTML out of scope.
 - [F2 — Pairing: local token file and LAN paste](https://github.com/chinghauchu/snorlax-bot/issues/16)
 - [F3 — Edit agent name and instructions in the desktop UI](https://github.com/chinghauchu/snorlax-bot/issues/19) — v0.3 identity pane PATCHes name/title/description/avatar (no `instructions` field)
-- Attachment chips with “not sent to model” already exist in v0; VL-on
-  treatment stays with D3.
+- Attachment chips: **v0.25** user-right composer + transcript (paperclip /
+  drop; `POST /v1/agents/{id}/attachments` + `attachmentIds`; images in
+  that turn; legacy `images[]` stay off-model). Agent-sent / video wait.
 - Computer pane first slice is v0.6 (D2/B4): desktop file tree + preview over
   `~/.snorlax-bot` workspaces. **v0.14:** identity-pane screenshot preview.
   **v0.15:** desktop Open / Done takeover (pointer/key in 1280×800). **v0.16:**

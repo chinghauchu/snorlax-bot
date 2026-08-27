@@ -197,7 +197,9 @@ def _mock_reply(messages: list[dict[str, Any]]) -> str:
             system = str(item.get("content") or "")
     for item in reversed(messages):
         if item.get("role") == "user":
-            last_user = str(item.get("content") or "")
+            from snorlax_runtime.attachments import content_text
+
+            last_user = content_text(item.get("content"))
             break
     pack = _parse_json_object(last_user)
     forwarded = " ".join(f"@{name}" for name in FORWARD_RE.findall(system))
@@ -243,11 +245,15 @@ class MockBackend:
 
     name = BACKEND_MOCK
 
+    def __init__(self) -> None:
+        self.last_messages: list[dict[str, Any]] = []
+
     async def generate(
         self,
         messages: list[dict[str, Any]],
         tools: list[dict[str, Any]] | None = None,
     ) -> AsyncIterator[StreamPart]:
+        self.last_messages = list(messages)
         if tools and _has_tool_results(messages):
             reply = _mock_after_tools(messages)
             for token in _tokenize(reply):

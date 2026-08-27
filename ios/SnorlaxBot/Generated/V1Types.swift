@@ -232,6 +232,47 @@ struct ImageIn: Codable, Hashable, Sendable {
     }
 }
 
+struct Attachment: Codable, Hashable, Identifiable, Sendable {
+    enum Kind: String, Codable, Hashable, Sendable {
+        case image
+        case file
+    }
+
+    var id: String
+    var kind: Kind
+    var name: String
+    var url: String
+    var size: Int
+
+    init(id: String, kind: Kind, name: String, url: String, size: Int) {
+        self.id = id
+        self.kind = kind
+        self.name = name
+        self.url = url
+        self.size = size
+    }
+
+    enum CodingKeys: String, CodingKey { case id, kind, name, url, size }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(String.self, forKey: .id)
+        kind = try container.decode(Kind.self, forKey: .kind)
+        name = try container.decode(String.self, forKey: .name)
+        url = try container.decode(String.self, forKey: .url)
+        size = try container.decode(Int.self, forKey: .size)
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(id, forKey: .id)
+        try container.encode(kind, forKey: .kind)
+        try container.encode(name, forKey: .name)
+        try container.encode(url, forKey: .url)
+        try container.encode(size, forKey: .size)
+    }
+}
+
 struct Mention: Codable, Hashable, Identifiable, Sendable {
     var id: String
     var name: String
@@ -308,6 +349,7 @@ struct Message: Codable, Hashable, Identifiable, Sendable {
     var role: Role
     var content: String
     var images: [ImageOut]
+    var attachments: [Attachment]
     var createdAt: Date
     var senderId: String
     var senderName: String
@@ -327,12 +369,13 @@ struct Message: Codable, Hashable, Identifiable, Sendable {
     var widgetValues: [String]?
     var routineName: String?
 
-    init(id: String, agentId: String, role: Role, content: String, images: [ImageOut], createdAt: Date, senderId: String, senderName: String, senderAvatar: String?, hop: Int, mentions: [Mention], kind: Kind? = nil, replyTo: String? = nil, handoff: HandoffRef? = nil, userAsk: String? = nil, brief: String? = nil, replyCount: Int? = nil, widget: Widget? = nil, connect: ConnectCard? = nil, connectStatus: ConnectStatus? = nil, widgetStatus: WidgetStatus? = nil, widgetValues: [String]? = nil, routineName: String? = nil) {
+    init(id: String, agentId: String, role: Role, content: String, images: [ImageOut], attachments: [Attachment], createdAt: Date, senderId: String, senderName: String, senderAvatar: String?, hop: Int, mentions: [Mention], kind: Kind? = nil, replyTo: String? = nil, handoff: HandoffRef? = nil, userAsk: String? = nil, brief: String? = nil, replyCount: Int? = nil, widget: Widget? = nil, connect: ConnectCard? = nil, connectStatus: ConnectStatus? = nil, widgetStatus: WidgetStatus? = nil, widgetValues: [String]? = nil, routineName: String? = nil) {
         self.id = id
         self.agentId = agentId
         self.role = role
         self.content = content
         self.images = images
+        self.attachments = attachments
         self.createdAt = createdAt
         self.senderId = senderId
         self.senderName = senderName
@@ -353,7 +396,7 @@ struct Message: Codable, Hashable, Identifiable, Sendable {
         self.routineName = routineName
     }
 
-    enum CodingKeys: String, CodingKey { case id, agentId, role, content, images, createdAt, senderId, senderName, senderAvatar, hop, mentions, kind, replyTo, handoff, userAsk, brief, replyCount, widget, connect, connectStatus, widgetStatus, widgetValues, routineName }
+    enum CodingKeys: String, CodingKey { case id, agentId, role, content, images, attachments, createdAt, senderId, senderName, senderAvatar, hop, mentions, kind, replyTo, handoff, userAsk, brief, replyCount, widget, connect, connectStatus, widgetStatus, widgetValues, routineName }
 
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
@@ -362,6 +405,7 @@ struct Message: Codable, Hashable, Identifiable, Sendable {
         role = try container.decode(Role.self, forKey: .role)
         content = try container.decode(String.self, forKey: .content)
         images = try container.decode([ImageOut].self, forKey: .images)
+        attachments = try container.decode([Attachment].self, forKey: .attachments)
         createdAt = try container.decode(Date.self, forKey: .createdAt)
         senderId = try container.decode(String.self, forKey: .senderId)
         senderName = try container.decode(String.self, forKey: .senderName)
@@ -389,6 +433,7 @@ struct Message: Codable, Hashable, Identifiable, Sendable {
         try container.encode(role, forKey: .role)
         try container.encode(content, forKey: .content)
         try container.encode(images, forKey: .images)
+        try container.encode(attachments, forKey: .attachments)
         try container.encode(createdAt, forKey: .createdAt)
         try container.encode(senderId, forKey: .senderId)
         try container.encode(senderName, forKey: .senderName)
@@ -571,15 +616,17 @@ struct ConnectReply: Codable, Hashable, Identifiable, Sendable {
 struct MessageCreate: Codable, Hashable, Sendable {
     var content: String?
     var images: [ImageIn]?
+    var attachmentIds: [String]?
     var mentions: [String]?
     var replyTo: String?
     var channelId: String?
     var widgetReply: WidgetReply?
     var connectReply: ConnectReply?
 
-    init(content: String? = nil, images: [ImageIn]? = nil, mentions: [String]? = nil, replyTo: String? = nil, channelId: String? = nil, widgetReply: WidgetReply? = nil, connectReply: ConnectReply? = nil) {
+    init(content: String? = nil, images: [ImageIn]? = nil, attachmentIds: [String]? = nil, mentions: [String]? = nil, replyTo: String? = nil, channelId: String? = nil, widgetReply: WidgetReply? = nil, connectReply: ConnectReply? = nil) {
         self.content = content
         self.images = images
+        self.attachmentIds = attachmentIds
         self.mentions = mentions
         self.replyTo = replyTo
         self.channelId = channelId
@@ -587,12 +634,13 @@ struct MessageCreate: Codable, Hashable, Sendable {
         self.connectReply = connectReply
     }
 
-    enum CodingKeys: String, CodingKey { case content, images, mentions, replyTo, channelId, widgetReply, connectReply }
+    enum CodingKeys: String, CodingKey { case content, images, attachmentIds, mentions, replyTo, channelId, widgetReply, connectReply }
 
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         content = try container.decodeIfPresent(String.self, forKey: .content)
         images = try container.decodeIfPresent([ImageIn].self, forKey: .images)
+        attachmentIds = try container.decodeIfPresent([String].self, forKey: .attachmentIds)
         mentions = try container.decodeIfPresent([String].self, forKey: .mentions)
         replyTo = try container.decodeIfPresent(String.self, forKey: .replyTo)
         channelId = try container.decodeIfPresent(String.self, forKey: .channelId)
@@ -604,6 +652,7 @@ struct MessageCreate: Codable, Hashable, Sendable {
         var container = encoder.container(keyedBy: CodingKeys.self)
         try container.encodeIfPresent(content, forKey: .content)
         try container.encodeIfPresent(images, forKey: .images)
+        try container.encodeIfPresent(attachmentIds, forKey: .attachmentIds)
         try container.encodeIfPresent(mentions, forKey: .mentions)
         try container.encode(replyTo, forKey: .replyTo)
         try container.encode(channelId, forKey: .channelId)

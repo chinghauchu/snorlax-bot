@@ -14,7 +14,7 @@ NVIDIA DGX Spark.
   in CI and on machines without a 70B checkpoint. `omlx` is the Mac-local
   OpenAI-compat path. `vllm` is the Spark path. Neither is a development
   dependency.
-- **Keep v0.24 small.** Named teammates, identity pane, seeded group plus extra
+- **Keep v0.25 small.** Named teammates, identity pane, seeded group plus extra
   channels, @mentions, 1:1 isolation, channel handoff threads, report-back,
   runtime-owned file/shell/web tools in a `~/.snorlax-bot` sandbox (auto-run,
   no extra shell network, configured search provider), a thin desktop
@@ -42,8 +42,11 @@ NVIDIA DGX Spark.
   `POST /skills { name }` writes SKILL.md; Record / Stop / Save as skill
   on the takeover bar), and iOS Record (same v0.16 record protocol on the
   iOS takeover bar), and 1:1 composer `/` skill autocomplete (existing `@`
-  overlay; Send loads SKILL.md; channel `/` is plain text; no new HTTP). Full sandbox
-  computer GUI (VNC), vision, public marketplace / search, and extra channel types
+  overlay; Send loads SKILL.md; channel `/` is plain text; no new HTTP), and
+  v0.25 chat attachments (`POST /v1/agents/{id}/attachments` +
+  `attachmentIds`; composer paperclip / drop; user-right image + file
+  chips; OpenAPI stays 0.18.0). Full sandbox
+  computer GUI (VNC), video attachments, agent-sent attachments, public marketplace / search, and extra channel types
   are later — see [ROADMAP.md](ROADMAP.md).
 
 ## Locked v0 decisions (do not reopen in drive-by PRs)
@@ -56,12 +59,15 @@ NVIDIA DGX Spark.
   `snorlax-bot`. SQLite on disk. Bind `127.0.0.1` until a token exists, then
   `0.0.0.0`.
 - Desktop is TypeScript + Tauri. iOS is Swift/SwiftUI.
-- Default model: 70B-class FP8, config-swappable. Images persist, no VL.
+- Default model: 70B-class FP8, config-swappable. v0.25 `attachmentIds`
+  images go in that turn; legacy `images[]` persist off-model.
 
 If a change needs to break the OpenAPI contract, update
 [protocol/openapi.yaml](protocol/openapi.yaml) (source of truth) in the same
 PR and add a runtime test. Do not reintroduce `instructions`, snake_case
-`created_at`, `attachments`, or `{ agents: [] }` / `{ messages: [] }` wrappers.
+`created_at`, or `{ agents: [] }` / `{ messages: [] }` /
+`{ attachments: [] }` list-endpoint wrappers. Message.attachments and
+`POST /v1/agents/{id}/attachments` are in-contract (v0.25).
 
 ## Development
 

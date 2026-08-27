@@ -74,6 +74,22 @@ class ImageIn(BaseModel):
     data: str
 
 
+class Attachment(BaseModel):
+    id: str
+    kind: str
+    name: str
+    url: str
+    size: int
+
+    @field_validator("kind")
+    @classmethod
+    def known_kind(cls, value: str) -> str:
+        kind = (value or "").strip().lower()
+        if kind not in {"image", "file"}:
+            raise ValueError("kind must be image or file")
+        return kind
+
+
 class Mention(BaseModel):
     id: str
     name: str
@@ -131,6 +147,7 @@ class Message(BaseModel):
     role: str
     content: str
     images: list[ImageOut]
+    attachments: list[Attachment] = Field(default_factory=list)
     createdAt: str
     senderId: str
     senderName: str
@@ -154,6 +171,7 @@ class Message(BaseModel):
 class MessageCreate(BaseModel):
     content: str = Field(default="", max_length=32000)
     images: list[ImageIn] = Field(default_factory=list)
+    attachmentIds: list[str] = Field(default_factory=list)
     mentions: list[str] = Field(default_factory=list)
     replyTo: str | None = None
     channelId: str | None = Field(
@@ -173,9 +191,11 @@ class MessageCreate(BaseModel):
     def content_or_widget_answer(self) -> MessageCreate:
         if self.widgetReply is not None or self.connectReply is not None:
             return self
-        if not (self.content or "").strip():
-            raise ValueError("content must not be empty")
-        return self
+        if (self.content or "").strip():
+            return self
+        if self.attachmentIds:
+            return self
+        raise ValueError("content must not be empty")
 
 
 class MessageDelta(BaseModel):

@@ -67,6 +67,11 @@ The 1:1 composer `/` at a token start reuses the `@` typeahead overlay
 (240px, `--bg-elevated`, 8px radius, 36px rows, 14px name, no avatar).
 Pick inserts `/name` as plain text; Send loads SKILL.md. Channel `/` is
 plain text (no popup). Empty list or no match: no popup.
+Composer paperclip stays; desktop also drop onto the composer (accent
+1px highlight). Pending chips wrap above the bar (56×56 image thumb;
+36px file chip). Send is on if there’s text or any chip. User-right
+images stay 220×160; files are 36px name chips that open the Bearer
+URL. `@` and `/` unchanged.
 Assistant LEFT
 `kind=message` is 14px markdown (no grey bubble, 16/14 headings); user-right stays plain (`https://` tappable). Fenced code is full-turn language + Copy at 12px/1.45.
 iOS has no file-tree computer pane; the agent sheet shows the same preview.

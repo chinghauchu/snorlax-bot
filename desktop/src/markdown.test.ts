@@ -80,11 +80,16 @@ test("user-right bubble stays plain text, https links tappable", () => {
   const hover = block(".bubble.user a.md-link:hover");
   assert.match(user, /color-mix\(in srgb,\s*var\(--accent\)\s+28%/);
   assert.match(app, /className="bubble user"/);
-  const userBranch = app.slice(app.indexOf('className="bubble user"'));
+  const userStart = app.indexOf('className="bubble user"');
+  const userEnd = app.indexOf("assistant-md", userStart);
+  const userBranch = app.slice(
+    userStart,
+    userEnd > 0 ? userEnd : userStart + 2500,
+  );
   assert.match(userBranch, /<pre>/);
   assert.match(userBranch, /MentionText/);
-  assert.match(userBranch.slice(0, 900), /links/);
-  assert.doesNotMatch(userBranch.slice(0, 800), /MarkdownBody/);
+  assert.match(userBranch, /links/);
+  assert.doesNotMatch(userBranch, /MarkdownBody/);
   assert.match(link, /color:\s*var\(--accent\)/);
   assert.match(hover, /text-decoration:\s*underline/);
   assert.doesNotMatch(body, /rehype-raw/);
