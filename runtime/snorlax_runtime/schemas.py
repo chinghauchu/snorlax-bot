@@ -85,8 +85,8 @@ class Attachment(BaseModel):
     @classmethod
     def known_kind(cls, value: str) -> str:
         kind = (value or "").strip().lower()
-        if kind not in {"image", "file"}:
-            raise ValueError("kind must be image or file")
+        if kind not in {"image", "file", "video"}:
+            raise ValueError("kind must be image, file, or video")
         return kind
 
 

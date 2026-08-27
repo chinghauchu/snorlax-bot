@@ -1319,19 +1319,23 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     ) -> Attachment:
         from snorlax_runtime.attachments import (
             ERR_EMPTY,
-            ERR_MAX,
-            MAX_ATTACHMENT_BYTES,
-            AttachmentError,
             attachment_kind,
+            err_max_for_kind,
+            max_bytes_for_kind,
         )
 
         store: Store = request.app.state.store
         conversation = await store.get_agent(id)
         if conversation is None:
             raise _error(404, f"Agent {id!r} not found")
+        name = (file.filename or "file").strip() or "file"
+        mime = (file.content_type or "application/octet-stream").split(";")[0].strip()
+        kind = attachment_kind(mime, name)
+        limit = max_bytes_for_kind(kind)
+        err_max = err_max_for_kind(kind)
         length = request.headers.get("content-length")
-        if length and length.isdigit() and int(length) > MAX_ATTACHMENT_BYTES:
-            raise _error(422, ERR_MAX)
+        if length and length.isdigit() and int(length) > limit:
+            raise _error(422, err_max)
         chunks: list[bytes] = []
         total = 0
         while True:
@@ -1339,18 +1343,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             if not chunk:
                 break
             total += len(chunk)
-            if total > MAX_ATTACHMENT_BYTES:
-                raise _error(422, ERR_MAX)
+            if total > limit:
+                raise _error(422, err_max)
             chunks.append(chunk)
         data = b"".join(chunks)
         if not data:
             raise _error(422, ERR_EMPTY)
-        name = (file.filename or "file").strip() or "file"
-        mime = (file.content_type or "application/octet-stream").split(";")[0].strip()
-        try:
-            kind = attachment_kind(mime, name)
-        except AttachmentError as exc:
-            raise _error(422, exc.message) from exc
         row = await store.add_attachment(
             conversation_id=id,
             name=name,

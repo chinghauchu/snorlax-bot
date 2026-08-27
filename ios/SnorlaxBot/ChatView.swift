@@ -393,7 +393,7 @@ private struct ComposerBar: View {
         .padding(.horizontal, 12)
         .padding(.vertical, 8)
         .background(.bar)
-        .photosPicker(isPresented: $showPhotos, selection: $pickerItem, matching: .images)
+        .photosPicker(isPresented: $showPhotos, selection: $pickerItem, matching: .any(of: [.images, .videos]))
         .fileImporter(isPresented: $showFiles, allowedContentTypes: [.item], allowsMultipleSelection: false) { result in
             if case .success(let url) = result {
                 Task { await loadFile(url) }
@@ -414,6 +414,39 @@ private struct ComposerBar: View {
                     .scaledToFill()
                     .frame(width: 56, height: 56)
                     .clipShape(RoundedRectangle(cornerRadius: 8))
+                Button {
+                    model.removePending(id: row.id)
+                } label: {
+                    Image(systemName: "xmark")
+                        .font(.system(size: 9, weight: .bold))
+                        .frame(width: 20, height: 20)
+                        .contentShape(Rectangle())
+                }
+                .frame(width: 44, height: 44)
+                .accessibilityLabel("Remove \(row.name)")
+            }
+            .frame(width: 56, height: 56)
+        } else if row.kind == .video {
+            ZStack(alignment: .topTrailing) {
+                ZStack {
+                    RoundedRectangle(cornerRadius: 8)
+                        .fill(Color(uiColor: .secondarySystemFill))
+                    if let poster = row.posterImage {
+                        Image(uiImage: poster)
+                            .resizable()
+                            .scaledToFill()
+                    } else {
+                        Image(systemName: "play.fill")
+                            .font(.system(size: 16))
+                            .foregroundStyle(.primary)
+                    }
+                }
+                .frame(width: 56, height: 56)
+                .clipShape(RoundedRectangle(cornerRadius: 8))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 8)
+                        .stroke(Color(uiColor: .separator), lineWidth: 1)
+                )
                 Button {
                     model.removePending(id: row.id)
                 } label: {
@@ -459,11 +492,22 @@ private struct ComposerBar: View {
 
     private func loadPhoto(_ item: PhotosPickerItem) async {
         guard let data = try? await item.loadTransferable(type: Data.self) else { return }
-        let mime = data.sniffedImageMIME
+        let isVideo = item.supportedContentTypes.contains {
+            $0.conforms(to: .movie) || $0.conforms(to: .video)
+        } || data.sniffedVideoMIME != nil
+        let mime: String
+        let name: String
+        if isVideo {
+            mime = data.sniffedVideoMIME ?? "video/mp4"
+            name = "clip.mp4"
+        } else {
+            mime = data.sniffedImageMIME
+            name = "photo"
+        }
         await MainActor.run {
             pickerItem = nil
         }
-        await model.addPendingFile(name: "photo", mime: mime, data: data)
+        await model.addPendingFile(name: name, mime: mime, data: data)
     }
 
     private func loadFile(_ url: URL) async {
@@ -679,8 +723,9 @@ private struct MessageBubble: View {
     private var userAttachments: some View {
         let atts = message.userRightAttachments
         let images = atts.filter { $0.kind == .image }
+        let videos = atts.filter { $0.kind == .video }
         let files = atts.filter { $0.kind == .file }
-        if images.isEmpty && files.isEmpty && localPreviews.isEmpty {
+        if images.isEmpty && videos.isEmpty && files.isEmpty && localPreviews.isEmpty {
             EmptyView()
         } else {
             VStack(alignment: .leading, spacing: 6) {
@@ -689,7 +734,11 @@ private struct MessageBubble: View {
                         .frame(maxWidth: 220, maxHeight: 160)
                         .clipShape(RoundedRectangle(cornerRadius: 8))
                 }
-                if images.isEmpty {
+                ForEach(videos) { video in
+                    RemoteVideo(urlString: video.url)
+                        .frame(width: 220, height: 160)
+                }
+                if images.isEmpty && videos.isEmpty {
                     ForEach(Array(localPreviews.enumerated()), id: \.offset) { _, data in
                         if let image = UIImage(data: data) {
                             Image(uiImage: image)

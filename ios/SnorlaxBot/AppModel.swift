@@ -1045,6 +1045,7 @@ final class AppModel {
                 data: data
             )
             let preview = row.kind == .image ? data : nil
+            let poster = row.kind == .video ? VideoPoster.image(from: data) : nil
             pendingAttachments.append(
                 PendingChatAttachment(
                     id: row.id,
@@ -1052,7 +1053,8 @@ final class AppModel {
                     name: row.name,
                     url: row.url,
                     size: row.size,
-                    previewData: preview
+                    previewData: preview,
+                    posterImage: poster
                 )
             )
         } catch {

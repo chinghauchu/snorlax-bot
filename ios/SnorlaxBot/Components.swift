@@ -1,5 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 import SwiftUI
+import AVKit
+import AVFoundation
+import CoreMedia
 
 struct AgentAvatar: View {
     let agent: Agent
@@ -80,6 +83,91 @@ struct RemoteImage: View {
         } catch {
             image = nil
         }
+    }
+}
+
+struct RemoteVideo: View {
+    let urlString: String
+    @Environment(AppModel.self) private var model
+    @State private var player: AVPlayer?
+    @State private var poster: UIImage?
+    @State private var playing = false
+
+    var body: some View {
+        ZStack {
+            if playing, let player {
+                VideoPlayer(player: player)
+            } else {
+                Group {
+                    if let poster {
+                        Image(uiImage: poster)
+                            .resizable()
+                            .scaledToFill()
+                    } else {
+                        Color(uiColor: .secondarySystemFill)
+                    }
+                }
+                Image(systemName: "play.fill")
+                    .font(.system(size: 24))
+                    .foregroundStyle(.primary)
+            }
+        }
+        .frame(width: 220, height: 160)
+        .clipShape(RoundedRectangle(cornerRadius: 8))
+        .overlay(
+            RoundedRectangle(cornerRadius: 8)
+                .stroke(Color(uiColor: .separator), lineWidth: 1)
+        )
+        .contentShape(Rectangle())
+        .onTapGesture {
+            guard !playing else { return }
+            playing = true
+            player?.play()
+        }
+        .task(id: urlString) { await load() }
+        .onDisappear {
+            player?.pause()
+        }
+    }
+
+    private func load() async {
+        guard let client = model.client, let url = client.resolve(urlString) else { return }
+        do {
+            let data = try await client.data(from: url)
+            let tmp = FileManager.default.temporaryDirectory
+                .appendingPathComponent(UUID().uuidString + ".mp4")
+            try data.write(to: tmp, options: .atomic)
+            poster = VideoPoster.image(from: tmp)
+            let next = AVPlayer(url: tmp)
+            next.pause()
+            player = next
+        } catch {
+            player = nil
+        }
+    }
+}
+
+enum VideoPoster {
+    static func image(from data: Data) -> UIImage? {
+        let tmp = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString + ".mp4")
+        do {
+            try data.write(to: tmp, options: .atomic)
+        } catch {
+            return nil
+        }
+        return image(from: tmp)
+    }
+
+    static func image(from url: URL) -> UIImage? {
+        let asset = AVURLAsset(url: url)
+        let generator = AVAssetImageGenerator(asset: asset)
+        generator.appliesPreferredTrackTransform = true
+        let time = CMTime(seconds: 0, preferredTimescale: 600)
+        guard let cg = try? generator.copyCGImage(at: time, actualTime: nil) else {
+            return nil
+        }
+        return UIImage(cgImage: cg)
     }
 }
 

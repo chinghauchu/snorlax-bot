@@ -129,6 +129,9 @@ export interface paths {
          *     the model. v0.25 `attachmentIds` are included in that turn
          *     (image kinds as image input; file kinds as filename + text
          *     extract when text/*, else a short “user attached {name}” note).
+         *     v0.27 video attachments persist on the message; apply_to_user_content
+         *     skips kind=video bytes (no transcription, no watch-video tool; a
+         *     short user attached {name} stub is fine).
          *     The runtime owns the tool loop (clients never send a tools payload).
          *     A question card ends that agent turn: no more tokens or tools after
          *     `kind=widget` until the user answers or dismisses. Tools still
@@ -837,12 +840,15 @@ export interface paths {
          *     as POST /v1/agents/{id}/messages (kind=agent 1:1 or kind=channel).
          *     Missing conversation 404. No /v1/chats/ resource. 201
          *     `{ id, kind, name, url, size }`. kind is `image` for image/*
-         *     (not video), else `file`. url is GET /v1/attachments/{id} on
-         *     this host (Bearer). Over 10MB → 422 `Max 10MB.`. video/* → 422
-         *     `Video isn’t supported yet.`. Empty file 422. User composer
-         *     bind via MessageCreate.attachmentIds on the next send.
-         *     Runtime may also bind write_file / screenshot files onto the
-         *     assistant kind=message (v0.26). No agent upload route.
+         *     (not video); `video` for video/* or a video extension
+         *     (.mp4/.mov/.m4v/.webm/.avi/.mkv); else `file`. url is GET
+         *     /v1/attachments/{id} on this host (Bearer). image/file over
+         *     10MB → 422 `Max 10MB.`. video over 50MB → 422 `Max 50MB.`.
+         *     Empty file 422. User composer bind via
+         *     MessageCreate.attachmentIds on the next send (video ids
+         *     allowed). Runtime may also bind write_file / screenshot /
+         *     sandbox video onto the assistant kind=message. Video bytes are
+         *     not sent to the model. No agent upload route.
          */
         post: operations["postAttachment"];
         delete?: never;
@@ -993,10 +999,11 @@ export interface components {
         Attachment: {
             id: string;
             /**
-             * @description image for image/* (not video); else file.
+             * @description image for image/* (not video); video for video/* or a video
+             *     extension; else file.
              * @enum {string}
              */
-            kind: "image" | "file";
+            kind: "image" | "file" | "video";
             name: string;
             /** @description Bearer GET /v1/attachments/{id} on this host. */
             url: string;
@@ -1192,7 +1199,8 @@ export interface components {
         MessageCreate: {
             /**
              * @description User text. Required unless widgetReply, connectReply, or a
-             *     non-empty attachmentIds list (image-only / file-only send).
+             *     non-empty attachmentIds list (image-only / file-only /
+             *     video-only send).
              *     Empty is allowed for those posts. A
              *     normal send while a question is pending is 409 unless
              *     dismissOnMoveOn. A send while a connect card is pending is
@@ -1203,10 +1211,13 @@ export interface components {
             /**
              * @description Ids from POST /v1/agents/{id}/attachments on this same
              *     conversation. Unknown or foreign ids 422 (do not 404 the
-             *     send). Empty content is ok if this list is non-empty.
-             *     Runtime includes them in that turn. POST attachmentIds stay
-             *     user-only. Runtime-produced write_file / screenshot files
-             *     bind onto the assistant kind=message (v0.26), not this field.
+             *     send). Empty content is ok if this list is non-empty
+             *     (image / file / video ids). Runtime includes image and
+             *     file kinds in that turn. kind=video is persisted and GET
+             *     on the message but is not sent to the model. POST
+             *     attachmentIds stay user-only. Runtime-produced write_file /
+             *     screenshot / video files bind onto the assistant
+             *     kind=message, not this field.
              */
             attachmentIds?: string[];
             /**

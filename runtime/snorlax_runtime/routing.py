@@ -52,7 +52,7 @@ async def _bind_produced_attachments(
     store: Store, conversation_id: str, produced: list[dict[str, Any]]
 ) -> list[str]:
     """Create attachment rows for runtime-produced files (unbound until
-    add_message). Skip empty/video/oversize already filtered upstream.
+    add_message). Skip empty/oversize already filtered upstream.
     """
     from snorlax_runtime.attachments import AttachmentError
 

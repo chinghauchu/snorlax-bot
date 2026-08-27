@@ -1597,7 +1597,9 @@ export function App() {
     try {
       const row = await uploadAttachment(session, active.id, file);
       const previewUrl =
-        row.kind === "image" ? URL.createObjectURL(file) : undefined;
+        row.kind === "image" || row.kind === "video"
+          ? URL.createObjectURL(file)
+          : undefined;
       setPendingAttachments((prev) => [...prev, { ...row, previewUrl }]);
     } catch (caught) {
       setAttachError(
@@ -2104,6 +2106,12 @@ export function App() {
                       ×
                     </button>
                   </div>
+                ) : row.kind === "video" ? (
+                  <PendingVideoThumb
+                    key={row.id}
+                    row={row}
+                    onRemove={() => removePending(row.id)}
+                  />
                 ) : (
                   <div key={row.id} className="pending-file">
                     <span className="pending-file-name">{row.name}</span>
@@ -3389,8 +3397,9 @@ function MessageAttachmentChrome({
 }) {
   const atts = userRightAttachments(message);
   const images = atts.filter((row) => row.kind === "image");
+  const videos = atts.filter((row) => row.kind === "video");
   const files = atts.filter((row) => row.kind === "file");
-  if (!images.length && !files.length) return null;
+  if (!images.length && !videos.length && !files.length) return null;
   return (
     <div className="message-atts">
       {images.map((image) => (
@@ -3400,6 +3409,14 @@ function MessageAttachmentChrome({
           src={resolveMediaUrl(session?.baseUrl ?? "", image.url)}
           session={session}
           alt=""
+        />
+      ))}
+      {videos.map((video) => (
+        <AuthedVideo
+          key={video.id}
+          className="bubble-video"
+          src={resolveMediaUrl(session?.baseUrl ?? "", video.url)}
+          session={session}
         />
       ))}
       {files.map((file) => (
@@ -3454,6 +3471,117 @@ function AuthedImg({
   }, [src, session]);
 
   return <img className={className} src={out} alt={alt} />;
+}
+
+function PendingVideoThumb({
+  row,
+  onRemove,
+}: {
+  row: PendingAttachment;
+  onRemove: () => void;
+}) {
+  const [hasFrame, setHasFrame] = useState(false);
+  return (
+    <div className="pending-thumb pending-video">
+      {row.previewUrl ? (
+        <video
+          src={row.previewUrl}
+          muted
+          playsInline
+          preload="metadata"
+          onLoadedData={(event) => {
+            if (event.currentTarget.videoWidth > 0) setHasFrame(true);
+          }}
+        />
+      ) : null}
+      {!hasFrame ? (
+        <span className="pending-play" aria-hidden>
+          <PlayMark size={16} />
+        </span>
+      ) : null}
+      <button
+        type="button"
+        className="pending-x"
+        aria-label={`Remove ${row.name}`}
+        onClick={onRemove}
+      >
+        ×
+      </button>
+    </div>
+  );
+}
+
+function AuthedVideo({
+  src,
+  session,
+  className,
+}: {
+  src: string;
+  session: Session | null;
+  className?: string;
+}) {
+  const [out, setOut] = useState(src);
+  const [playing, setPlaying] = useState(false);
+  const videoRef = useRef<HTMLVideoElement>(null);
+
+  useEffect(() => {
+    if (!src) return;
+    if (src.startsWith("data:") || src.startsWith("blob:") || !session) {
+      setOut(src);
+      return;
+    }
+    let dead = false;
+    let objectUrl = "";
+    fetch(src, { headers: { Authorization: `Bearer ${session.token}` } })
+      .then((r) => (r.ok ? r.blob() : Promise.reject()))
+      .then((blob) => {
+        if (dead) return;
+        objectUrl = URL.createObjectURL(blob);
+        setOut(objectUrl);
+      })
+      .catch(() => {
+        if (!dead) setOut(src);
+      });
+    return () => {
+      dead = true;
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
+    };
+  }, [src, session]);
+
+  return (
+    <div className="bubble-video-wrap">
+      <video
+        ref={videoRef}
+        className={className}
+        src={out}
+        controls={playing}
+        playsInline
+        preload="metadata"
+      />
+      {playing ? null : (
+        <button
+          type="button"
+          className="bubble-video-play"
+          aria-label="Play"
+          onClick={() => {
+            setPlaying(true);
+            const el = videoRef.current;
+            if (el) void el.play();
+          }}
+        >
+          <PlayMark size={24} />
+        </button>
+      )}
+    </div>
+  );
+}
+
+function PlayMark({ size }: { size: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="currentColor" aria-hidden>
+      <path d="M8 5v14l11-7L8 5Z" />
+    </svg>
+  );
 }
 
 function Paperclip() {
