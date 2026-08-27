@@ -7,7 +7,9 @@ render as LEFT cards in the speaking agent's streak (no extra sheet). Agent
 info sheet lists a 16:10 computer preview above routines (12pt labels,
 8pt radius, 12pt `Open` when `hasSandbox`; the shot is tappable) then routines (list + enable/pause
 + Copy webhook URL + 12pt Add / Remove with confirm) then skills
-(12pt Edit / Remove; Edit skill source sheet; no blank Add). Settings lists runtime plugins (Add / Remove; OS browser via
+(12pt Edit / Remove; Edit skill source sheet; no blank Add). Full-screen Open
+adds Keyboard + Done plus Record / Stop / Save as skill (v0.16 HTTP; discard
+writes nothing). Settings lists runtime plugins (Add / Remove; OS browser via
 `ASWebAuthenticationSession`). No
 file-tree computer pane this slice (v0.6 desktop-only). MCP is
 runtime-owned; this client never speaks MCP. Connect cards (`kind=connect`)
@@ -27,7 +29,7 @@ The Spark stays up when the phone sleeps. Reconnect is
 | Target | iOS 18+ (iPhone + iPad) |
 | Network | URLSession, `Authorization: Bearer` on everything except `GET /v1/health` and incoming `POST /v1/hooks/{token}` (token in the path, not the app token) |
 | Chat | `POST /v1/agents/{id}/messages` as SSE (`message.delta` / `message.done` / `tool.start` / `tool.done` / `error`) |
-| Computer | Agent-sheet 16:10 preview + full-screen Open/Done takeover (v0.15 session). No Record. No file browser (desktop-only v0.6) |
+| Computer | Agent-sheet 16:10 preview + full-screen Open/Done takeover (v0.15 session) with Record/Stop/Save as skill (v0.16 record). No file browser (desktop-only v0.6) |
 | Pairing | Settings sheet. Token in Keychain, URL in AppStorage. No gate screen |
 | Seed | `snorlax-bot` (Snorlax / Assistant) and `snorlax-bot-group` (Snorlax-Bot, Channel). Extra user-created channels. Swipe-delete on every row including the seed agent and seed channel (not in the info pane). After seed channel delete, select an agent first if any remain, else a remaining channel; never recreate `snorlax-bot-group`. Empty roster keeps chrome. No jump chip if no channel remains |
 
@@ -70,8 +72,8 @@ Output: `SnorlaxBot/Generated/V1Types.swift`. Do not hand-edit that file.
 - `SnorlaxBot/ContentView.swift` — iPhone stack / iPad split chrome
 - `SnorlaxBot/AppModel.swift` — roster, chat, settings persistence
 - `SnorlaxBot/ProfileSheet.swift` — identity / channel pane; agent routines + skills lists
-- `SnorlaxBot/ComputerSession.swift` — v0.19 Open chrome + letterbox pointer map
-- `SnorlaxBot/ComputerTakeover.swift` — full-screen Open (Keyboard + Done)
+- `SnorlaxBot/ComputerSession.swift` — v0.19 Open chrome + v0.20 Record chrome + letterbox pointer map
+- `SnorlaxBot/ComputerTakeover.swift` — full-screen Open (Keyboard + Done + Record/Stop/Save as skill)
 - `SnorlaxBot/SettingsSheet.swift` — URL, token, plugins list + Add sheet
 - `SnorlaxBot/ConnectCard.swift` — `kind=connect` LEFT card
 - `SnorlaxBot/AssistantMarkdown.swift` — assistant LEFT markdown

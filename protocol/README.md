@@ -98,6 +98,10 @@ Empty name/body 422. No blank POST — create stays teach-a-task
 v0.19 iOS takeover: same v0.15 session/pointer/key routes as desktop.
 iOS now POSTs them. `recording` unused. OpenAPI stays 0.18.0.
 
+v0.20 iOS Record: same v0.16 `POST/DELETE /computer/record` then
+`POST /skills { name }` as desktop. iOS now POSTs them from the
+takeover bar. Discard is omit the skills POST. OpenAPI stays 0.18.0.
+
 A copy is also kept at `runtime/openapi.yaml` and `desktop/openapi.yaml`
 so those trees are self-contained. Do not let the files diverge.
 
