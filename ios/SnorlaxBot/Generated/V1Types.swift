@@ -1290,6 +1290,51 @@ struct PluginCreate: Codable, Hashable, Sendable {
     }
 }
 
+struct PluginCatalogEntry: Codable, Hashable, Identifiable, Sendable {
+    enum Transport: String, Codable, Hashable, Sendable {
+        case stdio
+        case url
+    }
+
+    var id: String
+    var name: String
+    var transport: Transport
+    var command: String?
+    var args: [String]?
+    var url: String?
+
+    init(id: String, name: String, transport: Transport, command: String? = nil, args: [String]? = nil, url: String? = nil) {
+        self.id = id
+        self.name = name
+        self.transport = transport
+        self.command = command
+        self.args = args
+        self.url = url
+    }
+
+    enum CodingKeys: String, CodingKey { case id, name, transport, command, args, url }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(String.self, forKey: .id)
+        name = try container.decode(String.self, forKey: .name)
+        transport = try container.decode(Transport.self, forKey: .transport)
+        command = try container.decodeIfPresent(String.self, forKey: .command)
+        args = try container.decodeIfPresent([String].self, forKey: .args)
+        url = try container.decodeIfPresent(String.self, forKey: .url)
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(id, forKey: .id)
+        try container.encode(name, forKey: .name)
+        try container.encode(transport, forKey: .transport)
+        try container.encodeIfPresent(command, forKey: .command)
+        try container.encodeIfPresent(args, forKey: .args)
+        try container.encodeIfPresent(url, forKey: .url)
+    }
+}
+
 struct PluginAuth: Codable, Hashable, Sendable {
     var authorizationUrl: String
 

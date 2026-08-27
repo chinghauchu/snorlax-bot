@@ -55,6 +55,34 @@ export function parsePluginArgs(raw: string): string[] {
   return trimmed.split(/\s+/);
 }
 
+export function catalogInstallBody(entry: {
+  name: string;
+  transport: string;
+  command?: string | null;
+  args?: string[] | null;
+  url?: string | null;
+}): {
+  name: string;
+  transport: "stdio" | "url";
+  command?: string;
+  args?: string[];
+  url?: string;
+} {
+  if (entry.transport === "url") {
+    return {
+      name: entry.name,
+      transport: "url",
+      url: entry.url || undefined,
+    };
+  }
+  return {
+    name: entry.name,
+    transport: "stdio",
+    command: entry.command || undefined,
+    args: entry.args || undefined,
+  };
+}
+
 export function resolvedConnectLabel(status: ConnectStatus): string | null {
   if (status === "connected") return "Connected";
   if (status === "dismissed") return "Dismissed";

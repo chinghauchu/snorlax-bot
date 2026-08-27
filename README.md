@@ -20,12 +20,13 @@ computer. Bots live on your LAN, talk through a thin local runtime, and (in
 later versions) browse, click, schedule, and call tools without sending tokens
 off-box.
 
-v0.23 is still small: **named teammates + identity pane + group channel threads
+v0.24 is still small: **named teammates + identity pane + group channel threads
 + chat with @mentions + report-back + extra channels + built-in tools + a
 thin desktop Computer pane + a runtime MCP client + question widgets +
 skills and cron/webhook/Slack/GitHub routines (Add / Remove + enable/pause + Copy webhook URL; Slack/GitHub listeners when that plugin is connected) + MCP connect chrome
 (Settings plugins list + `kind=connect` card) + assistant markdown +
 MCP Add custom (Settings POST / DELETE; no separate disconnect) +
+curated plugin catalog (Settings Catalog Slack/GitHub Add; not a store) +
 identity-pane Box computer preview (Bearer PNG) + desktop Box takeover
 (Open / Done; pointer/key in 1280×800) + teach-a-task (Record / Stop /
 Save as skill inside takeover) + skill markdown editor (identity-pane
@@ -204,12 +205,14 @@ default).
 
 ## v0 vs later
 
-See [ROADMAP.md](ROADMAP.md). Short version: v0.22 is named agents plus
+See [ROADMAP.md](ROADMAP.md). Short version: v0.24 is named agents plus
 runtime-owned file/shell/web tools in a `~/.snorlax-bot` sandbox, a
 thin desktop Computer pane over that sandbox, a runtime MCP client
 (stdio + LAN from `mcp.json`), connect chrome (`GET /v1/plugins` +
 `kind=connect`), Settings Add custom (`POST /v1/plugins` + uninstall),
-question widgets in the transcript, cron XOR webhook routines
+curated plugin catalog (`GET /v1/plugins/catalog`; Slack/GitHub Add;
+not a store),
+question widgets in the transcript, cron XOR webhook/Slack/GitHub routines
 (Add / Remove on the identity pane; fire a SKILL.md into that agent's 1:1), assistant markdown
 (clients render; content stays a plain string), desktop Box takeover,
 teach-a-task (Record inside takeover → SKILL.md), a skill markdown

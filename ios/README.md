@@ -15,7 +15,8 @@ loads SKILL.md. Channel `/` is plain text. Empty / no match: no popup.
 Full-screen Open
 adds Keyboard + Done plus Record / Stop / Save as skill (v0.16 HTTP; discard
 writes nothing). Settings lists runtime plugins (Add / Remove; OS browser via
-`ASWebAuthenticationSession`). No
+`ASWebAuthenticationSession`) plus a curated Catalog (Slack/GitHub Add;
+hide header when empty). No
 file-tree computer pane this slice (v0.6 desktop-only). MCP is
 runtime-owned; this client never speaks MCP. Connect cards (`kind=connect`)
 render as LEFT chrome, not a user bubble. Assistant `kind=message` is 14pt

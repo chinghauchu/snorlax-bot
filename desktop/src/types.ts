@@ -19,6 +19,7 @@ export type SkillPatch = components["schemas"]["SkillPatch"];
 export type Plugin = components["schemas"]["Plugin"];
 export type PluginAuth = components["schemas"]["PluginAuth"];
 export type PluginCreate = components["schemas"]["PluginCreate"];
+export type PluginCatalogEntry = components["schemas"]["PluginCatalogEntry"];
 export type ComputerPreview = components["schemas"]["ComputerPreview"];
 export type ComputerSession = components["schemas"]["ComputerSession"];
 

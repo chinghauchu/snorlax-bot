@@ -7,6 +7,7 @@ struct SettingsSheet: View {
     @State private var showToken = false
     @State private var showAdd = false
     @State private var pendingRemove: Plugin?
+    @State private var catalogAdding: String?
 
     var body: some View {
         @Bindable var model = model
@@ -121,6 +122,33 @@ struct SettingsSheet: View {
                             .font(.system(size: 12))
                             .textCase(nil)
                             .disabled(!model.isConfigured)
+                    }
+                }
+
+                if !model.pluginCatalog.isEmpty {
+                    Section {
+                        ForEach(model.pluginCatalog) { entry in
+                            HStack {
+                                Text(entry.name)
+                                    .font(.system(size: 14))
+                                Spacer()
+                                Button("Add") {
+                                    catalogAdding = entry.id
+                                    Task {
+                                        _ = await model.addCatalogPlugin(entry)
+                                        catalogAdding = nil
+                                    }
+                                }
+                                .font(.system(size: 12))
+                                .disabled(!model.isConfigured || catalogAdding == entry.id)
+                            }
+                            .frame(minHeight: 44)
+                        }
+                    } header: {
+                        Text("Catalog")
+                            .font(.system(size: 12))
+                            .foregroundStyle(.secondary)
+                            .textCase(nil)
                     }
                 }
             }

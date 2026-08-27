@@ -14,7 +14,7 @@ NVIDIA DGX Spark.
   in CI and on machines without a 70B checkpoint. `omlx` is the Mac-local
   OpenAI-compat path. `vllm` is the Spark path. Neither is a development
   dependency.
-- **Keep v0.23 small.** Named teammates, identity pane, seeded group plus extra
+- **Keep v0.24 small.** Named teammates, identity pane, seeded group plus extra
   channels, @mentions, 1:1 isolation, channel handoff threads, report-back,
   runtime-owned file/shell/web tools in a `~/.snorlax-bot` sandbox (auto-run,
   no extra shell network, configured search provider), a thin desktop
@@ -22,7 +22,8 @@ NVIDIA DGX Spark.
   stdio + LAN; desktop/iOS never speak MCP), connect chrome
   (`GET /v1/plugins` + `kind=connect`; Settings list only), MCP Add custom
   (`POST /v1/plugins`, `DELETE /v1/plugins/{id}`; DELETE is uninstall plus
-  disconnect; no store),
+  disconnect; no store), curated plugin catalog (`GET /v1/plugins/catalog`;
+  Slack/GitHub Add; not a store),
   question widgets (`kind=widget`; not tool approval), cron + webhook +
   Slack/GitHub routines (list + enable/pause + Add/Remove + Copy webhook URL on the agent info pane;
   Slack/GitHub segments only when that plugin is connected; SKILL.md from the workspace and/or `SNORLAX_DATA_DIR/skills`; cron XOR
@@ -42,7 +43,7 @@ NVIDIA DGX Spark.
   on the takeover bar), and iOS Record (same v0.16 record protocol on the
   iOS takeover bar), and 1:1 composer `/` skill autocomplete (existing `@`
   overlay; Send loads SKILL.md; channel `/` is plain text; no new HTTP). Full sandbox
-  computer GUI (VNC), vision, marketplace UI, and extra channel types
+  computer GUI (VNC), vision, public marketplace / search, and extra channel types
   are later — see [ROADMAP.md](ROADMAP.md).
 
 ## Locked v0 decisions (do not reopen in drive-by PRs)

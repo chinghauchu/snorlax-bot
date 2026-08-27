@@ -704,7 +704,8 @@ export interface paths {
          *     under SNORLAX_DATA_DIR still loads stdio and LAN servers. Add
          *     custom is POST this path. DELETE /v1/plugins/{id} uninstalls
          *     (disconnect + drop from catalog). No separate disconnect
-         *     endpoint. No store / search / marketplace catalog.
+         *     endpoint. No store / search / public marketplace. Curated
+         *     Slack/GitHub list is GET /v1/plugins/catalog.
          */
         get: operations["listPlugins"];
         put?: never;
@@ -716,9 +717,45 @@ export interface paths {
          *     missing. url: url required; allow https and http (LAN). 422 if
          *     missing/invalid. Persists into mcp.json under SNORLAX_DATA_DIR.
          *     Does not auto-open a kind=connect card. Clients never speak MCP.
-         *     No store / search catalog.
+         *     Catalog Add is this same POST (no extra sheet / no POST
+         *     /catalog). No store / search / public marketplace.
          */
         post: operations["createPlugin"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/plugins/catalog": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List curated MCP plugins
+         * @description JSON array of PluginCatalogEntry (not wrapped):
+         *     `{ id, name, transport, command?, args?, url? }`. Same transport
+         *     fields as PluginCreate so clients POST /v1/plugins with that
+         *     body as-is (name + transport + command/args or url). Omit nulls.
+         *     Curated in runtime code — not mcp.json, not a remote registry,
+         *     no search. Exactly two entries when neither is installed, in
+         *     this order: Slack (`id: slack`, `name: Slack`) then GitHub
+         *     (`id: github`, `name: GitHub`). Each bakes a real stdio or url
+         *     transport that POST /v1/plugins already accepts (npx stdio is
+         *     fine). Omit a row when GET /v1/plugins already has a connected
+         *     or needsAuth plugin whose id or name matches that kind (same
+         *     needle as plugin_kind_connected: `slack` / `github` in id+name).
+         *     If both are installed → 200 `[]`. Empty catalog is 200 `[]`
+         *     (clients hide the Catalog header). Do not 404. No POST /catalog.
+         *     No uninstall-from-catalog. Bearer as other /v1 routes.
+         *     Runtime-global. Not a public store.
+         */
+        get: operations["listPluginCatalog"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -1343,6 +1380,20 @@ export interface components {
          *     optional). url requires `url` (http or https). Missing fields 422.
          */
         PluginCreate: {
+            name: string;
+            /** @enum {string} */
+            transport: "stdio" | "url";
+            command?: string;
+            args?: string[];
+            /** @description LAN MCP URL (http or https). */
+            url?: string;
+        };
+        /**
+         * @description Curated catalog row. Same transport fields as PluginCreate.
+         *     Null command/args/url are omitted. Not a Plugin (no status).
+         */
+        PluginCatalogEntry: {
+            id: string;
             name: string;
             /** @enum {string} */
             transport: "stdio" | "url";
@@ -2213,6 +2264,27 @@ export interface operations {
             };
             401: components["responses"]["Error"];
             422: components["responses"]["Error"];
+        };
+    };
+    listPluginCatalog: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description JSON array of PluginCatalogEntry */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PluginCatalogEntry"][];
+                };
+            };
+            401: components["responses"]["Error"];
         };
     };
     deletePlugin: {

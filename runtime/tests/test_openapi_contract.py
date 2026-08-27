@@ -60,9 +60,12 @@ def test_protocol_openapi_is_locked_v0_contract() -> None:
     assert "connectReply" in text
     assert "connectStatus" in text
     assert "/v1/plugins" in text
+    assert "/v1/plugins/catalog" in text
     assert "/v1/plugins/{id}/auth" in text
     assert "/v1/plugins/{id}" in text
     assert "/v1/plugins/{id}/disconnect" not in text
+    assert "PluginCatalogEntry" in text
+    assert "v0.24" in text
     assert "No separate disconnect" in text or "uninstall plus disconnect" in text
     assert "PluginCreate" in text
     assert 'transport: "stdio" | "url"' in text or "transport: \"stdio\"" in text or "enum: [stdio, url]" in text
@@ -110,6 +113,7 @@ def test_protocol_openapi_is_locked_v0_contract() -> None:
     assert "v0.18" in text
     assert "v0.22" in text
     assert "v0.23" in text
+    assert "v0.24" in text
     assert "type: slack, channel" in text
     assert "owner/name" in text
     assert "no wildcards" in text.lower()

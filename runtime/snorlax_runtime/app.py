@@ -42,6 +42,7 @@ from snorlax_runtime.schemas import (
     MessageCreate,
     Plugin,
     PluginAuth,
+    PluginCatalogEntry,
     PluginCreate,
     Routine,
     RoutineCreate,
@@ -63,6 +64,7 @@ from snorlax_runtime.connect import (
 from snorlax_runtime.token import resolve_token, write_token_file
 from snorlax_runtime.mcp import (
     McpConfigError,
+    list_plugin_catalog,
     plugin_kind_connected,
     start_mcp,
     stop_mcp,
@@ -1167,6 +1169,20 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         if manager is None:
             return []
         return [Plugin.model_validate(row) for row in manager.list_public()]
+
+    @app.get(
+        "/v1/plugins/catalog",
+        response_model=list[PluginCatalogEntry],
+        response_model_exclude_none=True,
+    )
+    async def list_plugins_catalog(
+        request: Request, _: str = Depends(require_bearer)
+    ) -> list[PluginCatalogEntry]:
+        manager = getattr(request.app.state, "mcp", None)
+        return [
+            PluginCatalogEntry.model_validate(row)
+            for row in list_plugin_catalog(manager)
+        ]
 
     @app.post(
         "/v1/plugins",

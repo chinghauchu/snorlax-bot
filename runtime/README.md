@@ -114,6 +114,12 @@ v0.23: POST `/routines` Slack `{ type: slack, channel }` and GitHub
 empty, or wildcard repo → 422. GET omits those rows unless connected.
 Fire is the connected MCP into `fire_routine_now`. OpenAPI stays 0.18.0.
 
+v0.24: `GET /v1/plugins/catalog` (Bearer) lists curated Slack then
+GitHub (`{ id, name, transport, command?, args?, url? }`; omit nulls).
+Catalog Add is existing `POST /v1/plugins`. Omit a row when that kind
+is already in `GET /v1/plugins`. Both installed → 200 `[]`. Not a
+store. OpenAPI stays 0.18.0.
+
 ## MCP (`mcp.json`)
 
 The runtime is the MCP client. Desktop and iOS never speak MCP. Put
@@ -154,7 +160,8 @@ hits this process (GET, or POST complete with code+state).
 Unauthenticated MCP servers can persist a `kind=connect` card.
 `connectReply { id }` emits `connect.url` then ends; when auth
 completes the card is PATCHed connected and the turn continues. Tools
-auto-run. No store / search / marketplace catalog.
+auto-run. No store / search / public marketplace. Curated Slack/GitHub
+is `GET /v1/plugins/catalog` (Catalog Add is the same POST).
 
 ## Tests
 

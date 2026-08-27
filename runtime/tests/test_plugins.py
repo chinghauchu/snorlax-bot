@@ -72,6 +72,64 @@ def test_get_plugins_empty(client) -> None:
     assert listed.json() == []
 
 
+def test_get_plugin_catalog_two_rows_when_empty(client) -> None:
+    missing = client.get("/v1/plugins/catalog")
+    assert missing.status_code == 401
+    listed = client.get("/v1/plugins/catalog", headers=AUTH)
+    assert listed.status_code == 200
+    rows = listed.json()
+    assert isinstance(rows, list)
+    assert [row["id"] for row in rows] == ["slack", "github"]
+    assert [row["name"] for row in rows] == ["Slack", "GitHub"]
+    for row in rows:
+        assert set(row) <= {"id", "name", "transport", "command", "args", "url"}
+        assert row["transport"] in {"stdio", "url"}
+        if row["transport"] == "stdio":
+            assert row["command"]
+            assert "url" not in row
+        else:
+            assert row["url"]
+            assert "command" not in row
+            assert "args" not in row
+        assert None not in row.values()
+
+
+def test_catalog_omits_installed_and_post_body_creates(tmp_path) -> None:
+    with TestClient(create_app(_settings(tmp_path))) as client:
+        catalog = client.get("/v1/plugins/catalog", headers=AUTH).json()
+        assert [row["id"] for row in catalog] == ["slack", "github"]
+        slack = next(row for row in catalog if row["id"] == "slack")
+        github = next(row for row in catalog if row["id"] == "github")
+
+        created = client.post("/v1/plugins", headers=AUTH, json=slack)
+        assert created.status_code == 201
+        row = created.json()
+        assert set(row) == {"id", "name", "status"}
+        assert row["name"] == "Slack"
+        assert row["status"] in {"connected", "needsAuth"}
+        listed = client.get("/v1/plugins", headers=AUTH)
+        assert listed.status_code == 200
+        plugins = listed.json()
+        assert any(item["id"] == row["id"] and item["name"] == "Slack" for item in plugins)
+        for item in plugins:
+            assert set(item) == {"id", "name", "status"}
+        after_slack = client.get("/v1/plugins/catalog", headers=AUTH).json()
+        assert [item["id"] for item in after_slack] == ["github"]
+
+        started = client.post(f"/v1/plugins/{row['id']}/auth", headers=AUTH)
+        assert started.status_code == 200
+        url = started.json()["authorizationUrl"]
+        assert f"/v1/plugins/oauth/start/{row['id']}" in url
+        done = client.get(url, follow_redirects=True)
+        assert done.status_code == 200
+
+        created_gh = client.post("/v1/plugins", headers=AUTH, json=github)
+        assert created_gh.status_code == 201
+        both = client.get("/v1/plugins/catalog", headers=AUTH)
+        assert both.status_code == 200
+        assert both.json() == []
+
+
 def test_get_plugins_and_post_auth_returns_authorization_url(tmp_path) -> None:
     with _client_with_mcp(tmp_path, {"example": _disabled_stdio()}) as client:
         listed = client.get("/v1/plugins", headers=AUTH)

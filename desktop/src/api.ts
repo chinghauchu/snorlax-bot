@@ -7,6 +7,7 @@ import type {
   Plugin,
   PluginAuth,
   PluginCreate,
+  PluginCatalogEntry,
   ComputerPreview,
   Routine,
   RoutineCreate,
@@ -562,6 +563,15 @@ export async function listPlugins(session: Session): Promise<Plugin[]> {
     headers: headers(session),
   });
   return asList<Plugin>(await json<unknown>(response), "plugins");
+}
+
+export async function listPluginCatalog(
+  session: Session,
+): Promise<PluginCatalogEntry[]> {
+  const response = await fetch(`${session.baseUrl}/v1/plugins/catalog`, {
+    headers: headers(session),
+  });
+  return asList<PluginCatalogEntry>(await json<unknown>(response), "catalog");
 }
 
 export async function createPlugin(

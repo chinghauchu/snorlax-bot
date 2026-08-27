@@ -25,6 +25,7 @@ import {
   getSkill,
   listAgents,
   listMessages,
+  listPluginCatalog,
   listPlugins,
   listRoutines,
   listSkills,
@@ -112,7 +113,7 @@ import { WidgetCard } from "./WidgetCard";
 import { ConnectCard } from "./ConnectCard";
 import { HttpsText, MarkdownBody } from "./MarkdownBody";
 import { copyText } from "./markdown";
-import { isConnect, parsePluginArgs, pluginStatusLabel } from "./connect";
+import { catalogInstallBody, isConnect, parsePluginArgs, pluginStatusLabel } from "./connect";
 import { isWidget } from "./widget";
 import { openOsBrowser } from "./openUrl";
 import type {
@@ -120,6 +121,7 @@ import type {
   ChatMessage,
   ImageIn,
   Plugin,
+  PluginCatalogEntry,
   Routine,
   Session,
   Skill,
@@ -428,6 +430,7 @@ export function App() {
   const [skillAddBody, setSkillAddBody] = useState("");
   const [skillAddSaving, setSkillAddSaving] = useState(false);
   const [plugins, setPlugins] = useState<Plugin[]>([]);
+  const [pluginCatalog, setPluginCatalog] = useState<PluginCatalogEntry[]>([]);
   const [pluginAddOpen, setPluginAddOpen] = useState(false);
   const [pluginAddName, setPluginAddName] = useState("");
   const [pluginAddMode, setPluginAddMode] = useState<"stdio" | "url">("stdio");
@@ -435,6 +438,7 @@ export function App() {
   const [pluginAddArgs, setPluginAddArgs] = useState("");
   const [pluginAddUrl, setPluginAddUrl] = useState("");
   const [pluginAddSaving, setPluginAddSaving] = useState(false);
+  const [catalogAddingId, setCatalogAddingId] = useState<string | null>(null);
   const [pendingRemove, setPendingRemove] = useState<Plugin | null>(null);
   const [computerOpen, setComputerOpen] = useState(true);
   const [workspaceTick, setWorkspaceTick] = useState(0);
@@ -717,15 +721,22 @@ export function App() {
   useEffect(() => {
     if (!session) {
       setPlugins([]);
+      setPluginCatalog([]);
       return;
     }
     let cancelled = false;
-    void listPlugins(session)
-      .then((rows) => {
-        if (!cancelled) setPlugins(rows);
+    void Promise.all([listPlugins(session), listPluginCatalog(session)])
+      .then(([rows, catalog]) => {
+        if (!cancelled) {
+          setPlugins(rows);
+          setPluginCatalog(catalog);
+        }
       })
       .catch(() => {
-        if (!cancelled) setPlugins([]);
+        if (!cancelled) {
+          setPlugins([]);
+          setPluginCatalog([]);
+        }
       });
     return () => {
       cancelled = true;
@@ -1359,12 +1370,19 @@ export function App() {
   async function refreshPlugins(next: Session | null = session) {
     if (!next) {
       setPlugins([]);
+      setPluginCatalog([]);
       return;
     }
     try {
-      setPlugins(await listPlugins(next));
+      const [rows, catalog] = await Promise.all([
+        listPlugins(next),
+        listPluginCatalog(next),
+      ]);
+      setPlugins(rows);
+      setPluginCatalog(catalog);
     } catch {
       setPlugins([]);
+      setPluginCatalog([]);
     }
   }
 
@@ -1379,6 +1397,19 @@ export function App() {
     } catch (err) {
       setComposerError(describeError(err));
       return false;
+    }
+  }
+
+  async function addCatalogPlugin(entry: PluginCatalogEntry) {
+    if (!session || catalogAddingId) return;
+    setCatalogAddingId(entry.id);
+    try {
+      await createPlugin(session, catalogInstallBody(entry));
+      await refreshPlugins();
+    } catch (err) {
+      setComposerError(describeError(err));
+    } finally {
+      setCatalogAddingId(null);
     }
   }
 
@@ -2526,6 +2557,24 @@ export function App() {
                     </div>
                   ))
                 )}
+                {pluginCatalog.length > 0 ? (
+                  <section className="settings-catalog" aria-label="Catalog">
+                    <p className="settings-catalog-header">Catalog</p>
+                    {pluginCatalog.map((entry) => (
+                      <div key={entry.id} className="catalog-row">
+                        <span className="catalog-name">{entry.name}</span>
+                        <button
+                          type="button"
+                          className="catalog-add"
+                          disabled={!session || catalogAddingId === entry.id}
+                          onClick={() => void addCatalogPlugin(entry)}
+                        >
+                          Add
+                        </button>
+                      </div>
+                    ))}
+                  </section>
+                ) : null}
               </section>
             </div>
           </div>

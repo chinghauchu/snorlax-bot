@@ -121,6 +121,13 @@ empty channel/repo, or wildcards 422. GET omits those rows unless
 connected. Fire is the connected MCP (no extra HTTP route). OpenAPI
 stays 0.18.0.
 
+v0.24 curated plugin catalog: `GET /v1/plugins/catalog` (Bearer) →
+`{ id, name, transport, command?, args?, url? }` (omit nulls). Exactly
+two entries when neither is installed (Slack then GitHub). Catalog Add
+is existing `POST /v1/plugins`. Omit a row when that kind is already in
+`GET /v1/plugins`. Both installed → 200 `[]`. Not a store. OpenAPI
+stays 0.18.0.
+
 A copy is also kept at `runtime/openapi.yaml` and `desktop/openapi.yaml`
 so those trees are self-contained. Do not let the files diverge.
 
