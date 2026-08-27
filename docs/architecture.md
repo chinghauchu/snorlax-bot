@@ -186,7 +186,8 @@ seed only while that row exists.
 
 v0.5: the runtime owns a function-calling loop against oMLX/vLLM (cap 8
 rounds). Built-in tools are list_dir, read_file, write_file, delete_file,
-shell, web_search, web_fetch, watch_video (v0.28). 1:1 tools use the speaking agent's workspace;
+shell, web_search, web_fetch, watch_video (v0.28), create_agent,
+create_channel (v0.29). 1:1 tools use the speaking agent's workspace;
 channel / handoff tools use the channel sandbox only when `sharedProject`
 is on (default off). Additive SSE `tool.start` / `tool.done` as 12px muted
 status under the LEFT streak. Tools auto-run. MCP joins that same loop

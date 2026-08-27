@@ -70,6 +70,13 @@ def test_protocol_openapi_is_locked_v0_contract() -> None:
     assert "v0.26" in text
     assert "v0.27" in text
     assert "v0.28" in text
+    assert "v0.29" in text
+    assert "create_agent" in text
+    assert "create_channel" in text
+    assert "Created {name}" in text
+    assert "isComposing" in text
+    assert "markedTextRange" in text
+    assert "Hire and projects" in text
     assert "assistant kind=message" in text or "agent LEFT" in text
     assert "kind=tool" in text
     assert "/v1/agents/{id}/attachments" in text

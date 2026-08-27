@@ -32,7 +32,9 @@ info:
     it exists. User-created agent DELETE is still 204.
 
     Runtime-owned tools (v0.5): list_dir, read_file, write_file, delete_file,
-    shell, web_search, web_fetch. v0.28 adds watch_video (auto-run). The FastAPI runtime runs a function-calling
+    shell, web_search, web_fetch. v0.28 adds watch_video (auto-run). v0.29
+    adds create_agent and create_channel (auto-run; wrap POST /v1/agents).
+    The FastAPI runtime runs a function-calling
     loop against the local OpenAI-compat server (cap 8 rounds). Clients never
     construct tool calls. Tools auto-run (no approval cards). Question
     widgets are not tool-approval and do not gate shell/web/MCP.
@@ -600,6 +602,27 @@ info:
     name + duration/size is still success. No live camera, no client
     transcode, no second player, no VNC, no public store, no extra channel
     types. Never reintroduce computerPane.ts. OpenAPI **0.18.0**.
+
+    v0.29: IME Enter + create agent/channel tools. One impl PR covering
+    runtime + desktop + iOS. Spec rides this PR. **No second PR.**
+    OpenAPI stays **0.18.0**. No new HTTP. No /v1/chats/ resource.
+    Composer: composing Enter (desktop isComposing / keyCode 229 /
+    Process; iOS markedTextRange) must not send; a later confirmed Enter
+    sends as today. Shift+Enter newline and the send button unchanged.
+    Built-in auto-run `create_agent` `{ name, title?, description? }` and
+    `create_channel` `{ name, memberIds? }` wrap existing POST /v1/agents
+    (kind=agent default vs kind=channel). Empty name → tool
+    `Error: name is required` (user POST stays 200). Omitted/empty
+    memberIds snapshots current agents. Unknown / channel ids in
+    memberIds → tool Error with the same HTTP 422 text. Success plain
+    text id+name; done_summary `Created {name}` on the existing 12px/12pt
+    muted LEFT kind=tool line (not a card). Seeded Hire and projects
+    SKILL.md maps 项目/project/team room → create_channel and
+    员工/employee/teammate/new agent → create_agent. Do not auto-create
+    on a mere mention. Sidebar GET /v1/agents refresh on those tool.done
+    names. Isolation stands. Out: extra channel types, VNC, public store,
+    delete/rename via chat, Mac folder picker. Never reintroduce
+    computerPane.ts. OpenAPI **0.18.0**.
   license:
     name: Apache-2.0
     identifier: Apache-2.0

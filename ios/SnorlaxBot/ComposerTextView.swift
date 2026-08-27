@@ -10,6 +10,7 @@ struct ComposerTextView: UIViewRepresentable {
     var disabled: Bool
     @Binding var pendingCaret: Int?
     var focused: FocusState<Bool>.Binding
+    var onSubmit: () -> Void = {}
 
     func makeCoordinator() -> Coordinator {
         Coordinator(self)
@@ -122,6 +123,20 @@ struct ComposerTextView: UIViewRepresentable {
 
         func textViewDidEndEditing(_ textView: UITextView) {
             parent.focused.wrappedValue = false
+        }
+
+        func textView(
+            _ textView: UITextView,
+            shouldChangeTextIn range: NSRange,
+            replacementText text: String
+        ) -> Bool {
+            guard text == "\n" else { return true }
+            if textView.markedTextRange != nil {
+                return true
+            }
+            if parent.disabled { return false }
+            parent.onSubmit()
+            return false
         }
     }
 }

@@ -855,6 +855,15 @@ final class AppModel {
         }
     }
 
+    func refreshRoster() async {
+        guard let client else { return }
+        do {
+            agents = try await client.listAgents()
+        } catch {
+            /* keep the current roster */
+        }
+    }
+
     func handleSceneActive() async {
         guard isConfigured else { return }
         if agents.isEmpty {
@@ -865,6 +874,11 @@ final class AppModel {
     }
 
     private func handle(_ event: RuntimeClient.StreamEvent, agentId: String) {
+        if case .tool(_, let name, _, let done, _, _) = event,
+           done,
+           name == "create_agent" || name == "create_channel" {
+            Task { await refreshRoster() }
+        }
         guard selectedAgentID == agentId else { return }
         let onTimeline = selectedAgent?.isChannel == true && threadID == nil
         switch event {
@@ -895,7 +909,7 @@ final class AppModel {
             }
         case .error(let message):
             errorMessage = message
-        case .tool(let id, let summary, _, let senderId, let senderName):
+        case .tool(let id, _, let summary, _, let senderId, let senderName):
             if onTimeline { return }
             if let index = toolTraces.firstIndex(where: { $0.id == id }) {
                 toolTraces[index].summary = summary

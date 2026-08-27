@@ -15,7 +15,12 @@ from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Resp
 from snorlax_runtime import KIND_AGENT, KIND_CHANNEL, SEEDED_CHANNEL_ID, __version__
 from snorlax_runtime.auth import require_bearer
 from snorlax_runtime.config import Settings
-from snorlax_runtime.db import Store, dump_json
+from snorlax_runtime.db import (
+    ChannelMembersError,
+    Store,
+    dump_json,
+    resolve_channel_member_ids,
+)
 from snorlax_runtime.inference import build_backend
 from snorlax_runtime.routing import (
     MentionError,
@@ -210,7 +215,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             send_auth=settings.inference_send_auth,
         )
         from snorlax_runtime.listeners import bind_runtime
+        from snorlax_runtime.skills import ensure_bundled_skills
 
+        ensure_bundled_skills(settings.data_dir)
         bind_runtime(
             store=store,
             backend=app.state.backend,
@@ -1383,22 +1390,9 @@ def _channel_member_ids(
     *,
     snapshot_if_empty: bool,
 ) -> list[str]:
-    agents = [a for a in roster if a.get("kind") != KIND_CHANNEL]
-    channel_ids = {a["id"] for a in roster if a.get("kind") == KIND_CHANNEL}
-    agent_ids = {a["id"] for a in agents}
-    if not requested:
-        if snapshot_if_empty:
-            return [a["id"] for a in agents]
-        return []
-    member_ids: list[str] = []
-    seen: set[str] = set()
-    for raw_id in requested:
-        if raw_id in seen:
-            continue
-        if raw_id in channel_ids:
-            raise _error(422, "memberIds must be agent ids")
-        if raw_id not in agent_ids:
-            raise _error(422, "Unknown member id")
-        seen.add(raw_id)
-        member_ids.append(raw_id)
-    return member_ids
+    try:
+        return resolve_channel_member_ids(
+            roster, requested, snapshot_if_empty=snapshot_if_empty
+        )
+    except ChannelMembersError as exc:
+        raise _error(422, str(exc)) from exc

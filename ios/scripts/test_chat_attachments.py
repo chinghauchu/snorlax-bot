@@ -22,6 +22,7 @@ IOS = ROOT / "ios" / "SnorlaxBot"
 CHAT = (IOS / "ChatView.swift").read_text(encoding="utf-8")
 MODEL = (IOS / "AppModel.swift").read_text(encoding="utf-8")
 CLIENT = (IOS / "RuntimeClient.swift").read_text(encoding="utf-8")
+COMPOSER = (IOS / "ComposerTextView.swift").read_text(encoding="utf-8")
 TYPES = (IOS / "Generated" / "V1Types.swift").read_text(encoding="utf-8")
 MODELS = (IOS / "Models.swift").read_text(encoding="utf-8")
 COMPONENTS = (IOS / "Components.swift").read_text(encoding="utf-8")
@@ -116,6 +117,19 @@ def test_left_streak_reuses_user_right_chrome() -> None:
     assert "agentPicker" not in CHAT
 
 
+def test_ime_enter_does_not_send_while_marked_text() -> None:
+    assert "markedTextRange" in COMPOSER
+    assert "shouldChangeTextIn" in COMPOSER
+    assert "onSubmit" in COMPOSER
+    assert "onSubmit" in CHAT
+    assert "refreshRoster" in MODEL
+    assert "create_agent" in MODEL
+    assert "create_channel" in MODEL
+    assert "CreateAgentSheet" not in CHAT
+    assert "CreateChannelSheet" not in CHAT
+    assert "computerPane.ts" not in COMPOSER
+
+
 def test_no_chats_resource_or_computer_pane() -> None:
     assert "/v1/chats/" not in CHAT
     assert "/v1/chats/" not in CLIENT
@@ -137,6 +151,7 @@ def main() -> int:
         test_video_player_220x160_native_controls_no_autoplay,
         test_left_streak_reuses_user_right_chrome,
         test_no_chats_resource_or_computer_pane,
+        test_ime_enter_does_not_send_while_marked_text,
     ]
     failed = 0
     for test in tests:

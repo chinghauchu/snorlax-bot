@@ -13,6 +13,9 @@ video; pending 56×56 poster (16pt play if no frame); 220×160 player
 (8pt radius, 1pt border, 24pt play, no autoplay, AVPlayer inline).
 v0.28: no chrome; `watch_video` is the existing 12pt muted `Watched {name}`
 tool line (no Watch button, no second player).
+v0.29: IME Enter does not send while `markedTextRange` is set; `create_agent`
+/ `create_channel` stay the existing 12pt muted `Created {name}` tool line
+(roster refresh on those `tool.done` names; no new sheets).
 Question widgets
 render as LEFT cards in the speaking agent's streak (no extra sheet). Agent
 info sheet lists a 16:10 computer preview above routines (12pt labels,

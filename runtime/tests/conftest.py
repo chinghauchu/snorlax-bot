@@ -11,6 +11,22 @@ from snorlax_runtime.config import Settings
 
 TOKEN = "test-token-snorlax"
 AUTH = {"Authorization": f"Bearer {TOKEN}"}
+HIRE_SKILL_ID = "hire-and-projects"
+HIRE_SKILL_NAME = "Hire and projects"
+HIRE_SKILL = {"id": HIRE_SKILL_ID, "name": HIRE_SKILL_NAME}
+
+
+def user_skill_rows(rows: list) -> list:
+    return [row for row in rows if row.get("id") != HIRE_SKILL_ID]
+
+
+def user_skill_files(root) -> list:
+    from pathlib import Path
+
+    path = Path(root)
+    if not path.exists():
+        return []
+    return [p for p in path.rglob("SKILL.md") if p.parent.name != HIRE_SKILL_ID]
 
 
 @pytest.fixture(autouse=True)

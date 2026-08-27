@@ -34,7 +34,8 @@ DB_FILENAME = "snorlax.db"
 
 TOOLS_PREAMBLE = (
     "You have built-in tools (list_dir, read_file, write_file, delete_file, "
-    "shell, web_search, web_fetch, watch_video). Call them instead of describing the work. "
+    "shell, web_search, web_fetch, watch_video, create_agent, create_channel). "
+    "Call them instead of describing the work. "
     "The runtime runs tools immediately — do not ask the user to approve a "
     "tool call and do not wait for a widget. Question cards are for user "
     "judgment (which approach, whether to proceed on a product decision), "
@@ -52,10 +53,13 @@ TOOLS_PREAMBLE = (
     "If a teammate needs a user decision, report back; do not try to paint "
     "a question card in someone else's 1:1. If the user attaches a video, "
     "call watch_video with its attachmentId when you need a description; "
-    "do not call it for images or files. Skills are how-to recipes "
-    "(SKILL.md) with no trigger of their own — follow a matching skill "
-    "when you work. Routines are cron jobs that fire a skill while the "
-    "user is away."
+    "do not call it for images or files. To hire an 员工 / employee / "
+    "teammate / new agent, call create_agent. To make a 项目 / project / "
+    "team room, call create_channel (existing kind=channel; not a new "
+    "type). Do not create on a mere mention of those words. Skills are "
+    "how-to recipes (SKILL.md) with no trigger of their own — follow a "
+    "matching skill when you work. Routines are cron jobs that fire a "
+    "skill while the user is away."
 )
 
 
@@ -84,6 +88,43 @@ def new_id(prefix: str) -> str:
 def slugify(name: str) -> str:
     slug = re.sub(r"[^a-z0-9]+", "-", name.lower()).strip("-")
     return slug or "agent"
+
+
+class ChannelMembersError(ValueError):
+    """Same message as HTTP 422 on POST /v1/agents kind=channel."""
+
+
+def resolve_channel_member_ids(
+    roster: list[dict[str, Any]],
+    requested: list[str],
+    *,
+    snapshot_if_empty: bool,
+) -> list[str]:
+    """Validate memberIds the same way POST /v1/agents does.
+
+    Empty/omitted ``requested`` snapshots every current ``kind=agent`` when
+    ``snapshot_if_empty`` is true. Unknown ids and channel ids raise
+    ``ChannelMembersError`` with the HTTP 422 text.
+    """
+    agents = [a for a in roster if a.get("kind") != KIND_CHANNEL]
+    channel_ids = {a["id"] for a in roster if a.get("kind") == KIND_CHANNEL}
+    agent_ids = {a["id"] for a in agents}
+    if not requested:
+        if snapshot_if_empty:
+            return [a["id"] for a in agents]
+        return []
+    member_ids: list[str] = []
+    seen: set[str] = set()
+    for raw_id in requested:
+        if raw_id in seen:
+            continue
+        if raw_id in channel_ids:
+            raise ChannelMembersError("memberIds must be agent ids")
+        if raw_id not in agent_ids:
+            raise ChannelMembersError("Unknown member id")
+        seen.add(raw_id)
+        member_ids.append(raw_id)
+    return member_ids
 
 
 def image_url(image_id: str) -> str:

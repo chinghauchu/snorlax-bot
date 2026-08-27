@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0
-"""Runtime-owned built-in tools: files, shell, web, watch_video. Never called by clients."""
+"""Runtime-owned built-in tools: files, shell, web, watch_video, create_agent/channel. Never called by clients."""
 
 from __future__ import annotations
 
@@ -416,6 +416,66 @@ TOOL_DEFINITIONS: list[dict[str, Any]] = [
     {
         "type": "function",
         "function": {
+            "name": "create_agent",
+            "description": (
+                "Create a new teammate (kind=agent) via the existing "
+                "POST /v1/agents. Pass name (required); title and "
+                "description are optional. Use this when the user wants "
+                "an 员工 / employee / teammate / new agent. Do not call "
+                "it merely because those words appeared. The runtime "
+                "runs this immediately (no approval)."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "name": {
+                        "type": "string",
+                        "description": "Display name for the new agent.",
+                    },
+                    "title": {"type": "string"},
+                    "description": {"type": "string"},
+                },
+                "required": ["name"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "create_channel",
+            "description": (
+                "Create a user-created kind=channel (项目 / project / "
+                "team room) via the existing POST /v1/agents. Pass name "
+                "(required). memberIds is optional; omitted or empty "
+                "snapshots every current agent (same as today's POST). "
+                "Do not invent a new channel type. Do not call it merely "
+                "because those words appeared. The runtime runs this "
+                "immediately (no approval)."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "name": {
+                        "type": "string",
+                        "description": "Display name for the new channel.",
+                    },
+                    "memberIds": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": (
+                            "Agent ids. Omitted or empty snapshots "
+                            "current agents. Unknown ids and channel "
+                            "ids fail."
+                        ),
+                    },
+                },
+                "required": ["name"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
             "name": "computer_click",
             "description": (
                 "Click the agent's 1280x800 sandbox display at (x, y). "
@@ -467,6 +527,12 @@ def start_summary(name: str, args: dict[str, Any]) -> str:
         return f"Fetching {host}…"
     if name == "watch_video":
         return "Watching video…"
+    if name == "create_agent":
+        label = str(args.get("name") or "").strip() or "agent"
+        return f"Creating {label}…"
+    if name == "create_channel":
+        label = str(args.get("name") or "").strip() or "channel"
+        return f"Creating {label}…"
     if name == "write_file":
         return f"Writing {Path(str(args.get('path') or 'file')).name}…"
     if name == "read_file":
@@ -549,6 +615,13 @@ def done_summary(
         if not label or label.lower().startswith("error"):
             label = str(args.get("attachmentId") or "video").strip() or "video"
         return f"Watched {label}"
+    if name in {"create_agent", "create_channel"}:
+        label = (result or "").strip().splitlines()[0].strip() if result else ""
+        if not label or label.lower().startswith("error"):
+            label = str(args.get("name") or "").strip() or (
+                "agent" if name == "create_agent" else "channel"
+            )
+        return f"Created {label}"
     if name == "write_file":
         return f"Wrote {_tool_path(args)}"
     if name == "read_file":
@@ -627,6 +700,7 @@ async def execute_named_tool(
     backend: Any | None = None,
 ) -> str:
     """Dispatch one tool. MCP stays on the runtime event loop (not the shell)."""
+    from snorlax_runtime.create import create_agent_tool, create_channel_tool
     from snorlax_runtime.mcp import call_mcp_tool, is_mcp_tool
     from snorlax_runtime.watch import watch_video_tool
 
@@ -637,6 +711,10 @@ async def execute_named_tool(
             store=store,
             backend=backend,
         )
+    if name == "create_agent":
+        return await create_agent_tool(arguments, store=store)
+    if name == "create_channel":
+        return await create_channel_tool(arguments, store=store)
     if is_mcp_tool(name):
         return await call_mcp_tool(name, arguments)
     return await asyncio.to_thread(execute_tool, name, arguments, workspace)
@@ -675,6 +753,10 @@ def execute_tool(name: str, arguments: str, workspace: Path) -> str:
             from snorlax_runtime.watch import ERR_UNKNOWN_ATTACHMENT
 
             return ERR_UNKNOWN_ATTACHMENT
+        if name in {"create_agent", "create_channel"}:
+            from snorlax_runtime.create import ERR_NAME_REQUIRED
+
+            return ERR_NAME_REQUIRED
         if name == "computer_click":
             return _computer_click(workspace, args)
         if name == "computer_key":

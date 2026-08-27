@@ -14,6 +14,7 @@ from snorlax_runtime.attachments import content_text
 
 SKILL_FILENAME = "SKILL.md"
 SKILLS_DIRNAME = "skills"
+SEEDED_SKILLS_DIRNAME = "seeded_skills"
 SOURCE_WORKSPACE = "workspace"
 SOURCE_SKILLS_DIR = "skillsDir"
 MAX_SKILLS = 24
@@ -48,6 +49,30 @@ class Skill:
 
 def skills_dir(data_dir: Path) -> Path:
     return data_dir / SKILLS_DIRNAME
+
+
+def bundled_skills_dir() -> Path:
+    """Repo / package SKILL.md files shipped with the runtime."""
+    return Path(__file__).resolve().parent / SEEDED_SKILLS_DIRNAME
+
+
+def ensure_bundled_skills(data_dir: Path) -> None:
+    """Copy packaged skills into SNORLAX_DATA_DIR/skills/ if missing.
+
+    Existing files (including a user delete) are left alone — no reseed.
+    """
+    src_root = bundled_skills_dir()
+    dest_root = skills_dir(data_dir)
+    for path in _iter_skill_files(src_root):
+        try:
+            rel = path.relative_to(src_root)
+        except ValueError:
+            continue
+        dest = dest_root / rel
+        if dest.is_file():
+            continue
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(path, dest)
 
 
 def parse_skill_markdown(
@@ -140,10 +165,18 @@ def skill_slug(skill: Skill) -> str:
 def load_skills(data_dir: Path, workspace: Path | None = None) -> list[Skill]:
     """Discover SKILL.md from the global skills dir and the agent workspace.
 
-    Workspace files win on the same ``name``. Missing dirs are empty, not an
-    error. No marketplace catalog.
+    Packaged runtime-global skills (repo ``seeded_skills/``) are copied into
+    ``SNORLAX_DATA_DIR/skills/`` on first load if missing, then discovered
+    the same way as user skills. Workspace files win on the same ``name``.
+    Missing dirs are empty, not an error. No marketplace catalog.
     """
+    ensure_bundled_skills(data_dir)
     by_name: dict[str, Skill] = {}
+    bundled_root = bundled_skills_dir()
+    for path in _iter_skill_files(bundled_root):
+        skill = _read_file(path, source=SOURCE_SKILLS_DIR, root=bundled_root)
+        if skill is not None:
+            by_name[skill.name] = skill
     global_root = skills_dir(data_dir)
     for path in _iter_skill_files(global_root):
         skill = _read_file(path, source=SOURCE_SKILLS_DIR, root=global_root)

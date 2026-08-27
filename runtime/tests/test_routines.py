@@ -8,7 +8,7 @@ from urllib.parse import urlparse
 from snorlax_runtime.cron import TAIPEI, cron_matches, parse_schedule, schedule_words
 from snorlax_runtime.scheduler import fire_due_routines
 from snorlax_runtime.skills import load_skills, parse_skill_markdown
-from tests.conftest import AUTH
+from tests.conftest import AUTH, user_skill_rows
 
 SEED = "snorlax-bot"
 CHANNEL = "snorlax-bot-group"
@@ -91,7 +91,7 @@ def test_skill_load_from_skills_dir_and_workspace(client, tmp_path: Path) -> Non
 def test_get_skills_empty_is_200(client) -> None:
     listed = client.get(f"/v1/agents/{SEED}/skills", headers=AUTH)
     assert listed.status_code == 200
-    assert listed.json() == []
+    assert user_skill_rows(listed.json()) == []
 
 
 def test_channel_get_skills_is_409(client) -> None:

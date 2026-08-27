@@ -112,6 +112,8 @@ import { ComputerPane } from "./ComputerPane";
 import { AgentComputer } from "./AgentComputer";
 import { ComputerTakeover } from "./ComputerTakeover";
 import { composerInert } from "./computerSession";
+import { composerEnterShouldSend, isImeComposing } from "./composerIme";
+import { shouldRefreshRosterOnToolDone } from "./rosterRefresh";
 import { WidgetCard } from "./WidgetCard";
 import { ConnectCard } from "./ConnectCard";
 import { HttpsText, MarkdownBody } from "./MarkdownBody";
@@ -681,6 +683,15 @@ export function App() {
     },
     [focusComposer],
   );
+
+  const refreshAgents = useCallback(async () => {
+    if (!session) return;
+    try {
+      setAgents(await listAgents(session));
+    } catch {
+      /* keep the current roster */
+    }
+  }, [session]);
 
   useEffect(() => {
     if (!session) {
@@ -1265,6 +1276,9 @@ export function App() {
         setComposerError(`${code}: ${message}`);
       },
       onTool(trace) {
+        if (shouldRefreshRosterOnToolDone(trace.name, trace.ok ?? null)) {
+          void refreshAgents();
+        }
         if (active.kind === "channel" && !threadId) return;
         setToolTraces((prev) => {
           const without = prev.filter((item) => item.id !== trace.id);
@@ -1525,6 +1539,9 @@ export function App() {
       event.stopPropagation();
       return;
     }
+    if (isImeComposing(event)) {
+      return;
+    }
     if (mentionOpen && mentionCandidates.length > 0) {
       if (event.key === "ArrowDown") {
         event.preventDefault();
@@ -1573,7 +1590,7 @@ export function App() {
         return;
       }
     }
-    if (event.key === "Enter" && !event.shiftKey) {
+    if (composerEnterShouldSend(event)) {
       event.preventDefault();
       void onSend();
     }

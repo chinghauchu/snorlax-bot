@@ -8,7 +8,7 @@ from snorlax_runtime.computer import png_size
 from snorlax_runtime.cron import TAIPEI
 from snorlax_runtime.scheduler import fire_due_routines
 from snorlax_runtime.skills import find_skill, load_skills, parse_skill_markdown
-from tests.conftest import AUTH
+from tests.conftest import AUTH, user_skill_files, user_skill_rows
 
 CHANNEL = "snorlax-bot-group"
 SEED = "snorlax-bot"
@@ -39,7 +39,7 @@ def test_record_start_stop_during_session(client, tmp_path: Path) -> None:
     stopped = client.delete(f"/v1/agents/{SEED}/computer/record", headers=AUTH)
     assert stopped.status_code == 204
     assert stopped.content == b""
-    assert not (skills_root.exists() and list(skills_root.rglob("SKILL.md")))
+    assert not user_skill_files(skills_root)
     idle = client.get(f"/v1/agents/{SEED}/computer", headers=AUTH).json()
     assert idle["recording"] is False
     assert idle["driving"] == "user"
@@ -167,10 +167,10 @@ def test_discard_writes_no_skill_md(client, tmp_path: Path) -> None:
     )
     client.delete(f"/v1/agents/{SEED}/computer/record", headers=AUTH)
     skills_root = tmp_path / "skills"
-    before = list(skills_root.rglob("SKILL.md")) if skills_root.exists() else []
+    before = user_skill_files(skills_root)
     listed = client.get(f"/v1/agents/{SEED}/skills", headers=AUTH)
     assert listed.status_code == 200
-    assert listed.json() == []
+    assert user_skill_rows(listed.json()) == []
     assert before == []
     client.delete(f"/v1/agents/{SEED}/computer/session", headers=AUTH)
     missing = client.post(
@@ -180,7 +180,7 @@ def test_discard_writes_no_skill_md(client, tmp_path: Path) -> None:
     )
     assert missing.status_code == 422
     assert missing.json() == {"error": "no pending capture"}
-    after = list(skills_root.rglob("SKILL.md")) if skills_root.exists() else []
+    after = user_skill_files(skills_root)
     assert after == []
 
 
@@ -247,7 +247,7 @@ def test_empty_name_is_422(client) -> None:
         )
         assert response.status_code == 422
     listed = client.get(f"/v1/agents/{SEED}/skills", headers=AUTH)
-    assert listed.json() == []
+    assert user_skill_rows(listed.json()) == []
 
 
 def test_channel_record_and_save_are_409(client) -> None:

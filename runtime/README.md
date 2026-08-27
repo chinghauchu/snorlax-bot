@@ -143,7 +143,11 @@ max 50MB (`Max 50MB.`); image/file stay 10MB. GET attachments on any
 may bind as `kind=video`. v0.28: built-in `watch_video` `{ attachmentId }`
 (auto-run; text description into the tool result; `Watched {name}` on the
 existing kind=tool line). Do not auto-call. Video bytes still never go
-into the user turn. Desktop/iOS idle. OpenAPI stays 0.18.0.
+into the user turn. Desktop/iOS idle. v0.29: built-in `create_agent`
+`{ name, title?, description? }` and `create_channel` `{ name, memberIds? }`
+wrap existing POST `/v1/agents` (auto-run; `Created {name}`). Empty name
+is a tool error (user POST stays 200). Seeded Hire and projects SKILL.md.
+Composer IME Enter does not send. OpenAPI stays 0.18.0.
 
 ## MCP (`mcp.json`)
 
@@ -170,7 +174,8 @@ subprocesses. A `url` is streamable HTTP on the LAN (loopback, RFC1918, or
 `.local` are fine). Use `"transport": "sse"` or a `/sse` path for legacy
 SSE. Tools are offered to the model as `server__tool` so they cannot
 clobber `list_dir` / `read_file` / `write_file` / `delete_file` / `shell` /
-`web_search` / `web_fetch` / `watch_video`. MCP HTTP uses the runtime process (like
+`web_search` / `web_fetch` / `watch_video` / `create_agent` /
+`create_channel`. MCP HTTP uses the runtime process (like
 `web_fetch`), not the agent shell. If a server fails to start, the runtime
 still boots and logs the failure.
 
