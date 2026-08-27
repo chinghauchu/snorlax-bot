@@ -61,7 +61,8 @@ with no Copy. The Add-routine sheet adds Slack/GitHub segments only
 when connected (one 12px row; `#eng` / `owner/name`). Below that, Skills
 (44px rows, trailing 12px Add, 12px muted Edit then Remove; 320px
 `New skill` and Edit skill source sheets). Settings
-lists runtime plugins (`Connected` / `Needs sign-in`; Add / Remove).
+lists runtime plugins (`Connected` / `Needs sign-in`; Add / Remove) plus a
+curated Catalog (Slack/GitHub trailing Add; hide header when empty).
 The 1:1 composer `/` at a token start reuses the `@` typeahead overlay
 (240px, `--bg-elevated`, 8px radius, 36px rows, 14px name, no avatar).
 Pick inserts `/name` as plain text; Send loads SKILL.md. Channel `/` is

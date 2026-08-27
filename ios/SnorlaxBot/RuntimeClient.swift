@@ -201,6 +201,10 @@ struct RuntimeClient: Sendable {
         try await get("v1/plugins")
     }
 
+    func listPluginCatalog() async throws -> [PluginCatalogEntry] {
+        try await get("v1/plugins/catalog")
+    }
+
     func createPlugin(_ body: PluginCreate) async throws -> Plugin {
         try await send("v1/plugins", method: "POST", body: body, expected: 201)
     }

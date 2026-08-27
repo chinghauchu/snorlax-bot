@@ -496,6 +496,30 @@ info:
     Isolation, report-back, widgets, markdown, MCP, computer
     preview/takeover/record, seed DELETE 204, Mac oMLX, no Mac folder
     picker, workspaceTree.ts stand. OpenAPI **0.18.0**.
+
+    v0.24: curated plugin catalog (not a store). One impl PR covering
+    runtime + desktop + iOS. Spec rides this PR. **No second PR.**
+    OpenAPI stays **0.18.0**. New route only: GET /v1/plugins/catalog
+    (Bearer, runtime-global). 200 JSON array, not wrapped.
+    `{ id, name, transport, command?, args?, url? }` — same fields
+    PluginCreate needs so clients POST /v1/plugins with that body as-is.
+    Omit nulls. Curated in runtime code. Exactly two entries when
+    neither is installed, Slack then GitHub (id `slack` / `github`).
+    Bake a real stdio (or url) transport each that POST /v1/plugins
+    already accepts. npx stdio is fine. Not a remote registry, not
+    mcp.json, no search. Omit a catalog row when GET /v1/plugins
+    already has a connected or needsAuth plugin whose id or name
+    matches that kind (same needle as plugin_kind_connected). If both
+    installed → 200 []. Empty catalog is 200 [] (do not 404). No POST
+    /catalog. No uninstall-from-catalog. DELETE /v1/plugins/{id}
+    unchanged. POST /v1/plugins unchanged. GET /v1/plugins still
+    `{ id, name, status }` only. Settings Catalog is 12px muted
+    `Catalog` below custom rows, 44px Slack/GitHub Add; hide the
+    header when []. Out: public store, search, VNC, extra channel
+    types, paid plugins, Connect CTA in the catalog besides trailing
+    Add. Isolation, report-back, widgets, markdown, MCP, computer
+    preview/takeover/record, seed DELETE 204, Mac oMLX, no Mac folder
+    picker, workspaceTree.ts stand. OpenAPI **0.18.0**.
   license:
     name: Apache-2.0
     identifier: Apache-2.0
@@ -1435,7 +1459,8 @@ paths:
         under SNORLAX_DATA_DIR still loads stdio and LAN servers. Add
         custom is POST this path. DELETE /v1/plugins/{id} uninstalls
         (disconnect + drop from catalog). No separate disconnect
-        endpoint. No store / search / marketplace catalog.
+        endpoint. No store / search / public marketplace. Curated
+        Slack/GitHub list is GET /v1/plugins/catalog.
       operationId: listPlugins
       responses:
         "200":
@@ -1457,7 +1482,8 @@ paths:
         missing. url: url required; allow https and http (LAN). 422 if
         missing/invalid. Persists into mcp.json under SNORLAX_DATA_DIR.
         Does not auto-open a kind=connect card. Clients never speak MCP.
-        No store / search catalog.
+        Catalog Add is this same POST (no extra sheet / no POST
+        /catalog). No store / search / public marketplace.
       operationId: createPlugin
       requestBody:
         required: true
@@ -1475,6 +1501,39 @@ paths:
         "401":
           $ref: "#/components/responses/Error"
         "422":
+          $ref: "#/components/responses/Error"
+
+  /v1/plugins/catalog:
+    get:
+      summary: List curated MCP plugins
+      description: |
+        JSON array of PluginCatalogEntry (not wrapped):
+        `{ id, name, transport, command?, args?, url? }`. Same transport
+        fields as PluginCreate so clients POST /v1/plugins with that
+        body as-is (name + transport + command/args or url). Omit nulls.
+        Curated in runtime code — not mcp.json, not a remote registry,
+        no search. Exactly two entries when neither is installed, in
+        this order: Slack (`id: slack`, `name: Slack`) then GitHub
+        (`id: github`, `name: GitHub`). Each bakes a real stdio or url
+        transport that POST /v1/plugins already accepts (npx stdio is
+        fine). Omit a row when GET /v1/plugins already has a connected
+        or needsAuth plugin whose id or name matches that kind (same
+        needle as plugin_kind_connected: `slack` / `github` in id+name).
+        If both are installed → 200 `[]`. Empty catalog is 200 `[]`
+        (clients hide the Catalog header). Do not 404. No POST /catalog.
+        No uninstall-from-catalog. Bearer as other /v1 routes.
+        Runtime-global. Not a public store.
+      operationId: listPluginCatalog
+      responses:
+        "200":
+          description: JSON array of PluginCatalogEntry
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/PluginCatalogEntry"
+        "401":
           $ref: "#/components/responses/Error"
 
   /v1/plugins/{id}:
@@ -2400,6 +2459,31 @@ components:
           type: string
           minLength: 1
           maxLength: 80
+        transport:
+          type: string
+          enum: [stdio, url]
+        command:
+          type: string
+          minLength: 1
+        args:
+          type: array
+          items:
+            type: string
+        url:
+          type: string
+          description: LAN MCP URL (http or https).
+
+    PluginCatalogEntry:
+      type: object
+      required: [id, name, transport]
+      description: |
+        Curated catalog row. Same transport fields as PluginCreate.
+        Null command/args/url are omitted. Not a Plugin (no status).
+      properties:
+        id:
+          type: string
+        name:
+          type: string
         transport:
           type: string
           enum: [stdio, url]

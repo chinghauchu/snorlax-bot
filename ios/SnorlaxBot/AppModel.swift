@@ -59,6 +59,7 @@ final class AppModel {
     var composerSkills: [Skill] = []
     var skillPickerDismissed = false
     var plugins: [Plugin] = []
+    var pluginCatalog: [PluginCatalogEntry] = []
     var computerPreview: ComputerPreview?
     var computerImage: UIImage?
     var computerTakeoverOpen = false
@@ -104,6 +105,7 @@ final class AppModel {
         guard isConfigured, let client else {
             agents = []
             plugins = []
+            pluginCatalog = []
             selectedAgentID = Agent.channelID
             messages = []
             localPreviews = [:]
@@ -115,6 +117,7 @@ final class AppModel {
             let roster = try await client.listAgents()
             agents = roster
             plugins = (try? await client.listPlugins()) ?? []
+            pluginCatalog = (try? await client.listPluginCatalog()) ?? []
             if let next = Agent.fallbackRosterSelection(in: roster) {
                 await select(next.id, push: true)
                 wantsComposerFocus = true
@@ -666,9 +669,11 @@ final class AppModel {
     func refreshPlugins() async {
         guard let client else {
             plugins = []
+            pluginCatalog = []
             return
         }
         plugins = (try? await client.listPlugins()) ?? []
+        pluginCatalog = (try? await client.listPluginCatalog()) ?? []
     }
 
     func connectPlugin(id: String) async -> Bool {
@@ -720,6 +725,32 @@ final class AppModel {
                 composerError = "Command or URL is required."
                 return false
             }
+            _ = try await client.createPlugin(body)
+            await refreshPlugins()
+            return true
+        } catch {
+            composerError = error.localizedDescription
+            return false
+        }
+    }
+
+    func addCatalogPlugin(_ entry: PluginCatalogEntry) async -> Bool {
+        guard let client else { return false }
+        do {
+            let transport: PluginCreate.Transport
+            switch entry.transport {
+            case .url:
+                transport = .url
+            case .stdio:
+                transport = .stdio
+            }
+            let body = PluginCreate(
+                name: entry.name,
+                transport: transport,
+                command: entry.command,
+                args: entry.args,
+                url: entry.url
+            )
             _ = try await client.createPlugin(body)
             await refreshPlugins()
             return true

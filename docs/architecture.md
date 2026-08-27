@@ -17,7 +17,7 @@ From public Grok Bot docs and the Aug 2026 launch:
 | Files, shell, web on a computer | v0.5: runtime tools in a workspace jail; v0.6: thin file-tree pane |
 | One user-scoped computer shared by all bots | Later: one sandbox on the Spark, shared files/logins, per-bot screen |
 | Skills (how) and routines (when) | v0.9: SKILL.md + cron (Asia/Taipei); v0.13: cron XOR webhook; v0.17: Add / Remove on the identity pane; v0.18: identity-pane skill markdown editor; v0.21: 1:1 composer `/` loads that SKILL.md (channel `/` stays text); v0.23: Slack/GitHub inbound listeners when that plugin is connected; fire LEFT 1:1 |
-| MCP + computer-use for sites without an API | v0.7: local/LAN MCP client; v0.10: connect chrome (`GET /v1/plugins` + `kind=connect`); v0.12: Settings Add custom; later: sandbox browser |
+| MCP + computer-use for sites without an API | v0.7: local/LAN MCP client; v0.10: connect chrome (`GET /v1/plugins` + `kind=connect`); v0.12: Settings Add custom; v0.24: curated catalog (`GET /v1/plugins/catalog`; Slack/GitHub; not a store); later: sandbox browser |
 | Question / approval moments | v0.8: question widgets (`kind=widget`); tools stay auto-run (no approval card) |
 | Desktop + iOS, same bots | Tauri desktop now; Swift iOS companion on the LAN |
 | Cloud LLM | vLLM on GB10 (70B FP8 default; 200B-class in-range) |
@@ -361,6 +361,17 @@ do not disable). Slack `#eng` + `Channel the bot is in.`; GitHub
 `owner/name` + `One repo. No wildcards.` Copy stays webhook-only. No
 event picker. No Connect CTA. OpenAPI stays 0.18.0. Out: marketplace,
 VNC, extra channel types. Never reintroduce `computerPane.ts`.
+
+v0.24: curated plugin catalog (not a store). Runtime + desktop + iOS.
+`GET /v1/plugins/catalog` (Bearer) → `{ id, name, transport, command?,
+args?, url? }` (omit nulls). Exactly two entries when neither is
+installed (Slack then GitHub). Catalog Add is existing `POST
+/v1/plugins` (no extra sheet). Omit a row when that kind is already in
+`GET /v1/plugins` (connected or needsAuth; same needle as
+`plugin_kind_connected`). Both installed → 200 `[]` (hide Catalog
+header). Custom Add stays. `GET /v1/plugins` still `{ id, name, status }`
+only. OpenAPI stays 0.18.0. Out: public store, search, VNC, extra
+channel types. Never reintroduce `computerPane.ts`.
 
 ## Inference interface
 

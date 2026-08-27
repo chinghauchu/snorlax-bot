@@ -477,3 +477,14 @@ class PluginCreate(BaseModel):
 
 class PluginAuth(BaseModel):
     authorizationUrl: str
+
+
+class PluginCatalogEntry(BaseModel):
+    """Curated catalog row. Same transport fields as PluginCreate; omit nulls."""
+
+    id: str
+    name: str
+    transport: str
+    command: str | None = None
+    args: list[str] | None = None
+    url: str | None = None

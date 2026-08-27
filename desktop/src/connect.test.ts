@@ -12,6 +12,7 @@ import {
   isPendingConnect,
   parsePluginArgs,
   pluginStatusLabel,
+  catalogInstallBody,
   resolvedConnectLabel,
 } from "./connect.ts";
 
@@ -171,4 +172,54 @@ test("plugins list is Settings only, not the agent pane", () => {
   assert.doesNotMatch(app, /Add custom/);
   assert.doesNotMatch(app, /computerPane\.ts/);
   assert.equal(existsSync(join(here, "computerPane.ts")), false);
+});
+
+test("catalog sits below custom plugin rows with 12px Add, no search", () => {
+  const header = block(".settings-catalog-header");
+  const row = block(".catalog-row");
+  const name = block(".catalog-name");
+  const add = block(".catalog-add");
+  assert.match(header, /font-size:\s*12px/);
+  assert.match(header, /color:\s*var\(--text-muted\)/);
+  assert.match(row, /height:\s*44px/);
+  assert.match(name, /font-size:\s*14px/);
+  assert.match(add, /font-size:\s*12px/);
+  assert.match(add, /color:\s*var\(--accent\)/);
+
+  const api = readFileSync(join(here, "api.ts"), "utf8");
+  const connectSrc = readFileSync(join(here, "connect.ts"), "utf8");
+  assert.match(app, /settings-catalog/);
+  assert.match(app, />Catalog</);
+  assert.match(app, /pluginCatalog\.length > 0/);
+  assert.match(app, /No plugins yet\./);
+  assert.match(app, /listPluginCatalog/);
+  assert.match(app, /addCatalogPlugin/);
+  assert.match(app, /catalogInstallBody/);
+  assert.match(api, /\/v1\/plugins\/catalog/);
+  assert.match(connectSrc, /catalogInstallBody/);
+  assert.ok(app.indexOf("settings-plugins") < app.indexOf("settings-catalog"));
+  assert.ok(app.indexOf("No plugins yet.") < app.indexOf("settings-catalog"));
+  assert.doesNotMatch(app, /plugin-catalog-search/);
+  assert.doesNotMatch(app, /placeholder="Search/);
+  assert.doesNotMatch(app, /Uninstall from catalog/);
+  assert.doesNotMatch(app, /POST \/catalog/);
+  assert.doesNotMatch(app, /marketplace/);
+  assert.doesNotMatch(app, /computerPane\.ts/);
+});
+
+test("catalogInstallBody posts PluginCreate fields from a catalog row", () => {
+  assert.deepEqual(
+    catalogInstallBody({
+      name: "Slack",
+      transport: "stdio",
+      command: "npx",
+      args: ["-y", "@modelcontextprotocol/server-slack"],
+    }),
+    {
+      name: "Slack",
+      transport: "stdio",
+      command: "npx",
+      args: ["-y", "@modelcontextprotocol/server-slack"],
+    },
+  );
 });

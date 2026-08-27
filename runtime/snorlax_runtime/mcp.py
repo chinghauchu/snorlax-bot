@@ -4,7 +4,9 @@
 stdio subprocess servers and LAN HTTP (streamable HTTP or legacy SSE).
 Config lives on disk as ``mcp.json`` under ``SNORLAX_DATA_DIR``. Chrome
 lists and authenticates plugins through ``/v1/plugins``; clients never
-read the host disk or speak MCP.
+read the host disk or speak MCP. The curated Slack/GitHub catalog is
+code in this module (``GET /v1/plugins/catalog``), not ``mcp.json``
+and not a remote registry.
 """
 
 from __future__ import annotations
@@ -42,6 +44,24 @@ STATUS_ERROR = "error"
 STATUS_DISCONNECTED = "disconnected"
 TRANSPORT_STDIO = "stdio"
 TRANSPORT_HTTP = "http"
+
+# Curated Settings catalog (v0.24). Not a store. Not mcp.json.
+PLUGIN_CATALOG: tuple[dict[str, Any], ...] = (
+    {
+        "id": "slack",
+        "name": "Slack",
+        "transport": "stdio",
+        "command": "npx",
+        "args": ["-y", "@modelcontextprotocol/server-slack"],
+    },
+    {
+        "id": "github",
+        "name": "GitHub",
+        "transport": "stdio",
+        "command": "npx",
+        "args": ["-y", "@modelcontextprotocol/server-github"],
+    },
+)
 
 BUILTIN_TOOL_NAMES = frozenset(
     {
@@ -922,25 +942,53 @@ def plugin_is_connected(name: str) -> bool:
     return manager.public_row(name).get("status") == STATUS_CONNECTED
 
 
-def plugin_kind_connected(manager: object | None, kind: str) -> bool:
-    """True when GET /v1/plugins has a connected row whose id/name matches kind."""
-    if manager is None:
-        return False
-    listed = getattr(manager, "list_public", None)
-    if not callable(listed):
-        return False
+def plugin_kind_matches(row: dict[str, Any], kind: str) -> bool:
+    """Same needle as listeners: ``kind`` in ``id`` + ``name`` (case-insensitive)."""
     needle = kind.strip().lower()
     if not needle:
         return False
-    for row in listed() or []:
-        if not isinstance(row, dict):
-            continue
+    blob = f"{row.get('id', '')} {row.get('name', '')}".lower()
+    return needle in blob
+
+
+def _iter_public_rows(manager: object | None) -> list[dict[str, Any]]:
+    if manager is None:
+        return []
+    listed = getattr(manager, "list_public", None)
+    if not callable(listed):
+        return []
+    rows = listed() or []
+    return [row for row in rows if isinstance(row, dict)]
+
+
+def plugin_kind_connected(manager: object | None, kind: str) -> bool:
+    """True when GET /v1/plugins has a connected row whose id/name matches kind."""
+    for row in _iter_public_rows(manager):
         if str(row.get("status") or "") != STATUS_CONNECTED:
             continue
-        blob = f"{row.get('id', '')} {row.get('name', '')}".lower()
-        if needle in blob:
+        if plugin_kind_matches(row, kind):
             return True
     return False
+
+
+def plugin_kind_listed(manager: object | None, kind: str) -> bool:
+    """True when GET /v1/plugins has any row (connected or needsAuth) matching kind."""
+    return any(plugin_kind_matches(row, kind) for row in _iter_public_rows(manager))
+
+
+def list_plugin_catalog(manager: object | None) -> list[dict[str, Any]]:
+    """Curated Slack + GitHub rows, omitting kinds already in GET /v1/plugins.
+
+    Empty install list → both entries, Slack then GitHub. Both installed →
+    ``[]``. Null fields are omitted so clients can POST the body as-is.
+    """
+    out: list[dict[str, Any]] = []
+    for entry in PLUGIN_CATALOG:
+        kind = str(entry.get("id") or "")
+        if plugin_kind_listed(manager, kind):
+            continue
+        out.append({key: value for key, value in entry.items() if value is not None})
+    return out
 
 
 def is_mcp_tool(name: str) -> bool:
