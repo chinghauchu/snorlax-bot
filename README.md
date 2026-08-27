@@ -20,7 +20,7 @@ computer. Bots live on your LAN, talk through a thin local runtime, and (in
 later versions) browse, click, schedule, and call tools without sending tokens
 off-box.
 
-v0.19 is still small: **named teammates + identity pane + group channel threads
+v0.20 is still small: **named teammates + identity pane + group channel threads
 + chat with @mentions + report-back + extra channels + built-in tools + a
 thin desktop Computer pane + a runtime MCP client + question widgets +
 skills and cron/webhook routines (Add / Remove + enable/pause + Copy webhook URL) + MCP connect chrome
@@ -30,7 +30,7 @@ identity-pane Box computer preview (Bearer PNG) + desktop Box takeover
 (Open / Done; pointer/key in 1280×800) + teach-a-task (Record / Stop /
 Save as skill inside takeover) + skill markdown editor (identity-pane
 Skills list + Edit sheet) + iOS Open/Done takeover (same v0.15 session
-protocol; no Record)**. Header click opens agent identity (PATCH) or
+protocol) + iOS Record (same v0.16 record protocol on the takeover bar)**. Header click opens agent identity (PATCH) or
 the channel member list. Agent identity lists routines with a live
 enable/pause switch, Add, Remove, and Copy for webhook URLs, then skills
 with Edit / Remove (no blank Add). 1:1s are user ↔ that agent only; a user `@chip`
@@ -50,8 +50,10 @@ over that display (overlay on chat + info pane; Esc / Done). While driving,
 desktop **Record** captures pointer/key and **Save as skill** writes
 SKILL.md (v0.9 list). iOS matches
 the preview in the agent sheet and **Open** is a full-screen takeover
-(tap the 16:10 shot or 12pt Open; Keyboard + Done; no Record; no file
-browser). No VNC /
+(tap the 16:10 shot or 12pt Open; Keyboard + Done). While driving, iOS
+**Record** captures pointer/key and **Save as skill** writes SKILL.md
+(same v0.16 HTTP). No file
+browser. No VNC /
 separate Box window. That slice is meant
 to actually run on a laptop *or* a Spark, with a mocked model backend when a
 70B-class checkpoint is not present.

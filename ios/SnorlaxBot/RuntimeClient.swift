@@ -165,6 +165,38 @@ struct RuntimeClient: Sendable {
         )
     }
 
+    func startComputerRecord(agentId: String) async throws -> ComputerRecording {
+        let request = try makeRequest(
+            "v1/agents/\(Self.encode(agentId))/computer/record",
+            method: "POST"
+        )
+        let (data, response) = try await URLSession.shared.data(for: request)
+        try Self.throwIfNeeded(data: data, response: response, allowed: [201, 200])
+        do {
+            return try decoder.decode(ComputerRecording.self, from: data)
+        } catch {
+            throw RuntimeError.decoding
+        }
+    }
+
+    func stopComputerRecord(agentId: String) async throws {
+        let request = try makeRequest(
+            "v1/agents/\(Self.encode(agentId))/computer/record",
+            method: "DELETE"
+        )
+        let (data, response) = try await URLSession.shared.data(for: request)
+        try Self.throwIfNeeded(data: data, response: response, allowed: [204])
+    }
+
+    func createSkill(agentId: String, name: String) async throws -> Skill {
+        try await send(
+            "v1/agents/\(Self.encode(agentId))/skills",
+            method: "POST",
+            body: SkillCreate(name: name),
+            expected: 201
+        )
+    }
+
     func listPlugins() async throws -> [Plugin] {
         try await get("v1/plugins")
     }

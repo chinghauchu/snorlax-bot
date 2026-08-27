@@ -380,6 +380,50 @@ final class AppModel {
         }
     }
 
+    /// Record only inside an open takeover session (runtime 409 otherwise).
+    func startComputerRecord(agentId: String) async -> Bool {
+        guard ComputerTakeoverChrome.recordOffered(sessionOpen: computerTakeoverOpen),
+              let client
+        else { return false }
+        do {
+            let started = try await client.startComputerRecord(agentId: agentId)
+            return started.recording
+        } catch {
+            /* no session / already recording */
+            return false
+        }
+    }
+
+    func stopComputerRecord(agentId: String) async {
+        guard let client else { return }
+        do {
+            try await client.stopComputerRecord(agentId: agentId)
+        } catch {
+            /* already stopped */
+        }
+    }
+
+    /// POST `/skills { name }` from the pending capture. Discard is skip this.
+    func saveRecordedSkill(agentId: String, name: String) async -> Bool {
+        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !ComputerTakeoverChrome.saveDisabled(name: trimmed),
+              computerTakeoverOpen,
+              let client
+        else { return false }
+        do {
+            let created = try await client.createSkill(agentId: agentId, name: trimmed)
+            if let index = skills.firstIndex(where: { $0.id == created.id }) {
+                skills[index] = created
+            } else {
+                skills.append(created)
+            }
+            return true
+        } catch {
+            errorMessage = error.localizedDescription
+            return false
+        }
+    }
+
     func setRoutineEnabled(agentId: String, id: String, enabled: Bool) async {
         guard let client else { return }
         do {

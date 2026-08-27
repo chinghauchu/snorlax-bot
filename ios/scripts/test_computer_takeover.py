@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: Apache-2.0
-"""v0.19 iOS takeover chrome lock.
+"""v0.19 iOS takeover + v0.20 iOS Record chrome lock.
 
-Runtime protocol is unchanged v0.15 (POST/DELETE /computer/session plus
-pointer/key). recording stays unused. No Record chrome.
+Runtime protocol is unchanged: v0.15 POST/DELETE /computer/session plus
+pointer/key, then v0.16 POST/DELETE /computer/record and POST /skills { name }.
+Discard is omit the skills POST. Record only inside a takeover session.
 """
 
 from __future__ import annotations
@@ -33,6 +34,26 @@ def can_open(has_sandbox: bool | None) -> bool:
 
 def open_posts_session(has_sandbox: bool | None) -> bool:
     return can_open(has_sandbox)
+
+
+def record_offered(session_open: bool) -> bool:
+    return session_open
+
+
+def record_control_label(recording: bool) -> str:
+    return "Stop" if recording else "Record"
+
+
+def done_disabled(recording: bool) -> bool:
+    return recording
+
+
+def save_disabled(name: str) -> bool:
+    return not (name or "").strip()
+
+
+def writes_skill(saved: bool) -> bool:
+    return saved
 
 
 def letterbox(
@@ -128,7 +149,7 @@ def test_open_chrome() -> None:
     assert 'static let keyboardLabel = "Keyboard"' in CHROME
     assert 'static let doneLabel = "Done"' in CHROME
     assert "fullScreenCover" in CONTENT
-    assert ".sheet" not in TAKEOVER
+    assert "Open is full-screen" in TAKEOVER or "Full-screen iOS Open" in TAKEOVER
     assert "interactiveDismissDisabled" in TAKEOVER
     assert "navigationBarBackButtonHidden" in TAKEOVER
     assert "Swipe-back disabled" in TAKEOVER
@@ -161,22 +182,107 @@ def test_letterbox_tap_click_pan_move() -> None:
     assert "pinch" in CHROME.lower()
 
 
-def test_no_record_chrome() -> None:
-    for blob, name in (
-        (TAKEOVER, "ComputerTakeover.swift"),
-        (SHEET, "ProfileSheet.swift"),
-        (CHAT, "ChatView.swift"),
-        (CONTENT, "ContentView.swift"),
-        (CHROME, "ComputerSession.swift"),
-    ):
-        assert "RECORD_LABEL" not in blob, name
-        assert "Save as skill" not in blob, name
-        assert "computer/record" not in blob, name
-        assert 'Text("Record")' not in blob, name
-        assert 'Button("Record")' not in blob, name
-    assert "computer/record" not in CLIENT
-    assert "computer/record" not in MODEL
-    assert "recording stays unused" in CHROME.lower() or "recording` stays unused" in CHROME
+def test_record_stop_save_chrome() -> None:
+    assert record_control_label(False) == "Record"
+    assert record_control_label(True) == "Stop"
+    assert done_disabled(True) is True
+    assert done_disabled(False) is False
+    assert save_disabled("") is True
+    assert save_disabled("   ") is True
+    assert save_disabled("Demo") is False
+    assert 'static let recordLabel = "Record"' in CHROME
+    assert 'static let stopLabel = "Stop"' in CHROME
+    assert 'static let saveAsSkillTitle = "Save as skill"' in CHROME
+    assert 'static let saveLabel = "Save"' in CHROME
+    assert 'static let savedLabel = "Saved"' in CHROME
+    assert 'static let cancelLabel = "Cancel"' in CHROME
+    assert "static let recordDotSize: CGFloat = 6" in CHROME
+    assert "static let labelSize: CGFloat = 12" in CHROME
+    assert "static let savedFeedbackMs = 1500" in CHROME
+    assert "--danger" in CHROME
+    assert "ff6b6b" in CHROME
+    assert "static func recordControlLabel(recording: Bool) -> String" in CHROME
+    assert "static func doneDisabled(recording: Bool) -> Bool" in CHROME
+    assert "static func saveDisabled(name: String) -> Bool" in CHROME
+    assert "recordControlLabel" in TAKEOVER
+    assert "doneDisabled" in TAKEOVER
+    record_btn = TAKEOVER.index("recordControl")
+    done_btn = TAKEOVER.index("ComputerTakeoverChrome.doneLabel")
+    assert record_btn < done_btn
+    assert "RecordDot" in TAKEOVER
+    assert "accessibilityReduceMotion" in TAKEOVER
+    assert "SaveAsSkillSheet" in TAKEOVER
+    assert "saveAsSkillTitle" in TAKEOVER
+    assert "skillNameSize" in TAKEOVER or "skillNameSize" in CHROME
+    assert "saveButtonHeight" in TAKEOVER
+    assert "saveDisabled" in TAKEOVER
+    assert "cancelLabel" in TAKEOVER
+    assert 'Image(systemName: "xmark")' in TAKEOVER
+    assert "savedLabel" in TAKEOVER
+    assert "computer/record" in CLIENT
+    assert "func startComputerRecord" in CLIENT
+    assert "func stopComputerRecord" in CLIENT
+    assert 'method: "POST"' in CLIENT
+    assert 'method: "DELETE"' in CLIENT
+    assert "func createSkill" in CLIENT
+    assert "SkillCreate" in CLIENT
+    assert "startComputerRecord" in MODEL
+    assert "stopComputerRecord" in MODEL
+    assert "saveRecordedSkill" in MODEL
+    assert "startComputerRecord" in TAKEOVER
+    assert "stopComputerRecord" in TAKEOVER
+    assert "saveRecordedSkill" in TAKEOVER
+    # Keyboard / tap-click / pan-move / Done from v0.19 stay.
+    assert "keyboardLabel" in TAKEOVER
+    assert "doneLabel" in TAKEOVER
+
+
+def test_record_without_session_not_offered() -> None:
+    assert record_offered(True) is True
+    assert record_offered(False) is False
+    assert "static func recordOffered(sessionOpen: Bool) -> Bool" in CHROME
+    assert "recordOffered(sessionOpen:" in TAKEOVER
+    assert "recordOffered(sessionOpen: computerTakeoverOpen)" in MODEL
+    computer = SHEET[
+        SHEET.index("private var computerBlock") : SHEET.index("private var paneRoutines")
+    ]
+    assert "recordLabel" not in computer
+    assert "Record" not in computer
+    assert "Save as skill" not in computer
+    assert "computer/record" not in SHEET
+    assert "computer/record" not in CHAT
+    assert "computer/record" not in CONTENT
+    assert "Save as skill" not in SHEET
+    assert "Save as skill" not in CHAT
+    assert "Save as skill" not in CONTENT
+    skills = SHEET[SHEET.index("private var skillsList") : SHEET.index("private var channelPane")]
+    assert 'Button("Add")' not in skills
+    assert "New skill" not in skills
+    channel = SHEET[SHEET.index("channelPane") : SHEET.index("channelEditForm")]
+    assert "recordLabel" not in channel
+    assert "SaveAsSkillSheet" not in channel
+
+
+def test_discard_writes_nothing() -> None:
+    assert writes_skill(False) is False
+    assert writes_skill(True) is True
+    assert "static func writesSkill(saved: Bool) -> Bool" in CHROME
+    assert "saved" in CHROME[CHROME.index("func writesSkill") :]
+    discard = TAKEOVER[
+        TAKEOVER.index("private func discardSave") : TAKEOVER.index("private func saveSkill")
+    ]
+    assert "createSkill" not in discard
+    assert "saveRecordedSkill" not in discard
+    assert "POST /skills" in discard or "omit POST" in discard or "no SKILL.md" in discard
+    assert "onCancel: discardSave" in TAKEOVER
+    save = TAKEOVER[TAKEOVER.index("private func saveSkill") :]
+    assert "saveRecordedSkill" in save
+    stop = MODEL[MODEL.index("func stopComputerRecord") : MODEL.index("func saveRecordedSkill")]
+    assert "createSkill" not in stop
+    assert "DELETE" in CLIENT
+    create = CLIENT[CLIENT.index("func createSkill") :]
+    assert 'method: "POST"' in create
+    assert "/skills" in create
 
 
 def main() -> int:
@@ -185,7 +291,9 @@ def main() -> int:
         test_tap_posts_session,
         test_open_chrome,
         test_letterbox_tap_click_pan_move,
-        test_no_record_chrome,
+        test_record_stop_save_chrome,
+        test_record_without_session_not_offered,
+        test_discard_writes_nothing,
     ]
     failed = 0
     for test in tests:

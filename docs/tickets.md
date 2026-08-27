@@ -13,7 +13,7 @@ Concrete follow-ups after v0. Filed on GitHub against
 ## Design
 
 - [D1 — Desktop visual system: roster, status, empty states](https://github.com/chinghauchu/snorlax-bot/issues/11)
-- [D2 — Computer pane next to chat](https://github.com/chinghauchu/snorlax-bot/issues/12) — v0.6 first slice: 320px right file tree + text preview over the existing `~/.snorlax-bot` workspace (collapsible, default open). **v0.14:** identity-pane 16:10 Bearer PNG preview (288×180). **v0.15:** desktop Open / Done takeover overlay (no VNC / separate window). **v0.16:** Record / Stop / Save as skill on that takeover bar (desktop only). **v0.19:** iOS Open / Done full-screen takeover (same v0.15 session; no Record). File-tree column unchanged.
+- [D2 — Computer pane next to chat](https://github.com/chinghauchu/snorlax-bot/issues/12) — v0.6 first slice: 320px right file tree + text preview over the existing `~/.snorlax-bot` workspace (collapsible, default open). **v0.14:** identity-pane 16:10 Bearer PNG preview (288×180). **v0.15:** desktop Open / Done takeover overlay (no VNC / separate window). **v0.16:** Record / Stop / Save as skill on that takeover bar (desktop). **v0.19:** iOS Open / Done full-screen takeover (same v0.15 session). **v0.20:** iOS Record / Stop / Save as skill on that takeover bar (same v0.16 record protocol). File-tree column unchanged.
 - [D3 — In-stream widgets and attachment chips](https://github.com/chinghauchu/snorlax-bot/issues/8) — **v0.8 first slice:** LEFT question card chrome (desktop + iOS, no extra sheet). Attachment-chip VL treatment stays later.
 
 ## Backend
@@ -37,8 +37,9 @@ Concrete follow-ups after v0. Filed on GitHub against
   **v0.15:** desktop Open / Done takeover (pointer/key in 1280×800). **v0.16:**
   Record / Stop / Save as skill inside that overlay. **v0.18:** identity-pane
   Skills list + 320px Edit skill source sheet (desktop + iOS). **v0.19:**
-  iOS Open / Done full-screen takeover (v0.15 session protocol; no Record).
-  Full sandbox computer GUI (browser, VNC, terminal)
+  iOS Open / Done full-screen takeover (v0.15 session protocol). **v0.20:**
+  iOS Record / Stop / Save as skill on that takeover bar (v0.16 record
+  protocol). Full sandbox computer GUI (browser, VNC, terminal)
   stays later.
 
 ## iOS
@@ -49,4 +50,8 @@ Concrete follow-ups after v0. Filed on GitHub against
   reconnects to `GET /v1/agents/{id}/messages`.
 - **v0.19:** agent-sheet Computer **Open** is a full-screen takeover
   (12pt Open when `hasSandbox`; 16:10 shot also Opens; Keyboard maps to
-  `POST …/key`; Done `DELETE` session). No Record. Channel 409.
+  `POST …/key`; Done `DELETE` session). Channel 409.
+- **v0.20:** takeover bar **Record / Stop / Save as skill** (12pt muted
+  `Record` left of `Done`; Stop is `--danger` + 6pt dot; Done disabled
+  while recording; Save sheet; × / Cancel discards). Same v0.16 HTTP.
+  Record only inside a takeover session. No blank New skill.
