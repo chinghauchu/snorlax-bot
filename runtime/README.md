@@ -145,6 +145,14 @@ may bind as `kind=video`. v0.28: built-in `watch_video` `{ attachmentId }`
 existing kind=tool line). Do not auto-call. Video bytes still never go
 into the user turn. Desktop/iOS idle. OpenAPI stays 0.18.0.
 
+v0.29: built-in `create_agent` `{ name, title?, description? }` and
+`create_channel` `{ name, memberIds? }` wrap existing POST /v1/agents
+(`kind=channel` for the latter; empty memberIds still snapshots).
+`Created {name}` on the existing kind=tool line. Empty name or unknown
+member ids → tool Error (user POST 200). Seed SKILL.md maps 项目 to
+create_channel and 员工 to create_agent. Composer Enter does not send
+while IME is composing. OpenAPI stays 0.18.0.
+
 ## MCP (`mcp.json`)
 
 The runtime is the MCP client. Desktop and iOS never speak MCP. Put
@@ -170,7 +178,8 @@ subprocesses. A `url` is streamable HTTP on the LAN (loopback, RFC1918, or
 `.local` are fine). Use `"transport": "sse"` or a `/sse` path for legacy
 SSE. Tools are offered to the model as `server__tool` so they cannot
 clobber `list_dir` / `read_file` / `write_file` / `delete_file` / `shell` /
-`web_search` / `web_fetch` / `watch_video`. MCP HTTP uses the runtime process (like
+`web_search` / `web_fetch` / `watch_video` / `create_agent` /
+`create_channel`. MCP HTTP uses the runtime process (like
 `web_fetch`), not the agent shell. If a server fails to start, the runtime
 still boots and logs the failure.
 

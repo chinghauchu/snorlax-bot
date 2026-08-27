@@ -104,6 +104,11 @@ import {
   skillTrigger,
 } from "./skillsPicker";
 import {
+  composerEnterSends,
+  isComposerComposing,
+  rosterRefreshTool,
+} from "./composerKeys";
+import {
   loadInitialRuntimeUrl,
   normalizeRuntimeUrl,
 } from "./runtimeUrl";
@@ -1272,6 +1277,9 @@ export function App() {
         });
         if (typeof trace.ok === "boolean") {
           setWorkspaceTick((n) => n + 1);
+          if (rosterRefreshTool(trace.name) && session) {
+            void listAgents(session).then(setAgents).catch(() => {});
+          }
         }
       },
       onConnectUrl(url, pluginId) {
@@ -1525,6 +1533,9 @@ export function App() {
       event.stopPropagation();
       return;
     }
+    if (isComposerComposing(event)) {
+      return;
+    }
     if (mentionOpen && mentionCandidates.length > 0) {
       if (event.key === "ArrowDown") {
         event.preventDefault();
@@ -1573,7 +1584,7 @@ export function App() {
         return;
       }
     }
-    if (event.key === "Enter" && !event.shiftKey) {
+    if (composerEnterSends(event)) {
       event.preventDefault();
       void onSend();
     }

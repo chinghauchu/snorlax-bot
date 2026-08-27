@@ -31,6 +31,8 @@ chat attachments (composer paperclip / drop; user-right image + file chips; `att
 agent-sent attachments (LEFT `kind=message` reuses that chrome; runtime binds write_file / screenshot) +
 video attachments (composer drop/pick; 220×160 player; `kind=video`; 50MB; not fed to the model) +
 watch-video tool (`watch_video` `{ attachmentId }`; `Watched {name}` on the existing kind=tool line; no auto-inject; desktop/iOS idle) +
+create agent/channel tools (`create_agent` / `create_channel` wrap `POST /v1/agents`; `Created {name}` tool line; 项目 / 员工 seed skill) +
+IME-safe composer Enter (does not send while composing) +
 identity-pane Box computer preview (Bearer PNG) + desktop Box takeover
 (Open / Done; pointer/key in 1280×800) + teach-a-task (Record / Stop /
 Save as skill inside takeover) + skill markdown editor (identity-pane

@@ -57,3 +57,4 @@ jobs:
           python3 ios/scripts/test_slack_github_routines.py
           python3 ios/scripts/test_plugin_catalog.py
           python3 ios/scripts/test_chat_attachments.py
+          python3 ios/scripts/test_ime_composer.py

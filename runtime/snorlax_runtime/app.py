@@ -78,6 +78,12 @@ from snorlax_runtime.tools import (
     list_workspace,
     read_workspace_file,
 )
+from snorlax_runtime.roster import (
+    RosterCreateError,
+    channel_member_ids,
+    create_agent_row,
+    create_channel_row,
+)
 
 
 def _error(status_code: int, message: str) -> HTTPException:
@@ -317,26 +323,29 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         kind = (payload.kind or KIND_AGENT).strip().lower()
         if kind not in {KIND_AGENT, KIND_CHANNEL}:
             raise _error(422, "kind must be agent or channel")
-        if kind == KIND_CHANNEL:
-            fields = payload.model_dump(exclude_unset=True)
-            if "name" not in fields:
-                raise _error(422, "missing name")
-            name = payload.name
-            roster = await store.list_agents()
-            member_ids = _channel_member_ids(
-                roster, list(payload.memberIds or []), snapshot_if_empty=True
-            )
-            row = await store.create_channel(
-                name,
-                payload.title,
-                payload.description,
-                payload.avatar,
-                member_ids,
-            )
-            return Agent.model_validate(row)
-        row = await store.create_agent(
-            payload.name, payload.title, payload.description, payload.avatar
-        )
+        try:
+            if kind == KIND_CHANNEL:
+                fields = payload.model_dump(exclude_unset=True)
+                if "name" not in fields:
+                    raise RosterCreateError("missing name")
+                row = await create_channel_row(
+                    store,
+                    name=payload.name,
+                    title=payload.title,
+                    description=payload.description,
+                    avatar=payload.avatar,
+                    member_ids=list(payload.memberIds or []),
+                )
+            else:
+                row = await create_agent_row(
+                    store,
+                    name=payload.name,
+                    title=payload.title,
+                    description=payload.description,
+                    avatar=payload.avatar,
+                )
+        except RosterCreateError as exc:
+            raise _error(422, exc.message) from exc
         return Agent.model_validate(row)
 
     @app.get("/v1/agents/{id}", response_model=Agent)
@@ -396,9 +405,14 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     raise _error(404, f"Agent {id!r} not found")
             if "memberIds" in fields:
                 roster = await store.list_agents()
-                member_ids = _channel_member_ids(
-                    roster, list(fields.get("memberIds") or []), snapshot_if_empty=False
-                )
+                try:
+                    member_ids = channel_member_ids(
+                        roster,
+                        list(fields.get("memberIds") or []),
+                        snapshot_if_empty=False,
+                    )
+                except RosterCreateError as exc:
+                    raise _error(422, exc.message) from exc
                 await store.set_channel_members(id, member_ids)
             row = await store.get_agent(id)
             if row is None:
@@ -1375,30 +1389,3 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 def _sse(event: str, data: dict) -> bytes:
     payload = dump_json(data)
     return f"event: {event}\ndata: {payload}\n\n".encode("utf-8")
-
-
-def _channel_member_ids(
-    roster: list,
-    requested: list[str],
-    *,
-    snapshot_if_empty: bool,
-) -> list[str]:
-    agents = [a for a in roster if a.get("kind") != KIND_CHANNEL]
-    channel_ids = {a["id"] for a in roster if a.get("kind") == KIND_CHANNEL}
-    agent_ids = {a["id"] for a in agents}
-    if not requested:
-        if snapshot_if_empty:
-            return [a["id"] for a in agents]
-        return []
-    member_ids: list[str] = []
-    seen: set[str] = set()
-    for raw_id in requested:
-        if raw_id in seen:
-            continue
-        if raw_id in channel_ids:
-            raise _error(422, "memberIds must be agent ids")
-        if raw_id not in agent_ids:
-            raise _error(422, "Unknown member id")
-        seen.add(raw_id)
-        member_ids.append(raw_id)
-    return member_ids

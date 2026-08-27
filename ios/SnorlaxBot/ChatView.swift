@@ -371,7 +371,8 @@ private struct ComposerBar: View {
                     placeholder: "Message \(agentName)",
                     disabled: !model.canCompose,
                     pendingCaret: $model.pendingComposerCaret,
-                    focused: focused
+                    focused: focused,
+                    onReturnSend: { Task { await model.send() } }
                 )
                 .frame(minHeight: 22, maxHeight: 120)
 

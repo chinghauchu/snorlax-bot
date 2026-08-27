@@ -600,6 +600,27 @@ info:
     name + duration/size is still success. No live camera, no client
     transcode, no second player, no VNC, no public store, no extra channel
     types. Never reintroduce computerPane.ts. OpenAPI **0.18.0**.
+
+    v0.29: IME Enter + create agent/channel tools. One impl PR. Spec
+    rides this PR. **No second PR.** OpenAPI stays **0.18.0**. No new
+    HTTP routes. No /v1/chats/ resource. Never reintroduce
+    computerPane.ts. Composer Enter does not send while IME is composing
+    (desktop isComposing / keyCode 229; iOS markedTextRange). After
+    composition commits, Enter sends as today. Shift+Enter newline
+    unchanged. Send button unchanged. Built-in auto-run create_agent
+    `{ name, title?, description? }` and create_channel
+    `{ name, memberIds? }` wrap existing POST /v1/agents (kind=channel
+    on that same POST; empty memberIds still snapshots the roster). Do
+    not invent a second create API. Tool line / done_summary:
+    `Created {name}` / `create_agent failed` / `create_channel failed`.
+    Same 12px muted kind=tool family as Watched {name} / Read. Empty
+    name or unknown memberIds → tool Error (user message POST stays
+    200). Unknown memberIds on HTTP create stay 422. Isolation:
+    creating B does not paint B's 1:1 into A's chat. Seed SKILL.md
+    (v0.9 load): 项目 → create_channel, 员工 → create_agent. No new
+    Settings chrome. Out: extra channel types, VNC, store,
+    deleting/renaming via chat, Mac folder picker, a confirm widget.
+    OpenAPI **0.18.0**.
   license:
     name: Apache-2.0
     identifier: Apache-2.0

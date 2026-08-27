@@ -10,7 +10,7 @@ from snorlax_runtime.skills import (
     skill_ask_from_turn,
     slash_rest,
 )
-from tests.conftest import AUTH, parse_sse
+from tests.conftest import AUTH, without_seed_skills, parse_sse
 
 SEED = "snorlax-bot"
 CHANNEL = "snorlax-bot-group"
@@ -71,7 +71,7 @@ def test_get_skill_body_is_full_skill_md_source(client, tmp_path: Path) -> None:
     listed = client.get(f"/v1/agents/{SEED}/skills", headers=AUTH)
     assert listed.status_code == 200
     rows = listed.json()
-    assert rows == [{"id": "status", "name": "status"}]
+    assert without_seed_skills(rows) == [{"id": "status", "name": "status"}]
     assert all(set(row) == {"id", "name"} for row in rows)
     assert all("body" not in row for row in rows)
 
@@ -106,7 +106,7 @@ def test_patch_skill_persists_full_source_and_keeps_id(client, tmp_path: Path) -
     assert "Do a short status." in body["body"]
     assert "Keep it brief." in body["body"]
     listed = client.get(f"/v1/agents/{SEED}/skills", headers=AUTH)
-    assert listed.json() == [{"id": "status", "name": "Status check"}]
+    assert without_seed_skills(listed.json()) == [{"id": "status", "name": "Status check"}]
     assert all("body" not in row for row in listed.json())
     again = client.get(f"/v1/agents/{SEED}/skills/status", headers=AUTH)
     assert again.status_code == 200
@@ -156,7 +156,7 @@ def test_delete_skill_is_204_gone_from_list_keeps_routines(
     assert deleted.content == b""
     listed = client.get(f"/v1/agents/{SEED}/skills", headers=AUTH)
     assert listed.status_code == 200
-    assert listed.json() == []
+    assert without_seed_skills(listed.json()) == []
     missing = client.get(f"/v1/agents/{SEED}/skills/status", headers=AUTH)
     assert missing.status_code == 404
     assert not path.exists()
@@ -248,7 +248,7 @@ def test_post_name_body_writes_skill_md_without_capture(
     assert "body" not in created.json()
     listed = client.get(f"/v1/agents/{SEED}/skills", headers=AUTH)
     assert listed.status_code == 200
-    assert listed.json() == [{"id": "inbox-triage", "name": "Inbox triage"}]
+    assert without_seed_skills(listed.json()) == [{"id": "inbox-triage", "name": "Inbox triage"}]
     assert all(set(row) == {"id", "name"} for row in listed.json())
     path = tmp_path / "skills" / "inbox-triage" / "SKILL.md"
     assert path.is_file()
@@ -297,7 +297,7 @@ def test_post_name_without_body_is_still_record_path(client) -> None:
     assert missing.status_code == 422
     assert missing.json() == {"error": "no pending capture"}
     listed = client.get(f"/v1/agents/{SEED}/skills", headers=AUTH)
-    assert listed.json() == []
+    assert without_seed_skills(listed.json()) == []
 
 
 def test_post_empty_name_or_body_is_422(client, tmp_path: Path) -> None:
@@ -316,8 +316,9 @@ def test_post_empty_name_or_body_is_422(client, tmp_path: Path) -> None:
         )
         assert response.status_code == 422
     listed = client.get(f"/v1/agents/{SEED}/skills", headers=AUTH)
-    assert listed.json() == []
+    assert without_seed_skills(listed.json()) == []
     after = list(skills_root.rglob("SKILL.md")) if skills_root.exists() else []
+    after = [p for p in after if p.parent.name != "teammates"]
     assert after == []
 
 
@@ -368,7 +369,7 @@ def test_blank_create_does_not_consume_pending_capture(
     assert recorded.status_code == 201
     assert recorded.json() == {"id": "from-record", "name": "From record"}
     listed = client.get(f"/v1/agents/{SEED}/skills", headers=AUTH)
-    names = {row["id"] for row in listed.json()}
+    names = {row["id"] for row in listed.json()} - {"teammates"}
     assert names == {"authored", "from-record"}
     authored_text = (tmp_path / "skills" / "authored" / "SKILL.md").read_text(
         encoding="utf-8"
