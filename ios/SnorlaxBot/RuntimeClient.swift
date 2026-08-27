@@ -167,7 +167,7 @@ struct RuntimeClient: Sendable {
 
     func startComputerRecord(agentId: String) async throws -> ComputerRecording {
         let request = try makeRequest(
-            "v1/agents/\(Self.encode(agentId))/computer/record",
+            "v1/agents/\(Self.encode(agentId))\(ComputerTakeoverChrome.recordPath)",
             method: "POST"
         )
         let (data, response) = try await URLSession.shared.data(for: request)
@@ -181,7 +181,7 @@ struct RuntimeClient: Sendable {
 
     func stopComputerRecord(agentId: String) async throws {
         let request = try makeRequest(
-            "v1/agents/\(Self.encode(agentId))/computer/record",
+            "v1/agents/\(Self.encode(agentId))\(ComputerTakeoverChrome.recordPath)",
             method: "DELETE"
         )
         let (data, response) = try await URLSession.shared.data(for: request)
@@ -190,7 +190,7 @@ struct RuntimeClient: Sendable {
 
     func createSkill(agentId: String, name: String) async throws -> Skill {
         try await send(
-            "v1/agents/\(Self.encode(agentId))/skills",
+            "v1/agents/\(Self.encode(agentId))\(ComputerTakeoverChrome.skillsPath)",
             method: "POST",
             body: SkillCreate(name: name),
             expected: 201

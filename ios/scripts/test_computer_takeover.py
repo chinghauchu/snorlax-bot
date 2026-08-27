@@ -219,13 +219,16 @@ def test_record_stop_save_chrome() -> None:
     assert "cancelLabel" in TAKEOVER
     assert 'Image(systemName: "xmark")' in TAKEOVER
     assert "savedLabel" in TAKEOVER
-    assert "computer/record" in CLIENT
+    assert 'static let recordPath = "/computer/record"' in CHROME
+    assert "ComputerTakeoverChrome.recordPath" in CLIENT
+    assert "computer/record" not in CLIENT
     assert "func startComputerRecord" in CLIENT
     assert "func stopComputerRecord" in CLIENT
     assert 'method: "POST"' in CLIENT
     assert 'method: "DELETE"' in CLIENT
     assert "func createSkill" in CLIENT
     assert "SkillCreate" in CLIENT
+    assert "ComputerTakeoverChrome.skillsPath" in CLIENT
     assert "startComputerRecord" in MODEL
     assert "stopComputerRecord" in MODEL
     assert "saveRecordedSkill" in MODEL
@@ -282,7 +285,8 @@ def test_discard_writes_nothing() -> None:
     assert "DELETE" in CLIENT
     create = CLIENT[CLIENT.index("func createSkill") :]
     assert 'method: "POST"' in create
-    assert "/skills" in create
+    assert "skillsPath" in create
+    assert "SkillCreate" in create
 
 
 def main() -> int:

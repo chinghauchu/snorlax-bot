@@ -164,16 +164,9 @@ test("iOS agent sheet matches: 16:10, 8pt, 12pt Open when hasSandbox, tap POSTs 
   assert.match(takeover, /doneLabel/);
   assert.match(takeover, /keyboardLabel/);
   assert.match(takeover, /MagnificationGesture/);
-  assert.match(chrome, /recordLabel = "Record"/);
-  assert.match(chrome, /stopLabel = "Stop"/);
-  assert.match(chrome, /saveAsSkillTitle = "Save as skill"/);
-  assert.match(chrome, /recordDotSize: CGFloat = 6/);
-  assert.match(chrome, /recordOffered\(sessionOpen/);
-  assert.match(takeover, /recordControl/);
-  assert.match(takeover, /RecordDot/);
-  assert.match(takeover, /doneDisabled/);
-  assert.match(takeover, /saveAsSkillTitle/);
-  assert.match(takeover, /accessibilityReduceMotion/);
+  assert.doesNotMatch(takeover, /RECORD_LABEL/);
+  assert.doesNotMatch(takeover, /Save as skill/);
+  assert.doesNotMatch(takeover, /computer\/record/);
   const client = readFileSync(
     join(here, "../../ios/SnorlaxBot/RuntimeClient.swift"),
     "utf8",
@@ -185,18 +178,14 @@ test("iOS agent sheet matches: 16:10, 8pt, 12pt Open when hasSandbox, tap POSTs 
   assert.match(client, /computer\/session/);
   assert.match(client, /computer\/pointer/);
   assert.match(client, /computer\/key/);
-  assert.match(client, /computer\/record/);
   assert.match(client, /openComputerSession/);
-  assert.match(client, /startComputerRecord/);
-  assert.match(client, /createSkill/);
   assert.match(model, /openComputerSession/);
   assert.match(model, /closeComputerSession/);
-  assert.match(model, /startComputerRecord/);
-  assert.match(model, /saveRecordedSkill/);
-  assert.match(model, /recordOffered\(sessionOpen: computerTakeoverOpen\)/);
+  assert.doesNotMatch(client, /computer\/record/);
+  assert.doesNotMatch(model, /computer\/record/);
   assert.doesNotMatch(sheet, /computer\/record/);
   assert.doesNotMatch(sheet, /Save as skill/);
-  assert.doesNotMatch(sheet, /recordLabel/);
+  assert.doesNotMatch(sheet, /RECORD_LABEL/);
   const chat = readFileSync(
     join(here, "../../ios/SnorlaxBot/ChatView.swift"),
     "utf8",
