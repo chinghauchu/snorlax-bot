@@ -141,6 +141,22 @@ class ConnectReply(BaseModel):
         return self
 
 
+class ApproveCard(BaseModel):
+    command: str
+
+
+class ApproveReply(BaseModel):
+    id: str
+    approved: bool = False
+    dismissed: bool = False
+
+    @model_validator(mode="after")
+    def approved_or_dismissed(self) -> ApproveReply:
+        if self.dismissed or self.approved:
+            return self
+        raise ValueError("approved or dismissed required")
+
+
 class Message(BaseModel):
     id: str
     agentId: str
@@ -165,6 +181,8 @@ class Message(BaseModel):
     widgetValues: list[str] = Field(default_factory=list)
     connect: ConnectCard | None = None
     connectStatus: str | None = None
+    approve: ApproveCard | None = None
+    approveStatus: str | None = None
     routineName: str | None = None
 
 
@@ -186,6 +204,7 @@ class MessageCreate(BaseModel):
     )
     widgetReply: WidgetReply | None = None
     connectReply: ConnectReply | None = None
+    approveReply: ApproveReply | None = None
     regenerate: bool = False
 
     @model_validator(mode="after")
@@ -199,8 +218,14 @@ class MessageCreate(BaseModel):
                 raise ValueError("regenerate cannot be combined with widgetReply")
             if self.connectReply is not None:
                 raise ValueError("regenerate cannot be combined with connectReply")
+            if self.approveReply is not None:
+                raise ValueError("regenerate cannot be combined with approveReply")
             return self
-        if self.widgetReply is not None or self.connectReply is not None:
+        if (
+            self.widgetReply is not None
+            or self.connectReply is not None
+            or self.approveReply is not None
+        ):
             return self
         if (self.content or "").strip():
             return self

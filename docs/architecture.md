@@ -18,7 +18,7 @@ From public Grok Bot docs and the Aug 2026 launch:
 | One user-scoped computer shared by all bots | Later: one sandbox on the Spark, shared files/logins, per-bot screen |
 | Skills (how) and routines (when) | v0.9: SKILL.md + cron (Asia/Taipei); v0.13: cron XOR webhook; v0.17: Add / Remove on the identity pane; v0.18: identity-pane skill markdown editor; v0.21: 1:1 composer `/` loads that SKILL.md (channel `/` stays text); v0.23: Slack/GitHub inbound listeners when that plugin is connected; fire LEFT 1:1 |
 | MCP + computer-use for sites without an API | v0.7: local/LAN MCP client; v0.10: connect chrome (`GET /v1/plugins` + `kind=connect`); v0.12: Settings Add custom; v0.24: curated catalog (`GET /v1/plugins/catalog`; Slack/GitHub; not a store); later: sandbox browser |
-| Question / approval moments | v0.8: question widgets (`kind=widget`); tools stay auto-run (no approval card) |
+| Question / approval moments | v0.8: question widgets (`kind=widget`); v0.32: mutating shell is `kind=approve` (read-only ls/cat/pwd/git status|log|diff still auto-run) |
 | Desktop + iOS, same bots | Tauri desktop now; Swift iOS companion on the LAN |
 | Cloud LLM | vLLM on GB10 (70B FP8 default; 200B-class in-range) |
 
@@ -131,7 +131,8 @@ SQLite file `~/.snorlax-bot/snorlax.db` (override with `SNORLAX_DATA_DIR`):
   is under `SNORLAX_DATA_DIR` / `~/.snorlax-bot`, not a picker for a folder
   on the host Mac. Tools cannot escape that root. Isolated from the host
   home directory. Shell has no extra network; HTTP is `web_search` /
-  `web_fetch` (and runtime MCP HTTP). Tools auto-run (no approval widgets). Search provider is
+  `web_fetch` (and runtime MCP HTTP). Tools auto-run except mutating
+  shell (v0.32 `kind=approve`). Search provider is
   `SNORLAX_SEARCH_PROVIDER` / `SNORLAX_SEARCH_URL`. DELETE of an agent or
   user-created channel drops that workspace dir. v0.6 desktop GETs
   (`/v1/agents/{id}/workspace` and `.../file`) read that same jail.
@@ -189,7 +190,9 @@ rounds). Built-in tools are list_dir, read_file, write_file, delete_file,
 shell, web_search, web_fetch, watch_video (v0.28). 1:1 tools use the speaking agent's workspace;
 channel / handoff tools use the channel sandbox only when `sharedProject`
 is on (default off). Additive SSE `tool.start` / `tool.done` as 12px muted
-status under the LEFT streak. Tools auto-run. MCP joins that same loop
+status under the LEFT streak. Tools auto-run except mutating shell
+(v0.32 `kind=approve`; read-only ls/cat/pwd/git status|log|diff still
+auto-run). MCP joins that same loop
 from `mcp.json` (stdio + LAN). No extra shell network, no host-folder
 picker.
 
@@ -434,6 +437,16 @@ that assistant turn (`kind=message` plus trailing `kind=tool`) and
 replays the last user turn without a new user-right bubble. 422 / 409
 as locked. No new path. OpenAPI stays 0.18.0. No `/v1/chats/`. Never
 reintroduce `computerPane.ts`.
+
+v0.32: shell Approve. Mutating `shell` pauses on a LEFT `kind=approve`
+card (`{ command }` plus `approveStatus: pending`). Answer is POST
+`{ approveReply: { id, approved: true } }` or `{ dismissed: true }` on
+the same transcript — not a user-right bubble. Approve runs the command
+then the existing 12px muted `Ran {cmd}` tool line. Deny patches that
+same card to Denied and does not wake. Read-only ls/cat/pwd/git
+status|log|diff still auto-run. Dedicated renderer (not a WidgetCard
+fork). OpenAPI stays 0.18.0. No `/approve` route. Never reintroduce
+`computerPane.ts`.
 
 ## Inference interface
 

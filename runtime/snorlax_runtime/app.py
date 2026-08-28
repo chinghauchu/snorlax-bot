@@ -62,6 +62,11 @@ from snorlax_runtime.connect import (
     STATUS_CONNECTED as CONNECT_CONNECTED,
     STATUS_PENDING as CONNECT_PENDING,
 )
+from snorlax_runtime.approve import (
+    APPROVE_KIND,
+    PENDING_ERROR as APPROVE_PENDING_ERROR,
+    STATUS_PENDING as APPROVE_PENDING,
+)
 from snorlax_runtime.token import resolve_token, write_token_file
 from snorlax_runtime.mcp import (
     McpConfigError,
@@ -525,6 +530,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         pending_connect = await store.pending_connect(
             id, thread_id=stored_reply_to if is_group else None
         )
+        pending_approve = await store.pending_approve(
+            id, thread_id=stored_reply_to if is_group else None
+        )
         if payload.widgetReply is not None:
             target = await store.get_message(payload.widgetReply.id)
             if target is None or target.get("agentId") != id:
@@ -572,12 +580,26 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 manager = getattr(request.app.state, "mcp", None)
                 if manager is None or plugin_id not in manager.records:
                     raise _error(404, f"plugin {plugin_id!r} not found")
+        elif payload.approveReply is not None:
+            target = await store.get_message(payload.approveReply.id)
+            if target is None or target.get("agentId") != id:
+                raise _error(422, "approve card not found")
+            if is_group:
+                target_thread = target.get("replyTo") or target["id"]
+                if stored_reply_to and target_thread != stored_reply_to:
+                    raise _error(422, "approve card not in this thread")
+            if target.get("kind") != APPROVE_KIND:
+                raise _error(422, "approve card not found")
+            if target.get("approveStatus") != APPROVE_PENDING:
+                raise _error(422, "approve card is not pending")
         elif has_user_payload and pending is not None:
             body = pending.get("widget") or {}
             if not body.get("dismissOnMoveOn"):
                 raise _error(409, PENDING_ERROR)
         elif has_user_payload and pending_connect is not None:
             raise _error(409, CONNECT_PENDING_ERROR)
+        elif has_user_payload and pending_approve is not None:
+            raise _error(409, APPROVE_PENDING_ERROR)
 
         streams: set[str] = request.app.state.open_streams
         stream_lock: asyncio.Lock = request.app.state.stream_lock
@@ -614,6 +636,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     connect_reply=(
                         payload.connectReply.model_dump()
                         if payload.connectReply is not None
+                        else None
+                    ),
+                    approve_reply=(
+                        payload.approveReply.model_dump()
+                        if payload.approveReply is not None
                         else None
                     ),
                     auth_base_url=str(request.base_url).rstrip("/"),

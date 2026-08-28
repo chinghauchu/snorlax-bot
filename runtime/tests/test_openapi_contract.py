@@ -54,9 +54,13 @@ def test_protocol_openapi_is_locked_v0_contract() -> None:
     assert "SNORLAX_SEARCH_PROVIDER" in text
     assert "sharedProject" in text
     assert "kind=tool" in text
-    assert "enum: [message, handoff, tool, widget, connect]" in text
+    assert "enum: [message, handoff, tool, widget, connect, approve]" in text
     assert "kind=widget" in text
     assert "kind=connect" in text
+    assert "kind=approve" in text
+    assert "approveReply" in text
+    assert "approveStatus" in text
+    assert "v0.32" in text
     assert "connectReply" in text
     assert "connectStatus" in text
     assert "/v1/plugins" in text
@@ -238,6 +242,7 @@ def test_message_content_stays_a_string_no_blocks() -> None:
         assert name not in Message.model_fields
     assert "widget" in props
     assert "connect" in props
+    assert "approve" in props
     assert "routineName" in props
     assert "attachments" in props
     assert "attachments" in Message.model_fields
@@ -249,6 +254,8 @@ def test_message_content_stays_a_string_no_blocks() -> None:
     assert MessageDelta.model_fields["delta"].annotation is str
     assert "widget" in Message.model_fields
     assert "connect" in Message.model_fields
+    assert "approve" in Message.model_fields
+    assert "approveReply" in MessageCreate.model_fields
     assert "routineName" in Message.model_fields
 
 

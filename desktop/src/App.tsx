@@ -120,6 +120,7 @@ import { AgentComputer } from "./AgentComputer";
 import { ComputerTakeover } from "./ComputerTakeover";
 import { composerInert } from "./computerSession";
 import { WidgetCard } from "./WidgetCard";
+import { ApproveCard } from "./ApproveCard";
 import { ConnectCard } from "./ConnectCard";
 import { HttpsText, MarkdownBody } from "./MarkdownBody";
 import { copyText } from "./markdown";
@@ -132,6 +133,7 @@ import {
   showAssistantRegenerate,
 } from "./messageActions";
 import { catalogInstallBody, isConnect, parsePluginArgs, pluginStatusLabel } from "./connect";
+import { isApprove } from "./approve";
 import { isWidget } from "./widget";
 import { openOsBrowser } from "./openUrl";
 import type {
@@ -1244,6 +1246,7 @@ export function App() {
     extra?: {
       widgetReply?: { id: string; values?: string[]; dismissed?: boolean };
       connectReply?: { id?: string; dismissed?: boolean };
+      approveReply?: { id: string; approved?: boolean; dismissed?: boolean };
       attachmentIds?: string[];
       regenerate?: boolean;
     };
@@ -1455,6 +1458,22 @@ export function App() {
     await submitTurn({
       content: "",
       extra: { widgetReply: { id, dismissed: true } },
+    });
+  }
+
+  async function answerApprove(id: string) {
+    setComposerError(null);
+    await submitTurn({
+      content: "",
+      extra: { approveReply: { id, approved: true } },
+    });
+  }
+
+  async function denyApprove(id: string) {
+    setComposerError(null);
+    await submitTurn({
+      content: "",
+      extra: { approveReply: { id, dismissed: true } },
     });
   }
 
@@ -1865,7 +1884,8 @@ export function App() {
       !isHandoffRoot(message) &&
       !isToolLine(message) &&
       !isWidget(message) &&
-      !isConnect(message),
+      !isConnect(message) &&
+      !isApprove(message),
   );
   const showStandaloneTraces =
     liveTraces.length > 0 && liveAssistantIdx < 0;
@@ -2139,6 +2159,15 @@ export function App() {
                         disabled={busy}
                         onConnect={(id, pluginId) => void answerConnect(id, pluginId)}
                         onDismiss={(id) => void dismissConnect(id)}
+                      />
+                    ) : isApprove(message) && message.approve ? (
+                      <ApproveCard
+                        messageId={message.id}
+                        card={message.approve}
+                        status={message.approveStatus}
+                        disabled={busy}
+                        onApprove={(id) => void answerApprove(id)}
+                        onDeny={(id) => void denyApprove(id)}
                       />
                     ) : mine ? (
                       <div className="bubble user">

@@ -403,7 +403,7 @@ async def test_run_tool_loop_widget_stops_after_other_tools_auto_run(tmp_path) -
 
     workspace = tmp_path / "ws"
     workspace.mkdir()
-    events, content, widget, _connect, _produced = await run_tool_loop(
+    events, content, widget, _connect, _approve, _produced = await run_tool_loop(
         Both(),
         [{"role": "user", "content": "ask me"}],
         workspace=workspace,

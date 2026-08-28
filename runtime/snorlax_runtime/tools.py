@@ -342,7 +342,10 @@ TOOL_DEFINITIONS: list[dict[str, Any]] = [
                 "HOME is the workspace, not the host home directory. "
                 "No extra network — do not curl or wget; HTTP is web_search "
                 "or web_fetch only. No Docker/SSH host secrets. Timeout in "
-                "seconds. The runtime runs this immediately (no approval)."
+                "seconds. Read-only commands (ls, cat, pwd, git status, "
+                "git log, git diff, including simple flags/paths) run "
+                "immediately. Any other command, chain, pipe, or "
+                "redirection pauses for the user to Approve or Deny."
             ),
             "parameters": {
                 "type": "object",
@@ -668,7 +671,8 @@ def offered_tool_definitions(*, use_tools: bool = True, use_widget: bool = True)
     """Built-ins first, then the question card, then namespaced MCP tools.
 
     Built-in names and ask_user_question win on collision. Widgets are not
-    an approval gate for the other tools.
+    an approval gate for the other tools. Mutating shell is gated by the
+    runtime as kind=approve, not as a widget.
     """
     from snorlax_runtime.mcp import mcp_openai_tools
 
@@ -1180,6 +1184,7 @@ async def run_tool_loop(
     str,
     dict[str, Any] | None,
     dict[str, Any] | None,
+    dict[str, Any] | None,
     list[dict[str, Any]],
 ]:
     """Execute OpenAI-compat tool rounds. Yields SSE-shaped (event, payload) list.
@@ -1188,13 +1193,15 @@ async def run_tool_loop(
     for persistence as a normal Message. A valid ask_user_question ends the
     turn immediately (no more tokens/tools) and returns the widget payload.
     A Connect card for an unauthenticated MCP plugin also ends the turn.
+    A mutating shell command ends the turn with an approve payload (the
+    runtime does not run it until the user Approves).
 
     A failed tool does not end the turn: results go back as role=tool and
     the model may call tools again until max_rounds. After any tool round,
     this always returns non-empty final text so the caller can persist a
     normal assistant bubble (empty model text and InferenceError after
-    tools included), unless a question or connect card ended the turn.
-    InferenceError before any tool still propagates.
+    tools included), unless a question, connect, or approve card ended
+    the turn. InferenceError before any tool still propagates.
     """
     events: list[tuple[str, dict[str, Any]]] = []
     history: list[dict[str, Any]] = [dict(m) for m in messages]
@@ -1210,6 +1217,7 @@ async def run_tool_loop(
     tool_outcomes: list[tuple[str, bool, str]] = []
     widget: dict[str, Any] | None = None
     connect: dict[str, Any] | None = None
+    approve: dict[str, Any] | None = None
     produced_files: list[dict[str, Any]] = []
     last_shot: dict[str, Any] | None = None
     offered = offered_tool_definitions(use_tools=use_tools, use_widget=use_widget)
@@ -1240,16 +1248,25 @@ async def run_tool_loop(
         if not use_widget:
             widget_calls = []
 
+        from snorlax_runtime.approve import approve_card_from_args, is_readonly_shell
         from snorlax_runtime.mcp import connect_card_for_tool
 
         pending_connect = None
+        pending_approve = None
         runnable_calls: list[ToolCall] = []
         for call in other_calls:
             card = connect_card_for_tool(call.name) if use_tools else None
-            if card is not None and pending_connect is None:
-                pending_connect = card
-            elif card is None:
-                runnable_calls.append(call)
+            if card is not None:
+                if pending_connect is None:
+                    pending_connect = card
+                continue
+            if call.name == "shell":
+                args = _parse_args(call.arguments)
+                if not is_readonly_shell(str(args.get("command") or "")):
+                    if pending_approve is None:
+                        pending_approve = approve_card_from_args(args)
+                    continue
+            runnable_calls.append(call)
 
         runnable = runnable_calls if runnable_calls and rounds < max_rounds else []
         pending_widget = None
@@ -1336,6 +1353,10 @@ async def run_tool_loop(
                 connect = pending_connect
                 final_parts = text_parts
                 break
+            if pending_approve is not None:
+                approve = pending_approve
+                final_parts = text_parts
+                break
             if pending_widget is not None:
                 widget = pending_widget
                 final_parts = text_parts
@@ -1344,6 +1365,11 @@ async def run_tool_loop(
 
         if pending_connect is not None:
             connect = pending_connect
+            final_parts = text_parts
+            break
+
+        if pending_approve is not None:
+            approve = pending_approve
             final_parts = text_parts
             break
 
@@ -1393,7 +1419,7 @@ async def run_tool_loop(
     produced = list(produced_files)
     if last_shot is not None:
         produced.append(last_shot)
-    if widget is not None or connect is not None:
+    if widget is not None or connect is not None or approve is not None:
         # The card is not a fake-token stream. Preamble text (if any) still
         # streams as a normal LEFT bubble before the card.
         if stream and content:
@@ -1401,7 +1427,7 @@ async def run_tool_loop(
 
             for token in _tokenize(content):
                 events.append(("message.delta", {**sender, "delta": token}))
-        return events, content, widget, connect, produced
+        return events, content, widget, connect, approve, produced
     if stream and content:
         from snorlax_runtime.inference import _tokenize
 
@@ -1417,7 +1443,7 @@ async def run_tool_loop(
             )
     elif stream:
         pass
-    return events, content, None, None, produced
+    return events, content, None, None, None, produced
 
 
 def _parse_args(raw: str) -> dict[str, Any]:

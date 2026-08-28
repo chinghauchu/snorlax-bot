@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import json
 import logging
 import re
 from collections.abc import AsyncIterator
@@ -40,6 +41,14 @@ from snorlax_runtime.connect import (
     STATUS_PENDING as CONNECT_PENDING,
     ConnectAnswerError,
     ConnectPendingError,
+)
+from snorlax_runtime.approve import (
+    APPROVE_KIND,
+    STATUS_APPROVED as APPROVE_APPROVED,
+    STATUS_DENIED as APPROVE_DENIED,
+    STATUS_PENDING as APPROVE_PENDING,
+    ApproveAnswerError,
+    ApprovePendingError,
 )
 
 log = logging.getLogger("snorlax.routing")
@@ -358,6 +367,93 @@ def looks_like_ask(content: str) -> bool:
     return any(marker in lowered for marker in ask_markers)
 
 
+async def _run_approved_shell(
+    store: Store,
+    *,
+    conversation: dict[str, Any],
+    card_id: str,
+    sender_id: str,
+    sender_name: str,
+    sender_avatar: str | None,
+    hop: int,
+    thread_id: str | None,
+    command: str,
+    timeout: Any,
+) -> AsyncIterator[tuple[str, dict[str, Any]]]:
+    """Run a previously gated shell command and persist the kind=tool line."""
+    from snorlax_runtime.approve import STATUS_APPROVED
+    from snorlax_runtime.tools import (
+        DEFAULT_SHELL_TIMEOUT,
+        done_summary,
+        ensure_workspace,
+        execute_named_tool,
+        start_summary,
+        workspace_for,
+    )
+
+    args: dict[str, Any] = {"command": command}
+    parsed_timeout: float | None = None
+    if timeout is not None:
+        try:
+            parsed_timeout = float(timeout)
+        except (TypeError, ValueError):
+            parsed_timeout = None
+    if parsed_timeout is not None:
+        args["timeout"] = parsed_timeout
+    workspace = workspace_for(store.data_dir, conversation, sender_id)
+    ensure_workspace(workspace)
+    tool_id = new_id("msg")
+    yield (
+        "tool.start",
+        {
+            "id": tool_id,
+            "name": "shell",
+            "summary": start_summary("shell", args),
+            "senderId": sender_id,
+            "senderName": sender_name,
+        },
+    )
+    payload = json.dumps(
+        {
+            "command": command,
+            "timeout": parsed_timeout
+            if parsed_timeout is not None
+            else DEFAULT_SHELL_TIMEOUT,
+        }
+    )
+    result = await execute_named_tool("shell", payload, workspace)
+    ok = not str(result).startswith("Error:")
+    summary = done_summary("shell", args, ok, str(result))
+    await store.resolve_approve(
+        card_id, status=STATUS_APPROVED, output=str(result)
+    )
+    saved_tool = await store.add_message(
+        agent_id=conversation["id"],
+        role="assistant",
+        content=summary,
+        message_id=tool_id,
+        sender_id=sender_id,
+        sender_name=sender_name,
+        sender_avatar=sender_avatar,
+        hop=hop,
+        mentions=[],
+        reply_to=thread_id,
+        kind="tool",
+    )
+    yield (
+        "tool.done",
+        {
+            "id": tool_id,
+            "name": "shell",
+            "summary": summary,
+            "ok": ok,
+            "senderId": sender_id,
+            "senderName": sender_name,
+        },
+    )
+    yield "message.done", saved_tool
+
+
 async def resume_after_connect(
     *,
     store: Store,
@@ -396,6 +492,7 @@ async def run_user_turn(
     max_tool_rounds: int | None = None,
     widget_reply: dict[str, Any] | None = None,
     connect_reply: dict[str, Any] | None = None,
+    approve_reply: dict[str, Any] | None = None,
     resume_connect: dict[str, Any] | None = None,
     auth_base_url: str | None = None,
     attachment_ids: list[str] | None = None,
@@ -435,9 +532,13 @@ async def run_user_turn(
     pending_connect_row = await store.pending_connect(
         origin_id, thread_id=stored_reply_to if is_group else None
     )
+    pending_approve_row = await store.pending_approve(
+        origin_id, thread_id=stored_reply_to if is_group else None
+    )
     persist_user = bool((content or "").strip() or attachment_ids)
     wake_agent = False
     resolved_connect: dict[str, Any] | None = None
+    resolved_approve: dict[str, Any] | None = None
     if resume_connect is not None:
         persist_user = False
         wake_agent = True
@@ -534,6 +635,54 @@ async def run_user_turn(
                 yield "connect.url", {"url": url, "pluginId": plugin_id}
                 yield "message.done", target
                 return
+    elif approve_reply is not None:
+        target = await store.get_message(approve_reply["id"])
+        if target is None or target.get("agentId") != origin_id:
+            raise ApproveAnswerError("approve card not found")
+        if is_group:
+            target_thread = target.get("replyTo") or target["id"]
+            if stored_reply_to and target_thread != stored_reply_to:
+                raise ApproveAnswerError("approve card not in this thread")
+        if target.get("kind") != APPROVE_KIND:
+            raise ApproveAnswerError("approve card not found")
+        if target.get("approveStatus") != APPROVE_PENDING:
+            raise ApproveAnswerError("approve card is not pending")
+        persist_user = False
+        if approve_reply.get("dismissed") or not approve_reply.get("approved"):
+            resolved_approve = await store.resolve_approve(
+                target["id"], status=APPROVE_DENIED
+            )
+            if resolved_approve is None:
+                raise ApproveAnswerError("approve card not found")
+            yield "message.done", resolved_approve
+        else:
+            stored_card = await store.raw_approve(target["id"]) or {}
+            command = str(stored_card.get("command") or "").strip()
+            timeout = stored_card.get("timeout")
+            resolved_approve = await store.resolve_approve(
+                target["id"], status=APPROVE_APPROVED
+            )
+            if resolved_approve is None:
+                raise ApproveAnswerError("approve card not found")
+            yield "message.done", resolved_approve
+            async for event, data in _run_approved_shell(
+                store,
+                conversation=conversation,
+                card_id=target["id"],
+                sender_id=str(target.get("senderId") or origin_id),
+                sender_name=str(target.get("senderName") or ""),
+                sender_avatar=target.get("senderAvatar"),
+                hop=int(target.get("hop") or 0),
+                thread_id=target.get("replyTo") if is_group else None,
+                command=command,
+                timeout=timeout,
+            ):
+                yield event, data
+            wake_agent = True
+            if is_group and thread_id is None:
+                thread_id = (
+                    resolved_approve.get("replyTo") or resolved_approve["id"]
+                )
     elif regenerate:
         persist_user = False
         wake_agent = True
@@ -549,6 +698,8 @@ async def run_user_turn(
             raise WidgetPendingError()
     elif persist_user and pending_connect_row is not None:
         raise ConnectPendingError()
+    elif persist_user and pending_approve_row is not None:
+        raise ApprovePendingError()
     user_saved: dict[str, Any] | None = None
     if persist_user:
         user_saved = await store.add_message(
@@ -641,6 +792,26 @@ async def run_user_turn(
                 channel_id=origin_id,
             )
         )
+    elif (
+        wake_agent
+        and is_group
+        and resolved_approve is not None
+        and thread_id
+        and resolved_approve.get("senderId")
+        and resolved_approve["senderId"] != USER_SENDER_ID
+    ):
+        jobs.append(
+            _Job(
+                agent_id=resolved_approve["senderId"],
+                conversation_id=origin_id,
+                hop=0,
+                peer=False,
+                edge_from=USER_SENDER_ID,
+                edge_to=resolved_approve["senderId"],
+                thread_id=thread_id,
+                channel_id=origin_id,
+            )
+        )
 
     i = 0
     origin_open = True
@@ -675,7 +846,7 @@ async def run_user_turn(
                     if (
                         event == "message.done"
                         and isinstance(payload, dict)
-                        and payload.get("kind") in {WIDGET_KIND, CONNECT_KIND}
+                        and payload.get("kind") in {WIDGET_KIND, CONNECT_KIND, APPROVE_KIND}
                     ):
                         origin_open = False
             del saved
@@ -725,7 +896,7 @@ async def run_user_turn(
                 if (
                     event == "message.done"
                     and isinstance(payload, dict)
-                    and payload.get("kind") in {WIDGET_KIND, CONNECT_KIND}
+                    and payload.get("kind") in {WIDGET_KIND, CONNECT_KIND, APPROVE_KIND}
                 ):
                     origin_open = False
         if saved is None:
@@ -1169,7 +1340,7 @@ async def _generate(
         )
 
     try:
-        events, raw, widget, connect, produced = await run_tool_loop(
+        events, raw, widget, connect, approve, produced = await run_tool_loop(
             backend,
             transcript,
             workspace=workspace,
@@ -1206,7 +1377,14 @@ async def _generate(
             existing_connect = await store.pending_connect(
                 conversation_id, thread_id=thread_id if is_group else None
             )
-            if existing is not None or existing_connect is not None:
+            existing_approve = await store.pending_approve(
+                conversation_id, thread_id=thread_id if is_group else None
+            )
+            if (
+                existing is not None
+                or existing_connect is not None
+                or existing_approve is not None
+            ):
                 persist_widget = False
         if persist_widget:
             saved_widget: dict[str, Any]
@@ -1281,7 +1459,14 @@ async def _generate(
             existing_widget = await store.pending_widget(
                 conversation_id, thread_id=thread_id if is_group else None
             )
-            if existing_connect is not None or existing_widget is not None:
+            existing_approve = await store.pending_approve(
+                conversation_id, thread_id=thread_id if is_group else None
+            )
+            if (
+                existing_connect is not None
+                or existing_widget is not None
+                or existing_approve is not None
+            ):
                 persist_connect = False
         if persist_connect:
             saved_connect: dict[str, Any]
@@ -1344,6 +1529,86 @@ async def _generate(
                 "senderId": agent["id"],
             }
             return events, None if persist else saved_connect
+
+    if approve is not None:
+        persist_approve = persist and not (is_group and not thread_id)
+        if persist_approve:
+            existing_approve = await store.pending_approve(
+                conversation_id, thread_id=thread_id if is_group else None
+            )
+            existing_widget = await store.pending_widget(
+                conversation_id, thread_id=thread_id if is_group else None
+            )
+            existing_connect = await store.pending_connect(
+                conversation_id, thread_id=thread_id if is_group else None
+            )
+            if (
+                existing_approve is not None
+                or existing_widget is not None
+                or existing_connect is not None
+            ):
+                persist_approve = False
+        if persist_approve:
+            saved_approve: dict[str, Any]
+            if content.strip():
+                saved_text = await store.add_message(
+                    agent_id=conversation_id,
+                    role="assistant",
+                    content=content,
+                    message_id=assistant_id,
+                    sender_id=agent["id"],
+                    sender_name=agent["name"],
+                    sender_avatar=agent["avatar"],
+                    hop=hop,
+                    mentions=[],
+                    reply_to=thread_id if is_group else None,
+                    routine_name=routine_name,
+                    attachment_ids=attachment_ids,
+                )
+                if stream:
+                    events.append(("message.done", saved_text))
+                approve_id = new_id("msg")
+            else:
+                approve_id = assistant_id
+            try:
+                saved_approve = await store.add_message(
+                    agent_id=conversation_id,
+                    role="assistant",
+                    content=str(approve.get("command") or ""),
+                    message_id=approve_id,
+                    sender_id=agent["id"],
+                    sender_name=agent["name"],
+                    sender_avatar=agent["avatar"],
+                    hop=hop,
+                    mentions=[],
+                    reply_to=thread_id if is_group else None,
+                    kind=APPROVE_KIND,
+                    approve=approve,
+                    routine_name=routine_name,
+                )
+            except ApprovePendingError:
+                persist_approve = False
+            else:
+                if stream:
+                    events.append(("message.done", saved_approve))
+                return events, saved_approve
+            if persist and content.strip():
+                pass
+            else:
+                return events, None
+        if persist and content.strip():
+            pass
+        else:
+            saved_approve = {
+                "id": assistant_id,
+                "content": str(approve.get("command") or ""),
+                "mentions": [],
+                "replyTo": None,
+                "kind": APPROVE_KIND,
+                "approve": approve,
+                "senderId": agent["id"],
+            }
+            return events, None if persist else saved_approve
 
     mentions: list[dict[str, str]] = []
     if not report_back:

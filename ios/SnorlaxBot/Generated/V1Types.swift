@@ -333,11 +333,17 @@ struct Message: Codable, Hashable, Identifiable, Sendable {
         case tool
         case widget
         case connect
+        case approve
     }
     enum ConnectStatus: String, Codable, Hashable, Sendable {
         case pending
         case connected
         case dismissed
+    }
+    enum ApproveStatus: String, Codable, Hashable, Sendable {
+        case pending
+        case approved
+        case denied
     }
     enum WidgetStatus: String, Codable, Hashable, Sendable {
         case pending
@@ -366,11 +372,13 @@ struct Message: Codable, Hashable, Identifiable, Sendable {
     var widget: Widget?
     var connect: ConnectCard?
     var connectStatus: ConnectStatus?
+    var approve: ApproveCard?
+    var approveStatus: ApproveStatus?
     var widgetStatus: WidgetStatus?
     var widgetValues: [String]?
     var routineName: String?
 
-    init(id: String, agentId: String, role: Role, content: String, images: [ImageOut], attachments: [Attachment], createdAt: Date, senderId: String, senderName: String, senderAvatar: String?, hop: Int, mentions: [Mention], kind: Kind? = nil, replyTo: String? = nil, handoff: HandoffRef? = nil, userAsk: String? = nil, brief: String? = nil, replyCount: Int? = nil, widget: Widget? = nil, connect: ConnectCard? = nil, connectStatus: ConnectStatus? = nil, widgetStatus: WidgetStatus? = nil, widgetValues: [String]? = nil, routineName: String? = nil) {
+    init(id: String, agentId: String, role: Role, content: String, images: [ImageOut], attachments: [Attachment], createdAt: Date, senderId: String, senderName: String, senderAvatar: String?, hop: Int, mentions: [Mention], kind: Kind? = nil, replyTo: String? = nil, handoff: HandoffRef? = nil, userAsk: String? = nil, brief: String? = nil, replyCount: Int? = nil, widget: Widget? = nil, connect: ConnectCard? = nil, connectStatus: ConnectStatus? = nil, approve: ApproveCard? = nil, approveStatus: ApproveStatus? = nil, widgetStatus: WidgetStatus? = nil, widgetValues: [String]? = nil, routineName: String? = nil) {
         self.id = id
         self.agentId = agentId
         self.role = role
@@ -392,12 +400,14 @@ struct Message: Codable, Hashable, Identifiable, Sendable {
         self.widget = widget
         self.connect = connect
         self.connectStatus = connectStatus
+        self.approve = approve
+        self.approveStatus = approveStatus
         self.widgetStatus = widgetStatus
         self.widgetValues = widgetValues
         self.routineName = routineName
     }
 
-    enum CodingKeys: String, CodingKey { case id, agentId, role, content, images, attachments, createdAt, senderId, senderName, senderAvatar, hop, mentions, kind, replyTo, handoff, userAsk, brief, replyCount, widget, connect, connectStatus, widgetStatus, widgetValues, routineName }
+    enum CodingKeys: String, CodingKey { case id, agentId, role, content, images, attachments, createdAt, senderId, senderName, senderAvatar, hop, mentions, kind, replyTo, handoff, userAsk, brief, replyCount, widget, connect, connectStatus, approve, approveStatus, widgetStatus, widgetValues, routineName }
 
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
@@ -422,6 +432,8 @@ struct Message: Codable, Hashable, Identifiable, Sendable {
         widget = try container.decodeIfPresent(Widget.self, forKey: .widget)
         connect = try container.decodeIfPresent(ConnectCard.self, forKey: .connect)
         connectStatus = try container.decodeIfPresent(ConnectStatus.self, forKey: .connectStatus)
+        approve = try container.decodeIfPresent(ApproveCard.self, forKey: .approve)
+        approveStatus = try container.decodeIfPresent(ApproveStatus.self, forKey: .approveStatus)
         widgetStatus = try container.decodeIfPresent(WidgetStatus.self, forKey: .widgetStatus)
         widgetValues = try container.decodeIfPresent([String].self, forKey: .widgetValues)
         routineName = try container.decodeIfPresent(String.self, forKey: .routineName)
@@ -450,6 +462,8 @@ struct Message: Codable, Hashable, Identifiable, Sendable {
         try container.encodeIfPresent(widget, forKey: .widget)
         try container.encodeIfPresent(connect, forKey: .connect)
         try container.encodeIfPresent(connectStatus, forKey: .connectStatus)
+        try container.encodeIfPresent(approve, forKey: .approve)
+        try container.encodeIfPresent(approveStatus, forKey: .approveStatus)
         try container.encodeIfPresent(widgetStatus, forKey: .widgetStatus)
         try container.encodeIfPresent(widgetValues, forKey: .widgetValues)
         try container.encode(routineName, forKey: .routineName)
@@ -614,6 +628,54 @@ struct ConnectReply: Codable, Hashable, Identifiable, Sendable {
     }
 }
 
+struct ApproveCard: Codable, Hashable, Sendable {
+    var command: String
+
+    init(command: String) {
+        self.command = command
+    }
+
+    enum CodingKeys: String, CodingKey { case command }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        command = try container.decode(String.self, forKey: .command)
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(command, forKey: .command)
+    }
+}
+
+struct ApproveReply: Codable, Hashable, Identifiable, Sendable {
+    var id: String
+    var approved: Bool?
+    var dismissed: Bool?
+
+    init(id: String, approved: Bool? = nil, dismissed: Bool? = nil) {
+        self.id = id
+        self.approved = approved
+        self.dismissed = dismissed
+    }
+
+    enum CodingKeys: String, CodingKey { case id, approved, dismissed }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(String.self, forKey: .id)
+        approved = try container.decodeIfPresent(Bool.self, forKey: .approved)
+        dismissed = try container.decodeIfPresent(Bool.self, forKey: .dismissed)
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(id, forKey: .id)
+        try container.encodeIfPresent(approved, forKey: .approved)
+        try container.encodeIfPresent(dismissed, forKey: .dismissed)
+    }
+}
+
 struct MessageCreate: Codable, Hashable, Sendable {
     var content: String?
     var images: [ImageIn]?
@@ -623,9 +685,10 @@ struct MessageCreate: Codable, Hashable, Sendable {
     var channelId: String?
     var widgetReply: WidgetReply?
     var connectReply: ConnectReply?
+    var approveReply: ApproveReply?
     var regenerate: Bool?
 
-    init(content: String? = nil, images: [ImageIn]? = nil, attachmentIds: [String]? = nil, mentions: [String]? = nil, replyTo: String? = nil, channelId: String? = nil, widgetReply: WidgetReply? = nil, connectReply: ConnectReply? = nil, regenerate: Bool? = nil) {
+    init(content: String? = nil, images: [ImageIn]? = nil, attachmentIds: [String]? = nil, mentions: [String]? = nil, replyTo: String? = nil, channelId: String? = nil, widgetReply: WidgetReply? = nil, connectReply: ConnectReply? = nil, approveReply: ApproveReply? = nil, regenerate: Bool? = nil) {
         self.content = content
         self.images = images
         self.attachmentIds = attachmentIds
@@ -634,10 +697,11 @@ struct MessageCreate: Codable, Hashable, Sendable {
         self.channelId = channelId
         self.widgetReply = widgetReply
         self.connectReply = connectReply
+        self.approveReply = approveReply
         self.regenerate = regenerate
     }
 
-    enum CodingKeys: String, CodingKey { case content, images, attachmentIds, mentions, replyTo, channelId, widgetReply, connectReply, regenerate }
+    enum CodingKeys: String, CodingKey { case content, images, attachmentIds, mentions, replyTo, channelId, widgetReply, connectReply, approveReply, regenerate }
 
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
@@ -649,6 +713,7 @@ struct MessageCreate: Codable, Hashable, Sendable {
         channelId = try container.decodeIfPresent(String.self, forKey: .channelId)
         widgetReply = try container.decodeIfPresent(WidgetReply.self, forKey: .widgetReply)
         connectReply = try container.decodeIfPresent(ConnectReply.self, forKey: .connectReply)
+        approveReply = try container.decodeIfPresent(ApproveReply.self, forKey: .approveReply)
         regenerate = try container.decodeIfPresent(Bool.self, forKey: .regenerate)
     }
 
@@ -662,6 +727,7 @@ struct MessageCreate: Codable, Hashable, Sendable {
         try container.encode(channelId, forKey: .channelId)
         try container.encodeIfPresent(widgetReply, forKey: .widgetReply)
         try container.encodeIfPresent(connectReply, forKey: .connectReply)
+        try container.encodeIfPresent(approveReply, forKey: .approveReply)
         try container.encodeIfPresent(regenerate, forKey: .regenerate)
     }
 }

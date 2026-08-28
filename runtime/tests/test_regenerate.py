@@ -109,6 +109,10 @@ def test_regenerate_combined_with_content_or_replies_is_422(client) -> None:
             "regenerate": True,
             "connectReply": {"id": "msg_y"},
         },
+        {
+            "regenerate": True,
+            "approveReply": {"id": "msg_z", "approved": True},
+        },
     ):
         response = client.post(
             f"/v1/agents/{SEED}/messages",

@@ -678,6 +678,14 @@ final class AppModel {
         await streamAnswer(widgetReply: WidgetReply(id: id, dismissed: true))
     }
 
+    func answerApprove(id: String) async {
+        await streamAnswer(approveReply: ApproveReply(id: id, approved: true))
+    }
+
+    func denyApprove(id: String) async {
+        await streamAnswer(approveReply: ApproveReply(id: id, dismissed: true))
+    }
+
     func refreshPlugins() async {
         guard let client else {
             plugins = []
@@ -860,7 +868,7 @@ final class AppModel {
         return false
     }
 
-    private func streamAnswer(widgetReply: WidgetReply? = nil, connectReply: ConnectReply? = nil) async {
+    private func streamAnswer(widgetReply: WidgetReply? = nil, connectReply: ConnectReply? = nil, approveReply: ApproveReply? = nil) async {
         guard let client, let agent = selectedAgent, !isSending else { return }
         composerError = nil
         toolTraces = []
@@ -874,7 +882,8 @@ final class AppModel {
                 replyTo: agent.isChannel ? threadID : nil,
                 channelId: agent.isChannel ? nil : lastExtraChannelID,
                 widgetReply: widgetReply,
-                connectReply: connectReply
+                connectReply: connectReply,
+                approveReply: approveReply
             ) { [weak self] event in
                 Task { @MainActor in
                     self?.handle(event, agentId: agent.id)

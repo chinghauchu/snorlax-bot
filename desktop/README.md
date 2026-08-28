@@ -85,6 +85,9 @@ v0.31: Copy on completed LEFT `kind=message` (12px muted row after
 attachments + markdown; `Copied` for 1.5s). Regenerate 1:1 only on the
 latest completed LEFT `kind=message` (`{ regenerate: true }`). Channel
 has Copy, no Regenerate. Fenced-code Copy stays.
+v0.32: dedicated `kind=approve` LEFT card for mutating shell (not a
+WidgetCard fork). 240–320px, 12px radius/padding. Command is 12px/1.45
+mono, max 2 lines, hover title is the full command. Approve / Deny / ×.
 Assistant LEFT
 `kind=message` is 14px markdown (no grey bubble, 16/14 headings); user-right stays plain (`https://` tappable). Fenced code is full-turn language + Copy at 12px/1.45.
 iOS has no file-tree computer pane; the agent sheet shows the same preview.

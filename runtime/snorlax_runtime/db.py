@@ -36,10 +36,13 @@ TOOLS_PREAMBLE = (
     "You have built-in tools (list_dir, read_file, write_file, delete_file, "
     "shell, web_search, web_fetch, watch_video, create_agent, create_channel). "
     "Call them instead of describing the work. "
-    "The runtime runs tools immediately — do not ask the user to approve a "
-    "tool call and do not wait for a widget. Question cards are for user "
-    "judgment (which approach, whether to proceed on a product decision), "
-    "never for gating shell/web/MCP. When you need a decision, call "
+    "The runtime runs tools immediately except mutating shell, which pauses "
+    "for the user to Approve or Deny — do not ask them yourself and do not "
+    "wait for a widget. Read-only shell (ls, cat, pwd, git status, git log, "
+    "git diff, including simple flags/paths) auto-runs. Question cards are "
+    "for user judgment (which approach, whether to proceed on a product "
+    "decision), never for gating shell/web/MCP. When you need a decision, "
+    "call "
     "ask_user_question with a natural-language prompt and 1-6 options whose "
     "values read like a reply the user would send. That ends your turn. "
     "Write programs to files in the "
@@ -248,6 +251,7 @@ class Store:
             "origin_conversation_id": "TEXT",
             "widget": "TEXT",
             "connect": "TEXT",
+            "approve": "TEXT",
             "routine_name": "TEXT",
         }
         for name, spec in additions.items():
@@ -764,7 +768,8 @@ class Store:
             # behind ?threadId=. Widgets never appear on the timeline.
             where += (
                 " AND (reply_to IS NULL OR reply_to = '')"
-                " AND (kind IS NULL OR (kind != 'widget' AND kind != 'connect'))"
+                " AND (kind IS NULL OR (kind != 'widget' AND kind != 'connect'"
+                " AND kind != 'approve'))"
             )
         if before:
             cur = await self.conn.execute(
@@ -889,6 +894,8 @@ class Store:
         widget_values: list[str] = []
         connect = None
         connect_status = None
+        approve = None
+        approve_status = None
         if kind == "widget":
             from snorlax_runtime.widgets import card_body, public_widget
 
@@ -906,6 +913,14 @@ class Store:
             if stored_connect is not None:
                 connect_status = stored_connect.get("status") or "pending"
                 connect = connect_body(stored_connect)
+        elif kind == "approve":
+            from snorlax_runtime.approve import card_body as approve_body
+            from snorlax_runtime.approve import public_approve
+
+            stored_approve = public_approve(message.get("approve"))
+            if stored_approve is not None:
+                approve_status = stored_approve.get("status") or "pending"
+                approve = approve_body(stored_approve)
         return {
             "id": message["id"],
             "agentId": message["agent_id"],
@@ -934,6 +949,8 @@ class Store:
             "widgetValues": widget_values,
             "connect": connect,
             "connectStatus": connect_status,
+            "approve": approve,
+            "approveStatus": approve_status,
             "routineName": message.get("routine_name") or None,
         }
 
@@ -1164,6 +1181,7 @@ class Store:
         origin_conversation_id: str | None = None,
         widget: dict[str, Any] | None = None,
         connect: dict[str, Any] | None = None,
+        approve: dict[str, Any] | None = None,
         routine_name: str | None = None,
     ) -> dict[str, Any]:
         message_id = message_id or new_id("msg")
@@ -1178,20 +1196,45 @@ class Store:
 
             existing = await self.pending_widget(agent_id, thread_id=reply_to)
             existing_connect = await self.pending_connect(agent_id, thread_id=reply_to)
-            if existing is not None or existing_connect is not None:
+            existing_approve = await self.pending_approve(agent_id, thread_id=reply_to)
+            if (
+                existing is not None
+                or existing_connect is not None
+                or existing_approve is not None
+            ):
                 raise WidgetPendingError()
         if kind == "connect":
             from snorlax_runtime.connect import ConnectPendingError
 
             existing_connect = await self.pending_connect(agent_id, thread_id=reply_to)
             existing_widget = await self.pending_widget(agent_id, thread_id=reply_to)
-            if existing_connect is not None or existing_widget is not None:
+            existing_approve = await self.pending_approve(agent_id, thread_id=reply_to)
+            if (
+                existing_connect is not None
+                or existing_widget is not None
+                or existing_approve is not None
+            ):
                 raise ConnectPendingError()
+        if kind == "approve":
+            from snorlax_runtime.approve import ApprovePendingError
+
+            existing_approve = await self.pending_approve(agent_id, thread_id=reply_to)
+            existing_widget = await self.pending_widget(agent_id, thread_id=reply_to)
+            existing_connect = await self.pending_connect(agent_id, thread_id=reply_to)
+            if (
+                existing_approve is not None
+                or existing_widget is not None
+                or existing_connect is not None
+            ):
+                raise ApprovePendingError()
         stored_widget = (
             json.dumps(widget, ensure_ascii=False) if widget is not None else None
         )
         stored_connect = (
             json.dumps(connect, ensure_ascii=False) if connect is not None else None
+        )
+        stored_approve = (
+            json.dumps(approve, ensure_ascii=False) if approve is not None else None
         )
         pending_atts = []
         if attachment_ids:
@@ -1203,8 +1246,8 @@ class Store:
             "(id, agent_id, role, content, created_at, sender_id, sender_name, "
             "sender_avatar, hop, mentions, reply_to, kind, user_ask, brief, "
             "handoff_channel_id, handoff_thread_id, origin_conversation_id, "
-            "widget, connect, routine_name) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            "widget, connect, approve, routine_name) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (
                 message_id,
                 agent_id,
@@ -1225,6 +1268,7 @@ class Store:
                 origin_conversation_id,
                 stored_widget,
                 stored_connect,
+                stored_approve,
                 routine_name,
             ),
         )
@@ -1444,6 +1488,79 @@ class Store:
         assert updated is not None
         return await self._message_public(dict(updated))
 
+    async def pending_approve(
+        self,
+        conversation_id: str,
+        *,
+        thread_id: str | None = None,
+    ) -> dict[str, Any] | None:
+        """Latest pending kind=approve in this transcript (or channel thread)."""
+        params: list[Any] = [conversation_id, "approve"]
+        where = "WHERE agent_id = ? AND kind = ?"
+        conversation = await self.get_agent(conversation_id)
+        is_channel = (
+            conversation is not None and conversation.get("kind") == KIND_CHANNEL
+        )
+        if is_channel and thread_id:
+            root_id = await self.resolve_thread_root(conversation_id, thread_id)
+            where += " AND (id = ? OR reply_to = ?)"
+            params.extend([root_id, root_id])
+        elif is_channel:
+            where += " AND (reply_to IS NULL OR reply_to = '')"
+        cur = await self.conn.execute(
+            f"SELECT * FROM messages {where} ORDER BY created_at DESC",
+            params,
+        )
+        for row in await cur.fetchall():
+            public = await self._message_public(dict(row))
+            if public.get("approveStatus") == "pending":
+                return public
+        return None
+
+    async def resolve_approve(
+        self,
+        message_id: str,
+        *,
+        status: str,
+        output: str | None = None,
+    ) -> dict[str, Any] | None:
+        from snorlax_runtime.approve import public_approve
+
+        cur = await self.conn.execute(
+            "SELECT * FROM messages WHERE id = ?", (message_id,)
+        )
+        row = await cur.fetchone()
+        if row is None:
+            return None
+        card = public_approve(dict(row).get("approve"))
+        if card is None:
+            return None
+        card["status"] = status
+        if output is not None:
+            card["output"] = output
+        await self.conn.execute(
+            "UPDATE messages SET approve = ? WHERE id = ?",
+            (json.dumps(card, ensure_ascii=False), message_id),
+        )
+        await self.conn.commit()
+        cur = await self.conn.execute(
+            "SELECT * FROM messages WHERE id = ?", (message_id,)
+        )
+        updated = await cur.fetchone()
+        assert updated is not None
+        return await self._message_public(dict(updated))
+
+    async def raw_approve(self, message_id: str) -> dict[str, Any] | None:
+        from snorlax_runtime.approve import public_approve
+
+        cur = await self.conn.execute(
+            "SELECT approve FROM messages WHERE id = ?", (message_id,)
+        )
+        row = await cur.fetchone()
+        if row is None:
+            return None
+        return public_approve(row["approve"])
+
     async def decline_other_pending_widgets(
         self,
         conversation_id: str,
@@ -1615,7 +1732,7 @@ class Store:
             )
             return messages
         cur = await self.conn.execute(
-            "SELECT id, sender_id, sender_name, role, content, kind, widget, connect "
+            "SELECT id, sender_id, sender_name, role, content, kind, widget, connect, approve "
             "FROM messages WHERE agent_id = ? ORDER BY created_at ASC",
             (conversation_id,),
         )
@@ -1646,7 +1763,7 @@ class Store:
     ) -> None:
         root_id = await self.resolve_thread_root(conversation_id, thread_id)
         cur = await self.conn.execute(
-            "SELECT id, sender_id, sender_name, role, content, kind, widget, connect "
+            "SELECT id, sender_id, sender_name, role, content, kind, widget, connect, approve "
             "FROM messages WHERE agent_id = ? AND (id = ? OR reply_to = ?) "
             "ORDER BY created_at ASC",
             (conversation_id, root_id, root_id),
@@ -1722,6 +1839,23 @@ class Store:
                         "content": "The user connected the plugin. Continue with its tools.",
                     }
                 )
+            return
+        if kind == "approve":
+            from snorlax_runtime.approve import (
+                APPROVED_USER_NOTE,
+                DENIED_USER_NOTE,
+                format_approve_for_model,
+                public_approve,
+            )
+
+            card = public_approve(row["approve"] if "approve" in row.keys() else None)
+            if card is not None:
+                body = format_approve_for_model(card)
+            messages.append({"role": "assistant", "content": body})
+            if card and card.get("status") == "denied":
+                messages.append({"role": "user", "content": DENIED_USER_NOTE})
+            elif card and card.get("status") == "approved":
+                messages.append({"role": "user", "content": APPROVED_USER_NOTE})
             return
         if sender == who:
             messages.append({"role": "assistant", "content": body})
