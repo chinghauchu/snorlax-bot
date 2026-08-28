@@ -117,13 +117,38 @@ struct ChatView: View {
                             hasLiveAssistant: liveAssistantIdx != nil,
                             hasLiveTool: !liveTraces.isEmpty || toolThisTurn
                         )
+                        let lastLeftIdx = visible.indices.last { index in
+                            let message = visible[index]
+                            let inFlight = model.isSending && index == liveAssistantIdx
+                            return !message.isFromUser
+                                && message.isKindMessage
+                                && !message.isToolLine
+                                && !message.isWidget
+                                && !message.isConnect
+                                && !message.isHandoffRoot
+                                && !inFlight
+                        }
                         ForEach(Array(visible.enumerated()), id: \.element.id) { index, message in
                             transcriptItem(
                                 message,
                                 index: index,
                                 in: visible,
                                 agent: agent,
-                                toolTraces: index == liveAssistantIdx ? liveTraces : []
+                                toolTraces: index == liveAssistantIdx ? liveTraces : [],
+                                showCopy: Self.showsCopy(
+                                    message,
+                                    index: index,
+                                    liveAssistantIdx: liveAssistantIdx,
+                                    sending: model.isSending
+                                ),
+                                showRegenerate: Self.showsRegenerate(
+                                    message,
+                                    index: index,
+                                    lastLeftIdx: lastLeftIdx,
+                                    isChannel: agent.isChannel,
+                                    liveAssistantIdx: liveAssistantIdx,
+                                    sending: model.isSending
+                                )
                             )
                             .padding(.top, turnSpacing(at: index, in: visible, message: message))
                             .id(message.id)
@@ -212,7 +237,15 @@ struct ChatView: View {
     }
 
     @ViewBuilder
-    private func transcriptItem(_ message: Message, index: Int, in messages: [Message], agent: Agent, toolTraces: [LiveToolTrace] = []) -> some View {
+    private func transcriptItem(
+        _ message: Message,
+        index: Int,
+        in messages: [Message],
+        agent: Agent,
+        toolTraces: [LiveToolTrace] = [],
+        showCopy: Bool = false,
+        showRegenerate: Bool = false
+    ) -> some View {
         let onTimeline = agent.isChannel && model.threadID == nil
         if onTimeline, message.isHandoffRoot {
             Button {
@@ -228,7 +261,9 @@ struct ChatView: View {
                 localPreviews: model.localPreviews[message.id] ?? [],
                 sameSender: !message.isHandoffRoot && !message.hasRoutineKicker && sameSender(at: index, in: messages),
                 threadRoot: agent.isChannel && model.threadID != nil && message.isHandoffRoot,
-                toolTraces: toolTraces
+                toolTraces: toolTraces,
+                showCopy: showCopy,
+                showRegenerate: showRegenerate
             ) { jump in
                 Task { await model.openJump(channelId: jump.channelId, threadId: jump.threadId) }
             }
@@ -250,6 +285,40 @@ struct ChatView: View {
         if message?.isHandoffRoot == true { return index == 0 ? 0 : 16 }
         guard index > 0 else { return 0 }
         return sameSender(at: index, in: messages) ? 4 : 16
+    }
+
+    private static func showsCopy(
+        _ message: Message,
+        index: Int,
+        liveAssistantIdx: Int?,
+        sending: Bool
+    ) -> Bool {
+        guard !message.isFromUser,
+              message.isKindMessage,
+              !message.isToolLine,
+              !message.isWidget,
+              !message.isConnect,
+              !message.isHandoffRoot
+        else { return false }
+        if sending, index == liveAssistantIdx { return false }
+        return true
+    }
+
+    private static func showsRegenerate(
+        _ message: Message,
+        index: Int,
+        lastLeftIdx: Int?,
+        isChannel: Bool,
+        liveAssistantIdx: Int?,
+        sending: Bool
+    ) -> Bool {
+        guard showsCopy(
+            message,
+            index: index,
+            liveAssistantIdx: liveAssistantIdx,
+            sending: sending
+        ) else { return false }
+        return !isChannel && index == lastLeftIdx && !sending
     }
 }
 
@@ -590,9 +659,12 @@ private struct MessageBubble: View {
     var sameSender = false
     var threadRoot = false
     var toolTraces: [LiveToolTrace] = []
+    var showCopy = false
+    var showRegenerate = false
     var onJump: ((HandoffRef) -> Void)?
     @Environment(AppModel.self) private var model
     @State private var shareURL: URL?
+    @State private var copied = false
 
     private var isUser: Bool { message.isFromUser }
 
@@ -698,6 +770,30 @@ private struct MessageBubble: View {
                             text: message.displayContent,
                             names: agents.filter { !$0.isChannel }.map(\.name)
                         )
+                    }
+                    if showCopy {
+                        HStack(spacing: 12) {
+                            Button(copied ? "Copied" : "Copy") {
+                                UIPasteboard.general.string = message.content
+                                copied = true
+                                Task {
+                                    try? await Task.sleep(nanoseconds: 1_500_000_000)
+                                    copied = false
+                                }
+                            }
+                            .font(.system(size: 12))
+                            .foregroundStyle(.secondary)
+                            .buttonStyle(.plain)
+                            if showRegenerate {
+                                Button("Regenerate") {
+                                    Task { await model.regenerate() }
+                                }
+                                .font(.system(size: 12))
+                                .foregroundStyle(.secondary)
+                                .buttonStyle(.plain)
+                                .disabled(model.isSending)
+                            }
+                        }
                     }
                 }
                 .padding(.horizontal, 12)

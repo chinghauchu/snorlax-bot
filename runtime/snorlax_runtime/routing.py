@@ -399,6 +399,7 @@ async def run_user_turn(
     resume_connect: dict[str, Any] | None = None,
     auth_base_url: str | None = None,
     attachment_ids: list[str] | None = None,
+    regenerate: bool = False,
 ) -> AsyncIterator[tuple[str, dict[str, Any]]]:
     """Persist the user message, then route hop-0 and peer work.
 
@@ -533,6 +534,9 @@ async def run_user_turn(
                 yield "connect.url", {"url": url, "pluginId": plugin_id}
                 yield "message.done", target
                 return
+    elif regenerate:
+        persist_user = False
+        wake_agent = True
     elif persist_user and pending is not None:
         body = pending.get("widget") or {}
         if body.get("dismissOnMoveOn"):

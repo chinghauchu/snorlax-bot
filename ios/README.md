@@ -19,6 +19,10 @@ v0.29: composer Enter does not send while IME `markedTextRange` is set;
 v0.30: composer paste from UIPasteboard fills the same pending chips
 as paperclip (images / videos / files); plain text paste stays in the
 field. Photos/Files paperclip unchanged.
+v0.31: Copy on completed LEFT `kind=message` (12pt muted; `Copied`
+1.5s). Regenerate 1:1 only on the latest completed LEFT
+`kind=message` (`{ regenerate: true }`). Channel has Copy, no
+Regenerate.
 Question widgets
 render as LEFT cards in the speaking agent's streak (no extra sheet). Agent
 info sheet lists a 16:10 computer preview above routines (12pt labels,

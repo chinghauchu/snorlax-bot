@@ -94,6 +94,10 @@ normal assistant Message in that agent's 1:1 with optional
 `routineName`. Paused Slack/GitHub skips. Paused or unknown webhook token → 404, do not run.
 Clients list, create, enable/pause, Remove, and Copy the webhook URL.
 
+v0.31: `POST /v1/agents/{id}/messages` `{ "regenerate": true }` truncates
+the last assistant turn in a 1:1 and replays the last user message
+(no new user bubble). 422 / 409 as locked. OpenAPI stays 0.18.0.
+
 Identity-pane Skills (below Routines) lists `{ id, name }`. Edit is
 `GET` then `PATCH /skills/{sid}` `{ name, body }` (full SKILL.md source
 including frontmatter plus recipe, not a rendered preview). Remove is

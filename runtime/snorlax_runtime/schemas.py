@@ -186,9 +186,20 @@ class MessageCreate(BaseModel):
     )
     widgetReply: WidgetReply | None = None
     connectReply: ConnectReply | None = None
+    regenerate: bool = False
 
     @model_validator(mode="after")
     def content_or_widget_answer(self) -> MessageCreate:
+        if self.regenerate:
+            if (self.content or "").strip():
+                raise ValueError("regenerate cannot be combined with content")
+            if self.attachmentIds:
+                raise ValueError("regenerate cannot be combined with attachmentIds")
+            if self.widgetReply is not None:
+                raise ValueError("regenerate cannot be combined with widgetReply")
+            if self.connectReply is not None:
+                raise ValueError("regenerate cannot be combined with connectReply")
+            return self
         if self.widgetReply is not None or self.connectReply is not None:
             return self
         if (self.content or "").strip():

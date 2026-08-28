@@ -58,3 +58,4 @@ jobs:
           python3 ios/scripts/test_plugin_catalog.py
           python3 ios/scripts/test_chat_attachments.py
           python3 ios/scripts/test_ime_composer.py
+          python3 ios/scripts/test_copy_regenerate.py

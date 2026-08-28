@@ -198,6 +198,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             write_token_file(settings.data_dir, token)
         app.state.settings = settings
         app.state.store = store
+        app.state.open_streams = set()
+        app.state.stream_lock = asyncio.Lock()
         configure_tools(
             search_provider=settings.search_provider,
             search_url=settings.search_url,
@@ -271,6 +273,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         lifespan=lifespan,
     )
     app.state.settings = settings
+    app.state.open_streams = set()
+    app.state.stream_lock = asyncio.Lock()
     app.add_middleware(
         CORSMiddleware,
         allow_origins=["*"],
@@ -486,6 +490,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             raise _error(409, "computer session is active")
         roster = await store.list_agents()
         is_group = conversation.get("kind") == "channel"
+        if payload.regenerate:
+            if is_group:
+                raise _error(409, "regenerate is 1:1 only")
+            found = await store.last_user_assistant_turn(id)
+            if found is None:
+                raise _error(422, "no completed turn to regenerate")
         try:
             mentions = resolve_user_mentions(
                 payload.content,
@@ -569,31 +579,50 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         elif has_user_payload and pending_connect is not None:
             raise _error(409, CONNECT_PENDING_ERROR)
 
+        streams: set[str] = request.app.state.open_streams
+        stream_lock: asyncio.Lock = request.app.state.stream_lock
+        async with stream_lock:
+            if id in streams:
+                raise _error(409, "stream is already open")
+            streams.add(id)
+
         async def events() -> AsyncIterator[bytes]:
-            async for event, data in run_user_turn(
-                store=store,
-                backend=backend,
-                conversation=conversation,
-                content=payload.content or "",
-                images=images,
-                attachment_ids=attachment_ids,
-                mentions=mentions,
-                reply_to=payload.replyTo,
-                preferred_channel_id=payload.channelId,
-                max_tool_rounds=request.app.state.settings.tool_max_rounds,
-                widget_reply=(
-                    payload.widgetReply.model_dump()
-                    if payload.widgetReply is not None
-                    else None
-                ),
-                connect_reply=(
-                    payload.connectReply.model_dump()
-                    if payload.connectReply is not None
-                    else None
-                ),
-                auth_base_url=str(request.base_url).rstrip("/"),
-            ):
-                yield _sse(event, data)
+            try:
+                if payload.regenerate:
+                    truncated = await store.truncate_last_assistant_turn(id)
+                    if truncated is None:
+                        yield _sse(
+                            "error", {"error": "no completed turn to regenerate"}
+                        )
+                        return
+                async for event, data in run_user_turn(
+                    store=store,
+                    backend=backend,
+                    conversation=conversation,
+                    content=payload.content or "",
+                    images=images,
+                    attachment_ids=attachment_ids,
+                    mentions=mentions,
+                    reply_to=payload.replyTo,
+                    preferred_channel_id=payload.channelId,
+                    max_tool_rounds=request.app.state.settings.tool_max_rounds,
+                    widget_reply=(
+                        payload.widgetReply.model_dump()
+                        if payload.widgetReply is not None
+                        else None
+                    ),
+                    connect_reply=(
+                        payload.connectReply.model_dump()
+                        if payload.connectReply is not None
+                        else None
+                    ),
+                    auth_base_url=str(request.base_url).rstrip("/"),
+                    regenerate=payload.regenerate,
+                ):
+                    yield _sse(event, data)
+            finally:
+                async with stream_lock:
+                    streams.discard(id)
 
         return StreamingResponse(
             events(),

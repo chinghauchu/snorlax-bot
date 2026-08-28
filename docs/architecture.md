@@ -426,6 +426,15 @@ Seed SKILL.md: 项目 → `create_channel`, 员工 → `create_agent`. No new
 routes. OpenAPI stays 0.18.0. No `/v1/chats/`. Never reintroduce
 `computerPane.ts`.
 
+v0.31: Copy / Regenerate on assistant LEFT `kind=message`. Copy on
+completed LEFT messages (1:1 and channel): 12px muted row, `Copied`
+for 1.5s, copies `message.content`. Regenerate 1:1 only on the latest
+completed LEFT `kind=message`. POST `{ regenerate: true }` truncates
+that assistant turn (`kind=message` plus trailing `kind=tool`) and
+replays the last user turn without a new user-right bubble. 422 / 409
+as locked. No new path. OpenAPI stays 0.18.0. No `/v1/chats/`. Never
+reintroduce `computerPane.ts`.
+
 ## Inference interface
 
 ```text

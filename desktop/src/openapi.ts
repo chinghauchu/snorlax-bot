@@ -156,6 +156,21 @@ export interface paths {
          *     an existing channel thread. @mention inside an extra channel
          *     stays in that channel's thread.
          *
+         *     v0.31 regenerate: `{ "regenerate": true }` (empty/omitted
+         *     content) replays the last user turn in a 1:1 without a new
+         *     user-right bubble. Truncate the last assistant turn (that
+         *     kind=message plus trailing kind=tool lines of that turn) then
+         *     stream a replacement on the same SSE (message.delta,
+         *     message.done, tool.*, Thinking wave). GET afterwards must not
+         *     return the discarded text. 422 if there is no completed
+         *     user→assistant turn, or if regenerate is combined with
+         *     non-empty content / attachmentIds / widgetReply / connectReply.
+         *     409 if a stream is already open for that 1:1, or if the target
+         *     is a channel. Desktop + iOS show Copy on completed LEFT
+         *     kind=message (1:1 and channel); Regenerate only on the latest
+         *     completed LEFT kind=message in a 1:1 (hidden while a stream is
+         *     in flight).
+         *
          *     422 only for an unknown mention chip id (and `@everyone` chip
          *     outside the group). Typed `@foo` with no chip is plain text.
          *     Agent-authored unknown `@Name` is ignored. `@everyone` is group-only.
@@ -1201,9 +1216,9 @@ export interface components {
         };
         MessageCreate: {
             /**
-             * @description User text. Required unless widgetReply, connectReply, or a
+             * @description User text. Required unless widgetReply, connectReply, a
              *     non-empty attachmentIds list (image-only / file-only /
-             *     video-only send).
+             *     video-only send), or regenerate is true.
              *     Empty is allowed for those posts. A
              *     normal send while a question is pending is 409 unless
              *     dismissOnMoveOn. A send while a connect card is pending is
@@ -1258,6 +1273,21 @@ export interface components {
              *     Not a user-right bubble.
              */
             connectReply?: components["schemas"]["ConnectReply"];
+            /**
+             * @description v0.31. Replay the last user turn in this 1:1. Empty/omitted
+             *     content. Does not create a user Message or a user-right
+             *     bubble. Reuses that turn's content + attachmentIds +
+             *     mentions. Truncates the last assistant turn (that
+             *     kind=message plus trailing kind=tool lines of that turn)
+             *     then streams a replacement (same SSE as send). 422 if there
+             *     is no completed user→assistant turn, or if combined with
+             *     non-empty content / attachmentIds / widgetReply /
+             *     connectReply. 409 if a stream is already open for that 1:1,
+             *     or if the target is a channel. Channel has Copy, no
+             *     Regenerate.
+             * @default false
+             */
+            regenerate: boolean;
         };
         MessageDelta: {
             id: string;
