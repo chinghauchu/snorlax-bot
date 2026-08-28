@@ -302,6 +302,7 @@ export async function sendMessage(
   extra?: {
     widgetReply?: { id: string; values?: string[]; dismissed?: boolean };
     connectReply?: { id?: string; dismissed?: boolean };
+    approveReply?: { id: string; approved?: boolean; dismissed?: boolean };
     attachmentIds?: string[];
     regenerate?: boolean;
   },
@@ -315,6 +316,7 @@ export async function sendMessage(
     channelId?: string;
     widgetReply?: { id: string; values?: string[]; dismissed?: boolean };
     connectReply?: { id?: string; dismissed?: boolean };
+    approveReply?: { id: string; approved?: boolean; dismissed?: boolean };
     regenerate?: boolean;
   } = {
     content,
@@ -325,6 +327,7 @@ export async function sendMessage(
   if (channelId) body.channelId = channelId;
   if (extra?.widgetReply) body.widgetReply = extra.widgetReply;
   if (extra?.connectReply) body.connectReply = extra.connectReply;
+  if (extra?.approveReply) body.approveReply = extra.approveReply;
   if (extra?.attachmentIds?.length) body.attachmentIds = extra.attachmentIds;
   if (extra?.regenerate) body.regenerate = true;
   const response = await fetch(

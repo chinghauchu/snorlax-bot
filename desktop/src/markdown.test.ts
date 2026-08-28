@@ -143,15 +143,17 @@ test("https links are accent with hover underline; inline code is 13px chip", ()
   assert.match(body, /img:/);
 });
 
-test("tool, widget, connect, thinking, and handoff are not markdown", () => {
+test("tool, widget, connect, approve, thinking, and handoff are not markdown", () => {
   assert.match(app, /isToolLine\(message\)/);
   assert.match(app, /<WidgetCard/);
   assert.match(app, /<ConnectCard/);
+  assert.match(app, /<ApproveCard/);
   assert.match(app, /showThinking/);
   assert.match(app, /handoff-card/);
   assert.match(css, /\n\.tool-trace \{/);
   assert.match(css, /\n\.widget-card \{/);
   assert.match(css, /\n\.connect-card \{/);
+  assert.match(css, /\n\.approve-card \{/);
   assert.match(css, /\n\.thinking \{/);
   assert.match(css, /\n\.handoff-card \{/);
   const widgetSlice = app.slice(app.indexOf("isWidget(message)"));

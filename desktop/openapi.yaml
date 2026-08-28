@@ -34,8 +34,11 @@ info:
     Runtime-owned tools (v0.5): list_dir, read_file, write_file, delete_file,
     shell, web_search, web_fetch. v0.28 adds watch_video (auto-run). The FastAPI runtime runs a function-calling
     loop against the local OpenAI-compat server (cap 8 rounds). Clients never
-    construct tool calls. Tools auto-run (no approval cards). Question
-    widgets are not tool-approval and do not gate shell/web/MCP.
+    construct tool calls. Tools auto-run except mutating shell (v0.32
+    kind=approve). Read-only shell (ls, cat, pwd, git status, git log,
+    git diff, including simple flags/paths) still auto-runs. Question
+    widgets are not tool-approval. Mutating shell is a dedicated
+    kind=approve card, not kind=widget.
     Workspaces live under ~/.snorlax-bot/workspaces/ (agents/{id} for 1:1).
     Channel shared project is a pane toggle (user-created + seed), default
     off (`sharedProject`). When on, channel / handoff turns use
@@ -631,7 +634,7 @@ info:
     6px gap, 12px muted action row, 12px / 12pt text button Copy.
     Click copies message.content (markdown source, not rendered HTML);
     label is Copied for 1.5s (same pattern as webhook Copy). Not on
-    kind=tool / kind=widget / kind=connect. Not on user-right.
+    kind=tool / kind=widget / kind=connect / kind=approve. Not on user-right.
     Isolation: B's messages never appear in A's 1:1. Existing fenced-code
     Copy in MarkdownBody stays. Regenerate is desktop + iOS, 1:1 only
     (channel has Copy, no Regenerate): 12px muted Regenerate to the
@@ -650,9 +653,34 @@ info:
     409 if a stream is already open for that 1:1, or if the target is a
     channel. Composer, paperclip, clipboard paste, IME Enter, `/`
     typeahead unchanged. Out: thumbs, edit-user-message, composer mic,
-    mermaid/math, voice, routine confirm, shell Approve, VNC,
+    mermaid/math, voice, routine confirm, VNC,
     marketplace/store. Never reintroduce computerPane.ts.
     OpenAPI **0.18.0**.
+
+    v0.32: shell Approve. One impl PR covering runtime + desktop + iOS.
+    Spec rides this PR. **No second PR.** OpenAPI stays **0.18.0**. Do
+    not bump. No new path. No /approve route. No /v1/chats/. Mutating
+    shell no longer auto-runs: persist LEFT kind=approve (widget chrome
+    family, NOT kind=widget) with body `{ command }` plus approveStatus
+    pending. SSE: persist, then message.done with the full Message, then
+    the stream ends (same shape as v0.8 widgets). No approve.* event.
+    Answer is POST `{ approveReply: { id, approved: true } }` or
+    `{ id, dismissed: true }` on that transcript — not a user-right
+    bubble and not a new user Message. Dismissed is Deny (including the
+    card ×). After Approve: run that command, then the existing 12px
+    muted kind=tool line (`Ran {cmd}`). After Deny: patch the SAME card
+    to Denied (12px muted Denied); do not run; do not wake the agent.
+    Read-only shells auto-run with no card: ls, cat, pwd, git status,
+    git log, git diff (those exact commands, including simple flags/paths
+    that stay read-only). Any chain, pipe, redirection, && / ; / |, or
+    anything else is mutating and MUST gate. Content send 409 while a
+    card is pending (one pending approve per transcript). Same 409 if
+    the model emits a second approve while one is pending. Other tools
+    stay auto-run. Widgets / connect cards unchanged. Isolation matches
+    widgets. Channel: approve only in a thread (replyTo set), never the
+    timeline. Dedicated kind=approve renderer on desktop and iOS. No
+    Settings chrome. No new composer UI. Never reintroduce
+    computerPane.ts. OpenAPI **0.18.0**.
   license:
     name: Apache-2.0
     identifier: Apache-2.0
@@ -816,8 +844,10 @@ paths:
         `senderId=user` and that agent. Peer/involve/DM/hop messages are
         never in a 1:1. For kind=channel (`snorlax-bot-group`) the default
         list is the **timeline**: handoff roots (and other unreplied-to
-        roots). Thread replies are omitted. Question cards (`kind=widget`)
-        never appear on the timeline — only in a thread (`?threadId=`).
+        roots).         Thread replies are omitted. Question cards (`kind=widget`)
+        and shell Approve cards (`kind=approve`) never appear on the
+        timeline — only in a thread (`?threadId=`).
+        Connect cards (`kind=connect`) follow the same thread-only rule.
         Pass `threadId` (or `replyTo`)
         to load that thread (root + flat replies).
       operationId: listMessages
@@ -873,7 +903,8 @@ paths:
         The runtime owns the tool loop (clients never send a tools payload).
         A question card ends that agent turn: no more tokens or tools after
         `kind=widget` until the user answers or dismisses. Tools still
-        auto-run; widgets are not approval cards.
+        auto-run except mutating shell (v0.32 `kind=approve`); widgets are
+        not approval cards.
 
         For a 1:1 agent, hop 0 is that agent. Mentioned peers and hops
         reply in a handoff thread on seed `snorlax-bot-group` when present
@@ -899,7 +930,8 @@ paths:
         message.done, tool.*, Thinking wave). GET afterwards must not
         return the discarded text. 422 if there is no completed
         user→assistant turn, or if regenerate is combined with
-        non-empty content / attachmentIds / widgetReply / connectReply.
+        non-empty content / attachmentIds / widgetReply / connectReply /
+        approveReply.
         409 if a stream is already open for that 1:1, or if the target
         is a channel. Desktop + iOS show Copy on completed LEFT
         kind=message (1:1 and channel); Regenerate only on the latest
@@ -923,11 +955,23 @@ paths:
         `Fetched …`), same senderId as the speaking agent, in that
         transcript only (1:1 if A tools; channel thread if B tools).
         Report-back into A's 1:1 is a normal assistant `kind=message` as A
-        and does not copy B's tool lines or B's widgets. A turn that ran tools always
+        and does not copy B's tool lines or B's widgets or B's approve
+        cards. A turn that ran tools always
         finishes with a normal assistant `kind=message` (streamed and
         persisted) unless the model asked a question card —         then the POST
         SSE ends on that `kind=widget` `message.done` (no `widget.*` event).
-        A Connect card for an unauthenticated MCP plugin is the same
+        A mutating shell command is the same persist-then-`message.done`
+        shape with `kind=approve` (no `approve.*` event). Body is
+        `{ command }` plus `approveStatus: pending`. Answer with
+        `{ approveReply: { id, approved: true } }` or `{ dismissed: true }`
+        on that transcript; that is not a user Message. After Approve the
+        runtime runs the command and persists the existing 12px muted
+        `kind=tool` line (`Ran {cmd}`), then continues this POST as hop-0.
+        Deny patches that same card to `approveStatus=denied` (12px muted
+        `Denied`), does not run, and does not wake the agent. Read-only
+        shell (ls, cat, pwd, git status, git log, git diff, including
+        simple flags/paths) auto-runs with no card. Any chain, pipe,
+        redirection, && / ; / |, or anything else MUST gate. A Connect card for an unauthenticated MCP plugin is the same
         persist-then-`message.done` shape with `kind=connect` (no
         `connect.*` event on emit). Answer with `{ widgetReply: { id, values?, dismissed? } }` on that
         transcript; that is not a user Message. Connect is
@@ -935,18 +979,22 @@ paths:
         user Message. Dismiss does not wake the
         agent and does not return a URL. `{ id }` while the plugin still
         needs auth stays pending, emits `event: connect.url` data
-        `{ url, pluginId }`, then ends this POST; the client opens the OS
+        `{ url, pluginId }` then ends this POST; the client opens the OS
         browser. When OAuth completes (runtime GET callback or POST
         `{ code, state }`), the same Message is PATCHed to
         connectStatus=connected and the agent turn continues (tools
-        auto-run). If the plugin is already connected, `{ id }` PATCHes
+        auto-run except mutating shell). If the plugin is already connected, `{ id }` PATCHes
         connected and continues this POST as hop-0. A pick continues this
         POST as hop-0 with the values. A
         normal content send while a card is pending is 409 unless
         dismissOnMoveOn (then auto-dismiss, no wake for the widget, then
         the new user message). Connect pending has no dismiss-on-move-on:
-        content is 409 until connect or dismiss. One pending widget per transcript (409 if
+        content is 409 until connect or dismiss. Approve pending has no
+        dismiss-on-move-on: content is 409 until Approve or Deny. One
+        pending widget per transcript (409 if
         the model emits a second). One pending connect card per transcript.
+        One pending approve card per transcript (409 if the model emits a
+        second).
         Unknown id or already closed is 422.
         Empty model text or an inference error after tools still
         produce that follow-up; do not end on only a `kind=tool` line or
@@ -2074,8 +2122,8 @@ components:
             assistant text to HTML or split one Message into many. SSE
             message.delta is text chunks of this same string. User
             messages stay plain text as stored. v0.11 clients render
-            assistant LEFT kind=message as markdown. widget, connect,
-            tool, and routineName stay. No MCP mix-in.
+            assistant LEFT kind=message as markdown.             widget, connect,
+            tool, approve, and routineName stay. No MCP mix-in.
         images:
           type: array
           items:
@@ -2086,7 +2134,7 @@ components:
             $ref: "#/components/schemas/Attachment"
           description: |
             kind=message rows (user-right or agent LEFT). kind=tool,
-            widget, and connect are []. Same shape as v0.25.
+            widget, connect, and approve are []. Same shape as v0.25.
             Not a list-endpoint wrapper.
         createdAt:
           type: string
@@ -2108,7 +2156,7 @@ components:
             $ref: "#/components/schemas/Mention"
         kind:
           type: string
-          enum: [message, handoff, tool, widget, connect]
+          enum: [message, handoff, tool, widget, connect, approve]
           description: |
             Channel handoff root is `handoff` (LEFT card authored as A).
             Tool activity is `tool` (LEFT 12px muted status, short content
@@ -2116,7 +2164,9 @@ components:
             the agent). Question card is `widget` (LEFT card under the
             speaking agent's 20px avatar + 13px name; not a user-right
             bubble and not a token stream). Connect card is `connect`
-            (same LEFT chrome family as widgets, NOT kind=widget). Default
+            (same LEFT chrome family as widgets, NOT kind=widget).
+            Shell Approve card is `approve` (same LEFT chrome family,
+            dedicated kind — NOT a widget fork, NOT kind=widget). Default
             `message`. Do not drop kind=message|handoff|tool.
         replyTo:
           type: [string, "null"]
@@ -2160,6 +2210,21 @@ components:
             Set on kind=connect. pending until auth finishes or dismiss;
             connected after the OAuth callback PATCHes this row; dismissed
             after `{ dismissed: true }`.
+        approve:
+          $ref: "#/components/schemas/ApproveCard"
+          description: |
+            Set on kind=approve. Card fields only (`{ command }`). Status
+            lives on approveStatus on this Message so GET can re-render
+            the same card. Absent on other kinds. Never a user-right
+            bubble. No cwd on the card.
+        approveStatus:
+          type: string
+          enum: [pending, approved, denied]
+          description: |
+            Set on kind=approve. pending until an approveReply; approved
+            after `{ approved: true }` (then the command runs and a
+            kind=tool `Ran {cmd}` line is persisted); denied after
+            `{ dismissed: true }` (Deny, including the card ×).
         widgetStatus:
           type: string
           enum: [pending, resolved, dismissed]
@@ -2284,6 +2349,42 @@ components:
             `{ id }` after the browser finishes sets connected and wakes
             the agent so tools auto-run.
 
+    ApproveCard:
+      type: object
+      required: [command]
+      properties:
+        command:
+          type: string
+          description: |
+            The shell command to Approve or Deny. Shown as 12px/12pt
+            / 1.45 mono, max 2 lines + ellipsis. Desktop hover
+            (title/tooltip) shows the full command; iOS long-press
+            copies it. No cwd on the card.
+
+    ApproveReply:
+      type: object
+      required: [id]
+      properties:
+        id:
+          type: string
+          description: Message id of the pending kind=approve row.
+        approved:
+          type: boolean
+          default: false
+          description: |
+            Approve the pending command. Updates that same Message to
+            approveStatus=approved, runs the command, then persists the
+            existing kind=tool line (`Ran {cmd}`) and continues this POST
+            as hop-0. Does not create a user Message.
+        dismissed:
+          type: boolean
+          default: false
+          description: |
+            Deny the pending card (including the trailing ×). Updates
+            that same Message to approveStatus=denied (12px muted
+            Denied). Does not run the command, does not create a user
+            Message, and does not wake the agent.
+
     MessageCreate:
       type: object
       properties:
@@ -2292,13 +2393,15 @@ components:
           minLength: 0
           maxLength: 32000
           description: |
-            User text. Required unless widgetReply, connectReply, a
+            User text. Required unless widgetReply, connectReply,
+            approveReply, a
             non-empty attachmentIds list (image-only / file-only /
             video-only send), or regenerate is true.
             Empty is allowed for those posts. A
             normal send while a question is pending is 409 unless
             dismissOnMoveOn. A send while a connect card is pending is
-            409 until connect or dismiss.
+            409 until connect or dismiss. A send while an approve card
+            is pending is 409 until Approve or Deny.
         images:
           type: array
           items:
@@ -2355,6 +2458,13 @@ components:
             Message connected and wakes the agent. `{ dismissed: true }`
             declines it and does not wake the agent. Not a user Message.
             Not a user-right bubble.
+        approveReply:
+          $ref: "#/components/schemas/ApproveReply"
+          description: |
+            Answer the pending shell Approve card. `{ id, approved: true }`
+            runs that command. `{ id, dismissed: true }` is Deny and does
+            not wake the agent. Not a user Message. Not a user-right
+            bubble.
         regenerate:
           type: boolean
           default: false
@@ -2367,7 +2477,7 @@ components:
             then streams a replacement (same SSE as send). 422 if there
             is no completed user→assistant turn, or if combined with
             non-empty content / attachmentIds / widgetReply /
-            connectReply. 409 if a stream is already open for that 1:1,
+            connectReply / approveReply. 409 if a stream is already open for that 1:1,
             or if the target is a channel. Channel has Copy, no
             Regenerate.
 

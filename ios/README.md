@@ -23,6 +23,8 @@ v0.31: Copy on completed LEFT `kind=message` (12pt muted; `Copied`
 1.5s). Regenerate 1:1 only on the latest completed LEFT
 `kind=message` (`{ regenerate: true }`). Channel has Copy, no
 Regenerate.
+v0.32: dedicated `kind=approve` LEFT card for mutating shell (not a
+WidgetCard fork). Approve / Deny / ×; long-press copies the command.
 Question widgets
 render as LEFT cards in the speaking agent's streak (no extra sheet). Agent
 info sheet lists a 16:10 computer preview above routines (12pt labels,
@@ -107,6 +109,7 @@ Output: `SnorlaxBot/Generated/V1Types.swift`. Do not hand-edit that file.
 - `SnorlaxBot/ComputerTakeover.swift` — full-screen Open (Keyboard + Done + Record/Stop/Save as skill)
 - `SnorlaxBot/SettingsSheet.swift` — URL, token, plugins list + Add sheet
 - `SnorlaxBot/ConnectCard.swift` — `kind=connect` LEFT card
+- `SnorlaxBot/ApproveCard.swift` — `kind=approve` LEFT card
 - `SnorlaxBot/AssistantMarkdown.swift` — assistant LEFT markdown
 - `SnorlaxBot/RuntimeClient.swift` — `/v1` + SSE
 - `SnorlaxBot/Generated/V1Types.swift` — OpenAPI models

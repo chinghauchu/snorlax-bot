@@ -36,6 +36,7 @@ def test_copy_on_left_kind_message_not_tool_widget_connect() -> None:
     assert "isToolLine" in CHAT
     assert "isWidget" in CHAT
     assert "isConnect" in CHAT
+    assert "isApprove" in CHAT
     assert "isFromUser" in CHAT
     assert "AssistantMarkdown" in MARKDOWN
     assert 'Button("Copy")' in MARKDOWN

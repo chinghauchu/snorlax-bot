@@ -105,6 +105,7 @@ struct ChatView: View {
                                 && !message.isToolLine
                                 && !message.isWidget
                                 && !message.isConnect
+                                && !message.isApprove
                         }
                         let toolThisTurn: Bool = {
                             guard let lastUserIdx else { return false }
@@ -125,6 +126,7 @@ struct ChatView: View {
                                 && !message.isToolLine
                                 && !message.isWidget
                                 && !message.isConnect
+                                && !message.isApprove
                                 && !message.isHandoffRoot
                                 && !inFlight
                         }
@@ -298,6 +300,7 @@ struct ChatView: View {
               !message.isToolLine,
               !message.isWidget,
               !message.isConnect,
+              !message.isApprove,
               !message.isHandoffRoot
         else { return false }
         if sending, index == liveAssistantIdx { return false }
@@ -720,6 +723,9 @@ private struct MessageBubble: View {
                     .padding(.horizontal, 12)
             } else if message.isConnect, message.connect != nil {
                 ConnectCardView(message: message)
+                    .padding(.horizontal, 12)
+            } else if message.isApprove, message.approve != nil {
+                ApproveCardView(message: message)
                     .padding(.horizontal, 12)
             } else if threadRoot {
                 HStack(alignment: .top, spacing: 0) {

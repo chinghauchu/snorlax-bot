@@ -292,6 +292,7 @@ struct RuntimeClient: Sendable {
         channelId: String? = nil,
         widgetReply: WidgetReply? = nil,
         connectReply: ConnectReply? = nil,
+        approveReply: ApproveReply? = nil,
         attachmentIds: [String] = [],
         regenerate: Bool = false,
         onEvent: @escaping @Sendable (StreamEvent) -> Void
@@ -308,6 +309,7 @@ struct RuntimeClient: Sendable {
                 channelId: channelId,
                 widgetReply: widgetReply,
                 connectReply: connectReply,
+                approveReply: approveReply,
                 regenerate: regenerate ? true : nil
             )
         )
