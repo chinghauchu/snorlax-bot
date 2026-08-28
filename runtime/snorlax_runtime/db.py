@@ -1282,6 +1282,62 @@ class Store:
             return None
         return await self._message_public(dict(row))
 
+    async def last_user_assistant_turn(
+        self, agent_id: str
+    ) -> tuple[dict[str, Any], list[str]] | None:
+        """Last completed user→assistant turn in a 1:1.
+
+        Returns the last user kind=message plus ids of that assistant
+        turn to drop (the last kind=message and kind=tool lines of that
+        turn). None if there is no completed turn to replay.
+        """
+        cur = await self.conn.execute(
+            "SELECT id, sender_id, kind FROM messages "
+            "WHERE agent_id = ? AND (sender_id = ? OR sender_id = ?) "
+            "ORDER BY created_at ASC",
+            (agent_id, USER_SENDER_ID, agent_id),
+        )
+        rows = [dict(r) for r in await cur.fetchall()]
+        last_user_idx = -1
+        last_user: dict[str, Any] | None = None
+        for i, row in enumerate(rows):
+            kind = row.get("kind") or "message"
+            if row["sender_id"] == USER_SENDER_ID and kind == "message":
+                last_user_idx = i
+                last_user = row
+        if last_user is None:
+            return None
+        rest = rows[last_user_idx + 1 :]
+        drop: list[str] = []
+        has_assistant_message = False
+        for row in rest:
+            kind = row.get("kind") or "message"
+            if kind == "tool":
+                drop.append(row["id"])
+            elif kind == "message" and row["sender_id"] != USER_SENDER_ID:
+                drop.append(row["id"])
+                has_assistant_message = True
+        if not has_assistant_message:
+            return None
+        return last_user, drop
+
+    async def truncate_last_assistant_turn(
+        self, agent_id: str
+    ) -> dict[str, Any] | None:
+        """Delete the last assistant kind=message plus kind=tool of that turn."""
+        found = await self.last_user_assistant_turn(agent_id)
+        if found is None:
+            return None
+        last_user, drop = found
+        if drop:
+            placeholders = ",".join("?" * len(drop))
+            await self.conn.execute(
+                f"DELETE FROM messages WHERE agent_id = ? AND id IN ({placeholders})",
+                [agent_id, *drop],
+            )
+            await self.conn.commit()
+        return last_user
+
     async def resolve_widget(
         self,
         message_id: str,

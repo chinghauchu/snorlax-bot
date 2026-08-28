@@ -90,6 +90,7 @@ extension Message {
     var isToolLine: Bool { kind == .tool }
     var isWidget: Bool { kind == .widget || widget != nil }
     var isConnect: Bool { kind == .connect || connect != nil }
+    var isKindMessage: Bool { kind == nil || kind == .message }
     var hasRoutineKicker: Bool {
         guard let routineName, !routineName.isEmpty else { return false }
         return true

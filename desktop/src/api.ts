@@ -303,6 +303,7 @@ export async function sendMessage(
     widgetReply?: { id: string; values?: string[]; dismissed?: boolean };
     connectReply?: { id?: string; dismissed?: boolean };
     attachmentIds?: string[];
+    regenerate?: boolean;
   },
 ): Promise<void> {
   const body: {
@@ -314,6 +315,7 @@ export async function sendMessage(
     channelId?: string;
     widgetReply?: { id: string; values?: string[]; dismissed?: boolean };
     connectReply?: { id?: string; dismissed?: boolean };
+    regenerate?: boolean;
   } = {
     content,
     images,
@@ -324,6 +326,7 @@ export async function sendMessage(
   if (extra?.widgetReply) body.widgetReply = extra.widgetReply;
   if (extra?.connectReply) body.connectReply = extra.connectReply;
   if (extra?.attachmentIds?.length) body.attachmentIds = extra.attachmentIds;
+  if (extra?.regenerate) body.regenerate = true;
   const response = await fetch(
     `${session.baseUrl}/v1/agents/${encodeURIComponent(agentId)}/messages`,
     {

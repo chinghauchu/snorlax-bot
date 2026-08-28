@@ -1632,6 +1632,32 @@ button:disabled {
   color: var(--accent);
 }
 
+.message-actions {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 12px;
+  margin: 0;
+  padding: 0;
+}
+
+.message-action {
+  flex-shrink: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1.2;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+
+.message-action:hover {
+  color: var(--accent);
+}
+
 .info-routine-remove {
   flex-shrink: 0;
   border: 0;

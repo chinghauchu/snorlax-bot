@@ -623,8 +623,9 @@ struct MessageCreate: Codable, Hashable, Sendable {
     var channelId: String?
     var widgetReply: WidgetReply?
     var connectReply: ConnectReply?
+    var regenerate: Bool?
 
-    init(content: String? = nil, images: [ImageIn]? = nil, attachmentIds: [String]? = nil, mentions: [String]? = nil, replyTo: String? = nil, channelId: String? = nil, widgetReply: WidgetReply? = nil, connectReply: ConnectReply? = nil) {
+    init(content: String? = nil, images: [ImageIn]? = nil, attachmentIds: [String]? = nil, mentions: [String]? = nil, replyTo: String? = nil, channelId: String? = nil, widgetReply: WidgetReply? = nil, connectReply: ConnectReply? = nil, regenerate: Bool? = nil) {
         self.content = content
         self.images = images
         self.attachmentIds = attachmentIds
@@ -633,9 +634,10 @@ struct MessageCreate: Codable, Hashable, Sendable {
         self.channelId = channelId
         self.widgetReply = widgetReply
         self.connectReply = connectReply
+        self.regenerate = regenerate
     }
 
-    enum CodingKeys: String, CodingKey { case content, images, attachmentIds, mentions, replyTo, channelId, widgetReply, connectReply }
+    enum CodingKeys: String, CodingKey { case content, images, attachmentIds, mentions, replyTo, channelId, widgetReply, connectReply, regenerate }
 
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
@@ -647,6 +649,7 @@ struct MessageCreate: Codable, Hashable, Sendable {
         channelId = try container.decodeIfPresent(String.self, forKey: .channelId)
         widgetReply = try container.decodeIfPresent(WidgetReply.self, forKey: .widgetReply)
         connectReply = try container.decodeIfPresent(ConnectReply.self, forKey: .connectReply)
+        regenerate = try container.decodeIfPresent(Bool.self, forKey: .regenerate)
     }
 
     func encode(to encoder: Encoder) throws {
@@ -659,6 +662,7 @@ struct MessageCreate: Codable, Hashable, Sendable {
         try container.encode(channelId, forKey: .channelId)
         try container.encodeIfPresent(widgetReply, forKey: .widgetReply)
         try container.encodeIfPresent(connectReply, forKey: .connectReply)
+        try container.encodeIfPresent(regenerate, forKey: .regenerate)
     }
 }
 

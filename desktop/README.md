@@ -81,6 +81,10 @@ v0.30: composer clipboard paste (Cmd-V / Ctrl-V and the `paste` event)
 fills those same pending chips; bitmap with no filename is `image.png`
 (jpeg / gif / webp extensions); text-only paste stays in the textarea.
 `@` and `/` unchanged.
+v0.31: Copy on completed LEFT `kind=message` (12px muted row after
+attachments + markdown; `Copied` for 1.5s). Regenerate 1:1 only on the
+latest completed LEFT `kind=message` (`{ regenerate: true }`). Channel
+has Copy, no Regenerate. Fenced-code Copy stays.
 Assistant LEFT
 `kind=message` is 14px markdown (no grey bubble, 16/14 headings); user-right stays plain (`https://` tappable). Fenced code is full-turn language + Copy at 12px/1.45.
 iOS has no file-tree computer pane; the agent sheet shows the same preview.

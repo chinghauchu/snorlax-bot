@@ -71,6 +71,9 @@ def test_protocol_openapi_is_locked_v0_contract() -> None:
     assert "v0.27" in text
     assert "v0.28" in text
     assert "v0.29" in text
+    assert "v0.31" in text
+    assert "regenerate" in text
+    assert "Copied" in text or "1.5s" in text or "left of the switch" in text
     assert "create_agent" in text
     assert "create_channel" in text
     assert "Created {name}" in text or "Created {name}" in text.replace("`", "")
@@ -241,6 +244,7 @@ def test_message_content_stays_a_string_no_blocks() -> None:
     assert "attachmentIds" in MessageCreate.model_fields
     assert "attachments" in props
     assert "attachmentIds" in MessageCreate.model_fields
+    assert "regenerate" in MessageCreate.model_fields
     assert Message.model_fields["content"].annotation is str
     assert MessageDelta.model_fields["delta"].annotation is str
     assert "widget" in Message.model_fields

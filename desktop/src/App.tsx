@@ -123,6 +123,14 @@ import { WidgetCard } from "./WidgetCard";
 import { ConnectCard } from "./ConnectCard";
 import { HttpsText, MarkdownBody } from "./MarkdownBody";
 import { copyText } from "./markdown";
+import {
+  dropLastAssistantTurn,
+  lastCompletedLeftMessageIndex,
+  MESSAGE_COPY_FEEDBACK_MS,
+  regeneratePostBody,
+  showAssistantCopy,
+  showAssistantRegenerate,
+} from "./messageActions";
 import { catalogInstallBody, isConnect, parsePluginArgs, pluginStatusLabel } from "./connect";
 import { isWidget } from "./widget";
 import { openOsBrowser } from "./openUrl";
@@ -309,6 +317,52 @@ function AgentRoutineRow({
           onChange={(e) => onToggle(routine, e.target.checked)}
         />
       </label>
+    </div>
+  );
+}
+
+function MessageActions({
+  content,
+  showRegenerate,
+  disabled,
+  onRegenerate,
+}: {
+  content: string;
+  showRegenerate: boolean;
+  disabled?: boolean;
+  onRegenerate: () => void;
+}) {
+  const [copied, setCopied] = useState(false);
+  const timer = useRef<number | null>(null);
+  useEffect(() => {
+    return () => {
+      if (timer.current != null) window.clearTimeout(timer.current);
+    };
+  }, []);
+  async function onCopy() {
+    await copyText(content);
+    setCopied(true);
+    if (timer.current != null) window.clearTimeout(timer.current);
+    timer.current = window.setTimeout(() => {
+      setCopied(false);
+      timer.current = null;
+    }, MESSAGE_COPY_FEEDBACK_MS);
+  }
+  return (
+    <div className="message-actions">
+      <button type="button" className="message-action" onClick={() => void onCopy()}>
+        {copied ? "Copied" : "Copy"}
+      </button>
+      {showRegenerate ? (
+        <button
+          type="button"
+          className="message-action"
+          disabled={disabled}
+          onClick={onRegenerate}
+        >
+          Regenerate
+        </button>
+      ) : null}
     </div>
   );
 }
@@ -1191,6 +1245,7 @@ export function App() {
       widgetReply?: { id: string; values?: string[]; dismissed?: boolean };
       connectReply?: { id?: string; dismissed?: boolean };
       attachmentIds?: string[];
+      regenerate?: boolean;
     };
   }) {
     if (!session || !active || busy) return;
@@ -1342,6 +1397,18 @@ export function App() {
       } else {
         setComposerError(describeError(err));
       }
+      if (extra?.regenerate && session && active) {
+        try {
+          const listed = await listMessages(
+            session,
+            active.id,
+            active.kind === "channel" && threadId ? { threadId } : undefined,
+          );
+          setMessages(listed);
+        } catch {
+          /* keep local transcript */
+        }
+      }
     } finally {
       setBusy(false);
       focusComposer();
@@ -1388,6 +1455,16 @@ export function App() {
     await submitTurn({
       content: "",
       extra: { widgetReply: { id, dismissed: true } },
+    });
+  }
+
+  async function onRegenerate() {
+    if (!session || !active || busy || active.kind === "channel") return;
+    setComposerError(null);
+    setMessages((prev) => dropLastAssistantTurn(prev));
+    await submitTurn({
+      content: "",
+      extra: regeneratePostBody(),
     });
   }
 
@@ -1800,6 +1877,10 @@ export function App() {
     hasLiveAssistant: liveAssistantIdx >= 0,
     hasLiveTool: liveTraces.length > 0 || toolThisTurn,
   });
+  const lastLeftIdx = lastCompletedLeftMessageIndex(visibleMessages, {
+    busy,
+    liveAssistantIdx,
+  });
 
   return (
     <div className={computerOpen ? "app computer-open" : "app computer-collapsed"}>
@@ -2093,6 +2174,23 @@ export function App() {
                               message.senderName,
                             )}
                             knownNames={knownNames}
+                          />
+                        ) : null}
+                        {showAssistantCopy({
+                          message,
+                          completed: !(busy && index === liveAssistantIdx),
+                        }) ? (
+                          <MessageActions
+                            content={message.content}
+                            showRegenerate={showAssistantRegenerate({
+                              message,
+                              completed: !(busy && index === liveAssistantIdx),
+                              isLatest: index === lastLeftIdx,
+                              isChannel: active?.kind === "channel",
+                              streaming: busy,
+                            })}
+                            disabled={busy}
+                            onRegenerate={() => void onRegenerate()}
                           />
                         ) : null}
                       </div>

@@ -793,6 +793,58 @@ final class AppModel {
         await streamAnswer(connectReply: ConnectReply(id: id, dismissed: true))
     }
 
+    func regenerate() async {
+        guard let client, let agent = selectedAgent, !agent.isChannel, !isSending else { return }
+        composerError = nil
+        dropLastAssistantTurn()
+        toolTraces = []
+        isSending = true
+        defer { isSending = false }
+        do {
+            try await client.sendMessage(
+                agentId: agent.id,
+                content: "",
+                images: [],
+                replyTo: nil,
+                channelId: lastExtraChannelID,
+                regenerate: true
+            ) { [weak self] event in
+                Task { @MainActor in
+                    self?.handle(event, agentId: agent.id)
+                }
+            }
+            if !Task.isCancelled, selectedAgentID == agent.id {
+                messages = try await client.listMessages(agentId: agent.id, threadId: threadID)
+                toolTraces = []
+                prunePreviews()
+            }
+        } catch is CancellationError {
+            await refreshMessages()
+        } catch {
+            if let runtime = error as? RuntimeError, case .http(_, let message) = runtime {
+                composerError = message
+            } else {
+                errorMessage = error.localizedDescription
+            }
+            await refreshMessages()
+        }
+    }
+
+    private func dropLastAssistantTurn() {
+        guard let lastUser = messages.lastIndex(where: { $0.isFromUser && $0.isKindMessage }) else {
+            return
+        }
+        let head = Array(messages[...lastUser])
+        let rest = messages[(lastUser + 1)...]
+        messages = head + rest.filter { msg in
+            if msg.isToolLine { return false }
+            if !msg.isFromUser && msg.isKindMessage && !msg.isWidget && !msg.isConnect && !msg.isHandoffRoot {
+                return false
+            }
+            return true
+        }
+    }
+
     private func waitUntilPluginConnected(id: String, timeoutNs: UInt64 = 60_000_000_000) async -> Bool {
         guard let client else { return false }
         let start = DispatchTime.now().uptimeNanoseconds
