@@ -143,13 +143,15 @@ button:disabled {
   border: 1px solid var(--border);
 }
 
-.computer-toggle {
+.computer-show {
   margin-left: auto;
   flex: none;
-}
-
-.icon-btn.computer-toggle.on {
-  color: var(--accent);
+  border: 0;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 12px;
+  font-weight: 500;
+  padding: 4px 6px;
 }
 
 .roster {
@@ -2454,10 +2456,20 @@ legend {
   min-height: 52px;
   display: flex;
   align-items: center;
+  justify-content: space-between;
   padding: 0 12px;
   border-bottom: 1px solid var(--border);
   font-size: 14px;
   font-weight: 600;
+}
+
+.computer-hide {
+  border: 0;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 12px;
+  font-weight: 500;
+  padding: 4px 6px;
 }
 
 .computer-root,

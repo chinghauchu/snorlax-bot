@@ -91,12 +91,41 @@ test("computer pane is a 320px column; collapse drops it; sidebar stays 256px", 
   const hidden = block(".app.computer-collapsed .computer");
   const computer = block(".computer");
   const sidebar = block(".sidebar");
+  const hide = block(".computer-hide");
+  const show = block(".computer-show");
   assert.match(app, /grid-template-columns:\s*256px\s+1fr\s+320px/);
   assert.match(collapsed, /grid-template-columns:\s*256px\s+1fr;/);
+  assert.doesNotMatch(collapsed, /320px/);
   assert.match(hidden, /display:\s*none/);
   assert.match(computer, /width:\s*320px/);
   assert.match(sidebar, /min-width:\s*256px/);
   assert.doesNotMatch(sidebar, /320px/);
+  assert.match(hide, /font-size:\s*12px/);
+  assert.match(hide, /color:\s*var\(--text-muted\)/);
+  assert.match(show, /font-size:\s*12px/);
+  assert.match(show, /color:\s*var\(--text-muted\)/);
+  assert.match(show, /margin-left:\s*auto/);
+
+  const appSrc = readFileSync(
+    join(dirname(fileURLToPath(import.meta.url)), "App.tsx"),
+    "utf8",
+  );
+  const paneSrc = readFileSync(
+    join(dirname(fileURLToPath(import.meta.url)), "ComputerPane.tsx"),
+    "utf8",
+  );
+  assert.match(paneSrc, /computer-hide/);
+  assert.match(paneSrc, />\s*Hide\s*</);
+  assert.match(paneSrc, /onCollapse/);
+  assert.match(appSrc, /computer-show/);
+  assert.match(appSrc, />\s*Show\s*</);
+  assert.match(appSrc, /!computerOpen \?/);
+  assert.match(appSrc, /setComputerOpen\(false\)/);
+  assert.match(appSrc, /setComputerOpen\(true\)/);
+  assert.doesNotMatch(appSrc, /ComputerIcon/);
+  assert.doesNotMatch(appSrc, /computer-toggle/);
+  assert.doesNotMatch(appSrc, /computerPane\.ts/);
+  assert.doesNotMatch(paneSrc, /computerPane\.ts/);
 });
 
 test("computer tree and preview scroll separately from the transcript", () => {

@@ -19,10 +19,12 @@ export function ComputerPane({
   session,
   conversation,
   refreshKey,
+  onCollapse,
 }: {
   session: Session | null;
   conversation: Agent | null;
   refreshKey: number;
+  onCollapse: () => void;
 }) {
   const [root, setRoot] = useState("");
   const [listings, setListings] = useState<Record<string, WorkspaceEntry[]>>(
@@ -128,6 +130,14 @@ export function ComputerPane({
     <aside className="computer" aria-label="Computer">
       <header className="computer-head">
         <span>Computer</span>
+        <button
+          type="button"
+          className="computer-hide"
+          aria-label="Hide computer"
+          onClick={onCollapse}
+        >
+          Hide
+        </button>
       </header>
       {root ? (
         <p className="computer-root" title={root}>

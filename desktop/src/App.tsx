@@ -2014,15 +2014,16 @@ export function App() {
           ) : (
             <span className="chat-who muted">Snorlax-Bot</span>
           )}
-          <button
-            type="button"
-            className={computerOpen ? "icon-btn computer-toggle on" : "icon-btn computer-toggle"}
-            aria-label={computerOpen ? "Hide computer" : "Show computer"}
-            aria-pressed={computerOpen}
-            onClick={() => setComputerOpen((open) => !open)}
-          >
-            <ComputerIcon />
-          </button>
+          {!computerOpen ? (
+            <button
+              type="button"
+              className="computer-show"
+              aria-label="Show computer"
+              onClick={() => setComputerOpen(true)}
+            >
+              Show
+            </button>
+          ) : null}
         </header>
 
         <div className="transcript" ref={scroller}>
@@ -2743,6 +2744,7 @@ export function App() {
         session={session}
         conversation={active}
         refreshKey={workspaceTick}
+        onCollapse={() => setComputerOpen(false)}
       />
 
       {settingsOpen ? (
@@ -3832,28 +3834,6 @@ function GearIcon() {
         stroke="currentColor"
         strokeWidth="1.8"
         strokeLinejoin="round"
-      />
-    </svg>
-  );
-}
-
-function ComputerIcon() {
-  return (
-    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden>
-      <rect
-        x="3"
-        y="4"
-        width="18"
-        height="12"
-        rx="2"
-        stroke="currentColor"
-        strokeWidth="1.8"
-      />
-      <path
-        d="M8 20h8M12 16v4"
-        stroke="currentColor"
-        strokeWidth="1.8"
-        strokeLinecap="round"
       />
     </svg>
   );
