@@ -115,7 +115,12 @@ import {
   normalizeRuntimeUrl,
 } from "./runtimeUrl";
 import { showThinkingLine, THINKING_LABEL } from "./thinking";
-import { ComputerPane } from "./ComputerPane";
+import { ComputerPane, ComputerSeamButton } from "./ComputerPane";
+import {
+  COMPUTER_OPEN_KEY,
+  loadComputerOpen,
+  storeComputerOpen,
+} from "./workspaceTree";
 import { AgentComputer } from "./AgentComputer";
 import { ComputerTakeover } from "./ComputerTakeover";
 import { composerInert } from "./computerSession";
@@ -499,7 +504,9 @@ export function App() {
   const [pluginAddSaving, setPluginAddSaving] = useState(false);
   const [catalogAddingId, setCatalogAddingId] = useState<string | null>(null);
   const [pendingRemove, setPendingRemove] = useState<Plugin | null>(null);
-  const [computerOpen, setComputerOpen] = useState(true);
+  const [computerOpen, setComputerOpen] = useState(() =>
+    loadComputerOpen(localStorage.getItem(COMPUTER_OPEN_KEY)),
+  );
   const [workspaceTick, setWorkspaceTick] = useState(0);
   const [takeoverId, setTakeoverId] = useState<string | null>(null);
   const [takeoverSessionId, setTakeoverSessionId] = useState<string | null>(null);
@@ -663,6 +670,10 @@ export function App() {
     localStorage.setItem(URL_KEY, normalizeRuntimeUrl(urlInput));
     localStorage.setItem(TOKEN_KEY, tokenInput.trim());
   }, [urlInput, tokenInput]);
+
+  useEffect(() => {
+    localStorage.setItem(COMPUTER_OPEN_KEY, storeComputerOpen(computerOpen));
+  }, [computerOpen]);
 
   useLayoutEffect(() => {
     const caret = pendingCaret.current;
@@ -2015,14 +2026,10 @@ export function App() {
             <span className="chat-who muted">Snorlax-Bot</span>
           )}
           {!computerOpen ? (
-            <button
-              type="button"
-              className="computer-show"
-              aria-label="Show computer"
+            <ComputerSeamButton
+              open={false}
               onClick={() => setComputerOpen(true)}
-            >
-              Show
-            </button>
+            />
           ) : null}
         </header>
 

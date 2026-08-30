@@ -55,7 +55,7 @@ auto-runs tools; clients never call the model, the tools, or MCP. Channel work
 lives in a sandbox under `~/.snorlax-bot` when the channel’s shared-project
 toggle is on (default off); otherwise each agent uses its own workspace.
 Desktop shows that sandbox as a 320px right pane (file tree + text preview;
-collapsible — Hide on the pane header, Show on the chat header). The agent identity pane shows a live 16:10 computer preview
+collapsible — 12px seam chevron, default collapsed). The agent identity pane shows a live 16:10 computer preview
 (Bearer PNG of the runtime-owned 1280×800 display). Desktop Open takes
 over that display (overlay on chat + info pane; Esc / Done). While driving,
 desktop **Record** captures pointer/key and **Save as skill** writes

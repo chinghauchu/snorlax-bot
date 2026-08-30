@@ -143,15 +143,26 @@ button:disabled {
   border: 1px solid var(--border);
 }
 
-.computer-show {
+.computer-seam {
+  width: 20px;
+  height: 28px;
   margin-left: auto;
+  margin-right: -12px;
   flex: none;
-  border: 0;
-  background: transparent;
   color: var(--text-muted);
   font-size: 12px;
   font-weight: 500;
-  padding: 4px 6px;
+  line-height: 1;
+}
+
+.icon-btn.computer-seam:hover:not(:disabled) {
+  color: var(--text);
+  background: transparent;
+}
+
+.computer-head .computer-seam {
+  margin-left: 0;
+  margin-right: 4px;
 }
 
 .roster {
@@ -2456,20 +2467,10 @@ legend {
   min-height: 52px;
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  padding: 0 12px;
+  padding: 0 12px 0 0;
   border-bottom: 1px solid var(--border);
   font-size: 14px;
   font-weight: 600;
-}
-
-.computer-hide {
-  border: 0;
-  background: transparent;
-  color: var(--text-muted);
-  font-size: 12px;
-  font-weight: 500;
-  padding: 4px 6px;
 }
 
 .computer-root,
