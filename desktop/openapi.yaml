@@ -35,10 +35,12 @@ info:
     shell, web_search, web_fetch. v0.28 adds watch_video (auto-run). The FastAPI runtime runs a function-calling
     loop against the local OpenAI-compat server (cap 8 rounds). Clients never
     construct tool calls. Tools auto-run except mutating shell (v0.32
-    kind=approve). Read-only shell (ls, cat, pwd, git status, git log,
-    git diff, including simple flags/paths) still auto-runs. Question
-    widgets are not tool-approval. Mutating shell is a dedicated
-    kind=approve card, not kind=widget.
+    kind=approve) and create_routine / delete_routine (v0.33 kind=widget
+    Save / Don't and Remove / Keep). Read-only shell (ls, cat, pwd, git
+    status, git log, git diff, including simple flags/paths) still
+    auto-runs. pause_routine auto-runs. Question widgets are not
+    tool-approval. Mutating shell is a dedicated kind=approve card, not
+    kind=widget. Routine confirm reuses kind=widget.
     Workspaces live under ~/.snorlax-bot/workspaces/ (agents/{id} for 1:1).
     Channel shared project is a pane toggle (user-created + seed), default
     off (`sharedProject`). When on, channel / handoff turns use
@@ -681,6 +683,41 @@ info:
     timeline. Dedicated kind=approve renderer on desktop and iOS. No
     Settings chrome. No new composer UI. Never reintroduce
     computerPane.ts. OpenAPI **0.18.0**.
+
+    v0.33: agent-created routines + user-right bubble wrap. One impl PR
+    covering runtime + desktop + iOS. Spec rides this PR. **No second
+    PR.** OpenAPI stays **0.18.0**. No new HTTP routes. No /v1/chats/.
+    Built-in tools wrap existing POST/PATCH/DELETE /v1/agents/{id}/routines:
+    create_routine `{ name, skill, schedule? }` or `{ name, skill,
+    trigger: { type: webhook } | { type: slack, channel } | { type:
+    github, repo } }`; pause_routine `{ id, enabled }`; delete_routine
+    `{ id }`. Slack/GitHub still 422 unless that plugin is connected.
+    Both schedule and trigger → tool error (user send stays 200).
+    create_routine and delete_routine do not persist immediately: the
+    runtime ends the turn on a LEFT kind=widget confirm (reuse v0.8
+    widgets, NOT a new kind, NOT kind=approve). Create prompt is
+    `Save "{name}" for {when}?` (cron scheduleLabel; webhook `as a
+    webhook`; Slack `Slack #eng`; GitHub `GitHub owner/repo`; fallback
+    `Save "{name}"?`). No helpText. Options: primary Save, default Don't.
+    × is existing dismiss (muted Dismissed) and means Don't. After Save:
+    check, then 12px `Scheduled {name}`. Don't / ×: no persist, no
+    Scheduled line. Delete prompt `Remove "{name}"?`. Options: danger
+    Remove, default Keep. × = Keep. After Remove: check, then 12px
+    `Removed {name}`. Keep / ×: no delete, no tool line. pause_routine
+    auto-runs: `Paused {name}` / `Resumed {name}`. One pending widget
+    per transcript. Isolation: routines are agent-only; kind=channel is
+    409 as today. B never creates routines into A's 1:1. Seed SKILL.md
+    routines (定时 / routine / 提醒 / 每天 / cron → create_routine;
+    暂停 → pause_routine; 删除这个 routine → delete_routine) plus
+    TOOLS_PREAMBLE. Identity-pane Add / pause / Remove unchanged.
+    User-right bubbles (plain text / HttpsText) wrap unbroken strings
+    (URLs, tokens) with overflow-wrap: anywhere inside the bubble; never
+    overflow the transcript column. LEFT kind=message markdown body
+    wraps the same way; fenced-code horizontal scroll stays. Composer,
+    attachments, Copy/Regenerate, approve cards, widgets unchanged.
+    Clients never speak MCP or the model. No Mac folder picker. No
+    Settings chrome. Never reintroduce computerPane.ts.
+    OpenAPI **0.18.0**.
   license:
     name: Apache-2.0
     identifier: Apache-2.0

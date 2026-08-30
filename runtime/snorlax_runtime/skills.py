@@ -36,6 +36,31 @@ The tool line is `Created {name}`. Empty name or unknown member ids are
 tool errors (the user send stays 200). Isolation stands: creating B does
 not paint B into A's 1:1.
 """
+SEED_ROUTINES_SLUG = "routines"
+SEED_ROUTINES_MARKDOWN = """---
+name: routines
+description: Create a 定时 / routine / 提醒 with create_routine, pause with pause_routine, or delete with delete_routine.
+---
+
+Pick the matching built-in tool. Do not invent a second routine API.
+These wrap existing POST/PATCH/DELETE /v1/agents/{id}/routines.
+
+- 定时 / routine / 提醒 / 每天 / cron → `create_routine` `{ name, skill, schedule? }` or `{ name, skill, trigger }`
+- 暂停 → `pause_routine` `{ id, enabled }`
+- 删除这个 routine → `delete_routine` `{ id }`
+
+create_routine asks Save / Don't on a question card before writing.
+delete_routine asks Remove / Keep. pause_routine auto-runs.
+The tool line is `Scheduled {name}` / `Paused {name}` / `Resumed {name}` / `Removed {name}`.
+Missing name/skill, unknown skill, bad cron, or both schedule and trigger
+are tool errors (the user send stays 200). Slack/GitHub need that plugin
+connected. Isolation stands: routines are agent-only; B never creates
+into A's 1:1.
+"""
+SEED_SKILL_MARKDOWN = {
+    SEED_TEAMMATES_SLUG: SEED_TEAMMATES_MARKDOWN,
+    SEED_ROUTINES_SLUG: SEED_ROUTINES_MARKDOWN,
+}
 
 _FRONTMATTER = re.compile(
     r"\A---[ \t]*\n(?P<meta>.*?)\n---[ \t]*\n?(?P<body>.*)\Z",
@@ -67,18 +92,27 @@ def skills_dir(data_dir: Path) -> Path:
     return data_dir / SKILLS_DIRNAME
 
 
-def write_seed_skills(data_dir: Path) -> None:
-    """Seed the v0.9 teammates SKILL.md once. Missing file only; never overwrite.
-
-    项目 → create_channel, 员工 → create_agent so the model picks the
-    right tool. No Settings chrome.
-    """
-    root = skills_dir(data_dir) / SEED_TEAMMATES_SLUG
+def write_seed_skill(data_dir: Path, slug: str) -> None:
+    """Write one seed SKILL.md if missing. Never overwrite."""
+    text = SEED_SKILL_MARKDOWN.get(slug)
+    if not text:
+        return
+    root = skills_dir(data_dir) / slug
     path = root / SKILL_FILENAME
     if path.is_file():
         return
     root.mkdir(parents=True, exist_ok=True)
-    path.write_text(SEED_TEAMMATES_MARKDOWN, encoding="utf-8")
+    path.write_text(text, encoding="utf-8")
+
+
+def write_seed_skills(data_dir: Path) -> None:
+    """Seed teammates + routines SKILL.md once. Missing file only; never overwrite.
+
+    项目 → create_channel, 员工 → create_agent, 定时 / 提醒 → create_routine.
+    No Settings chrome.
+    """
+    for slug in SEED_SKILL_MARKDOWN:
+        write_seed_skill(data_dir, slug)
 
 
 def parse_skill_markdown(

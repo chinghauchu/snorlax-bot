@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0
-"""Runtime-owned built-in tools: files, shell, web, watch_video, create_agent, create_channel. Never called by clients."""
+"""Runtime-owned built-in tools: files, shell, web, watch_video, create_agent, create_channel, create_routine, pause_routine, delete_routine. Never called by clients."""
 
 from __future__ import annotations
 
@@ -475,6 +475,80 @@ TOOL_DEFINITIONS: list[dict[str, Any]] = [
     {
         "type": "function",
         "function": {
+            "name": "create_routine",
+            "description": (
+                "Create a 定时 / routine / 提醒 on this agent via existing "
+                "POST /v1/agents/{id}/routines. Pass name and skill, plus "
+                "schedule XOR trigger ({ type: webhook } | "
+                "{ type: slack, channel } | { type: github, repo }). "
+                "Slack/GitHub 422 unless that plugin is connected. Both "
+                "schedule and trigger is an error. The runtime shows a "
+                "Save / Don't question card (kind=widget, not kind=approve) "
+                "and does not persist until Save. Agent 1:1 only."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "name": {"type": "string"},
+                    "skill": {"type": "string"},
+                    "schedule": {
+                        "type": "string",
+                        "description": (
+                            "5-field cron or a named hour. Asia/Taipei. "
+                            "XOR with trigger."
+                        ),
+                    },
+                    "trigger": {
+                        "type": "object",
+                        "properties": {
+                            "type": {"type": "string"},
+                            "channel": {"type": "string"},
+                            "repo": {"type": "string"},
+                        },
+                    },
+                },
+                "required": ["name", "skill"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "pause_routine",
+            "description": (
+                "Pause or resume a routine via existing PATCH { enabled }. "
+                "Pass id and enabled (false = pause, true = resume). "
+                "The runtime runs this immediately (no card)."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "id": {"type": "string"},
+                    "enabled": {"type": "boolean"},
+                },
+                "required": ["id", "enabled"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "delete_routine",
+            "description": (
+                "Delete a routine via existing DELETE .../routines/{id}. "
+                "Pass id. The runtime shows a Remove / Keep question card "
+                "(kind=widget) and does not delete until Remove."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {"id": {"type": "string"}},
+                "required": ["id"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
             "name": "computer_click",
             "description": (
                 "Click the agent's 1280x800 sandbox display at (x, y). "
@@ -528,6 +602,12 @@ def start_summary(name: str, args: dict[str, Any]) -> str:
         return "Watching video…"
     if name in {"create_agent", "create_channel"}:
         return "Creating…"
+    if name == "create_routine":
+        return "Scheduling…"
+    if name == "pause_routine":
+        return "Updating routine…"
+    if name == "delete_routine":
+        return "Removing…"
     if name == "write_file":
         return f"Writing {Path(str(args.get('path') or 'file')).name}…"
     if name == "read_file":
@@ -617,6 +697,27 @@ def done_summary(
             if first.lower().startswith("created "):
                 label = first[8:].strip()
         return f"Created {label}" if label else "Created"
+    if name == "create_routine":
+        first = (result or "").strip().splitlines()[0].strip() if result else ""
+        if first.lower().startswith("scheduled "):
+            return first
+        label = str(args.get("name") or "").strip()
+        return f"Scheduled {label}" if label else "Scheduled"
+    if name == "pause_routine":
+        first = (result or "").strip().splitlines()[0].strip() if result else ""
+        if first.lower().startswith("paused ") or first.lower().startswith("resumed "):
+            return first
+        label = str(args.get("id") or "").strip() or "routine"
+        enabled = args.get("enabled")
+        if isinstance(enabled, str):
+            enabled = enabled.strip().lower() in {"1", "true", "yes", "on"}
+        return f"Resumed {label}" if enabled else f"Paused {label}"
+    if name == "delete_routine":
+        first = (result or "").strip().splitlines()[0].strip() if result else ""
+        if first.lower().startswith("removed "):
+            return first
+        label = str(args.get("id") or "").strip() or "routine"
+        return f"Removed {label}"
     if name == "write_file":
         return f"Wrote {_tool_path(args)}"
     if name == "read_file":
@@ -694,10 +795,21 @@ async def execute_named_tool(
     conversation_id: str | None = None,
     store: Any | None = None,
     backend: Any | None = None,
+    mcp: Any | None = None,
 ) -> str:
     """Dispatch one tool. MCP stays on the runtime event loop (not the shell)."""
     from snorlax_runtime.mcp import call_mcp_tool, is_mcp_tool
     from snorlax_runtime.roster import create_agent_tool, create_channel_tool
+    from snorlax_runtime.routines import (
+        CREATE_ROUTINE,
+        DELETE_ROUTINE,
+        PAUSE_ROUTINE,
+        RoutineError,
+        pause_routine_tool,
+        prepare_create,
+        prepare_delete,
+        tool_error_from_exc,
+    )
     from snorlax_runtime.watch import watch_video_tool
 
     if name == "watch_video":
@@ -711,6 +823,29 @@ async def execute_named_tool(
         return await create_agent_tool(arguments, store=store)
     if name == "create_channel":
         return await create_channel_tool(arguments, store=store)
+    if name == PAUSE_ROUTINE:
+        return await pause_routine_tool(
+            arguments, store=store, conversation_id=conversation_id
+        )
+    if name in {CREATE_ROUTINE, DELETE_ROUTINE}:
+        conversation = None
+        if store is not None and conversation_id:
+            conversation = await store.get_agent(conversation_id)
+        try:
+            if name == CREATE_ROUTINE:
+                await prepare_create(
+                    store,
+                    conversation=conversation,
+                    arguments=arguments,
+                    mcp=mcp,
+                )
+            else:
+                await prepare_delete(
+                    store, conversation=conversation, arguments=arguments
+                )
+        except RoutineError as exc:
+            return tool_error_from_exc(exc)
+        return "Error: missing confirm"
     if is_mcp_tool(name):
         return await call_mcp_tool(name, arguments)
     return await asyncio.to_thread(execute_tool, name, arguments, workspace)
@@ -751,6 +886,12 @@ def execute_tool(name: str, arguments: str, workspace: Path) -> str:
             return ERR_UNKNOWN_ATTACHMENT
         if name in {"create_agent", "create_channel"}:
             return "Error: missing name"
+        if name == "create_routine":
+            return "Error: missing name"
+        if name == "pause_routine":
+            return "Error: missing id"
+        if name == "delete_routine":
+            return "Error: missing id"
         if name == "computer_click":
             return _computer_click(workspace, args)
         if name == "computer_key":
@@ -1179,6 +1320,7 @@ async def run_tool_loop(
     use_widget: bool = True,
     conversation_id: str | None = None,
     store: Any | None = None,
+    mcp: Any | None = None,
 ) -> tuple[
     list[tuple[str, dict[str, Any]]],
     str,
@@ -1250,10 +1392,21 @@ async def run_tool_loop(
 
         from snorlax_runtime.approve import approve_card_from_args, is_readonly_shell
         from snorlax_runtime.mcp import connect_card_for_tool
+        from snorlax_runtime.routines import (
+            CREATE_ROUTINE,
+            DELETE_ROUTINE,
+            RoutineError,
+            prepare_create,
+            prepare_delete,
+        )
 
         pending_connect = None
         pending_approve = None
+        pending_routine_widget = None
         runnable_calls: list[ToolCall] = []
+        conversation = None
+        if store is not None and conversation_id:
+            conversation = await store.get_agent(conversation_id)
         for call in other_calls:
             card = connect_card_for_tool(call.name) if use_tools else None
             if card is not None:
@@ -1266,11 +1419,36 @@ async def run_tool_loop(
                     if pending_approve is None:
                         pending_approve = approve_card_from_args(args)
                     continue
+            if call.name in {CREATE_ROUTINE, DELETE_ROUTINE} and use_widget:
+                try:
+                    if call.name == CREATE_ROUTINE:
+                        confirm, stash = await prepare_create(
+                            store,
+                            conversation=conversation,
+                            arguments=call.arguments,
+                            mcp=mcp,
+                        )
+                    else:
+                        confirm, stash = await prepare_delete(
+                            store,
+                            conversation=conversation,
+                            arguments=call.arguments,
+                        )
+                except RoutineError:
+                    runnable_calls.append(call)
+                    continue
+                if pending_routine_widget is None:
+                    confirm = dict(confirm)
+                    confirm["pendingRoutine"] = stash
+                    pending_routine_widget = confirm
+                continue
             runnable_calls.append(call)
 
         runnable = runnable_calls if runnable_calls and rounds < max_rounds else []
         pending_widget = None
-        if widget_calls:
+        if pending_routine_widget is not None:
+            pending_widget = pending_routine_widget
+        elif widget_calls:
             pending_widget = parse_widget_args(widget_calls[0].arguments)
 
         if runnable:
@@ -1305,6 +1483,7 @@ async def run_tool_loop(
                     conversation_id=conversation_id,
                     store=store,
                     backend=backend,
+                    mcp=mcp,
                 )
                 ok = not result.startswith("Error:")
                 summary = done_summary(call.name, args, ok, result)

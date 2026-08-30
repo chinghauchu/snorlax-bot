@@ -761,8 +761,10 @@ private struct MessageBubble: View {
                             MentionLabel(text: message.displayContent, names: agents.filter { !$0.isChannel }.map(\.name), links: true)
                                 .font(.system(size: 14))
                                 .textSelection(.enabled)
+                                .frame(minWidth: 0, alignment: .leading)
                         }
                     }
+                    .frame(minWidth: 0, maxWidth: .infinity, alignment: .leading)
                     .padding(.horizontal, 12)
                     .padding(.vertical, 8)
                     .background(Color.accentColor.opacity(0.22), in: RoundedRectangle(cornerRadius: 16))

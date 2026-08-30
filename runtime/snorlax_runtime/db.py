@@ -34,7 +34,8 @@ DB_FILENAME = "snorlax.db"
 
 TOOLS_PREAMBLE = (
     "You have built-in tools (list_dir, read_file, write_file, delete_file, "
-    "shell, web_search, web_fetch, watch_video, create_agent, create_channel). "
+    "shell, web_search, web_fetch, watch_video, create_agent, create_channel, "
+    "create_routine, pause_routine, delete_routine). "
     "Call them instead of describing the work. "
     "The runtime runs tools immediately except mutating shell, which pauses "
     "for the user to Approve or Deny — do not ask them yourself and do not "
@@ -59,10 +60,15 @@ TOOLS_PREAMBLE = (
     "do not call it for images or files. A 员工 / employee / teammate is "
     "create_agent; a 项目 / project / channel is create_channel (same "
     "POST /v1/agents, kind=channel). Do not invent a second create API. "
+    "A 定时 / routine / 提醒 / 每天 / cron is create_routine (same "
+    "POST /v1/agents/{id}/routines). 暂停 is pause_routine. "
+    "删除这个 routine is delete_routine. create_routine and delete_routine "
+    "ask the user on a question card (Save / Don't, Remove / Keep) before "
+    "writing; pause_routine auto-runs. Do not invent a second routine API. "
     "Skills are how-to recipes "
     "(SKILL.md) with no trigger of their own — follow a matching skill "
-    "when you work. Routines are cron jobs that fire a skill while the "
-    "user is away."
+    "when you work. Routines fire a skill on a cron, a webhook, or a "
+    "connected Slack/GitHub listener while the user is away — never both."
 )
 
 
@@ -169,6 +175,12 @@ CREATE TABLE IF NOT EXISTS routines (
 CREATE UNIQUE INDEX IF NOT EXISTS routines_webhook_key
 ON routines(webhook_key) WHERE webhook_key IS NOT NULL;
 
+CREATE TABLE IF NOT EXISTS pending_routine_actions (
+    message_id TEXT PRIMARY KEY,
+    payload TEXT NOT NULL,
+    FOREIGN KEY (message_id) REFERENCES messages(id) ON DELETE CASCADE
+);
+
 CREATE TABLE IF NOT EXISTS attachments (
     id TEXT PRIMARY KEY,
     conversation_id TEXT NOT NULL,
@@ -186,6 +198,7 @@ CREATE TABLE IF NOT EXISTS attachments (
 
 ROSTER_SEEDED_KEY = "roster_seeded"
 SKILLS_SEEDED_KEY = "skills_seeded"
+ROUTINES_SKILL_SEEDED_KEY = "skills_routines_seeded"
 
 
 class Store:
@@ -304,31 +317,41 @@ class Store:
             (ROSTER_SEEDED_KEY, "1"),
         )
 
-    async def _skills_already_seeded(self) -> bool:
+    async def _meta_flag(self, key: str) -> bool:
         cur = await self.conn.execute(
-            "SELECT value FROM meta WHERE key = ?", (SKILLS_SEEDED_KEY,)
+            "SELECT value FROM meta WHERE key = ?", (key,)
         )
         row = await cur.fetchone()
         return row is not None and str(row["value"]) == "1"
 
-    async def _mark_skills_seeded(self) -> None:
+    async def _set_meta_flag(self, key: str) -> None:
         await self.conn.execute(
             "INSERT OR REPLACE INTO meta (key, value) VALUES (?, ?)",
-            (SKILLS_SEEDED_KEY, "1"),
+            (key, "1"),
         )
 
+    async def _skills_already_seeded(self) -> bool:
+        return await self._meta_flag(SKILLS_SEEDED_KEY)
+
+    async def _mark_skills_seeded(self) -> None:
+        await self._set_meta_flag(SKILLS_SEEDED_KEY)
+
     async def _seed_skills(self) -> None:
-        """Write the teammates SKILL.md once (v0.9 load path). Never overwrite.
+        """Write seed SKILL.md files once (v0.9 load path). Never overwrite.
 
         Existing DBs without the meta flag pick it up once, then lock — same
         as roster seed. User DELETE of that skill is not recreated.
+        teammates and routines each have their own lock so a v0.33 boot
+        still seeds routines on a DB that already has teammates.
         """
-        if await self._skills_already_seeded():
-            return
-        from snorlax_runtime.skills import write_seed_skills
+        from snorlax_runtime.skills import write_seed_skill
 
-        write_seed_skills(self.data_dir)
-        await self._mark_skills_seeded()
+        if not await self._skills_already_seeded():
+            write_seed_skill(self.data_dir, "teammates")
+            await self._mark_skills_seeded()
+        if not await self._meta_flag(ROUTINES_SKILL_SEEDED_KEY):
+            write_seed_skill(self.data_dir, "routines")
+            await self._set_meta_flag(ROUTINES_SKILL_SEEDED_KEY)
         await self.conn.commit()
 
     async def _seed(self) -> None:
@@ -1561,6 +1584,39 @@ class Store:
             return None
         return public_approve(row["approve"])
 
+    async def put_pending_routine(
+        self, message_id: str, payload: dict[str, Any]
+    ) -> None:
+        await self.conn.execute(
+            "INSERT OR REPLACE INTO pending_routine_actions "
+            "(message_id, payload) VALUES (?, ?)",
+            (message_id, json.dumps(payload, ensure_ascii=False)),
+        )
+        await self.conn.commit()
+
+    async def get_pending_routine(
+        self, message_id: str
+    ) -> dict[str, Any] | None:
+        cur = await self.conn.execute(
+            "SELECT payload FROM pending_routine_actions WHERE message_id = ?",
+            (message_id,),
+        )
+        row = await cur.fetchone()
+        if row is None:
+            return None
+        try:
+            value = json.loads(row["payload"] or "")
+        except json.JSONDecodeError:
+            return None
+        return value if isinstance(value, dict) else None
+
+    async def drop_pending_routine(self, message_id: str) -> None:
+        await self.conn.execute(
+            "DELETE FROM pending_routine_actions WHERE message_id = ?",
+            (message_id,),
+        )
+        await self.conn.commit()
+
     async def decline_other_pending_widgets(
         self,
         conversation_id: str,
@@ -1587,6 +1643,7 @@ class Store:
         for row in await cur.fetchall():
             widget = public_widget(row["widget"])
             if widget and widget.get("status") == "pending":
+                await self.drop_pending_routine(str(row["id"]))
                 await self.resolve_widget(str(row["id"]), status="dismissed")
 
     async def _add_image(

@@ -303,6 +303,8 @@ button:disabled {
 
 .turn.right {
   align-self: flex-end;
+  min-width: 0;
+  max-width: 85%;
 }
 
 .turn.new-sender {
@@ -345,6 +347,8 @@ button:disabled {
 .bubble {
   width: fit-content;
   max-width: 100%;
+  min-width: 0;
+  overflow-wrap: anywhere;
   background: var(--bubble);
   border-radius: 14px;
   padding: 8px 11px;
@@ -359,6 +363,9 @@ button:disabled {
   flex-direction: column;
   align-items: flex-start;
   gap: 6px;
+  min-width: 0;
+  max-width: 100%;
+  overflow-wrap: anywhere;
 }
 
 .bubble.agent {
@@ -368,6 +375,8 @@ button:disabled {
 .bubble pre {
   margin: 0;
   white-space: pre-wrap;
+  max-width: 100%;
+  overflow-wrap: anywhere;
   font-family: inherit;
   font-size: 14px;
   line-height: 1.4;
@@ -376,6 +385,8 @@ button:disabled {
 .assistant-md {
   width: 100%;
   max-width: 100%;
+  min-width: 0;
+  overflow-wrap: anywhere;
   align-self: stretch;
   display: flex;
   flex-direction: column;
@@ -446,11 +457,13 @@ button:disabled {
 .assistant-md a.md-link {
   color: var(--accent);
   text-decoration: none;
+  overflow-wrap: anywhere;
 }
 
 .bubble.user a.md-link {
   color: var(--accent);
   text-decoration: none;
+  overflow-wrap: anywhere;
 }
 
 .assistant-md a.md-link:hover {

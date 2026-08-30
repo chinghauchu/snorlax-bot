@@ -16,7 +16,7 @@ From public Grok Bot docs and the Aug 2026 launch:
 | Message a bot like a coworker | `POST /v1/agents/{id}/messages` (SSE) |
 | Files, shell, web on a computer | v0.5: runtime tools in a workspace jail; v0.6: thin file-tree pane |
 | One user-scoped computer shared by all bots | Later: one sandbox on the Spark, shared files/logins, per-bot screen |
-| Skills (how) and routines (when) | v0.9: SKILL.md + cron (Asia/Taipei); v0.13: cron XOR webhook; v0.17: Add / Remove on the identity pane; v0.18: identity-pane skill markdown editor; v0.21: 1:1 composer `/` loads that SKILL.md (channel `/` stays text); v0.23: Slack/GitHub inbound listeners when that plugin is connected; fire LEFT 1:1 |
+| Skills (how) and routines (when) | v0.9: SKILL.md + cron (Asia/Taipei); v0.13: cron XOR webhook; v0.17: Add / Remove on the identity pane; v0.18: identity-pane skill markdown editor; v0.21: 1:1 composer `/` loads that SKILL.md (channel `/` stays text); v0.23: Slack/GitHub inbound listeners when that plugin is connected; fire LEFT 1:1; v0.33: agent `create_routine` / `pause_routine` / `delete_routine` (create/delete confirm on `kind=widget`) |
 | MCP + computer-use for sites without an API | v0.7: local/LAN MCP client; v0.10: connect chrome (`GET /v1/plugins` + `kind=connect`); v0.12: Settings Add custom; v0.24: curated catalog (`GET /v1/plugins/catalog`; Slack/GitHub; not a store); later: sandbox browser |
 | Question / approval moments | v0.8: question widgets (`kind=widget`); v0.32: mutating shell is `kind=approve` (read-only ls/cat/pwd/git status|log|diff still auto-run) |
 | Desktop + iOS, same bots | Tauri desktop now; Swift iOS companion on the LAN |
@@ -447,6 +447,14 @@ same card to Denied and does not wake. Read-only ls/cat/pwd/git
 status|log|diff still auto-run. Dedicated renderer (not a WidgetCard
 fork). OpenAPI stays 0.18.0. No `/approve` route. Never reintroduce
 `computerPane.ts`.
+
+v0.33: agent-created routines. `create_routine` / `pause_routine` /
+`delete_routine` wrap existing routine HTTP. Create and delete confirm
+on a LEFT `kind=widget` card (`Save "{name}" for {when}?` / `Remove
+"{name}"?`). Pause auto-runs. After Save: `Scheduled {name}`. After
+Remove: `Removed {name}`. Seed `routines` SKILL.md. User-right and LEFT
+markdown wrap unbroken URLs (`overflow-wrap: anywhere`); fenced-code
+scroll stays. OpenAPI stays 0.18.0. Never reintroduce `computerPane.ts`.
 
 ## Inference interface
 

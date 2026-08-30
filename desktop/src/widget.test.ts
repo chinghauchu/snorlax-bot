@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import test from "node:test";
@@ -84,6 +84,24 @@ test("1:1 isolation hides another speaker's widget card", () => {
   assert.equal(
     isTranscriptVisible(bobCard, { id: "room", kind: "channel" }),
     true,
+  );
+});
+
+test("routine confirm stays kind=widget Save/Don't with no ApproveCard fork", () => {
+  const app = readFileSync(
+    join(dirname(fileURLToPath(import.meta.url)), "App.tsx"),
+    "utf8",
+  );
+  assert.match(app, /<WidgetCard/);
+  assert.match(app, /isWidget\(message\)/);
+  assert.doesNotMatch(app, /kind === "routine"/);
+  assert.doesNotMatch(css, /\.routine-confirm/);
+  const card = block(".widget-card");
+  assert.match(card, /min-width:\s*240px/);
+  assert.match(card, /max-width:\s*320px/);
+  assert.equal(
+    existsSync(join(dirname(fileURLToPath(import.meta.url)), "computerPane.ts")),
+    false,
   );
 });
 

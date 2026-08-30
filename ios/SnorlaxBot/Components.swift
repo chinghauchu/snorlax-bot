@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 import SwiftUI
+import UIKit
 import AVKit
 import AVFoundation
 import CoreMedia
@@ -186,8 +187,11 @@ struct MentionLabel: View {
     @Environment(\.openURL) private var openURL
 
     var body: some View {
-        Text(attributed)
+        Text(wrapping(attributed))
             .multilineTextAlignment(.leading)
+            .lineLimit(nil)
+            .fixedSize(horizontal: false, vertical: true)
+            .frame(minWidth: 0, alignment: .leading)
             .environment(\.openURL, OpenURLAction { url in
                 guard links, url.scheme?.lowercased() == "https" else { return .discarded }
                 openURL(url)
@@ -224,6 +228,18 @@ struct MentionLabel: View {
             appendPlain(text, to: &output)
         }
         return output
+    }
+
+    private func wrapping(_ text: AttributedString) -> AttributedString {
+        let ns = NSMutableAttributedString(text)
+        let style = NSMutableParagraphStyle()
+        style.lineBreakMode = .byCharWrapping
+        ns.addAttribute(
+            .paragraphStyle,
+            value: style,
+            range: NSRange(location: 0, length: ns.length)
+        )
+        return AttributedString(ns)
     }
 
     private func appendPlain(_ raw: String, to output: inout AttributedString) {

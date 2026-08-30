@@ -318,7 +318,7 @@ def test_post_empty_name_or_body_is_422(client, tmp_path: Path) -> None:
     listed = client.get(f"/v1/agents/{SEED}/skills", headers=AUTH)
     assert without_seed_skills(listed.json()) == []
     after = list(skills_root.rglob("SKILL.md")) if skills_root.exists() else []
-    after = [p for p in after if p.parent.name != "teammates"]
+    after = [p for p in after if p.parent.name not in {"teammates", "routines"}]
     assert after == []
 
 
@@ -369,7 +369,7 @@ def test_blank_create_does_not_consume_pending_capture(
     assert recorded.status_code == 201
     assert recorded.json() == {"id": "from-record", "name": "From record"}
     listed = client.get(f"/v1/agents/{SEED}/skills", headers=AUTH)
-    names = {row["id"] for row in listed.json()} - {"teammates"}
+    names = {row["id"] for row in listed.json()} - {"teammates", "routines"}
     assert names == {"authored", "from-record"}
     authored_text = (tmp_path / "skills" / "authored" / "SKILL.md").read_text(
         encoding="utf-8"
