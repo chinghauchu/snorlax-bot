@@ -61,6 +61,12 @@ def test_protocol_openapi_is_locked_v0_contract() -> None:
     assert "approveReply" in text
     assert "approveStatus" in text
     assert "v0.32" in text
+    assert "v0.33" in text
+    assert "create_routine" in text
+    assert "pause_routine" in text
+    assert "delete_routine" in text
+    assert "Scheduled {name}" in text
+    assert "overflow-wrap" in text
     assert "connectReply" in text
     assert "connectStatus" in text
     assert "/v1/plugins" in text

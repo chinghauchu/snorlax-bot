@@ -75,6 +75,9 @@ BUILTIN_TOOL_NAMES = frozenset(
         "watch_video",
         "create_agent",
         "create_channel",
+        "create_routine",
+        "pause_routine",
+        "delete_routine",
         "computer_click",
         "computer_key",
     }

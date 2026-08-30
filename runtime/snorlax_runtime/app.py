@@ -645,6 +645,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     ),
                     auth_base_url=str(request.base_url).rstrip("/"),
                     regenerate=payload.regenerate,
+                    mcp=getattr(request.app.state, "mcp", None),
                 ):
                     yield _sse(event, data)
             finally:
@@ -708,82 +709,23 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         request: Request,
         _: str = Depends(require_bearer),
     ) -> Routine:
-        from snorlax_runtime.cron import CronError, parse_schedule
-        from snorlax_runtime.skills import find_skill, load_skills, skill_slug
-        from snorlax_runtime.tools import workspace_for
+        from snorlax_runtime.routines import RoutineError, persist_create_routine
 
         store: Store = request.app.state.store
         conversation = await store.get_agent(id)
         _require_agent(conversation, id, channel_status=422)
-        skill_name = payload.skill.strip()
-        workspace = workspace_for(store.data_dir, conversation, id)
-        matched = find_skill(load_skills(store.data_dir, workspace), skill_name)
-        if matched is None:
-            raise _error(422, "unknown skill")
-        trigger = payload.trigger
-        if trigger is not None:
-            from snorlax_runtime.listeners import (
-                github_label,
-                github_repo_valid,
-                slack_label,
-            )
-
-            kind = trigger.type
-            manager = getattr(request.app.state, "mcp", None)
-            if kind == "webhook":
-                key = secrets.token_urlsafe(32)
-                row = await store.create_routine(
-                    agent_id=id,
-                    name=payload.name.strip(),
-                    skill=skill_slug(matched),
-                    cron="",
-                    schedule_label="",
-                    trigger_type="webhook",
-                    webhook_key=key,
-                )
-                return _routine_out(row, _base_url(request))
-            if kind == "slack":
-                channel = (trigger.channel or "").strip()
-                if not channel:
-                    raise _error(422, "channel is required")
-                if not _plugin_kind_connected(manager, "slack"):
-                    raise _error(422, "slack plugin is not connected")
-                row = await store.create_routine(
-                    agent_id=id,
-                    name=payload.name.strip(),
-                    skill=skill_slug(matched),
-                    cron=channel,
-                    schedule_label=slack_label(channel),
-                    trigger_type="slack",
-                )
-                return _routine_out(row, _base_url(request))
-            if kind == "github":
-                repo = (trigger.repo or "").strip()
-                if not github_repo_valid(repo):
-                    raise _error(422, "repo must be owner/name")
-                if not _plugin_kind_connected(manager, "github"):
-                    raise _error(422, "github plugin is not connected")
-                row = await store.create_routine(
-                    agent_id=id,
-                    name=payload.name.strip(),
-                    skill=skill_slug(matched),
-                    cron=repo,
-                    schedule_label=github_label(repo),
-                    trigger_type="github",
-                )
-                return _routine_out(row, _base_url(request))
-            raise _error(422, f"{kind} trigger is not available")
         try:
-            cron, label = parse_schedule(payload.schedule or "")
-        except CronError as exc:
-            raise _error(422, exc.message) from exc
-        row = await store.create_routine(
-            agent_id=id,
-            name=payload.name.strip(),
-            skill=skill_slug(matched),
-            cron=cron,
-            schedule_label=label,
-        )
+            row = await persist_create_routine(
+                store,
+                agent_id=id,
+                name=payload.name.strip(),
+                skill=payload.skill.strip(),
+                schedule=payload.schedule,
+                trigger=payload.trigger,
+                mcp=getattr(request.app.state, "mcp", None),
+            )
+        except RoutineError as exc:
+            raise _error(exc.status, exc.message) from exc
         return _routine_out(row, _base_url(request))
 
     @app.patch(

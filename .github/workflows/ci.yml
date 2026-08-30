@@ -60,3 +60,4 @@ jobs:
           python3 ios/scripts/test_ime_composer.py
           python3 ios/scripts/test_copy_regenerate.py
           python3 ios/scripts/test_shell_approve.py
+          python3 ios/scripts/test_agent_routines.py

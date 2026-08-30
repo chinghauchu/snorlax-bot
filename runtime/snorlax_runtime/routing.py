@@ -367,6 +367,73 @@ def looks_like_ask(content: str) -> bool:
     return any(marker in lowered for marker in ask_markers)
 
 
+async def _commit_pending_routine(
+    store: Store,
+    *,
+    conversation: dict[str, Any],
+    card: dict[str, Any],
+    pending: dict[str, Any],
+    mcp: Any | None = None,
+) -> AsyncIterator[tuple[str, dict[str, Any]]]:
+    """POST/DELETE the stashed routine body and persist the kind=tool line."""
+    from snorlax_runtime.routines import RoutineError, persist_pending_routine
+    from snorlax_runtime.tools import done_summary, start_summary
+
+    name = str(pending.get("name") or "").strip() or "routine"
+    args = {"name": name, "id": (pending.get("body") or {}).get("id")}
+    tool_id = new_id("msg")
+    try:
+        tool_name, summary = await persist_pending_routine(
+            store, pending, mcp=mcp
+        )
+        ok = True
+        result = summary
+    except RoutineError as exc:
+        tool_name = str(pending.get("action") or "create_routine")
+        if tool_name == "delete":
+            tool_name = "delete_routine"
+        elif tool_name == "create":
+            tool_name = "create_routine"
+        ok = False
+        result = f"Error: {exc.message}"
+        summary = done_summary(tool_name, args, False, result)
+    yield (
+        "tool.start",
+        {
+            "id": tool_id,
+            "name": tool_name,
+            "summary": start_summary(tool_name, args),
+            "senderId": str(card.get("senderId") or conversation["id"]),
+            "senderName": str(card.get("senderName") or ""),
+        },
+    )
+    saved_tool = await store.add_message(
+        agent_id=conversation["id"],
+        role="assistant",
+        content=summary,
+        message_id=tool_id,
+        sender_id=str(card.get("senderId") or conversation["id"]),
+        sender_name=str(card.get("senderName") or ""),
+        sender_avatar=card.get("senderAvatar"),
+        hop=int(card.get("hop") or 0),
+        mentions=[],
+        reply_to=card.get("replyTo"),
+        kind="tool",
+    )
+    yield (
+        "tool.done",
+        {
+            "id": tool_id,
+            "name": tool_name,
+            "summary": summary,
+            "ok": ok,
+            "senderId": str(card.get("senderId") or conversation["id"]),
+            "senderName": str(card.get("senderName") or ""),
+        },
+    )
+    yield "message.done", saved_tool
+
+
 async def _run_approved_shell(
     store: Store,
     *,
@@ -497,6 +564,7 @@ async def run_user_turn(
     auth_base_url: str | None = None,
     attachment_ids: list[str] | None = None,
     regenerate: bool = False,
+    mcp: Any | None = None,
 ) -> AsyncIterator[tuple[str, dict[str, Any]]]:
     """Persist the user message, then route hop-0 and peer work.
 
@@ -512,6 +580,8 @@ async def run_user_turn(
     run off-stream).
     """
     origin_id = conversation["id"]
+    if mcp is None:
+        mcp = get_mcp_manager()
     is_group = conversation.get("kind") == KIND_CHANNEL
     roster = await store.list_agents()
     log_channel_id = (
@@ -559,7 +629,9 @@ async def run_user_turn(
         if target.get("widgetStatus") != STATUS_PENDING:
             raise WidgetAnswerError("widget is not pending")
         body = target.get("widget") or {}
+        routine_pending = await store.get_pending_routine(target["id"])
         if widget_reply.get("dismissed"):
+            await store.drop_pending_routine(target["id"])
             pending = await store.resolve_widget(
                 target["id"], status=STATUS_DISMISSED
             )
@@ -578,7 +650,22 @@ async def run_user_turn(
                 raise WidgetAnswerError("widget not found")
             yield "message.done", pending
             persist_user = False
-            wake_agent = True
+            if routine_pending is not None:
+                from snorlax_runtime.routines import is_confirm_reply
+
+                await store.drop_pending_routine(target["id"])
+                if is_confirm_reply(values, routine_pending):
+                    async for event, data in _commit_pending_routine(
+                        store,
+                        conversation=conversation,
+                        card=target,
+                        pending=routine_pending,
+                        mcp=mcp,
+                    ):
+                        yield event, data
+                    wake_agent = True
+            else:
+                wake_agent = True
     elif connect_reply is not None:
         target_id = str(connect_reply.get("id") or "").strip()
         target = None
@@ -839,6 +926,7 @@ async def run_user_turn(
                 report_back=True,
                 persist=job.persist,
                 max_tool_rounds=tool_rounds,
+                mcp=mcp,
             )
             if in_origin and origin_open:
                 for event, payload in events:
@@ -889,6 +977,7 @@ async def run_user_turn(
             wake_pack=job.wake_pack,
             persist=job.persist,
             max_tool_rounds=tool_rounds,
+            mcp=mcp,
         )
         if in_origin and origin_open:
             for event, payload in events:
@@ -1282,6 +1371,7 @@ async def _generate(
     persist: bool = True,
     max_tool_rounds: int | None = None,
     routine_name: str | None = None,
+    mcp: Any | None = None,
 ) -> tuple[list[tuple[str, dict[str, Any]]], dict[str, Any] | None]:
     from snorlax_runtime.inference import InferenceError
     from snorlax_runtime.skills import (
@@ -1353,6 +1443,7 @@ async def _generate(
             use_widget=True,
             conversation_id=conversation_id,
             store=store,
+            mcp=mcp,
         )
     except InferenceError as exc:
         # Pre-tool failures only. After tools, run_tool_loop returns
@@ -1368,7 +1459,9 @@ async def _generate(
         attachment_ids = await _bind_produced_attachments(
             store, conversation_id, produced
         )
+    pending_routine = None
     if widget is not None:
+        pending_routine = widget.pop("pendingRoutine", None)
         persist_widget = persist and not (is_group and not thread_id)
         if persist_widget:
             existing = await store.pending_widget(
@@ -1427,6 +1520,10 @@ async def _generate(
             except WidgetPendingError:
                 persist_widget = False
             else:
+                if pending_routine is not None:
+                    await store.put_pending_routine(
+                        saved_widget["id"], pending_routine
+                    )
                 if stream:
                     events.append(("message.done", saved_widget))
                 return events, saved_widget

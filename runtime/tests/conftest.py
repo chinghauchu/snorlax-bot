@@ -12,10 +12,11 @@ from snorlax_runtime.config import Settings
 TOKEN = "test-token-snorlax"
 AUTH = {"Authorization": f"Bearer {TOKEN}"}
 SEED_SKILL_ID = "teammates"
+SEED_SKILL_IDS = frozenset({"teammates", "routines"})
 
 
 def without_seed_skills(rows: list) -> list:
-    return [row for row in rows if row.get("id") != SEED_SKILL_ID]
+    return [row for row in rows if row.get("id") not in SEED_SKILL_IDS]
 
 
 def skill_md_files(root) -> list:
@@ -24,7 +25,7 @@ def skill_md_files(root) -> list:
     path = Path(root)
     if not path.exists():
         return []
-    return [p for p in path.rglob("SKILL.md") if p.parent.name != SEED_SKILL_ID]
+    return [p for p in path.rglob("SKILL.md") if p.parent.name not in SEED_SKILL_IDS]
 
 
 @pytest.fixture(autouse=True)

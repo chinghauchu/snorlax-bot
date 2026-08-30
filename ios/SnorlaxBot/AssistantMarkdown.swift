@@ -71,16 +71,30 @@ private struct MarkdownRun: View {
     @Environment(\.openURL) private var openURL
 
     var body: some View {
-        Text(attributed)
+        Text(wrapping(attributed))
             .font(.system(size: 14))
             .textSelection(.enabled)
             .multilineTextAlignment(.leading)
-            .frame(maxWidth: .infinity, alignment: .leading)
+            .lineLimit(nil)
+            .fixedSize(horizontal: false, vertical: true)
+            .frame(minWidth: 0, maxWidth: .infinity, alignment: .leading)
             .environment(\.openURL, OpenURLAction { url in
                 guard url.scheme?.lowercased() == "https" else { return .discarded }
                 openURL(url)
                 return .handled
             })
+    }
+
+    private func wrapping(_ text: AttributedString) -> AttributedString {
+        let ns = NSMutableAttributedString(text)
+        let style = NSMutableParagraphStyle()
+        style.lineBreakMode = .byCharWrapping
+        ns.addAttribute(
+            .paragraphStyle,
+            value: style,
+            range: NSRange(location: 0, length: ns.length)
+        )
+        return AttributedString(ns)
     }
 
     private var attributed: AttributedString {

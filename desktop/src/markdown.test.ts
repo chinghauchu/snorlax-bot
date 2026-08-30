@@ -74,6 +74,34 @@ test("headings are 16/14, lists and bold stay markdown", () => {
   assert.match(body, /mentionify/);
 });
 
+test("user-right bubble wraps a 300+ char URL plus Chinese inside .bubble.user", () => {
+  const user = block(".bubble.user");
+  const pre = block(".bubble pre");
+  const link = block(".bubble.user a.md-link");
+  const turnRight = block(".turn.right");
+  assert.match(user, /overflow-wrap:\s*anywhere/);
+  assert.match(user, /max-width:\s*100%/);
+  assert.match(user, /min-width:\s*0/);
+  assert.match(pre, /overflow-wrap:\s*anywhere/);
+  assert.match(pre, /white-space:\s*pre-wrap/);
+  assert.match(link, /overflow-wrap:\s*anywhere/);
+  assert.match(turnRight, /min-width:\s*0/);
+  assert.match(turnRight, /max-width:\s*85%/);
+  const md = block(".assistant-md");
+  const mdLink = block(".assistant-md a.md-link");
+  assert.match(md, /overflow-wrap:\s*anywhere/);
+  assert.match(mdLink, /overflow-wrap:\s*anywhere/);
+  const fence = block(".md-fence-body");
+  assert.match(fence, /overflow-x:\s*auto/);
+  assert.doesNotMatch(user, /overflow-x:\s*auto/);
+  const nature =
+    "https://www.nature.com/articles/s44360-026-00195-x.epdf?sharing_token=" +
+    "x".repeat(260);
+  assert.ok(nature.length > 300);
+  assert.match(nature + "\n幫我重點摘要這篇", /幫我重點摘要這篇/);
+  assert.doesNotMatch(css, /computerPane\.ts/);
+});
+
 test("user-right bubble stays plain text, https links tappable", () => {
   const user = block(".bubble.user");
   const link = block(".bubble.user a.md-link");
