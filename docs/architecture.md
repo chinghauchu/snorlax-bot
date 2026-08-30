@@ -199,7 +199,10 @@ picker.
 v0.6: desktop shows that sandbox as a 320px right Computer pane (file tree
 + text preview, collapsible, default open). `GET /v1/agents/{id}/workspace`
 and `.../file` are runtime reads of the same roots. iOS has no pane this
-slice. No screenshot stream, no terminal GUI, no VNC.
+slice. No screenshot stream, no terminal GUI, no VNC. **v0.34:** one 12px
+seam chevron (› on the computer head’s left edge; ‹ on the chat head’s
+right edge). Default collapsed. Last choice persisted desktop-wide.
+Identity overlay is unchanged.
 
 v0.7: the FastAPI runtime is the MCP client. Config is `mcp.json` under
 `SNORLAX_DATA_DIR`. Tools are namespaced `server__tool`; built-in names win.
@@ -455,6 +458,12 @@ on a LEFT `kind=widget` card (`Save "{name}" for {when}?` / `Remove
 Remove: `Removed {name}`. Seed `routines` SKILL.md. User-right and LEFT
 markdown wrap unbroken URLs (`overflow-wrap: anywhere`); fenced-code
 scroll stays. OpenAPI stays 0.18.0. Never reintroduce `computerPane.ts`.
+
+v0.34: desktop Computer pane seam chevron. One 12px control (›
+collapse / ‹ expand; 20×28; title Hide Computer / Show Computer).
+Default collapsed (`256px 1fr`, min 720). Persist last choice
+desktop-wide. No drag-resize. No animation. No new HTTP. iOS idle.
+OpenAPI stays 0.18.0. Never reintroduce `computerPane.ts`.
 
 ## Inference interface
 

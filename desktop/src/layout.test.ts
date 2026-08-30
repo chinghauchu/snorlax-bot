@@ -91,12 +91,54 @@ test("computer pane is a 320px column; collapse drops it; sidebar stays 256px", 
   const hidden = block(".app.computer-collapsed .computer");
   const computer = block(".computer");
   const sidebar = block(".sidebar");
+  const seam = block(".computer-seam");
+  const seamHover = block(".icon-btn.computer-seam:hover:not(:disabled)");
   assert.match(app, /grid-template-columns:\s*256px\s+1fr\s+320px/);
   assert.match(collapsed, /grid-template-columns:\s*256px\s+1fr;/);
+  assert.match(collapsed, /min-width:\s*720px/);
+  assert.doesNotMatch(collapsed, /320px/);
   assert.match(hidden, /display:\s*none/);
   assert.match(computer, /width:\s*320px/);
   assert.match(sidebar, /min-width:\s*256px/);
   assert.doesNotMatch(sidebar, /320px/);
+  assert.match(seam, /width:\s*20px/);
+  assert.match(seam, /height:\s*28px/);
+  assert.match(seam, /font-size:\s*12px/);
+  assert.match(seam, /color:\s*var\(--text-muted\)/);
+  assert.match(seamHover, /color:\s*var\(--text\)/);
+  assert.doesNotMatch(app, /transition:/);
+  assert.doesNotMatch(collapsed, /transition:/);
+  assert.doesNotMatch(computer, /transition:/);
+  assert.doesNotMatch(seam, /transition:/);
+
+  const appSrc = readFileSync(
+    join(dirname(fileURLToPath(import.meta.url)), "App.tsx"),
+    "utf8",
+  );
+  const paneSrc = readFileSync(
+    join(dirname(fileURLToPath(import.meta.url)), "ComputerPane.tsx"),
+    "utf8",
+  );
+  assert.match(paneSrc, /ComputerSeamButton/);
+  assert.match(paneSrc, /Hide Computer/);
+  assert.match(paneSrc, /Show Computer/);
+  assert.match(paneSrc, /"›"/);
+  assert.match(paneSrc, /"‹"/);
+  assert.match(appSrc, /ComputerSeamButton/);
+  assert.match(appSrc, /!computerOpen \?/);
+  assert.match(appSrc, /setComputerOpen\(false\)/);
+  assert.match(appSrc, /setComputerOpen\(true\)/);
+  assert.match(appSrc, /COMPUTER_OPEN_KEY/);
+  assert.match(appSrc, /loadComputerOpen/);
+  assert.match(appSrc, /storeComputerOpen/);
+  assert.doesNotMatch(appSrc, /useState\(true\)/);
+  assert.doesNotMatch(appSrc, /ComputerIcon/);
+  assert.doesNotMatch(appSrc, /computer-toggle/);
+  assert.doesNotMatch(appSrc, /computer-hide/);
+  assert.doesNotMatch(appSrc, /computer-show/);
+  assert.doesNotMatch(paneSrc, /computer-hide/);
+  assert.doesNotMatch(appSrc, /computerPane\.ts/);
+  assert.doesNotMatch(paneSrc, /computerPane\.ts/);
 });
 
 test("computer tree and preview scroll separately from the transcript", () => {

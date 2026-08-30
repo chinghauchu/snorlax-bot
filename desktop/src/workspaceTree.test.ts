@@ -6,9 +6,12 @@ import { fileURLToPath } from "node:url";
 import test from "node:test";
 import {
   BINARY_TOO_LARGE,
+  COMPUTER_OPEN_KEY,
   isEscapePath,
   joinWorkspacePath,
+  loadComputerOpen,
   previewNote,
+  storeComputerOpen,
 } from "./workspaceTree.ts";
 
 test("src filenames must not collide on case-insensitive volumes", () => {
@@ -49,6 +52,19 @@ test("isEscapePath catches .. and absolute paths", () => {
   assert.equal(isEscapePath("../secret"), true);
   assert.equal(isEscapePath("/etc/passwd"), true);
   assert.equal(isEscapePath("foo/../../etc/passwd"), true);
+});
+
+test("computer open flag is desktop-wide and defaults collapsed", () => {
+  assert.equal(COMPUTER_OPEN_KEY, "snorlax.computerOpen");
+  assert.doesNotMatch(COMPUTER_OPEN_KEY, /agent/i);
+  assert.equal(loadComputerOpen(null), false);
+  assert.equal(loadComputerOpen(""), false);
+  assert.equal(loadComputerOpen("0"), false);
+  assert.equal(loadComputerOpen("false"), false);
+  assert.equal(loadComputerOpen("1"), true);
+  assert.equal(loadComputerOpen("true"), true);
+  assert.equal(storeComputerOpen(true), "1");
+  assert.equal(storeComputerOpen(false), "0");
 });
 
 test("previewNote maps binary policy to the short copy", () => {

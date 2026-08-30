@@ -1,8 +1,18 @@
 // SPDX-License-Identifier: Apache-2.0
 
 export const COMPUTER_PANE_WIDTH_PX = 320;
+export const COMPUTER_OPEN_KEY = "snorlax.computerOpen";
 export const BINARY_TOO_LARGE = "binary / too large";
 export const EMPTY_WORKSPACE_COPY = "Empty workspace";
+
+/** Desktop-wide pane flag. Missing or anything else → collapsed. */
+export function loadComputerOpen(stored: string | null): boolean {
+  return stored === "1" || stored === "true";
+}
+
+export function storeComputerOpen(open: boolean): string {
+  return open ? "1" : "0";
+}
 
 export type WorkspaceEntry = {
   name: string;

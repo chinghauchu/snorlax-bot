@@ -15,14 +15,38 @@ type Preview =
   | { path: string; content: string; truncated?: boolean }
   | { path: string; note: string };
 
+export function ComputerSeamButton({
+  open,
+  onClick,
+}: {
+  open: boolean;
+  onClick: () => void;
+}) {
+  const label = open ? "Hide Computer" : "Show Computer";
+  return (
+    <button
+      type="button"
+      className="icon-btn computer-seam"
+      title={label}
+      aria-label={label}
+      aria-expanded={open}
+      onClick={onClick}
+    >
+      {open ? "›" : "‹"}
+    </button>
+  );
+}
+
 export function ComputerPane({
   session,
   conversation,
   refreshKey,
+  onCollapse,
 }: {
   session: Session | null;
   conversation: Agent | null;
   refreshKey: number;
+  onCollapse: () => void;
 }) {
   const [root, setRoot] = useState("");
   const [listings, setListings] = useState<Record<string, WorkspaceEntry[]>>(
@@ -127,6 +151,7 @@ export function ComputerPane({
   return (
     <aside className="computer" aria-label="Computer">
       <header className="computer-head">
+        <ComputerSeamButton open onClick={onCollapse} />
         <span>Computer</span>
       </header>
       {root ? (

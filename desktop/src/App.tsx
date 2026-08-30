@@ -115,7 +115,12 @@ import {
   normalizeRuntimeUrl,
 } from "./runtimeUrl";
 import { showThinkingLine, THINKING_LABEL } from "./thinking";
-import { ComputerPane } from "./ComputerPane";
+import { ComputerPane, ComputerSeamButton } from "./ComputerPane";
+import {
+  COMPUTER_OPEN_KEY,
+  loadComputerOpen,
+  storeComputerOpen,
+} from "./workspaceTree";
 import { AgentComputer } from "./AgentComputer";
 import { ComputerTakeover } from "./ComputerTakeover";
 import { composerInert } from "./computerSession";
@@ -499,7 +504,9 @@ export function App() {
   const [pluginAddSaving, setPluginAddSaving] = useState(false);
   const [catalogAddingId, setCatalogAddingId] = useState<string | null>(null);
   const [pendingRemove, setPendingRemove] = useState<Plugin | null>(null);
-  const [computerOpen, setComputerOpen] = useState(true);
+  const [computerOpen, setComputerOpen] = useState(() =>
+    loadComputerOpen(localStorage.getItem(COMPUTER_OPEN_KEY)),
+  );
   const [workspaceTick, setWorkspaceTick] = useState(0);
   const [takeoverId, setTakeoverId] = useState<string | null>(null);
   const [takeoverSessionId, setTakeoverSessionId] = useState<string | null>(null);
@@ -663,6 +670,10 @@ export function App() {
     localStorage.setItem(URL_KEY, normalizeRuntimeUrl(urlInput));
     localStorage.setItem(TOKEN_KEY, tokenInput.trim());
   }, [urlInput, tokenInput]);
+
+  useEffect(() => {
+    localStorage.setItem(COMPUTER_OPEN_KEY, storeComputerOpen(computerOpen));
+  }, [computerOpen]);
 
   useLayoutEffect(() => {
     const caret = pendingCaret.current;
@@ -2014,15 +2025,12 @@ export function App() {
           ) : (
             <span className="chat-who muted">Snorlax-Bot</span>
           )}
-          <button
-            type="button"
-            className={computerOpen ? "icon-btn computer-toggle on" : "icon-btn computer-toggle"}
-            aria-label={computerOpen ? "Hide computer" : "Show computer"}
-            aria-pressed={computerOpen}
-            onClick={() => setComputerOpen((open) => !open)}
-          >
-            <ComputerIcon />
-          </button>
+          {!computerOpen ? (
+            <ComputerSeamButton
+              open={false}
+              onClick={() => setComputerOpen(true)}
+            />
+          ) : null}
         </header>
 
         <div className="transcript" ref={scroller}>
@@ -2743,6 +2751,7 @@ export function App() {
         session={session}
         conversation={active}
         refreshKey={workspaceTick}
+        onCollapse={() => setComputerOpen(false)}
       />
 
       {settingsOpen ? (
@@ -3832,28 +3841,6 @@ function GearIcon() {
         stroke="currentColor"
         strokeWidth="1.8"
         strokeLinejoin="round"
-      />
-    </svg>
-  );
-}
-
-function ComputerIcon() {
-  return (
-    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden>
-      <rect
-        x="3"
-        y="4"
-        width="18"
-        height="12"
-        rx="2"
-        stroke="currentColor"
-        strokeWidth="1.8"
-      />
-      <path
-        d="M8 20h8M12 16v4"
-        stroke="currentColor"
-        strokeWidth="1.8"
-        strokeLinecap="round"
       />
     </svg>
   );
