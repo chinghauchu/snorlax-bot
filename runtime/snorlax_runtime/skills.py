@@ -43,7 +43,7 @@ description: Create a 定时 / routine / 提醒 with create_routine, pause with 
 ---
 
 Pick the matching built-in tool. Do not invent a second routine API.
-These wrap existing POST/PATCH/DELETE /v1/agents/{id}/routines.
+These wrap existing POST /v1/agents/{id}/routines (and PATCH / DELETE).
 
 - 定时 / routine / 提醒 / 每天 / cron → `create_routine` `{ name, skill, schedule? }` or `{ name, skill, trigger }`
 - 暂停 → `pause_routine` `{ id, enabled }`
