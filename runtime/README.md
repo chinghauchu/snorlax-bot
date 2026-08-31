@@ -159,6 +159,15 @@ member ids → tool Error (user POST 200). Seed SKILL.md maps 项目 to
 create_channel and 员工 to create_agent. Composer Enter does not send
 while IME is composing. OpenAPI stays 0.18.0.
 
+v0.35: new agents (POST /v1/agents and create_agent) copy the two seed
+SKILL.md files (teammates 项目/员工 and routines 定时/提醒) into
+workspaces/agents/{id}/. Missing-file only, never overwrite. Startup
+backfill copies them onto any existing agent whose workspace lacks
+them. Channels get none. create_agent / create_channel / create_routine
+stay in TOOLS_PREAMBLE and the offered tool list whenever tools are on
+(not skill-gated). GET /skills just lists them. No new routes. OpenAPI
+stays 0.18.0.
+
 ## MCP (`mcp.json`)
 
 The runtime is the MCP client. Desktop and iOS never speak MCP. Put

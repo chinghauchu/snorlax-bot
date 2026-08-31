@@ -465,6 +465,16 @@ Default collapsed (`256px 1fr`, min 720). Persist last choice
 desktop-wide. No drag-resize. No animation. No new HTTP. iOS idle.
 OpenAPI stays 0.18.0. Never reintroduce `computerPane.ts`.
 
+v0.35: agent bootstrap. Copy the two seed SKILL.md files (teammates
+项目/员工, routines 定时/提醒) into each `kind=agent` workspace
+(`workspaces/agents/{id}/`). Missing-file only, never overwrite. Same
+two copies on POST /v1/agents and `create_agent`. Startup backfill for
+existing agents that lack them. Channels get none. `create_agent` /
+`create_channel` / `create_routine` stay in the tool list whenever
+tools are on (not skill-gated). Isolation: A's copies are A's
+workspace. No new HTTP. Desktop/iOS idle. OpenAPI stays 0.18.0. Never
+reintroduce `computerPane.ts`.
+
 ## Inference interface
 
 ```text

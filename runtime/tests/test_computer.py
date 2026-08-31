@@ -276,7 +276,6 @@ def test_session_without_sandbox_is_404(client) -> None:
 
 
 def test_idle_desktop_still_returns_1280x800_shot(client, tmp_path) -> None:
-    assert not (tmp_path / "workspaces" / "agents" / SEED).exists()
     body = client.get(f"/v1/agents/{SEED}/computer", headers=AUTH).json()
     assert body["hasSandbox"] is True
     png = client.get(body["imageUrl"], headers=AUTH)

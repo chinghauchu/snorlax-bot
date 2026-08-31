@@ -62,6 +62,10 @@ def test_protocol_openapi_is_locked_v0_contract() -> None:
     assert "approveStatus" in text
     assert "v0.32" in text
     assert "v0.33" in text
+    assert "v0.35" in text
+    assert "not skill-gated" in text
+    assert "agent bootstrap" in text
+    assert "backfill" in text
     assert "create_routine" in text
     assert "pause_routine" in text
     assert "delete_routine" in text

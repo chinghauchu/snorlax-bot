@@ -718,6 +718,20 @@ info:
     Clients never speak MCP or the model. No Mac folder picker. No
     Settings chrome. Never reintroduce computerPane.ts.
     OpenAPI **0.18.0**.
+
+    v0.35: agent bootstrap. One impl PR. Spec rides this PR. **No
+    second PR.** OpenAPI stays **0.18.0**. No new HTTP routes. No
+    /v1/chats/. Copy the two seed SKILL.md files (teammates 项目/员工,
+    routines 定时/提醒) into each kind=agent workspace at
+    workspaces/agents/{id}/. Missing-file only, never overwrite. Same
+    two copies on POST /v1/agents (UI New) and on create_agent.
+    Startup backfill: any existing agent whose workspace lacks them
+    gets them. Channels get none. GET /skills just lists them.
+    create_agent, create_channel, and create_routine stay in the tool
+    list whenever tools are on — not skill-gated. Isolation: A's
+    copies are A's workspace; B never sees them as workspace files.
+    Desktop/iOS idle. Never reintroduce computerPane.ts. Leave stale
+    PRs #23 and #24 untouched. OpenAPI **0.18.0**.
   license:
     name: Apache-2.0
     identifier: Apache-2.0

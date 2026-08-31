@@ -160,6 +160,13 @@ v0.31 Copy / Regenerate: `MessageCreate.regenerate` on existing
 replays the last user turn. 422 / 409 as locked. No new path. OpenAPI
 stays 0.18.0.
 
+v0.35 agent bootstrap: copy the two seed SKILL.md files (teammates +
+routines) into `workspaces/agents/{id}/`. Missing-file only. Same copies
+on POST /v1/agents and `create_agent`. Startup backfill for existing
+agents. Channels get none. `create_agent` / `create_channel` /
+`create_routine` stay in the tool list whenever tools are on (not
+skill-gated). No new path. OpenAPI stays 0.18.0.
+
 A copy is also kept at `runtime/openapi.yaml` and `desktop/openapi.yaml`
 so those trees are self-contained. Do not let the files diverge.
 

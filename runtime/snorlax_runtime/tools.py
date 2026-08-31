@@ -774,6 +774,10 @@ def offered_tool_definitions(*, use_tools: bool = True, use_widget: bool = True)
     Built-in names and ask_user_question win on collision. Widgets are not
     an approval gate for the other tools. Mutating shell is gated by the
     runtime as kind=approve, not as a widget.
+
+    create_agent, create_channel, and create_routine (plus pause_routine
+    / delete_routine) are always in this list when use_tools is on.
+    Skills teach keywords; those tools are not skill-gated.
     """
     from snorlax_runtime.mcp import mcp_openai_tools
 
