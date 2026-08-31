@@ -1,33 +1,49 @@
 # SPDX-License-Identifier: Apache-2.0
-"""Per-agent durable facts on disk. Injected into the system prompt every turn."""
+"""Per-agent durable facts on disk. Injected into the system prompt every turn.
+
+Runtime-owned under ``SNORLAX_DATA_DIR/memory/{agentId}/``, not the sandbox
+workspace. Shell / write_file stay jailed there.
+"""
 
 from __future__ import annotations
 
 import json
 import os
 import re
+import shutil
 import tempfile
 from pathlib import Path
 from typing import Any
 
 from snorlax_runtime import KIND_CHANNEL
 
+MEMORY_DIRNAME = "memory"
 MEMORY_FILENAME = "MEMORY.md"
-MAX_FACTS = 64
+MAX_FACTS = 32
 MAX_FACT_CHARS = 400
 ERR_MISSING_FACT = "Error: missing fact"
 ERR_NO_MATCH = "Error: no matching fact"
 ERR_TOO_LONG = "Error: fact is too long"
-ERR_FULL = "Error: memory is full"
-ERR_BAD_AGENT = "Error: memory is agent-only"
+ERR_FULL = "Error: Memory is full"
 
 _SAFE_ID = re.compile(r"^[A-Za-z0-9._-]+$")
 _BULLET = re.compile(r"^\s*(?:[-*]|\d+[.)])\s+")
 
 
+def memory_dir(data_dir: Path, agent_id: str) -> Path:
+    """Runtime-owned per-agent directory. Not a workspace sandbox path."""
+    return data_dir / MEMORY_DIRNAME / agent_id
+
+
 def memory_path(data_dir: Path, agent_id: str) -> Path:
-    """Markdown file next to that agent's workspace skills/routines copies."""
-    return data_dir / "workspaces" / "agents" / agent_id / MEMORY_FILENAME
+    return memory_dir(data_dir, agent_id) / MEMORY_FILENAME
+
+
+def drop_memory(data_dir: Path, agent_id: str) -> None:
+    """Remove that agent's memory dir. Missing dirs are fine. Never recreates."""
+    if not _SAFE_ID.match(agent_id or ""):
+        return
+    shutil.rmtree(memory_dir(data_dir, agent_id), ignore_errors=True)
 
 
 def normalize_fact(raw: str) -> str:
@@ -67,12 +83,16 @@ def load_facts(data_dir: Path, agent_id: str) -> list[str]:
 
 def save_facts(data_dir: Path, agent_id: str, facts: list[str]) -> None:
     if not _SAFE_ID.match(agent_id or ""):
-        raise ValueError(ERR_BAD_AGENT)
+        return
+    root = memory_dir(data_dir, agent_id)
     path = memory_path(data_dir, agent_id)
-    path.parent.mkdir(parents=True, exist_ok=True)
+    if not facts:
+        shutil.rmtree(root, ignore_errors=True)
+        return
+    root.mkdir(parents=True, exist_ok=True)
     body = "".join(f"- {fact}\n" for fact in facts)
     fd, tmp_name = tempfile.mkstemp(
-        prefix=".MEMORY.", suffix=".tmp", dir=str(path.parent)
+        prefix=".MEMORY.", suffix=".tmp", dir=str(root)
     )
     try:
         with os.fdopen(fd, "w", encoding="utf-8") as handle:
@@ -86,11 +106,6 @@ def save_facts(data_dir: Path, agent_id: str, facts: list[str]) -> None:
         except OSError:
             pass
         raise
-    if not facts:
-        try:
-            path.unlink()
-        except OSError:
-            pass
 
 
 def memory_preamble(facts: list[str]) -> str:
@@ -108,7 +123,7 @@ def memory_preamble(facts: list[str]) -> str:
 
 
 def attach_memory(system: str, data_dir: Path, speaker: dict[str, Any]) -> str:
-    """Append this speaker's facts to a system prompt. Channels get none."""
+    """Append this speaker's facts. Channel rows have no store; speakers do."""
     if speaker.get("kind") == KIND_CHANNEL:
         return system
     agent_id = str(speaker.get("id") or "")
@@ -133,18 +148,18 @@ def remember_fact(data_dir: Path, agent_id: str, fact: str) -> str:
     if not fact:
         return ERR_MISSING_FACT
     if not _SAFE_ID.match(agent_id or ""):
-        return ERR_BAD_AGENT
+        return ERR_MISSING_FACT
     if len(fact) > MAX_FACT_CHARS:
         return ERR_TOO_LONG
     facts = load_facts(data_dir, agent_id)
     for existing in facts:
         if existing == fact or existing.casefold() == fact.casefold():
-            return f"Remembered {existing}"
+            return "Remembered"
     if len(facts) >= MAX_FACTS:
         return ERR_FULL
     facts.append(fact)
     save_facts(data_dir, agent_id, facts)
-    return f"Remembered {fact}"
+    return "Remembered"
 
 
 def forget_fact(data_dir: Path, agent_id: str, fact: str) -> str:
@@ -152,7 +167,7 @@ def forget_fact(data_dir: Path, agent_id: str, fact: str) -> str:
     if not wanted:
         return ERR_MISSING_FACT
     if not _SAFE_ID.match(agent_id or ""):
-        return ERR_BAD_AGENT
+        return ERR_MISSING_FACT
     facts = load_facts(data_dir, agent_id)
     match_idx: int | None = None
     for i, existing in enumerate(facts):
@@ -167,9 +182,9 @@ def forget_fact(data_dir: Path, agent_id: str, fact: str) -> str:
                 break
     if match_idx is None:
         return ERR_NO_MATCH
-    dropped = facts.pop(match_idx)
+    facts.pop(match_idx)
     save_facts(data_dir, agent_id, facts)
-    return f"Forgot {dropped}"
+    return "Forgot"
 
 
 def remember_tool(data_dir: Path, agent_id: str, arguments: str) -> str:

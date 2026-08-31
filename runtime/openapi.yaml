@@ -33,7 +33,8 @@ info:
 
     Runtime-owned tools (v0.5): list_dir, read_file, write_file, delete_file,
     shell, web_search, web_fetch. v0.28 adds watch_video (auto-run). v0.36
-    adds remember / forget (auto-run; per-agent MEMORY.md). The FastAPI runtime runs a function-calling
+    adds remember / forget (auto-run; per-agent files under
+    ~/.snorlax-bot/memory/{agentId}; tool line Remembered / Forgot). The FastAPI runtime runs a function-calling
     loop against the local OpenAI-compat server (cap 8 rounds). Clients never
     construct tool calls. Tools auto-run except mutating shell (v0.32
     kind=approve) and create_routine / delete_routine (v0.33 kind=widget
@@ -736,21 +737,26 @@ info:
 
     v0.36: durable agent memory. One impl PR. Spec rides this PR. **No
     second PR.** OpenAPI stays **0.18.0**. No new HTTP routes. No
-    /v1/chats/. Per-agent facts live as markdown at
-    workspaces/agents/{id}/MEMORY.md (next to that agent's skills/
-    routines copies; not the transcript SQLite; not RAM-only; not a
-    vector store). Each fact is one self-contained sentence. Every
-    turn the runtime injects that agent's current list into the system
-    prompt. Built-in auto-run tools always in the preamble:
-    remember { fact } appends; forget { fact } drops by exact recorded
-    text (casefold fallback). Tool lines are the existing 12px muted
-    kind=tool family (`Remembered {fact}` / `Forgot {fact}`); not
-    kind=widget. No chat-scan. No Settings/UI memory pane. Isolation:
-    agent A never sees agent B's facts; channels have no memory store.
+    /v1/chats/. Runtime-owned per-agent facts under
+    ~/.snorlax-bot/memory/{agentId} (markdown MEMORY.md in that directory;
+    not the sandbox workspace;
+    not the transcript SQLite; not RAM-only; not a vector store). Each
+    fact is one self-contained sentence. Cap 32, then `Error: Memory is full`.
+    Every turn the runtime appends that speaker's current list
+    into the system prompt (1:1 and channel). Built-in auto-run tools
+    always in the preamble (no widget, no approve): remember { fact }
+    appends; forget { fact } drops by exact recorded text (casefold
+    fallback). Duplicate remember is a no-op (still Remembered). Empty
+    fact → Error: missing fact. Unknown forget → Error:. Tool line is
+    Remembered / Forgot — never paint the fact. Not kind=widget. No
+    chat-scan. No Settings/UI memory pane. Isolation: agent A never sees
+    agent B's facts; channels have no store — a channel turn writes that
+    speaker's per-agent file (not a 409). DELETE agent drops the file.
     Optional seed SKILL.md `memory` maps 记住 → remember and 忘掉 →
     forget (missing-file only, never overwrite; same bootstrap copy as
-    v0.35). Desktop/iOS idle. Never reintroduce computerPane.ts. Leave
-    stale PRs #23 and #24 untouched. OpenAPI **0.18.0**.
+    v0.35). Desktop/iOS idle except the existing kind=tool line. Never
+    reintroduce computerPane.ts. Leave stale PRs #23 and #24 untouched.
+    OpenAPI **0.18.0**.
   license:
     name: Apache-2.0
     identifier: Apache-2.0

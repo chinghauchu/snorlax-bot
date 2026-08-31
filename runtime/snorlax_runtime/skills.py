@@ -65,15 +65,16 @@ description: Save a fact with remember or erase one with forget. 记住 / 忘掉
 
 Pick the matching built-in tool. Do not invent a second memory API.
 Each fact is one self-contained sentence, private to you, persisted on
-disk (MEMORY.md in your workspace) and injected into your prompt every
-turn. Channels have no memory store.
+disk under the runtime memory dir (not the sandbox workspace) and
+injected into your prompt every turn. A channel turn writes your file.
 
 - 记住 / remember / save this / don't forget → `remember` `{ fact }`
 - 忘掉 / forget / erase this → `forget` `{ fact }` (exact recorded text)
 
-The tool line is `Remembered {fact}` / `Forgot {fact}`. Empty fact is a
-tool error (the user send stays 200). Isolation stands: agent A never
-sees agent B's facts.
+The tool line is `Remembered` / `Forgot` (never the fact text). Empty
+fact is `Error: missing fact` (the user send stays 200). Cap 32 facts,
+then `Error: Memory is full`. Isolation stands: agent A never sees
+agent B's facts. Channels have no store of their own.
 """
 SEED_SKILL_MARKDOWN = {
     SEED_TEAMMATES_SLUG: SEED_TEAMMATES_MARKDOWN,

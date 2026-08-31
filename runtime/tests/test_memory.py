@@ -5,16 +5,20 @@ from pathlib import Path
 
 from snorlax_runtime.db import ALWAYS_PREAMBLE_TOOLS, Store, tools_preamble
 from snorlax_runtime.memory import (
+    ERR_FULL,
     ERR_MISSING_FACT,
     ERR_NO_MATCH,
+    MAX_FACTS,
+    MEMORY_DIRNAME,
     MEMORY_FILENAME,
     forget_fact,
     load_facts,
+    memory_dir,
     memory_path,
     remember_fact,
 )
 from snorlax_runtime.skills import SEED_MEMORY_SLUG, SKILL_FILENAME
-from snorlax_runtime.tools import done_summary, offered_tool_definitions
+from snorlax_runtime.tools import done_summary, execute_tool, offered_tool_definitions
 from tests.conftest import AUTH, parse_sse
 
 SEED = "snorlax-bot"
@@ -65,15 +69,10 @@ def test_remember_forget_are_offered() -> None:
         assert name in ALWAYS_PREAMBLE_TOOLS
 
 
-def test_done_summary_remember_forget() -> None:
-    assert (
-        done_summary("remember", {"fact": FACT}, True, f"Remembered {FACT}")
-        == f"Remembered {FACT}"
-    )
-    assert (
-        done_summary("forget", {"fact": FACT}, True, f"Forgot {FACT}")
-        == f"Forgot {FACT}"
-    )
+def test_done_summary_remember_forget_never_paints_fact() -> None:
+    assert done_summary("remember", {"fact": FACT}, True, "Remembered") == "Remembered"
+    assert done_summary("forget", {"fact": FACT}, True, "Forgot") == "Forgot"
+    assert FACT not in done_summary("remember", {"fact": FACT}, True, "Remembered")
     assert (
         done_summary("remember", {"fact": FACT}, False, ERR_MISSING_FACT)
         == "remember failed"
@@ -84,7 +83,9 @@ def test_done_summary_remember_forget() -> None:
     )
 
 
-def test_remember_persists_markdown_and_kind_tool_line(client, tmp_path: Path) -> None:
+def test_remember_persists_outside_sandbox_and_kind_tool_line(
+    client, tmp_path: Path
+) -> None:
     status, events = _send(
         client, SEED, f'SNORLAX_TOOL remember {{"fact": "{FACT}"}}'
     )
@@ -92,18 +93,32 @@ def test_remember_persists_markdown_and_kind_tool_line(client, tmp_path: Path) -
     dones = _tool_dones(events, "remember")
     assert dones
     assert dones[0]["ok"] is True
-    assert dones[0]["summary"] == f"Remembered {FACT}"
+    assert dones[0]["summary"] == "Remembered"
+    assert FACT not in dones[0]["summary"]
     assert dones[0]["name"] == "remember"
     tools = [m for m in _msgs(client, SEED) if m.get("kind") == "tool"]
-    assert tools[-1]["content"] == f"Remembered {FACT}"
+    assert tools[-1]["content"] == "Remembered"
+    assert FACT not in tools[-1]["content"]
     assert tools[-1]["senderId"] == SEED
     assert tools[-1].get("widget") is None
     path = memory_path(tmp_path, SEED)
     assert path.is_file()
+    assert path == tmp_path / MEMORY_DIRNAME / SEED / MEMORY_FILENAME
+    assert "workspaces" not in str(path.relative_to(tmp_path))
     text = path.read_text(encoding="utf-8")
     assert FACT in text
     assert text.strip().startswith("- ")
     assert load_facts(tmp_path, SEED) == [FACT]
+    ws = tmp_path / "workspaces" / "agents" / SEED / MEMORY_FILENAME
+    assert not ws.is_file()
+    listed = client.get(f"/v1/agents/{SEED}/workspace", headers=AUTH).json()
+    names = {row["name"] for row in listed["entries"]}
+    assert MEMORY_FILENAME not in names
+    skill_mem = tmp_path / "workspaces" / "agents" / SEED / "memory" / SKILL_FILENAME
+    assert skill_mem.is_file()
+    assert not (
+        tmp_path / "workspaces" / "agents" / SEED / "memory" / MEMORY_FILENAME
+    ).is_file()
 
 
 async def test_remember_injects_into_system_prompt(client) -> None:
@@ -121,8 +136,8 @@ async def test_facts_survive_runtime_restart(tmp_path: Path) -> None:
     store = Store(tmp_path)
     await store.connect()
     try:
-        assert remember_fact(tmp_path, SEED, FACT).startswith("Remembered")
-        assert remember_fact(tmp_path, SEED, OTHER).startswith("Remembered")
+        assert remember_fact(tmp_path, SEED, FACT) == "Remembered"
+        assert remember_fact(tmp_path, SEED, OTHER) == "Remembered"
     finally:
         await store.close()
 
@@ -151,9 +166,11 @@ async def test_forget_removes_fact_from_disk_and_prompt(
     dones = _tool_dones(events, "forget")
     assert dones
     assert dones[0]["ok"] is True
-    assert dones[0]["summary"] == f"Forgot {FACT}"
+    assert dones[0]["summary"] == "Forgot"
+    assert FACT not in dones[0]["summary"]
     tools = [m for m in _msgs(client, SEED) if m.get("kind") == "tool"]
-    assert tools[-1]["content"] == f"Forgot {FACT}"
+    assert tools[-1]["content"] == "Forgot"
+    assert FACT not in tools[-1]["content"]
     assert load_facts(tmp_path, SEED) == [OTHER]
     store = client.app.state.store
     system = (await store.inference_transcript(SEED, for_agent_id=SEED))[0][
@@ -170,6 +187,7 @@ def test_forget_casefold_match_and_missing(client, tmp_path: Path) -> None:
     )
     assert status == 200
     assert _tool_dones(events, "forget")[0]["ok"] is True
+    assert _tool_dones(events, "forget")[0]["summary"] == "Forgot"
     assert load_facts(tmp_path, SEED) == []
     status, events = _send(
         client, SEED, f'SNORLAX_TOOL forget {{"fact": "{FACT}"}}'
@@ -232,7 +250,7 @@ async def test_memory_is_isolated_per_agent(client, tmp_path: Path) -> None:
     assert not memory_path(tmp_path, SEED).is_file()
 
 
-async def test_channel_has_no_memory_store_speaker_owns_facts(
+async def test_channel_remember_writes_speaker_file_not_channel_store(
     client, tmp_path: Path
 ) -> None:
     alice = client.post("/v1/agents", headers=AUTH, json={"name": "Alice"}).json()
@@ -246,8 +264,12 @@ async def test_channel_has_no_memory_store_speaker_owns_facts(
     dones = _tool_dones(events, "remember")
     assert dones
     assert dones[0]["ok"] is True
-    channel_mem = tmp_path / "workspaces" / "channels" / CHANNEL / MEMORY_FILENAME
-    assert not channel_mem.is_file()
+    assert dones[0]["summary"] == "Remembered"
+    assert FACT not in dones[0]["summary"]
+    assert not (tmp_path / MEMORY_DIRNAME / CHANNEL).exists()
+    assert not (
+        tmp_path / "workspaces" / "channels" / CHANNEL / MEMORY_FILENAME
+    ).is_file()
     assert load_facts(tmp_path, SEED) == [FACT]
     assert load_facts(tmp_path, alice["id"]) == []
     store = client.app.state.store
@@ -265,7 +287,7 @@ async def test_channel_has_no_memory_store_speaker_owns_facts(
     assert FACT in seed_sys
 
 
-def test_delete_agent_drops_memory_file(client, tmp_path: Path) -> None:
+def test_delete_agent_drops_memory_dir(client, tmp_path: Path) -> None:
     created = client.post("/v1/agents", headers=AUTH, json={"name": "Temp"}).json()
     _send(
         client,
@@ -273,20 +295,52 @@ def test_delete_agent_drops_memory_file(client, tmp_path: Path) -> None:
         f'SNORLAX_TOOL remember {{"fact": "{FACT}"}}',
     )
     path = memory_path(tmp_path, created["id"])
+    root = memory_dir(tmp_path, created["id"])
     assert path.is_file()
     deleted = client.delete(f"/v1/agents/{created['id']}", headers=AUTH)
     assert deleted.status_code == 204
     assert not path.is_file()
-    assert not path.parent.exists()
+    assert not root.exists()
 
 
-def test_duplicate_remember_does_not_duplicate(client, tmp_path: Path) -> None:
+def test_duplicate_remember_is_noop_still_remembered(
+    client, tmp_path: Path
+) -> None:
     _send(client, SEED, f'SNORLAX_TOOL remember {{"fact": "{FACT}"}}')
     status, events = _send(
         client, SEED, f'SNORLAX_TOOL remember {{"fact": "{FACT}"}}'
     )
     assert status == 200
-    assert _tool_dones(events, "remember")[0]["ok"] is True
+    dones = _tool_dones(events, "remember")
+    assert dones[0]["ok"] is True
+    assert dones[0]["summary"] == "Remembered"
+    assert load_facts(tmp_path, SEED) == [FACT]
+
+
+def test_memory_cap_32_then_full_error(tmp_path: Path) -> None:
+    for i in range(MAX_FACTS):
+        assert remember_fact(tmp_path, SEED, f"Fact number {i}.") == "Remembered"
+    assert len(load_facts(tmp_path, SEED)) == MAX_FACTS
+    assert remember_fact(tmp_path, SEED, "One more sentence.") == ERR_FULL
+    assert len(load_facts(tmp_path, SEED)) == MAX_FACTS
+
+
+def test_sandbox_tools_cannot_reach_memory_dir(tmp_path: Path) -> None:
+    remember_fact(tmp_path, SEED, FACT)
+    workspace = tmp_path / "workspaces" / "agents" / SEED
+    workspace.mkdir(parents=True, exist_ok=True)
+    leaked = execute_tool(
+        "read_file",
+        '{"path": "../../memory/snorlax-bot/MEMORY.md"}',
+        workspace,
+    )
+    assert leaked.startswith("Error:")
+    execute_tool(
+        "write_file",
+        '{"path": "../../memory/snorlax-bot/pwned.md", "content": "nope"}',
+        workspace,
+    )
+    assert not (tmp_path / MEMORY_DIRNAME / SEED / "pwned.md").exists()
     assert load_facts(tmp_path, SEED) == [FACT]
 
 
@@ -350,7 +404,7 @@ async def test_forget_fact_helper_exact_then_gone(tmp_path: Path) -> None:
     try:
         remember_fact(tmp_path, SEED, FACT)
         remember_fact(tmp_path, SEED, OTHER)
-        assert forget_fact(tmp_path, SEED, FACT) == f"Forgot {FACT}"
+        assert forget_fact(tmp_path, SEED, FACT) == "Forgot"
         assert load_facts(tmp_path, SEED) == [OTHER]
         assert forget_fact(tmp_path, SEED, FACT) == ERR_NO_MATCH
     finally:

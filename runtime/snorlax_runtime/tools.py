@@ -734,13 +734,6 @@ def produced_tool_attachment(
     return None
 
 
-def _short_tool_label(text: str, limit: int = 48) -> str:
-    label = (text or "").strip().replace("\n", " ")
-    if len(label) > limit:
-        return label[: limit - 1] + "…"
-    return label
-
-
 def done_summary(
     name: str, args: dict[str, Any], ok: bool, result: str = ""
 ) -> str:
@@ -780,15 +773,7 @@ def done_summary(
         label = str(args.get("id") or "").strip() or "routine"
         return f"Removed {label}"
     if name in {"remember", "forget"}:
-        first = (result or "").strip().splitlines()[0].strip() if result else ""
-        if first.lower().startswith("remembered ") or first.lower().startswith(
-            "forgot "
-        ):
-            return _short_tool_label(first)
-        fact = _short_tool_label(str(args.get("fact") or "").strip())
-        if name == "remember":
-            return f"Remembered {fact}" if fact else "Remembered"
-        return f"Forgot {fact}" if fact else "Forgot"
+        return "Remembered" if name == "remember" else "Forgot"
     if name == "write_file":
         return f"Wrote {_tool_path(args)}"
     if name == "read_file":
