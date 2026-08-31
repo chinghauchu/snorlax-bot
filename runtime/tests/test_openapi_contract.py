@@ -64,6 +64,7 @@ def test_protocol_openapi_is_locked_v0_contract() -> None:
     assert "v0.33" in text
     assert "v0.35" in text
     assert "v0.36" in text
+    assert "v0.37" in text
     assert "not skill-gated" in text
     assert "agent bootstrap" in text
     assert "backfill" in text
@@ -203,6 +204,12 @@ def test_protocol_openapi_is_locked_v0_contract() -> None:
     assert "getSkill" in text
     assert "patchSkill" in text
     assert "deleteSkill" in text
+    assert "/v1/agents/{id}/memory" in text
+    assert "getMemory" in text
+    assert "deleteMemory" in text
+    assert "AgentMemory" in text
+    assert "MemoryForget" in text
+    assert "No memories yet." in text
     assert "after YAML frontmatter" not in text
     assert "YAML frontmatter plus recipe" in text
     assert "prefer keep" in text

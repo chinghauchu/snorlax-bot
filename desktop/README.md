@@ -60,7 +60,9 @@ rows show muted `Webhook` plus Copy for the URL. Slack/GitHub rows
 with no Copy. The Add-routine sheet adds Slack/GitHub segments only
 when connected (one 12px row; `#eng` / `owner/name`). Below that, Skills
 (44px rows, trailing 12px Add, 12px muted Edit then Remove; 320px
-`New skill` and Edit skill source sheets). Settings
+`New skill` and Edit skill source sheets). Below Skills, Memory
+(12px muted header, no Add; wrapping 14px facts, min 44px rows,
+trailing 12px muted Remove; empty `No memories yet.`). Settings
 lists runtime plugins (`Connected` / `Needs sign-in`; Add / Remove) plus a
 curated Catalog (Slack/GitHub trailing Add; hide header when empty).
 The 1:1 composer `/` at a token start reuses the `@` typeahead overlay

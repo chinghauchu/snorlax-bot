@@ -35,6 +35,8 @@ import {
   ADD_SKILL_TITLE,
   skillRemoveConfirm,
   canSubmitSkill,
+  EMPTY_MEMORY,
+  memoryRemoveConfirm,
 } from "./infoPane.ts";
 
 test("user-created channels are editable; seed channel is not", () => {
@@ -357,4 +359,12 @@ test("edit-skill submit is name + body; New skill sheet is the blank Add", () =>
   assert.equal(canSubmitSkill({ name: "  ", body: "body" }), false);
   assert.equal(canSubmitSkill({ name: "status", body: "  " }), false);
   assert.equal(canSubmitSkill({ name: "", body: "" }), false);
+});
+
+test("memory list empty copy and Remove confirm match Skills family", () => {
+  assert.equal(EMPTY_MEMORY, "No memories yet.");
+  assert.equal(
+    memoryRemoveConfirm("The user's name is Alex."),
+    "Remove The user's name is Alex.?",
+  );
 });

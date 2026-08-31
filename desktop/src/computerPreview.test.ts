@@ -66,6 +66,7 @@ test("desktop identity pane paints Computer above Routines with Open when hasSan
   assert.match(pane, /AgentComputer/);
   assert.ok(pane.indexOf("AgentComputer") < pane.indexOf("info-routines"));
   assert.ok(pane.indexOf("info-routines") < pane.indexOf("info-skills"));
+  assert.ok(pane.indexOf("info-skills") < pane.indexOf("info-memory"));
   assert.match(pane, /onOpen/);
   assert.match(preview, /OPEN_LABEL/);
   assert.match(preview, /onClick/);
@@ -244,7 +245,7 @@ test("iOS agent sheet matches: 16:10, 8pt, 12pt Open when hasSandbox, tap POSTs 
   assert.match(sheet, /design: \.monospaced/);
   const skillsBlock = sheet.slice(
     sheet.indexOf("private var skillsList"),
-    sheet.indexOf("private var channelPane"),
+    sheet.indexOf("private var memoryList"),
   );
   assert.match(skillsBlock, /Text\("Skills"\)/);
   assert.match(skillsBlock, /No skills yet\./);
@@ -260,6 +261,19 @@ test("iOS agent sheet matches: 16:10, 8pt, 12pt Open when hasSandbox, tap POSTs 
       skillsBlock.indexOf('Button("Remove")'),
   );
   assert.doesNotMatch(skillsBlock, /New skill/);
+  const memoryBlock = sheet.slice(
+    sheet.indexOf("private var memoryList"),
+    sheet.indexOf("private var channelPane"),
+  );
+  assert.match(memoryBlock, /Text\("Memory"\)/);
+  assert.match(memoryBlock, /No memories yet\./);
+  assert.match(memoryBlock, /Button\("Remove"\)/);
+  assert.doesNotMatch(memoryBlock, /Button\("Add"\)/);
+  assert.doesNotMatch(memoryBlock, /Button\("Edit"\)/);
+  assert.match(client, /listMemory/);
+  assert.match(client, /forgetMemory/);
+  assert.match(model, /loadMemories/);
+  assert.match(model, /removeMemory/);
   const channelPane = sheet.slice(
     sheet.indexOf("channelPane"),
     sheet.indexOf("channelEditForm"),
@@ -268,6 +282,8 @@ test("iOS agent sheet matches: 16:10, 8pt, 12pt Open when hasSandbox, tap POSTs 
   assert.doesNotMatch(channelPane, /AddSkillSheet/);
   assert.doesNotMatch(channelPane, /EditSkillSheet/);
   assert.doesNotMatch(channelPane, /listSkills/);
+  assert.doesNotMatch(channelPane, /listMemory/);
+  assert.doesNotMatch(channelPane, /memoryList/);
   assert.doesNotMatch(channelPane, /ComputerTakeoverView/);
   assert.doesNotMatch(channelPane, /openLabel/);
 });

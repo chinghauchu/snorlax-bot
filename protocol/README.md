@@ -175,6 +175,10 @@ that speaker's system prompt every turn (1:1 and channel) and survive
 restart. Channels have no store; a channel turn writes the speaker's
 file (not a 409). No new path. OpenAPI stays 0.18.0.
 
+v0.37 memory pane: `GET /v1/agents/{id}/memory` `{ facts }` and
+`DELETE` `{ fact }` wrap the v0.36 file (exact forget, casefold
+fallback). Channel 409. No POST. OpenAPI stays 0.18.0.
+
 A copy is also kept at `runtime/openapi.yaml` and `desktop/openapi.yaml`
 so those trees are self-contained. Do not let the files diverge.
 

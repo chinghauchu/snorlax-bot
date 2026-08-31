@@ -31,7 +31,9 @@ info sheet lists a 16:10 computer preview above routines (12pt labels,
 8pt radius, 12pt `Open` when `hasSandbox`; the shot is tappable) then routines (list + enable/pause
 + Copy webhook URL + 12pt Add / Remove with confirm; Slack/GitHub
 segments on Add only when that plugin is connected) then skills
-(12pt Add / Edit / Remove; Edit skill source sheet; New skill Add sheet). Composer
+(12pt Add / Edit / Remove; Edit skill source sheet; New skill Add sheet)
+then Memory (12pt header, no Add; wrapping 14pt facts; 12pt Remove;
+empty `No memories yet.`). Composer
 `/` on a 1:1 opens the `@` typeahead family (240pt, 8pt radius, 44pt
 rows, 14pt name, no avatar); pick inserts `/name` as plain text; Send
 loads SKILL.md. Channel `/` is plain text. Empty / no match: no popup.

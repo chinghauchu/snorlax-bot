@@ -19,11 +19,13 @@ struct ProfileSheet: View {
     private enum PendingRemove {
         case routine(Routine)
         case skill(Skill)
+        case memory(String)
 
         var name: String {
             switch self {
             case .routine(let row): return row.name
             case .skill(let row): return row.name
+            case .memory(let fact): return fact
             }
         }
     }
@@ -101,6 +103,7 @@ struct ProfileSheet: View {
             computerBlock
             routinesList
             skillsList
+            memoryList
             Spacer(minLength: 0)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -108,6 +111,7 @@ struct ProfileSheet: View {
         .task(id: live.id) {
             await model.loadRoutines(for: live.id)
             await model.loadSkillsList(for: live.id)
+            await model.loadMemories(for: live.id)
             await model.loadComputer(for: live.id)
             while !Task.isCancelled {
                 try? await Task.sleep(nanoseconds: 1_500_000_000)
@@ -140,6 +144,10 @@ struct ProfileSheet: View {
                 case .skill(let skill):
                     Task {
                         await model.removeSkill(agentId: live.id, id: skill.id)
+                    }
+                case .memory(let fact):
+                    Task {
+                        await model.removeMemory(agentId: live.id, fact: fact)
                     }
                 case nil:
                     break
@@ -314,6 +322,41 @@ struct ProfileSheet: View {
                         .foregroundStyle(.secondary)
                         .buttonStyle(.plain)
                         .accessibilityLabel("Remove \(skill.name)")
+                    }
+                    .frame(minHeight: 44)
+                }
+            }
+        }
+    }
+
+    private var memoryList: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            HStack {
+                Text("Memory")
+                    .font(.system(size: 12))
+                    .foregroundStyle(.secondary)
+                Spacer(minLength: 0)
+            }
+            .padding(.top, 12)
+            .padding(.bottom, 8)
+            if model.memories.isEmpty {
+                Text("No memories yet.")
+                    .font(.system(size: 12))
+                    .foregroundStyle(.secondary)
+            } else {
+                ForEach(model.memories, id: \.self) { fact in
+                    HStack(alignment: .top, spacing: 8) {
+                        Text(fact)
+                            .font(.system(size: 14))
+                            .fixedSize(horizontal: false, vertical: true)
+                        Spacer(minLength: 0)
+                        Button("Remove") {
+                            pendingRemove = .memory(fact)
+                        }
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundStyle(.secondary)
+                        .buttonStyle(.plain)
+                        .accessibilityLabel("Remove \(fact)")
                     }
                     .frame(minHeight: 44)
                 }
