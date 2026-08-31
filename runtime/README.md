@@ -50,7 +50,7 @@ overrides the file.
 
 | Variable | Default | Meaning |
 | --- | --- | --- |
-| `SNORLAX_DATA_DIR` | `~/.snorlax-bot` | `snorlax.db` + `token` + images + `workspaces/` + `mcp.json` + `skills/` |
+| `SNORLAX_DATA_DIR` | `~/.snorlax-bot` | `snorlax.db` + `token` + images + `workspaces/` + `memory/` + `mcp.json` + `skills/` |
 | `SNORLAX_TOKEN` | generated file | Override bearer token |
 | `SNORLAX_BIND` | auto | Force host (`127.0.0.1` / `0.0.0.0`) |
 | `SNORLAX_PORT` | `8787` | Listen port |
@@ -167,6 +167,18 @@ them. Channels get none. create_agent / create_channel / create_routine
 stay in TOOLS_PREAMBLE and the offered tool list whenever tools are on
 (not skill-gated). GET /skills just lists them. No new routes. OpenAPI
 stays 0.18.0.
+
+v0.36: durable agent memory. `remember` `{ fact }` and `forget`
+`{ fact }` are always in TOOLS_PREAMBLE and the offered tool list
+whenever tools are on (not skill-gated). Facts persist as markdown
+under `$SNORLAX_DATA_DIR/memory/{agentId}/` (not the sandbox workspace;
+not snorlax.db). Injected into that speaker's system prompt every turn
+(1:1 and channel); survive runtime restart. Tool line is `Remembered` /
+`Forgot` (never the fact). Cap 32 then `Error: Memory is full`. Empty
+fact is `Error: missing fact`. Channels have no store; a channel turn
+writes the speaker's file. DELETE agent drops the dir. Seed SKILL.md
+`memory` maps 记住 → remember and 忘掉 → forget (missing-file only).
+No new routes. OpenAPI stays 0.18.0.
 
 ## MCP (`mcp.json`)
 

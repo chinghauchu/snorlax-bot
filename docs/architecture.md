@@ -475,6 +475,19 @@ tools are on (not skill-gated). Isolation: A's copies are A's
 workspace. No new HTTP. Desktop/iOS idle. OpenAPI stays 0.18.0. Never
 reintroduce `computerPane.ts`.
 
+v0.36: durable agent memory. Runtime-owned per-agent files under
+`~/.snorlax-bot/memory/{agentId}` (not the sandbox workspace, not the
+transcript SQLite). `remember` `{ fact }` / `forget` `{ fact }` always
+in the tool list (auto-run; no widget/approve). Tool line is
+`Remembered` / `Forgot` — never paint the fact. Cap 32 then
+`Error: Memory is full`. Injected into that speaker's system prompt
+every turn (1:1 and channel); survives restart. Isolation: A never sees
+B; channels have no store — a channel turn writes the speaker's file
+(not a 409). DELETE agent drops the file. Seed SKILL.md `memory` maps
+记住 / 忘掉. No new HTTP. Desktop/iOS idle except the existing
+kind=tool line. OpenAPI stays 0.18.0. Never reintroduce
+`computerPane.ts`.
+
 ## Inference interface
 
 ```text

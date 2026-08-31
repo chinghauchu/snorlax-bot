@@ -63,9 +63,20 @@ def test_protocol_openapi_is_locked_v0_contract() -> None:
     assert "v0.32" in text
     assert "v0.33" in text
     assert "v0.35" in text
+    assert "v0.36" in text
     assert "not skill-gated" in text
     assert "agent bootstrap" in text
     assert "backfill" in text
+    assert "remember" in text
+    assert "forget" in text
+    assert "MEMORY.md" in text
+    assert "durable" in text
+    assert "memory/{agentId}" in text or "memory/{id}" in text
+    assert "Remembered / Forgot" in text or "Remembered / Forgot" in text.replace("`", "")
+    assert "never paint the fact" in text
+    assert "Error: missing fact" in text
+    assert "Error: Memory is full" in text
+    assert "Cap 32" in text or "cap 32" in text
     assert "create_routine" in text
     assert "pause_routine" in text
     assert "delete_routine" in text

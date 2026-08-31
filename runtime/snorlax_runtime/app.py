@@ -75,6 +75,7 @@ from snorlax_runtime.mcp import (
     start_mcp,
     stop_mcp,
 )
+from snorlax_runtime.memory import drop_memory
 from snorlax_runtime.tools import (
     BinaryFileError,
     PathJailError,
@@ -454,6 +455,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             "channels" if existing.get("kind") == KIND_CHANNEL else "agents",
             id,
         )
+        if existing.get("kind") != KIND_CHANNEL:
+            drop_memory(store.data_dir, id)
         hub = getattr(request.app.state, "computer", None)
         if hub is not None:
             hub.detach(id)

@@ -33,19 +33,21 @@ ISO = "%Y-%m-%dT%H:%M:%S.%fZ"
 DB_FILENAME = "snorlax.db"
 
 # Always in TOOLS_PREAMBLE and the offered tool list. Skills teach
-# 项目 / 员工 / 定时 keywords; these tools are not skill-gated.
+# 项目 / 员工 / 定时 / 记住 keywords; these tools are not skill-gated.
 ALWAYS_PREAMBLE_TOOLS = (
     "create_agent",
     "create_channel",
     "create_routine",
     "pause_routine",
     "delete_routine",
+    "remember",
+    "forget",
 )
 
 TOOLS_PREAMBLE = (
     "You have built-in tools (list_dir, read_file, write_file, delete_file, "
     "shell, web_search, web_fetch, watch_video, create_agent, create_channel, "
-    "create_routine, pause_routine, delete_routine). "
+    "create_routine, pause_routine, delete_routine, remember, forget). "
     "Call them instead of describing the work. "
     "The runtime runs tools immediately except mutating shell, which pauses "
     "for the user to Approve or Deny — do not ask them yourself and do not "
@@ -75,6 +77,10 @@ TOOLS_PREAMBLE = (
     "删除这个 routine is delete_routine. create_routine and delete_routine "
     "ask the user on a question card (Save / Don't, Remove / Keep) before "
     "writing; pause_routine auto-runs. Do not invent a second routine API. "
+    "记住 / remember / save this / don't forget is remember { fact } — "
+    "one self-contained sentence, private to you, persisted on disk and "
+    "injected every turn. 忘掉 / forget / erase this is forget { fact } "
+    "by the exact recorded text. Do not invent a second memory API. "
     "Skills are how-to recipes "
     "(SKILL.md) with no trigger of their own — follow a matching skill "
     "when you work. Routines fire a skill on a cron, a webhook, or a "
@@ -209,6 +215,7 @@ CREATE TABLE IF NOT EXISTS attachments (
 ROSTER_SEEDED_KEY = "roster_seeded"
 SKILLS_SEEDED_KEY = "skills_seeded"
 ROUTINES_SKILL_SEEDED_KEY = "skills_routines_seeded"
+MEMORY_SKILL_SEEDED_KEY = "skills_memory_seeded"
 
 
 class Store:
@@ -352,8 +359,9 @@ class Store:
 
         Existing DBs without the meta flag pick it up once, then lock — same
         as roster seed. User DELETE of that skill is not recreated.
-        teammates and routines each have their own lock so a v0.33 boot
-        still seeds routines on a DB that already has teammates.
+        teammates, routines, and memory each have their own lock so a v0.33
+        boot still seeds routines on a DB that already has teammates, and a
+        v0.36 boot still seeds memory on a DB that already has the first two.
         """
         from snorlax_runtime.skills import write_seed_skill
 
@@ -363,10 +371,13 @@ class Store:
         if not await self._meta_flag(ROUTINES_SKILL_SEEDED_KEY):
             write_seed_skill(self.data_dir, "routines")
             await self._set_meta_flag(ROUTINES_SKILL_SEEDED_KEY)
+        if not await self._meta_flag(MEMORY_SKILL_SEEDED_KEY):
+            write_seed_skill(self.data_dir, "memory")
+            await self._set_meta_flag(MEMORY_SKILL_SEEDED_KEY)
         await self.conn.commit()
 
     async def _backfill_agent_seed_skills(self) -> None:
-        """Copy teammates + routines SKILL.md into each kind=agent workspace.
+        """Copy teammates + routines + memory SKILL.md into each kind=agent workspace.
 
         Missing-file only. Channels get none. Seed snorlax-bot is included.
         """
@@ -1689,6 +1700,11 @@ class Store:
             "url": image_url(image_id),
         }
 
+    def _system_with_memory(self, system: str, speaker: dict[str, Any]) -> str:
+        from snorlax_runtime.memory import attach_memory
+
+        return attach_memory(system, self.data_dir, speaker)
+
     async def inference_transcript(
         self,
         conversation_id: str,
@@ -1730,6 +1746,7 @@ class Store:
                     system = (
                         f"{system}\n\nThe assigned skill is {skill_name}."
                     )
+                system = self._system_with_memory(system, speaker)
                 return [
                     {"role": "system", "content": system},
                     {"role": "user", "content": dump_json(wake_pack)},
@@ -1748,6 +1765,7 @@ class Store:
                     f"{tools_preamble()}\n\n"
                     f"{speaker['description'] or ''}"
                 ).strip()
+                system = self._system_with_memory(system, speaker)
                 return [
                     {"role": "system", "content": system},
                     {"role": "user", "content": pack_prompt(wake_pack)},
@@ -1771,6 +1789,7 @@ class Store:
                 f"{tools_preamble()}\n\n"
                 f"{speaker['description'] or ''}"
             ).strip()
+            system = self._system_with_memory(system, speaker)
             messages: list[dict[str, Any]] = [
                 {"role": "system", "content": system},
             ]
@@ -1805,6 +1824,7 @@ class Store:
             f"{tools_preamble()}\n\n"
             f"{speaker['description'] or ''}"
         ).strip()
+        system = self._system_with_memory(system, speaker)
         messages = [{"role": "system", "content": system}]
         if is_group and thread_id:
             await self._append_thread_turns(

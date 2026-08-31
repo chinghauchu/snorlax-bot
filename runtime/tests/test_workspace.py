@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 from snorlax_runtime.tools import MAX_FILE_BYTES, pane_workspace
-from tests.conftest import AUTH, without_seed_skill_dirs
+from tests.conftest import AUTH, SEED_SKILL_IDS, without_seed_skill_dirs
 from tests.test_tools import _send
 
 CHANNEL = "snorlax-bot-group"
@@ -17,7 +17,7 @@ def test_empty_workspace_lists_no_fake_files(client, tmp_path) -> None:
     assert body["path"] == "."
     names = {row["name"] for row in body["entries"]}
     assert without_seed_skill_dirs(names) == set()
-    assert names == {"teammates", "routines"}
+    assert names == set(SEED_SKILL_IDS)
     assert "projectPath" not in body
     assert "folderPath" not in body
     assert not body["root"].startswith("/")

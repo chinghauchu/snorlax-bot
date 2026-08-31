@@ -57,9 +57,29 @@ are tool errors (the user send stays 200). Slack/GitHub need that plugin
 connected. Isolation stands: routines are agent-only; B never creates
 into A's 1:1.
 """
+SEED_MEMORY_SLUG = "memory"
+SEED_MEMORY_MARKDOWN = """---
+name: memory
+description: Save a fact with remember or erase one with forget. 记住 / 忘掉.
+---
+
+Pick the matching built-in tool. Do not invent a second memory API.
+Each fact is one self-contained sentence, private to you, persisted on
+disk under the runtime memory dir (not the sandbox workspace) and
+injected into your prompt every turn. A channel turn writes your file.
+
+- 记住 / remember / save this / don't forget → `remember` `{ fact }`
+- 忘掉 / forget / erase this → `forget` `{ fact }` (exact recorded text)
+
+The tool line is `Remembered` / `Forgot` (never the fact text). Empty
+fact is `Error: missing fact` (the user send stays 200). Cap 32 facts,
+then `Error: Memory is full`. Isolation stands: agent A never sees
+agent B's facts. Channels have no store of their own.
+"""
 SEED_SKILL_MARKDOWN = {
     SEED_TEAMMATES_SLUG: SEED_TEAMMATES_MARKDOWN,
     SEED_ROUTINES_SLUG: SEED_ROUTINES_MARKDOWN,
+    SEED_MEMORY_SLUG: SEED_MEMORY_MARKDOWN,
 }
 
 _FRONTMATTER = re.compile(
@@ -106,10 +126,10 @@ def write_seed_skill(data_dir: Path, slug: str) -> None:
 
 
 def write_seed_skills(data_dir: Path) -> None:
-    """Seed teammates + routines SKILL.md once. Missing file only; never overwrite.
+    """Seed teammates + routines + memory SKILL.md once. Missing file only; never overwrite.
 
-    项目 → create_channel, 员工 → create_agent, 定时 / 提醒 → create_routine.
-    No Settings chrome.
+    项目 → create_channel, 员工 → create_agent, 定时 / 提醒 → create_routine,
+    记住 / 忘掉 → remember / forget. No Settings chrome.
     """
     for slug in SEED_SKILL_MARKDOWN:
         write_seed_skill(data_dir, slug)
@@ -120,7 +140,7 @@ def _agent_workspace(data_dir: Path, agent_id: str) -> Path:
 
 
 def seed_skill_files(data_dir: Path) -> list[tuple[str, Path]]:
-    """The two seed SKILL.md files: teammates (项目/员工) and routines (定时/提醒).
+    """The seed SKILL.md files: teammates, routines, and memory.
 
     Source is ``SNORLAX_DATA_DIR/skills/<slug>/SKILL.md``. Missing files are
     skipped (user DELETE of that skill is not recreated).
@@ -134,7 +154,7 @@ def seed_skill_files(data_dir: Path) -> list[tuple[str, Path]]:
 
 
 def copy_seed_skills_into_agent(data_dir: Path, agent_id: str) -> None:
-    """Copy teammates + routines SKILL.md into ``workspaces/agents/{id}/``.
+    """Copy teammates + routines + memory SKILL.md into ``workspaces/agents/{id}/``.
 
     Missing-file only; never overwrite. kind=agent only — callers skip
     channels. Same names/bodies as the seed files.
@@ -151,7 +171,7 @@ def copy_seed_skills_into_agent(data_dir: Path, agent_id: str) -> None:
 
 
 def backfill_seed_skills(data_dir: Path, agent_ids: list[str]) -> None:
-    """Startup: any agent workspace missing the two seed files gets them."""
+    """Startup: any agent workspace missing the seed SKILL.md files gets them."""
     for agent_id in agent_ids:
         copy_seed_skills_into_agent(data_dir, agent_id)
 
