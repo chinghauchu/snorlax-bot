@@ -167,6 +167,13 @@ agents. Channels get none. `create_agent` / `create_channel` /
 `create_routine` stay in the tool list whenever tools are on (not
 skill-gated). No new path. OpenAPI stays 0.18.0.
 
+v0.36 durable agent memory: per-agent `workspaces/agents/{id}/MEMORY.md`
+(one sentence per fact). `remember` `{ fact }` / `forget` `{ fact }` are
+always in the tool preamble (auto-run; `Remembered {fact}` /
+`Forgot {fact}` on the existing kind=tool line). Facts inject into that
+agent's system prompt every turn and survive restart. Channels have no
+memory store; A never sees B's facts. No new path. OpenAPI stays 0.18.0.
+
 A copy is also kept at `runtime/openapi.yaml` and `desktop/openapi.yaml`
 so those trees are self-contained. Do not let the files diverge.
 

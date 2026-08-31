@@ -12,7 +12,7 @@ from snorlax_runtime.config import Settings
 TOKEN = "test-token-snorlax"
 AUTH = {"Authorization": f"Bearer {TOKEN}"}
 SEED_SKILL_ID = "teammates"
-SEED_SKILL_IDS = frozenset({"teammates", "routines"})
+SEED_SKILL_IDS = frozenset({"teammates", "routines", "memory"})
 
 
 def without_seed_skills(rows: list) -> list:

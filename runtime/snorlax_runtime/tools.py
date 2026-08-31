@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0
-"""Runtime-owned built-in tools: files, shell, web, watch_video, create_agent, create_channel, create_routine, pause_routine, delete_routine. Never called by clients."""
+"""Runtime-owned built-in tools: files, shell, web, watch_video, create_agent, create_channel, create_routine, pause_routine, delete_routine, remember, forget. Never called by clients."""
 
 from __future__ import annotations
 
@@ -549,6 +549,56 @@ TOOL_DEFINITIONS: list[dict[str, Any]] = [
     {
         "type": "function",
         "function": {
+            "name": "remember",
+            "description": (
+                "Save one self-contained sentence about the user or this "
+                "work. It persists on disk and is injected into your "
+                "prompt every turn. 记住 / remember / save this / don't "
+                "forget. Private to you — other agents never see it. "
+                "The runtime runs this immediately (no approval)."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "fact": {
+                        "type": "string",
+                        "description": (
+                            "One self-contained sentence to keep across "
+                            "restarts."
+                        ),
+                    }
+                },
+                "required": ["fact"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "forget",
+            "description": (
+                "Erase one saved fact by its exact recorded text (or the "
+                "same sentence ignoring case). 忘掉 / forget / erase this. "
+                "The fact stops appearing in your prompt. The runtime "
+                "runs this immediately (no approval)."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "fact": {
+                        "type": "string",
+                        "description": (
+                            "The exact recorded sentence to drop."
+                        ),
+                    }
+                },
+                "required": ["fact"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
             "name": "computer_click",
             "description": (
                 "Click the agent's 1280x800 sandbox display at (x, y). "
@@ -608,6 +658,10 @@ def start_summary(name: str, args: dict[str, Any]) -> str:
         return "Updating routine…"
     if name == "delete_routine":
         return "Removing…"
+    if name == "remember":
+        return "Remembering…"
+    if name == "forget":
+        return "Forgetting…"
     if name == "write_file":
         return f"Writing {Path(str(args.get('path') or 'file')).name}…"
     if name == "read_file":
@@ -680,6 +734,13 @@ def produced_tool_attachment(
     return None
 
 
+def _short_tool_label(text: str, limit: int = 48) -> str:
+    label = (text or "").strip().replace("\n", " ")
+    if len(label) > limit:
+        return label[: limit - 1] + "…"
+    return label
+
+
 def done_summary(
     name: str, args: dict[str, Any], ok: bool, result: str = ""
 ) -> str:
@@ -718,6 +779,16 @@ def done_summary(
             return first
         label = str(args.get("id") or "").strip() or "routine"
         return f"Removed {label}"
+    if name in {"remember", "forget"}:
+        first = (result or "").strip().splitlines()[0].strip() if result else ""
+        if first.lower().startswith("remembered ") or first.lower().startswith(
+            "forgot "
+        ):
+            return _short_tool_label(first)
+        fact = _short_tool_label(str(args.get("fact") or "").strip())
+        if name == "remember":
+            return f"Remembered {fact}" if fact else "Remembered"
+        return f"Forgot {fact}" if fact else "Forgot"
     if name == "write_file":
         return f"Wrote {_tool_path(args)}"
     if name == "read_file":
@@ -775,9 +846,9 @@ def offered_tool_definitions(*, use_tools: bool = True, use_widget: bool = True)
     an approval gate for the other tools. Mutating shell is gated by the
     runtime as kind=approve, not as a widget.
 
-    create_agent, create_channel, and create_routine (plus pause_routine
-    / delete_routine) are always in this list when use_tools is on.
-    Skills teach keywords; those tools are not skill-gated.
+    create_agent, create_channel, create_routine (plus pause_routine
+    / delete_routine), remember, and forget are always in this list when
+    use_tools is on. Skills teach keywords; those tools are not skill-gated.
     """
     from snorlax_runtime.mcp import mcp_openai_tools
 
@@ -797,12 +868,14 @@ async def execute_named_tool(
     workspace: Path,
     *,
     conversation_id: str | None = None,
+    agent_id: str | None = None,
     store: Any | None = None,
     backend: Any | None = None,
     mcp: Any | None = None,
 ) -> str:
     """Dispatch one tool. MCP stays on the runtime event loop (not the shell)."""
     from snorlax_runtime.mcp import call_mcp_tool, is_mcp_tool
+    from snorlax_runtime.memory import forget_tool, remember_tool
     from snorlax_runtime.roster import create_agent_tool, create_channel_tool
     from snorlax_runtime.routines import (
         CREATE_ROUTINE,
@@ -827,6 +900,15 @@ async def execute_named_tool(
         return await create_agent_tool(arguments, store=store)
     if name == "create_channel":
         return await create_channel_tool(arguments, store=store)
+    if name in {"remember", "forget"}:
+        speaker_id = agent_id or ""
+        if store is None or not speaker_id:
+            from snorlax_runtime.memory import ERR_MISSING_FACT
+
+            return ERR_MISSING_FACT
+        if name == "remember":
+            return remember_tool(store.data_dir, speaker_id, arguments)
+        return forget_tool(store.data_dir, speaker_id, arguments)
     if name == PAUSE_ROUTINE:
         return await pause_routine_tool(
             arguments, store=store, conversation_id=conversation_id
@@ -896,6 +978,10 @@ def execute_tool(name: str, arguments: str, workspace: Path) -> str:
             return "Error: missing id"
         if name == "delete_routine":
             return "Error: missing id"
+        if name == "remember":
+            return "Error: missing fact"
+        if name == "forget":
+            return "Error: missing fact"
         if name == "computer_click":
             return _computer_click(workspace, args)
         if name == "computer_key":
@@ -1485,6 +1571,7 @@ async def run_tool_loop(
                     call.arguments,
                     workspace,
                     conversation_id=conversation_id,
+                    agent_id=str(agent.get("id") or ""),
                     store=store,
                     backend=backend,
                     mcp=mcp,

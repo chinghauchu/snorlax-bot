@@ -475,6 +475,16 @@ tools are on (not skill-gated). Isolation: A's copies are A's
 workspace. No new HTTP. Desktop/iOS idle. OpenAPI stays 0.18.0. Never
 reintroduce `computerPane.ts`.
 
+v0.36: durable agent memory. Per-agent `workspaces/agents/{id}/MEMORY.md`
+(one self-contained sentence per fact; not the transcript SQLite).
+`remember` `{ fact }` / `forget` `{ fact }` always in the tool list
+(auto-run; `Remembered {fact}` / `Forgot {fact}` on the existing
+kind=tool line). Injected into that speaking agent's system prompt
+every turn; survives restart. Isolation: A never sees B; channels have
+no memory store. Seed SKILL.md `memory` maps 记住 / 忘掉. No new HTTP.
+Desktop/iOS idle. OpenAPI stays 0.18.0. Never reintroduce
+`computerPane.ts`.
+
 ## Inference interface
 
 ```text

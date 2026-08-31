@@ -5,6 +5,7 @@ from pathlib import Path
 
 from snorlax_runtime.db import ALWAYS_PREAMBLE_TOOLS, Store, tools_preamble
 from snorlax_runtime.skills import (
+    SEED_MEMORY_SLUG,
     SEED_ROUTINES_SLUG,
     SEED_SKILL_MARKDOWN,
     SEED_TEAMMATES_SLUG,
@@ -16,7 +17,7 @@ from tests.conftest import AUTH, parse_sse
 
 SEED = "snorlax-bot"
 CHANNEL = "snorlax-bot-group"
-SEED_SLUGS = (SEED_TEAMMATES_SLUG, SEED_ROUTINES_SLUG)
+SEED_SLUGS = (SEED_TEAMMATES_SLUG, SEED_ROUTINES_SLUG, SEED_MEMORY_SLUG)
 
 
 def _send(client, dest: str, content: str):
@@ -55,6 +56,7 @@ def test_http_new_agent_copies_seed_skill_markdown(client, tmp_path: Path) -> No
     ids = {row["id"] for row in listed}
     assert SEED_TEAMMATES_SLUG in ids
     assert SEED_ROUTINES_SLUG in ids
+    assert SEED_MEMORY_SLUG in ids
     teammates = client.get(
         f"/v1/agents/{created['id']}/skills/{SEED_TEAMMATES_SLUG}", headers=AUTH
     ).json()
@@ -74,6 +76,14 @@ def test_http_new_agent_copies_seed_skill_markdown(client, tmp_path: Path) -> No
     names = {row["name"] for row in listed_ws["entries"]}
     assert SEED_TEAMMATES_SLUG in names
     assert SEED_ROUTINES_SLUG in names
+    assert SEED_MEMORY_SLUG in names
+    memory = client.get(
+        f"/v1/agents/{created['id']}/skills/{SEED_MEMORY_SLUG}", headers=AUTH
+    ).json()
+    assert "记住" in memory["body"]
+    assert "忘掉" in memory["body"]
+    assert "remember" in memory["body"]
+    assert "forget" in memory["body"]
 
 
 def test_create_agent_tool_copies_seed_skill_markdown(client, tmp_path: Path) -> None:
@@ -243,7 +253,7 @@ async def test_create_tools_are_not_skill_gated(client, tmp_path: Path) -> None:
     system = messages[0]["content"]
     for name in ("create_agent", "create_channel", "create_routine"):
         assert name in system
-    for name in ("pause_routine", "delete_routine"):
+    for name in ("pause_routine", "delete_routine", "remember", "forget"):
         assert name in system
     offered = {
         (row.get("function") or {}).get("name") or ""

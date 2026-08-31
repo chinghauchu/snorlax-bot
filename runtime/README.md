@@ -168,6 +168,16 @@ stay in TOOLS_PREAMBLE and the offered tool list whenever tools are on
 (not skill-gated). GET /skills just lists them. No new routes. OpenAPI
 stays 0.18.0.
 
+v0.36: durable agent memory. `remember` `{ fact }` and `forget`
+`{ fact }` are always in TOOLS_PREAMBLE and the offered tool list
+whenever tools are on (not skill-gated). Facts persist as markdown at
+workspaces/agents/{id}/MEMORY.md (next to that agent's skills;
+not snorlax.db). Injected into that agent's system prompt every turn;
+survive runtime restart. `Remembered {fact}` / `Forgot {fact}` on the
+existing kind=tool line. Channels have no memory store. Seed SKILL.md
+`memory` maps 记住 → remember and 忘掉 → forget (missing-file only).
+No new routes. OpenAPI stays 0.18.0.
+
 ## MCP (`mcp.json`)
 
 The runtime is the MCP client. Desktop and iOS never speak MCP. Put
