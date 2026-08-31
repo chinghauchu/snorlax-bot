@@ -779,6 +779,26 @@ info:
     kind. Clients never speak MCP or the model. Never reintroduce
     computerPane.ts. Leave stale PRs #23 and #24 untouched.
     OpenAPI **0.18.0**.
+
+    v0.39: user-shared memory. One impl PR. Spec rides this PR. **No
+    second PR.** OpenAPI stays **0.18.0**. No new HTTP. No /v1/memory.
+    Desktop/iOS idle. remember / forget gain optional scope: user |
+    agent (omit/default agent = today's speaker file). User facts live
+    at {SNORLAX_DATA_DIR}/memory/user/MEMORY.md (same format, cap 32,
+    separate from each agent's 32). A full user file is exactly
+    `Error: Shared memory is full.` (not the agent Memory is full
+    string). Forget without scope user never touches memory/user/.
+    Id user is reserved for the human.
+    Each turn injects user facts first, then that speaker's agent
+    facts, under the existing ### Memory heading. Every agent (1:1 and
+    channel) gets the user list. B never loads A's agent file.
+    GET/DELETE /v1/agents/{id}/memory stay agent-only (do not list
+    user facts on the pane). Agent DELETE never rmtree memory/user/.
+    Tool line stays Remembered / Forgot — never paint the fact, never
+    paint the scope word. Auto-run. No widget. No approve. No vector
+    store. No transcript scan. No channel-level store. Never
+    reintroduce computerPane.ts. Leave stale PRs #23 and #24
+    untouched. OpenAPI **0.18.0**.
   license:
     name: Apache-2.0
     identifier: Apache-2.0
@@ -1456,9 +1476,11 @@ paths:
         `{ facts: string[] }` from the same v0.36
         `~/.snorlax-bot/memory/{agentId}/MEMORY.md` that remember /
         forget already use. Cap 32. Empty list is 200 `{ facts: [] }`.
-        kind=channel is **409**. Missing agent is 404. Isolation: A
-        never lists B. No Add / POST. Creating facts stays the
-        remember tool. Chrome is the agent identity pane only.
+        Agent-only: does not include user-shared facts from
+        `memory/user/`. No `/v1/memory`. kind=channel is **409**.
+        Missing agent is 404. Isolation: A never lists B. No Add /
+        POST. Creating facts stays the remember tool. Chrome is the
+        agent identity pane only.
       operationId: getMemory
       responses:
         "200":

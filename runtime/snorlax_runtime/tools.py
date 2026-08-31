@@ -554,8 +554,10 @@ TOOL_DEFINITIONS: list[dict[str, Any]] = [
                 "Save one self-contained sentence about the user or this "
                 "work. It persists on disk and is injected into your "
                 "prompt every turn. 记住 / remember / save this / don't "
-                "forget. Private to you — other agents never see it. "
-                "The runtime runs this immediately (no approval)."
+                "forget. Optional scope: user writes the shared user "
+                "store every agent injects; omit or agent writes this "
+                "agent's private file. The runtime runs this immediately "
+                "(no approval)."
             ),
             "parameters": {
                 "type": "object",
@@ -566,7 +568,16 @@ TOOL_DEFINITIONS: list[dict[str, Any]] = [
                             "One self-contained sentence to keep across "
                             "restarts."
                         ),
-                    }
+                    },
+                    "scope": {
+                        "type": "string",
+                        "enum": ["user", "agent"],
+                        "description": (
+                            "user writes the shared user store every "
+                            "agent injects. omit or agent writes this "
+                            "agent's private file. Default agent."
+                        ),
+                    },
                 },
                 "required": ["fact"],
             },
@@ -579,6 +590,8 @@ TOOL_DEFINITIONS: list[dict[str, Any]] = [
             "description": (
                 "Erase one saved fact by its exact recorded text (or the "
                 "same sentence ignoring case). 忘掉 / forget / erase this. "
+                "Optional scope: user looks only in the shared user "
+                "store; omit or agent looks only in this agent's file. "
                 "The fact stops appearing in your prompt. The runtime "
                 "runs this immediately (no approval)."
             ),
@@ -590,7 +603,16 @@ TOOL_DEFINITIONS: list[dict[str, Any]] = [
                         "description": (
                             "The exact recorded sentence to drop."
                         ),
-                    }
+                    },
+                    "scope": {
+                        "type": "string",
+                        "enum": ["user", "agent"],
+                        "description": (
+                            "user looks only in the shared user store. "
+                            "omit or agent looks only in this agent's "
+                            "file. Default agent."
+                        ),
+                    },
                 },
                 "required": ["fact"],
             },

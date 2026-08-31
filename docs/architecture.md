@@ -501,6 +501,17 @@ agent pane refetches GET memory after a Remembered / Forgot tool line
 on that 1:1. Closed pane does not poll. No new HTTP. OpenAPI stays
 0.18.0. Never reintroduce `computerPane.ts`.
 
+v0.39: user-shared memory. `remember` / `forget` gain optional
+`scope: user` | `agent` (omit/default `agent` = today's speaker file).
+User facts live at `{SNORLAX_DATA_DIR}/memory/user/MEMORY.md` (same
+format, cap 32, separate from each agent's 32). A full user file is
+`Error: Shared memory is full.` Forget without `scope: user` never
+touches that file. Each turn injects user facts first, then that
+speaker's agent facts. Every agent gets the user list. B never loads
+A's agent file. GET/DELETE `/memory` stay agent-only. Agent DELETE
+never rmtree `memory/user/`. Desktop/iOS idle. No new HTTP. OpenAPI
+stays 0.18.0. Never reintroduce `computerPane.ts`.
+
 ## Inference interface
 
 ```text

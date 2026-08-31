@@ -186,6 +186,16 @@ same file remember/forget already use. `DELETE` `{ fact }` wraps
 `Error: no matching fact`. Empty is 422 `Error: missing fact`. Channel
 is 409. No POST. OpenAPI stays 0.18.0.
 
+v0.39: user-shared memory. `remember` / `forget` take optional
+`scope: user` | `agent` (omit/default `agent`). `scope: user` writes
+`$SNORLAX_DATA_DIR/memory/user/MEMORY.md` (same format, cap 32,
+separate). A full user file is `Error: Shared memory is full.`
+Forget without `scope: user` never touches that file. Each turn
+injects user facts first, then that speaker's agent facts.
+GET/DELETE `/v1/agents/{id}/memory` stay agent-only. Agent DELETE
+never rmtree `memory/user/`. No `/v1/memory`. Desktop/iOS idle.
+OpenAPI stays 0.18.0.
+
 ## MCP (`mcp.json`)
 
 The runtime is the MCP client. Desktop and iOS never speak MCP. Put
