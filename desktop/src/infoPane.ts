@@ -136,8 +136,17 @@ export function skillRemoveConfirm(name: string): string {
 
 export const EMPTY_MEMORY = "No memories yet.";
 
-export function memoryRemoveConfirm(fact: string): string {
-  return `Remove ${fact}?`;
+/** Skills-family confirm title. Never interpolates the fact. */
+export const MEMORY_REMOVE_CONFIRM = "Remove this memory?";
+
+export function memoryRemoveConfirm(): string {
+  return MEMORY_REMOVE_CONFIRM;
+}
+
+/** Persisted remember / forget tool line. Never the fact. */
+export function isMemoryToolLine(text: string): boolean {
+  const trimmed = text.trim();
+  return trimmed === "Remembered" || trimmed === "Forgot";
 }
 
 export function canSubmitSkill(draft: { name: string; body: string }): boolean {

@@ -32,8 +32,10 @@ info sheet lists a 16:10 computer preview above routines (12pt labels,
 + Copy webhook URL + 12pt Add / Remove with confirm; Slack/GitHub
 segments on Add only when that plugin is connected) then skills
 (12pt Add / Edit / Remove; Edit skill source sheet; New skill Add sheet)
-then Memory (12pt header, no Add; wrapping 14pt facts; 12pt Remove;
-empty `No memories yet.`). Composer
+then Memory (12pt header, no Add; 14pt / 1.2 facts clamp to 2 lines;
+long-press copies the full fact; 12pt Remove; confirm `Remove this
+memory?`; empty `No memories yet.`; open sheet refetches after
+Remembered / Forgot). Composer
 `/` on a 1:1 opens the `@` typeahead family (240pt, 8pt radius, 44pt
 rows, 14pt name, no avatar); pick inserts `/name` as plain text; Send
 loads SKILL.md. Channel `/` is plain text. Empty / no match: no popup.

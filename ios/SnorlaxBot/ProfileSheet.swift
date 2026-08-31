@@ -30,6 +30,19 @@ struct ProfileSheet: View {
         }
     }
 
+    private var removeConfirmTitle: String {
+        switch pendingRemove {
+        case .memory:
+            return "Remove this memory?"
+        case .routine(let row):
+            return "Remove \(row.name)?"
+        case .skill(let row):
+            return "Remove \(row.name)?"
+        case nil:
+            return ""
+        }
+    }
+
     init(agent: Agent) {
         self.agent = agent
         _draft = State(initialValue: agent)
@@ -128,7 +141,7 @@ struct ProfileSheet: View {
             EditSkillSheet(agentId: live.id, skill: skill)
         }
         .confirmationDialog(
-            pendingRemove.map { "Remove \($0.name)?" } ?? "",
+            removeConfirmTitle,
             isPresented: Binding(
                 get: { pendingRemove != nil },
                 set: { if !$0 { pendingRemove = nil } }
@@ -347,9 +360,13 @@ struct ProfileSheet: View {
                 ForEach(model.memories, id: \.self) { fact in
                     HStack(alignment: .top, spacing: 8) {
                         Text(fact)
-                            .font(.system(size: 14))
-                            .fixedSize(horizontal: false, vertical: true)
-                        Spacer(minLength: 0)
+                            .font(.system(size: 14)) // 14pt / 1.2
+                            .lineLimit(2)
+                            .truncationMode(.tail)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .onLongPressGesture {
+                                UIPasteboard.general.string = fact
+                            }
                         Button("Remove") {
                             pendingRemove = .memory(fact)
                         }

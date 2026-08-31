@@ -59,9 +59,11 @@ Concrete follow-ups after v0. Filed on GitHub against
   320px `New skill` source sheet (desktop + iOS); `POST { name, body }`.
   **v0.23:** Add-routine Slack/GitHub segments only when that MCP plugin
   is connected (one 12px row; omit, do not disable); Slack `#eng` /
-  GitHub `owner/name`; Copy stays webhook-only. **v0.37:** identity-pane
+  GitHub `owner/name`; Copy stays webhook-only.   **v0.37:** identity-pane
   Memory list below Skills (GET `{ facts }`; Remove DELETE exact-forgets;
-  empty `No memories yet.`; channel pane unchanged). Full sandbox computer GUI
+  empty `No memories yet.`; channel pane unchanged). **v0.38:** leftover
+  chrome (`Remove this memory?`; 2-line clamp; desktop hover title; iOS
+  long-press copy; open-pane refetch after Remembered / Forgot). Full sandbox computer GUI
   (browser, VNC, terminal)
   stays later.
 
@@ -99,3 +101,7 @@ Concrete follow-ups after v0. Filed on GitHub against
   `Copied` for 1.5s). Regenerate 1:1 only on the latest completed
   LEFT `kind=message` (`{ regenerate: true }`; hidden while sending).
   Channel has Copy, no Regenerate. Fenced-code Copy stays.
+- **v0.38:** agent-sheet Memory leftover chrome: confirm `Remove this
+  memory?`; 14pt / 1.2 clamp 2 lines; long-press copies the full fact;
+  open sheet refetches GET `/memory` after Remembered / Forgot on that
+  1:1. Channel sheet unchanged.

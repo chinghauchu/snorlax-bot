@@ -196,7 +196,8 @@ test("iOS agent sheet matches: 16:10, 8pt, 12pt Open when hasSandbox, tap POSTs 
   assert.doesNotMatch(content, /computer\/record/);
   assert.doesNotMatch(content, /Save as skill/);
   assert.match(sheet, /Add routine/);
-  assert.match(sheet, /Remove \\\(\$0\.name\)\?/);
+  assert.match(sheet, /Remove \\\(row\.name\)\?/);
+  assert.match(sheet, /Remove this memory\?/);
   assert.match(sheet, /Button\("Add"\)/);
   assert.match(sheet, /Button\("Remove"\)/);
   assert.match(sheet, /0 9 \* \* 1-5/);
@@ -268,12 +269,23 @@ test("iOS agent sheet matches: 16:10, 8pt, 12pt Open when hasSandbox, tap POSTs 
   assert.match(memoryBlock, /Text\("Memory"\)/);
   assert.match(memoryBlock, /No memories yet\./);
   assert.match(memoryBlock, /Button\("Remove"\)/);
+  assert.match(memoryBlock, /lineLimit\(2\)/);
+  assert.match(memoryBlock, /truncationMode\(\.tail\)/);
+  assert.match(memoryBlock, /1\.2/);
+  assert.match(memoryBlock, /onLongPressGesture/);
+  assert.match(memoryBlock, /UIPasteboard\.general\.string = fact/);
+  assert.doesNotMatch(memoryBlock, /fixedSize\(horizontal: false, vertical: true\)/);
   assert.doesNotMatch(memoryBlock, /Button\("Add"\)/);
   assert.doesNotMatch(memoryBlock, /Button\("Edit"\)/);
   assert.match(client, /listMemory/);
   assert.match(client, /forgetMemory/);
   assert.match(model, /loadMemories/);
   assert.match(model, /removeMemory/);
+  assert.match(model, /refreshOpenMemory/);
+  assert.match(model, /isMemoryToolLine/);
+  assert.match(model, /Remembered/);
+  assert.match(model, /Forgot/);
+  assert.match(model, /showProfile/);
   const channelPane = sheet.slice(
     sheet.indexOf("channelPane"),
     sheet.indexOf("channelEditForm"),
