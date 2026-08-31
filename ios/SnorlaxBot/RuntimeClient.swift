@@ -96,6 +96,19 @@ struct RuntimeClient: Sendable {
         try Self.throwIfNeeded(data: data, response: response, allowed: [204])
     }
 
+    func listMemory(agentId: String) async throws -> AgentMemory {
+        try await get("v1/agents/\(Self.encode(agentId))/memory")
+    }
+
+    func forgetMemory(agentId: String, fact: String) async throws {
+        try await sendEmpty(
+            "v1/agents/\(Self.encode(agentId))/memory",
+            method: "DELETE",
+            body: MemoryForget(fact: fact),
+            allowed: [204]
+        )
+    }
+
     func createRoutine(agentId: String, body: RoutineCreate) async throws -> Routine {
         try await send(
             "v1/agents/\(Self.encode(agentId))/routines",

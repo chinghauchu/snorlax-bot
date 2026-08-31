@@ -757,6 +757,28 @@ info:
     v0.35). Desktop/iOS idle except the existing kind=tool line. Never
     reintroduce computerPane.ts. Leave stale PRs #23 and #24 untouched.
     OpenAPI **0.18.0**.
+
+    v0.37: memory pane on the agent identity overlay. One impl PR. Spec
+    rides this PR. **No second PR.** OpenAPI stays **0.18.0**. Reuse the
+    v0.36 per-agent `memory/{agentId}` file (load_facts / forget_fact).
+    No second store. No vector index. No transcript scan. HTTP (this
+    resource only): `GET /v1/agents/{id}/memory` → `{ facts: string[] }`
+    (empty is `[]`). `DELETE /v1/agents/{id}/memory` `{ fact }` wraps
+    exact forget (casefold fallback) → **204**. Unknown fact is **404**
+    `Error: no matching fact`. Empty fact is **422** `Error: missing
+    fact`. kind=channel is **409**. Missing agent is 404. No POST / Add /
+    Edit. Chrome is the agent identity pane only (desktop 320px overlay
+    / iOS sheet), below Skills: 12px muted `Memory` (no trailing Add),
+    44px / 44pt wrapping 14px / 14pt fact rows, trailing 12px / 12pt
+    muted Remove. Confirm is `Remove {fact}?` then danger Remove (same
+    family as Skills Remove). Empty still shows the header +
+    `No memories yet.` Channel pane unchanged. Isolation: A's pane lists
+    only A's facts. remember / forget tools, tool-line Remembered /
+    Forgot (never paint the fact), injection, cap 32, and per-agent
+    files stay as v0.36. No Settings memory page. No new chat bubble
+    kind. Clients never speak MCP or the model. Never reintroduce
+    computerPane.ts. Leave stale PRs #23 and #24 untouched.
+    OpenAPI **0.18.0**.
   license:
     name: Apache-2.0
     identifier: Apache-2.0
@@ -1423,6 +1445,61 @@ paths:
         "404":
           $ref: "#/components/responses/Error"
         "409":
+          $ref: "#/components/responses/Error"
+
+  /v1/agents/{id}/memory:
+    parameters:
+      - $ref: "#/components/parameters/Id"
+    get:
+      summary: List this agent's curated facts
+      description: |
+        `{ facts: string[] }` from the same v0.36
+        `~/.snorlax-bot/memory/{agentId}/MEMORY.md` that remember /
+        forget already use. Cap 32. Empty list is 200 `{ facts: [] }`.
+        kind=channel is **409**. Missing agent is 404. Isolation: A
+        never lists B. No Add / POST. Creating facts stays the
+        remember tool. Chrome is the agent identity pane only.
+      operationId: getMemory
+      responses:
+        "200":
+          description: AgentMemory `{ facts }`
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgentMemory"
+        "401":
+          $ref: "#/components/responses/Error"
+        "404":
+          $ref: "#/components/responses/Error"
+        "409":
+          $ref: "#/components/responses/Error"
+    delete:
+      summary: Forget one fact (exact, then casefold)
+      description: |
+        `DELETE /v1/agents/{id}/memory` `{ fact }` wraps
+        `forget_fact` against that agent's MEMORY.md → **204**, gone
+        from GET. Exact recorded text first; casefold fallback like
+        v0.36 forget. Unknown fact is **404** `Error: no matching
+        fact`. Empty / missing fact is **422** `Error: missing fact`.
+        kind=channel is **409**. Missing agent is 404. Confirm chrome
+        is `Remove {fact}?`. Does not paint a chat bubble.
+      operationId: deleteMemory
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MemoryForget"
+      responses:
+        "204":
+          description: Forgot; no body
+        "401":
+          $ref: "#/components/responses/Error"
+        "404":
+          $ref: "#/components/responses/Error"
+        "409":
+          $ref: "#/components/responses/Error"
+        "422":
           $ref: "#/components/responses/Error"
 
   /v1/agents/{id}/workspace:
@@ -2906,6 +2983,27 @@ components:
           minLength: 1
           description: |
             Full SKILL.md source (YAML frontmatter plus recipe). Empty is 422.
+
+    AgentMemory:
+      type: object
+      required: [facts]
+      properties:
+        facts:
+          type: array
+          items:
+            type: string
+          description: |
+            Curated sentences from MEMORY.md (cap 32). Same list
+            remember / forget persist. Empty is `[]`.
+
+    MemoryForget:
+      type: object
+      required: [fact]
+      properties:
+        fact:
+          type: string
+          description: |
+            Exact recorded text (casefold fallback). Empty is 422.
 
     Plugin:
       type: object

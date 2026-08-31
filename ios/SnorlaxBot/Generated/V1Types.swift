@@ -1336,6 +1336,46 @@ struct SkillPatch: Codable, Hashable, Sendable {
     }
 }
 
+struct AgentMemory: Codable, Hashable, Sendable {
+    var facts: [String]
+
+    init(facts: [String]) {
+        self.facts = facts
+    }
+
+    enum CodingKeys: String, CodingKey { case facts }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        facts = try container.decode([String].self, forKey: .facts)
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(facts, forKey: .facts)
+    }
+}
+
+struct MemoryForget: Codable, Hashable, Sendable {
+    var fact: String
+
+    init(fact: String) {
+        self.fact = fact
+    }
+
+    enum CodingKeys: String, CodingKey { case fact }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        fact = try container.decode(String.self, forKey: .fact)
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(fact, forKey: .fact)
+    }
+}
+
 struct Plugin: Codable, Hashable, Identifiable, Sendable {
     enum Status: String, Codable, Hashable, Sendable {
         case connected

@@ -409,3 +409,104 @@ async def test_forget_fact_helper_exact_then_gone(tmp_path: Path) -> None:
         assert forget_fact(tmp_path, SEED, FACT) == ERR_NO_MATCH
     finally:
         await store.close()
+
+
+def test_get_memory_lists_facts_empty_is_array(client, tmp_path: Path) -> None:
+    empty = client.get(f"/v1/agents/{SEED}/memory", headers=AUTH)
+    assert empty.status_code == 200
+    assert empty.json() == {"facts": []}
+    remember_fact(tmp_path, SEED, FACT)
+    remember_fact(tmp_path, SEED, OTHER)
+    listed = client.get(f"/v1/agents/{SEED}/memory", headers=AUTH)
+    assert listed.status_code == 200
+    assert listed.json() == {"facts": [FACT, OTHER]}
+
+
+def test_delete_memory_wraps_exact_forget(client, tmp_path: Path) -> None:
+    remember_fact(tmp_path, SEED, FACT)
+    remember_fact(tmp_path, SEED, OTHER)
+    deleted = client.request(
+        "DELETE",
+        f"/v1/agents/{SEED}/memory",
+        headers=AUTH,
+        json={"fact": FACT},
+    )
+    assert deleted.status_code == 204
+    assert load_facts(tmp_path, SEED) == [OTHER]
+    listed = client.get(f"/v1/agents/{SEED}/memory", headers=AUTH)
+    assert listed.json() == {"facts": [OTHER]}
+
+
+def test_delete_memory_casefold_then_unknown_is_404(
+    client, tmp_path: Path
+) -> None:
+    remember_fact(tmp_path, SEED, FACT)
+    folded = client.request(
+        "DELETE",
+        f"/v1/agents/{SEED}/memory",
+        headers=AUTH,
+        json={"fact": FACT.lower()},
+    )
+    assert folded.status_code == 204
+    assert load_facts(tmp_path, SEED) == []
+    missing = client.request(
+        "DELETE",
+        f"/v1/agents/{SEED}/memory",
+        headers=AUTH,
+        json={"fact": FACT},
+    )
+    assert missing.status_code == 404
+    assert missing.json()["error"] == ERR_NO_MATCH
+
+
+def test_delete_memory_empty_fact_is_422(client) -> None:
+    blank = client.request(
+        "DELETE",
+        f"/v1/agents/{SEED}/memory",
+        headers=AUTH,
+        json={"fact": "  "},
+    )
+    assert blank.status_code == 422
+    assert blank.json()["error"] == ERR_MISSING_FACT
+
+
+def test_memory_http_is_isolated_and_channel_is_409(
+    client, tmp_path: Path
+) -> None:
+    alice = client.post("/v1/agents", headers=AUTH, json={"name": "Alice"}).json()
+    bob = client.post("/v1/agents", headers=AUTH, json={"name": "Bob"}).json()
+    remember_fact(tmp_path, alice["id"], FACT)
+    remember_fact(tmp_path, bob["id"], "Bob only: ship Friday.")
+    alice_list = client.get(f"/v1/agents/{alice['id']}/memory", headers=AUTH)
+    bob_list = client.get(f"/v1/agents/{bob['id']}/memory", headers=AUTH)
+    seed_list = client.get(f"/v1/agents/{SEED}/memory", headers=AUTH)
+    assert alice_list.json() == {"facts": [FACT]}
+    assert bob_list.json() == {"facts": ["Bob only: ship Friday."]}
+    assert seed_list.json() == {"facts": []}
+    dropped = client.request(
+        "DELETE",
+        f"/v1/agents/{alice['id']}/memory",
+        headers=AUTH,
+        json={"fact": FACT},
+    )
+    assert dropped.status_code == 204
+    assert load_facts(tmp_path, alice["id"]) == []
+    assert load_facts(tmp_path, bob["id"]) == ["Bob only: ship Friday."]
+    channel_get = client.get(f"/v1/agents/{CHANNEL}/memory", headers=AUTH)
+    assert channel_get.status_code == 409
+    channel_del = client.request(
+        "DELETE",
+        f"/v1/agents/{CHANNEL}/memory",
+        headers=AUTH,
+        json={"fact": FACT},
+    )
+    assert channel_del.status_code == 409
+    missing_agent = client.get("/v1/agents/no-such/memory", headers=AUTH)
+    assert missing_agent.status_code == 404
+    missing_del = client.request(
+        "DELETE",
+        "/v1/agents/no-such/memory",
+        headers=AUTH,
+        json={"fact": FACT},
+    )
+    assert missing_del.status_code == 404

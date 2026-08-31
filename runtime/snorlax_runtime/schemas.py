@@ -490,6 +490,18 @@ class SkillPatch(BaseModel):
         return text
 
 
+class AgentMemory(BaseModel):
+    """GET /v1/agents/{id}/memory. Same facts remember/forget persist."""
+
+    facts: list[str]
+
+
+class MemoryForget(BaseModel):
+    """DELETE /v1/agents/{id}/memory. Exact forget (casefold fallback)."""
+
+    fact: str
+
+
 class Plugin(BaseModel):
     id: str
     name: str

@@ -21,9 +21,11 @@ import {
   createRoutine,
   createSkill,
   deleteAgent,
+  deleteMemory,
   deletePlugin,
   deleteRoutine,
   deleteSkill,
+  getMemory,
   getSkill,
   listAgents,
   listMessages,
@@ -74,8 +76,10 @@ import {
   routineMutedLine,
   routineRemoveConfirm,
   skillRemoveConfirm,
+  memoryRemoveConfirm,
   EDIT_SKILL_TITLE,
   ADD_SKILL_TITLE,
+  EMPTY_MEMORY,
   SHARED_PROJECT_HINT,
   showsWebhookCopy,
   visiblePaneRoutines,
@@ -406,6 +410,28 @@ function AgentSkillRow({
   );
 }
 
+function AgentMemoryRow({
+  fact,
+  onRemove,
+}: {
+  fact: string;
+  onRemove: (fact: string) => void;
+}) {
+  return (
+    <div className="info-memory-row">
+      <p className="info-memory-fact">{fact}</p>
+      <button
+        type="button"
+        className="info-memory-remove"
+        aria-label={`Remove ${fact}`}
+        onClick={() => onRemove(fact)}
+      >
+        Remove
+      </button>
+    </div>
+  );
+}
+
 export function App() {
   const [urlInput, setUrlInput] = useState(initialUrl);
   const [tokenInput, setTokenInput] = useState(initialToken);
@@ -482,6 +508,10 @@ export function App() {
   const [pendingRoutineRemove, setPendingRoutineRemove] =
     useState<Routine | null>(null);
   const [pendingSkillRemove, setPendingSkillRemove] = useState<Skill | null>(
+    null,
+  );
+  const [memories, setMemories] = useState<string[]>([]);
+  const [pendingMemoryRemove, setPendingMemoryRemove] = useState<string | null>(
     null,
   );
   const [skillEditOpen, setSkillEditOpen] = useState(false);
@@ -951,8 +981,10 @@ export function App() {
     void loadRoutines(agent);
     if (agent.kind === "channel") {
       setRoutineSkills([]);
+      setMemories([]);
     } else {
       void loadSkills(agent.id);
+      void loadMemory(agent.id);
     }
   }
 
@@ -979,6 +1011,18 @@ export function App() {
       setRoutineSkills(await listSkills(session, agentId));
     } catch {
       setRoutineSkills([]);
+    }
+  }
+
+  async function loadMemory(agentId: string) {
+    if (!session) {
+      setMemories([]);
+      return;
+    }
+    try {
+      setMemories(await getMemory(session, agentId));
+    } catch {
+      setMemories([]);
     }
   }
 
@@ -1140,6 +1184,18 @@ export function App() {
     try {
       await deleteSkill(session, active.id, id);
       setRoutineSkills((prev) => prev.filter((row) => row.id !== id));
+    } catch (err) {
+      setComposerError(describeError(err));
+    }
+  }
+
+  async function confirmMemoryRemove() {
+    if (!session || !active || !pendingMemoryRemove) return;
+    const fact = pendingMemoryRemove;
+    setPendingMemoryRemove(null);
+    try {
+      await deleteMemory(session, active.id, fact);
+      setMemories((prev) => prev.filter((row) => row !== fact));
     } catch (err) {
       setComposerError(describeError(err));
     }
@@ -2725,6 +2781,22 @@ export function App() {
                 ))
               )}
             </section>
+            <section className="info-memory" aria-label="Memory">
+              <div className="info-memory-head">
+                <p className="info-memory-header">Memory</p>
+              </div>
+              {memories.length === 0 ? (
+                <p className="info-memory-empty">{EMPTY_MEMORY}</p>
+              ) : (
+                memories.map((fact) => (
+                  <AgentMemoryRow
+                    key={fact}
+                    fact={fact}
+                    onRemove={(row) => setPendingMemoryRemove(row)}
+                  />
+                ))
+              )}
+            </section>
             </>
           )}
         </aside>
@@ -3323,6 +3395,37 @@ export function App() {
                 type="button"
                 className="danger-fill"
                 onClick={() => void confirmSkillRemove()}
+              >
+                Remove
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {pendingMemoryRemove ? (
+        <div
+          className="modal-backdrop plugin-sheet"
+          onClick={() => setPendingMemoryRemove(null)}
+        >
+          <div
+            className="modal confirm"
+            role="dialog"
+            aria-label="Confirm remove memory"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <p>{memoryRemoveConfirm(pendingMemoryRemove)}</p>
+            <div className="confirm-actions">
+              <button
+                type="button"
+                onClick={() => setPendingMemoryRemove(null)}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="danger-fill"
+                onClick={() => void confirmMemoryRemove()}
               >
                 Remove
               </button>

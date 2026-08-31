@@ -28,7 +28,7 @@ def can_add(name: str, body: str) -> bool:
 
 def test_header_add_shows_when_empty() -> None:
     skills = SHEET[
-        SHEET.index("private var skillsList") : SHEET.index("private var channelPane")
+        SHEET.index("private var skillsList") : SHEET.index("private var memoryList")
     ]
     assert 'Text("Skills")' in skills
     assert 'Button("Add")' in skills

@@ -57,6 +57,7 @@ final class AppModel {
     var showProfile = false
     var routines: [Routine] = []
     var skills: [Skill] = []
+    var memories: [String] = []
     var composerSkills: [Skill] = []
     var skillPickerDismissed = false
     var plugins: [Plugin] = []
@@ -318,6 +319,22 @@ final class AppModel {
             skills = try await client.listSkills(agentId: agentId)
         } catch {
             skills = []
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    func loadMemories(for agentId: String) async {
+        guard let client,
+              let agent = agents.first(where: { $0.id == agentId }),
+              !agent.isChannel
+        else {
+            memories = []
+            return
+        }
+        do {
+            memories = try await client.listMemory(agentId: agentId).facts
+        } catch {
+            memories = []
             errorMessage = error.localizedDescription
         }
     }
@@ -599,6 +616,16 @@ final class AppModel {
         do {
             try await client.deleteSkill(agentId: agentId, skillId: id)
             skills.removeAll { $0.id == id }
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    func removeMemory(agentId: String, fact: String) async {
+        guard let client else { return }
+        do {
+            try await client.forgetMemory(agentId: agentId, fact: fact)
+            memories.removeAll { $0 == fact }
         } catch {
             errorMessage = error.localizedDescription
         }

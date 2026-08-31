@@ -134,6 +134,12 @@ export function skillRemoveConfirm(name: string): string {
   return `Remove ${name}?`;
 }
 
+export const EMPTY_MEMORY = "No memories yet.";
+
+export function memoryRemoveConfirm(fact: string): string {
+  return `Remove ${fact}?`;
+}
+
 export function canSubmitSkill(draft: { name: string; body: string }): boolean {
   return Boolean(draft.name.trim() && draft.body.trim());
 }

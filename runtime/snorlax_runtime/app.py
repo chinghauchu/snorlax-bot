@@ -31,6 +31,7 @@ from snorlax_runtime.computer import (
 from snorlax_runtime.schemas import (
     Agent,
     AgentCreate,
+    AgentMemory,
     AgentPatch,
     Attachment,
     ComputerPreview,
@@ -38,6 +39,7 @@ from snorlax_runtime.schemas import (
     ComputerSession,
     Health,
     KeyEvent,
+    MemoryForget,
     PointerEvent,
     Message,
     MessageCreate,
@@ -75,7 +77,13 @@ from snorlax_runtime.mcp import (
     start_mcp,
     stop_mcp,
 )
-from snorlax_runtime.memory import drop_memory
+from snorlax_runtime.memory import (
+    ERR_MISSING_FACT,
+    ERR_NO_MATCH,
+    drop_memory,
+    forget_fact,
+    load_facts,
+)
 from snorlax_runtime.tools import (
     BinaryFileError,
     PathJailError,
@@ -936,6 +944,45 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         workspace = workspace_for(store.data_dir, conversation, id)
         if not drop_skill(store.data_dir, workspace, sid):
             raise _error(404, f"Skill {sid!r} not found")
+        return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+    @app.get("/v1/agents/{id}/memory", response_model=AgentMemory)
+    async def get_memory(
+        id: str, request: Request, _: str = Depends(require_bearer)
+    ) -> AgentMemory:
+        store: Store = request.app.state.store
+        conversation = await store.get_agent(id)
+        _require_agent(
+            conversation,
+            id,
+            channel_status=409,
+            reason="memory is assigned to an agent",
+        )
+        return AgentMemory(facts=load_facts(store.data_dir, id))
+
+    @app.delete(
+        "/v1/agents/{id}/memory",
+        status_code=status.HTTP_204_NO_CONTENT,
+    )
+    async def delete_memory(
+        id: str,
+        payload: MemoryForget,
+        request: Request,
+        _: str = Depends(require_bearer),
+    ) -> Response:
+        store: Store = request.app.state.store
+        conversation = await store.get_agent(id)
+        _require_agent(
+            conversation,
+            id,
+            channel_status=409,
+            reason="memory is assigned to an agent",
+        )
+        result = forget_fact(store.data_dir, id, payload.fact)
+        if result == ERR_MISSING_FACT:
+            raise _error(422, result)
+        if result == ERR_NO_MATCH:
+            raise _error(404, result)
         return Response(status_code=status.HTTP_204_NO_CONTENT)
 
     @app.get("/v1/agents/{id}/workspace", response_model=WorkspaceListing)

@@ -471,6 +471,43 @@ export interface paths {
         patch: operations["patchSkill"];
         trace?: never;
     };
+    "/v1/agents/{id}/memory": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["Id"];
+            };
+            cookie?: never;
+        };
+        /**
+         * List this agent's curated facts
+         * @description `{ facts: string[] }` from the same v0.36
+         *     `~/.snorlax-bot/memory/{agentId}/MEMORY.md` that remember /
+         *     forget already use. Cap 32. Empty list is 200 `{ facts: [] }`.
+         *     kind=channel is **409**. Missing agent is 404. Isolation: A
+         *     never lists B. No Add / POST. Creating facts stays the
+         *     remember tool. Chrome is the agent identity pane only.
+         */
+        get: operations["getMemory"];
+        put?: never;
+        post?: never;
+        /**
+         * Forget one fact (exact, then casefold)
+         * @description `DELETE /v1/agents/{id}/memory` `{ fact }` wraps
+         *     `forget_fact` against that agent's MEMORY.md → **204**, gone
+         *     from GET. Exact recorded text first; casefold fallback like
+         *     v0.36 forget. Unknown fact is **404** `Error: no matching
+         *     fact`. Empty / missing fact is **422** `Error: missing fact`.
+         *     kind=channel is **409**. Missing agent is 404. Confirm chrome
+         *     is `Remove {fact}?`. Does not paint a chat bubble.
+         */
+        delete: operations["deleteMemory"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/agents/{id}/workspace": {
         parameters: {
             query?: never;
@@ -1570,6 +1607,17 @@ export interface components {
             /** @description Full SKILL.md source (YAML frontmatter plus recipe). Empty is 422. */
             body: string;
         };
+        AgentMemory: {
+            /**
+             * @description Curated sentences from MEMORY.md (cap 32). Same list
+             *     remember / forget persist. Empty is `[]`.
+             */
+            facts: string[];
+        };
+        MemoryForget: {
+            /** @description Exact recorded text (casefold fallback). Empty is 422. */
+            fact: string;
+        };
         Plugin: {
             id: string;
             name: string;
@@ -2135,6 +2183,59 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["SkillBody"];
                 };
+            };
+            401: components["responses"]["Error"];
+            404: components["responses"]["Error"];
+            409: components["responses"]["Error"];
+            422: components["responses"]["Error"];
+        };
+    };
+    getMemory: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["Id"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description AgentMemory `{ facts }` */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgentMemory"];
+                };
+            };
+            401: components["responses"]["Error"];
+            404: components["responses"]["Error"];
+            409: components["responses"]["Error"];
+        };
+    };
+    deleteMemory: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["Id"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MemoryForget"];
+            };
+        };
+        responses: {
+            /** @description Forgot; no body */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             401: components["responses"]["Error"];
             404: components["responses"]["Error"];

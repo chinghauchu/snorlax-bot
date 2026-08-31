@@ -527,6 +527,71 @@ test("skills list is 44px rows with trailing Add, Edit then Remove, New skill sh
   assert.doesNotMatch(recordSave, /body:/);
 });
 
+test("memory list is below Skills, 44px wrapping rows, no Add, Remove confirm", () => {
+  const header = block(".info-memory-header");
+  const row = block(".info-memory-row");
+  const fact = block(".info-memory-fact");
+  const remove = block(".info-memory-remove");
+  const empty = block(".info-memory-empty");
+  assert.match(header, /font-size:\s*12px/);
+  assert.match(header, /color:\s*var\(--text-muted\)/);
+  assert.match(row, /min-height:\s*44px/);
+  assert.match(fact, /font-size:\s*14px/);
+  assert.match(fact, /overflow-wrap:\s*anywhere/);
+  assert.match(remove, /font-size:\s*12px/);
+  assert.match(remove, /color:\s*var\(--text-muted\)/);
+  assert.match(empty, /font-size:\s*12px/);
+  assert.match(empty, /color:\s*var\(--text-muted\)/);
+
+  const app = readFileSync(
+    join(dirname(fileURLToPath(import.meta.url)), "App.tsx"),
+    "utf8",
+  );
+  const infoPane = readFileSync(
+    join(dirname(fileURLToPath(import.meta.url)), "infoPane.ts"),
+    "utf8",
+  );
+  const api = readFileSync(
+    join(dirname(fileURLToPath(import.meta.url)), "api.ts"),
+    "utf8",
+  );
+  const pane = app.slice(
+    app.indexOf("info-identity"),
+    app.indexOf("<ComputerPane"),
+  );
+  assert.ok(pane.indexOf("info-skills") < pane.indexOf("info-memory"));
+  assert.match(pane, /info-memory/);
+  assert.match(pane, /AgentMemoryRow/);
+  assert.match(pane, /EMPTY_MEMORY/);
+  const memorySrc = pane.slice(pane.indexOf("info-memory"));
+  assert.doesNotMatch(memorySrc, /info-memory-add/);
+  assert.doesNotMatch(memorySrc, />\s*Add\s*</);
+  assert.doesNotMatch(memorySrc, /info-skill-add/);
+  assert.match(app, /memoryRemoveConfirm/);
+  assert.match(app, /getMemory/);
+  assert.match(app, /deleteMemory/);
+  assert.match(app, /pendingMemoryRemove/);
+  assert.match(infoPane, /No memories yet\./);
+  assert.match(infoPane, /Remove \$\{fact\}\?/);
+  const memoryRow = app.slice(
+    app.indexOf("function AgentMemoryRow"),
+    app.indexOf("export function App"),
+  );
+  assert.match(memoryRow, /info-memory-fact/);
+  assert.match(memoryRow, /info-memory-remove/);
+  assert.doesNotMatch(memoryRow, /info-skill-edit/);
+  assert.doesNotMatch(memoryRow, /avatar/);
+  assert.match(api, /\/memory/);
+  assert.match(api, /method: "DELETE"/);
+  const channelSlice = app.slice(
+    app.indexOf('className="info-muted">Channel'),
+    app.indexOf("profileEditing ?"),
+  );
+  assert.doesNotMatch(channelSlice, /info-memory/);
+  assert.doesNotMatch(channelSlice, /getMemory/);
+  assert.doesNotMatch(app, /computerPane\.ts/);
+});
+
 test("composer slash skill picker reuses @ typeahead: 240px, 8px radius, 36px rows", () => {
   const list = block(".typeahead");
   const skills = block(".typeahead.skills");

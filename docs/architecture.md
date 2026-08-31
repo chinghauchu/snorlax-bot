@@ -488,6 +488,12 @@ B; channels have no store — a channel turn writes the speaker's file
 kind=tool line. OpenAPI stays 0.18.0. Never reintroduce
 `computerPane.ts`.
 
+v0.37: memory pane on the agent identity overlay. `GET /v1/agents/{id}/memory`
+`{ facts }` and `DELETE` `{ fact }` wrap the v0.36 file (exact forget,
+casefold fallback). Channel 409. Agent pane lists facts with Remove
+(`Remove {fact}?`). Channel pane unchanged. Empty `No memories yet.`
+OpenAPI stays 0.18.0. Never reintroduce `computerPane.ts`.
+
 ## Inference interface
 
 ```text

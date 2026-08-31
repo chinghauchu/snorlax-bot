@@ -180,6 +180,12 @@ writes the speaker's file. DELETE agent drops the dir. Seed SKILL.md
 `memory` maps 记住 → remember and 忘掉 → forget (missing-file only).
 No new routes. OpenAPI stays 0.18.0.
 
+v0.37: memory pane. `GET /v1/agents/{id}/memory` `{ facts }` lists the
+same file remember/forget already use. `DELETE` `{ fact }` wraps
+`forget_fact` (exact, then casefold) → 204. Unknown is 404
+`Error: no matching fact`. Empty is 422 `Error: missing fact`. Channel
+is 409. No POST. OpenAPI stays 0.18.0.
+
 ## MCP (`mcp.json`)
 
 The runtime is the MCP client. Desktop and iOS never speak MCP. Put
