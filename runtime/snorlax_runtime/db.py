@@ -32,6 +32,16 @@ from snorlax_runtime.handoff import format_brief
 ISO = "%Y-%m-%dT%H:%M:%S.%fZ"
 DB_FILENAME = "snorlax.db"
 
+# Always in TOOLS_PREAMBLE and the offered tool list. Skills teach
+# 项目 / 员工 / 定时 keywords; these tools are not skill-gated.
+ALWAYS_PREAMBLE_TOOLS = (
+    "create_agent",
+    "create_channel",
+    "create_routine",
+    "pause_routine",
+    "delete_routine",
+)
+
 TOOLS_PREAMBLE = (
     "You have built-in tools (list_dir, read_file, write_file, delete_file, "
     "shell, web_search, web_fetch, watch_video, create_agent, create_channel, "
@@ -221,6 +231,7 @@ class Store:
         await self._conn.commit()
         await self._seed()
         await self._seed_skills()
+        await self._backfill_agent_seed_skills()
 
     async def close(self) -> None:
         if self._conn is not None:
@@ -353,6 +364,15 @@ class Store:
             write_seed_skill(self.data_dir, "routines")
             await self._set_meta_flag(ROUTINES_SKILL_SEEDED_KEY)
         await self.conn.commit()
+
+    async def _backfill_agent_seed_skills(self) -> None:
+        """Copy teammates + routines SKILL.md into each kind=agent workspace.
+
+        Missing-file only. Channels get none. Seed snorlax-bot is included.
+        """
+        from snorlax_runtime.skills import backfill_seed_skills
+
+        backfill_seed_skills(self.data_dir, await self._all_agent_ids())
 
     async def _seed(self) -> None:
         """Insert seed agent + channel only on first empty DB. Never auto-reseed.
@@ -505,6 +525,9 @@ class Store:
         await self.conn.commit()
         agent = await self.get_agent(agent_id)
         assert agent is not None
+        from snorlax_runtime.skills import copy_seed_skills_into_agent
+
+        copy_seed_skills_into_agent(self.data_dir, agent_id)
         return agent
 
     async def create_channel(

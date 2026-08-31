@@ -19,6 +19,10 @@ def without_seed_skills(rows: list) -> list:
     return [row for row in rows if row.get("id") not in SEED_SKILL_IDS]
 
 
+def without_seed_skill_dirs(names: set[str]) -> set[str]:
+    return set(names) - SEED_SKILL_IDS
+
+
 def skill_md_files(root) -> list:
     from pathlib import Path
 

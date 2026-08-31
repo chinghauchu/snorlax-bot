@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 from snorlax_runtime.tools import MAX_FILE_BYTES, pane_workspace
-from tests.conftest import AUTH
+from tests.conftest import AUTH, without_seed_skill_dirs
 from tests.test_tools import _send
 
 CHANNEL = "snorlax-bot-group"
@@ -15,8 +15,9 @@ def test_empty_workspace_lists_no_fake_files(client, tmp_path) -> None:
     body = response.json()
     assert body["root"] == f"workspaces/agents/{SEED}"
     assert body["path"] == "."
-    assert body["entries"] == []
-    assert not (tmp_path / "workspaces" / "agents" / SEED).exists()
+    names = {row["name"] for row in body["entries"]}
+    assert without_seed_skill_dirs(names) == set()
+    assert names == {"teammates", "routines"}
     assert "projectPath" not in body
     assert "folderPath" not in body
     assert not body["root"].startswith("/")
@@ -25,7 +26,7 @@ def test_empty_workspace_lists_no_fake_files(client, tmp_path) -> None:
 
 def test_list_and_read_text_file(client, tmp_path) -> None:
     root = tmp_path / "workspaces" / "agents" / SEED
-    (root / "src").mkdir(parents=True)
+    (root / "src").mkdir(parents=True, exist_ok=True)
     (root / "README.md").write_text("# hi\n", encoding="utf-8")
     (root / "src" / "app.py").write_text('print("ok")\n', encoding="utf-8")
 
@@ -69,7 +70,7 @@ def test_path_jail_rejects_escape(client, tmp_path) -> None:
     secret = tmp_path / "secret.txt"
     secret.write_text("leaked", encoding="utf-8")
     root = tmp_path / "workspaces" / "agents" / SEED
-    root.mkdir(parents=True)
+    root.mkdir(parents=True, exist_ok=True)
     (root / "ok.txt").write_text("in", encoding="utf-8")
 
     for params in (
@@ -93,7 +94,7 @@ def test_path_jail_rejects_escape(client, tmp_path) -> None:
 
 def test_missing_path_is_404(client, tmp_path) -> None:
     root = tmp_path / "workspaces" / "agents" / SEED
-    root.mkdir(parents=True)
+    root.mkdir(parents=True, exist_ok=True)
     missing_dir = client.get(
         f"/v1/agents/{SEED}/workspace",
         headers=AUTH,
@@ -118,7 +119,7 @@ def test_missing_path_is_404(client, tmp_path) -> None:
 
 def test_binary_file_is_422_not_hex(client, tmp_path) -> None:
     root = tmp_path / "workspaces" / "agents" / SEED
-    root.mkdir(parents=True)
+    root.mkdir(parents=True, exist_ok=True)
     (root / "blob.bin").write_bytes(b"\x00\xff\xfe binary")
     response = client.get(
         f"/v1/agents/{SEED}/workspace/file",
@@ -133,7 +134,7 @@ def test_binary_file_is_422_not_hex(client, tmp_path) -> None:
 
 def test_oversize_text_is_truncated(client, tmp_path) -> None:
     root = tmp_path / "workspaces" / "agents" / SEED
-    root.mkdir(parents=True)
+    root.mkdir(parents=True, exist_ok=True)
     payload = "a" * (MAX_FILE_BYTES + 80)
     (root / "big.txt").write_text(payload, encoding="utf-8")
     response = client.get(
@@ -165,21 +166,23 @@ def test_one_to_one_pane_is_isolated(client, tmp_path) -> None:
     other = client.post("/v1/agents", headers=AUTH, json={"name": "Other"}).json()
     seed_root = tmp_path / "workspaces" / "agents" / SEED
     other_root = tmp_path / "workspaces" / "agents" / other["id"]
-    seed_root.mkdir(parents=True)
-    other_root.mkdir(parents=True)
+    seed_root.mkdir(parents=True, exist_ok=True)
+    other_root.mkdir(parents=True, exist_ok=True)
     (seed_root / "private.txt").write_text("seed-only", encoding="utf-8")
     (other_root / "other.txt").write_text("other-only", encoding="utf-8")
 
     seed_list = client.get(f"/v1/agents/{SEED}/workspace", headers=AUTH).json()
     seed_names = {row["name"] for row in seed_list["entries"]}
-    assert seed_names == {"private.txt"}
+    assert without_seed_skill_dirs(seed_names) == {"private.txt"}
+    assert "other.txt" not in seed_names
     assert seed_list["root"] == f"workspaces/agents/{SEED}"
 
     other_list = client.get(
         f"/v1/agents/{other['id']}/workspace", headers=AUTH
     ).json()
     other_names = {row["name"] for row in other_list["entries"]}
-    assert other_names == {"other.txt"}
+    assert without_seed_skill_dirs(other_names) == {"other.txt"}
+    assert "private.txt" not in other_names
     assert other_list["root"] == f"workspaces/agents/{other['id']}"
 
     leaked = client.get(
@@ -199,8 +202,8 @@ def test_shared_project_channel_root_not_one_to_one(client, tmp_path) -> None:
     assert patched.status_code == 200
     channel_root = tmp_path / "workspaces" / "channels" / CHANNEL
     agent_root = tmp_path / "workspaces" / "agents" / SEED
-    channel_root.mkdir(parents=True)
-    agent_root.mkdir(parents=True)
+    channel_root.mkdir(parents=True, exist_ok=True)
+    agent_root.mkdir(parents=True, exist_ok=True)
     (channel_root / "shared.py").write_text("chan", encoding="utf-8")
     (agent_root / "private.py").write_text("solo", encoding="utf-8")
 
@@ -212,7 +215,9 @@ def test_shared_project_channel_root_not_one_to_one(client, tmp_path) -> None:
 
     agent_list = client.get(f"/v1/agents/{SEED}/workspace", headers=AUTH).json()
     assert agent_list["root"] == f"workspaces/agents/{SEED}"
-    assert {row["name"] for row in agent_list["entries"]} == {"private.py"}
+    assert without_seed_skill_dirs(
+        {row["name"] for row in agent_list["entries"]}
+    ) == {"private.py"}
 
     # B's channel workspace is not painted inside A's 1:1 pane.
     missing = client.get(
@@ -228,14 +233,16 @@ def test_channel_shared_project_off_uses_first_member_workspace(
 ) -> None:
     seed_root = tmp_path / "workspaces" / "agents" / SEED
     channel_root = tmp_path / "workspaces" / "channels" / CHANNEL
-    seed_root.mkdir(parents=True)
-    channel_root.mkdir(parents=True)
+    seed_root.mkdir(parents=True, exist_ok=True)
+    channel_root.mkdir(parents=True, exist_ok=True)
     (seed_root / "member.py").write_text("first", encoding="utf-8")
     (channel_root / "ignored.py").write_text("chan", encoding="utf-8")
 
     listed = client.get(f"/v1/agents/{CHANNEL}/workspace", headers=AUTH).json()
     assert listed["root"] == f"workspaces/agents/{SEED}"
-    assert {row["name"] for row in listed["entries"]} == {"member.py"}
+    assert without_seed_skill_dirs(
+        {row["name"] for row in listed["entries"]}
+    ) == {"member.py"}
 
     read = client.get(
         f"/v1/agents/{CHANNEL}/workspace/file",
@@ -289,7 +296,7 @@ def test_write_file_round_is_visible_on_get(client, tmp_path) -> None:
 
 def test_read_directory_is_422(client, tmp_path) -> None:
     root = tmp_path / "workspaces" / "agents" / SEED
-    (root / "src").mkdir(parents=True)
+    (root / "src").mkdir(parents=True, exist_ok=True)
     response = client.get(
         f"/v1/agents/{SEED}/workspace/file",
         headers=AUTH,
@@ -301,7 +308,7 @@ def test_read_directory_is_422(client, tmp_path) -> None:
 
 def test_list_file_path_is_422(client, tmp_path) -> None:
     root = tmp_path / "workspaces" / "agents" / SEED
-    root.mkdir(parents=True)
+    root.mkdir(parents=True, exist_ok=True)
     (root / "a.txt").write_text("x", encoding="utf-8")
     response = client.get(
         f"/v1/agents/{SEED}/workspace",

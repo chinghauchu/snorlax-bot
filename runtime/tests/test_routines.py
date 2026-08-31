@@ -71,7 +71,7 @@ def test_skill_load_from_skills_dir_and_workspace(client, tmp_path: Path) -> Non
     store = client.app.state.store
     _write_status_skill(tmp_path)
     workspace = tmp_path / "workspaces" / "agents" / SEED
-    workspace.mkdir(parents=True)
+    workspace.mkdir(parents=True, exist_ok=True)
     (workspace / "SKILL.md").write_text(WORKSPACE_SKILL, encoding="utf-8")
 
     loaded = load_skills(store.data_dir, workspace)
@@ -193,7 +193,7 @@ def test_b_routine_never_appears_in_a_one_to_one(client, tmp_path: Path) -> None
     ).json()
     other_id = other["id"]
     workspace = tmp_path / "workspaces" / "agents" / other_id
-    workspace.mkdir(parents=True)
+    workspace.mkdir(parents=True, exist_ok=True)
     client.post(
         f"/v1/agents/{other_id}/routines",
         headers=AUTH,
@@ -384,7 +384,7 @@ def test_missing_agent_delete_routine_is_404(client) -> None:
 
 def test_post_workspace_skill_is_201(client, tmp_path: Path) -> None:
     workspace = tmp_path / "workspaces" / "agents" / SEED
-    workspace.mkdir(parents=True)
+    workspace.mkdir(parents=True, exist_ok=True)
     (workspace / "SKILL.md").write_text(WORKSPACE_SKILL, encoding="utf-8")
     created = client.post(
         f"/v1/agents/{SEED}/routines",

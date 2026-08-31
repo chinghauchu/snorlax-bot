@@ -115,6 +115,47 @@ def write_seed_skills(data_dir: Path) -> None:
         write_seed_skill(data_dir, slug)
 
 
+def _agent_workspace(data_dir: Path, agent_id: str) -> Path:
+    return data_dir / "workspaces" / "agents" / agent_id
+
+
+def seed_skill_files(data_dir: Path) -> list[tuple[str, Path]]:
+    """The two seed SKILL.md files: teammates (项目/员工) and routines (定时/提醒).
+
+    Source is ``SNORLAX_DATA_DIR/skills/<slug>/SKILL.md``. Missing files are
+    skipped (user DELETE of that skill is not recreated).
+    """
+    out: list[tuple[str, Path]] = []
+    for slug in SEED_SKILL_MARKDOWN:
+        path = skills_dir(data_dir) / slug / SKILL_FILENAME
+        if path.is_file():
+            out.append((slug, path))
+    return out
+
+
+def copy_seed_skills_into_agent(data_dir: Path, agent_id: str) -> None:
+    """Copy teammates + routines SKILL.md into ``workspaces/agents/{id}/``.
+
+    Missing-file only; never overwrite. kind=agent only — callers skip
+    channels. Same names/bodies as the seed files.
+    """
+    if not agent_id or not re.fullmatch(r"[A-Za-z0-9._-]+", agent_id):
+        return
+    dest_root = _agent_workspace(data_dir, agent_id)
+    for slug, src in seed_skill_files(data_dir):
+        dest = dest_root / slug / SKILL_FILENAME
+        if dest.is_file():
+            continue
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(src, dest)
+
+
+def backfill_seed_skills(data_dir: Path, agent_ids: list[str]) -> None:
+    """Startup: any agent workspace missing the two seed files gets them."""
+    for agent_id in agent_ids:
+        copy_seed_skills_into_agent(data_dir, agent_id)
+
+
 def parse_skill_markdown(
     text: str, *, source: str, path: str
 ) -> Skill | None:
