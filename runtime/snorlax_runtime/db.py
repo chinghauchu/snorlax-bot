@@ -78,9 +78,11 @@ TOOLS_PREAMBLE = (
     "ask the user on a question card (Save / Don't, Remove / Keep) before "
     "writing; pause_routine auto-runs. Do not invent a second routine API. "
     "记住 / remember / save this / don't forget is remember { fact } — "
-    "one self-contained sentence, private to you, persisted on disk and "
-    "injected every turn. 忘掉 / forget / erase this is forget { fact } "
-    "by the exact recorded text. Do not invent a second memory API. "
+    "one self-contained sentence persisted on disk and injected every "
+    "turn. Optional scope user writes the shared user store every agent "
+    "injects; omit or scope agent writes this agent's private file. "
+    "忘掉 / forget / erase this is forget { fact } by the exact recorded "
+    "text (same optional scope). Do not invent a second memory API. "
     "Skills are how-to recipes "
     "(SKILL.md) with no trigger of their own — follow a matching skill "
     "when you work. Routines fire a skill on a cron, a webhook, or a "
@@ -523,7 +525,7 @@ class Store:
         base = slugify(name)
         agent_id = base
         n = 2
-        while await self.get_agent(agent_id):
+        while agent_id == USER_SENDER_ID or await self.get_agent(agent_id):
             agent_id = f"{base}-{n}"
             n += 1
         now = utcnow()
@@ -552,7 +554,7 @@ class Store:
         base = slugify(name)
         channel_id = base
         n = 2
-        while await self.get_agent(channel_id):
+        while channel_id == USER_SENDER_ID or await self.get_agent(channel_id):
             channel_id = f"{base}-{n}"
             n += 1
         now = utcnow()

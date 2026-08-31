@@ -491,7 +491,7 @@ class SkillPatch(BaseModel):
 
 
 class AgentMemory(BaseModel):
-    """GET /v1/agents/{id}/memory. Same facts remember/forget persist."""
+    """GET /v1/agents/{id}/memory. This agent's private facts only."""
 
     facts: list[str]
 

@@ -8,9 +8,13 @@ from snorlax_runtime.memory import (
     ERR_FULL,
     ERR_MISSING_FACT,
     ERR_NO_MATCH,
+    ERR_TOO_LONG,
+    MAX_FACT_CHARS,
     MAX_FACTS,
     MEMORY_DIRNAME,
     MEMORY_FILENAME,
+    USER_MEMORY_ID,
+    drop_memory,
     forget_fact,
     load_facts,
     memory_dir,
@@ -25,6 +29,8 @@ SEED = "snorlax-bot"
 CHANNEL = "snorlax-bot-group"
 FACT = "The user's name is Alex."
 OTHER = "They prefer Asia/Taipei."
+USER_FACT = "The human prefers dark mode."
+BOB_FACT = "Bob only: ship Friday."
 
 
 def _send(client, dest: str, content: str, mentions: list[str] | None = None):
@@ -54,17 +60,30 @@ def _tool_dones(events: list[tuple[str, dict]], name: str) -> list[dict]:
 
 
 def test_remember_forget_are_offered() -> None:
-    names = {
-        (row.get("function") or {}).get("name") or ""
+    defs = {
+        (row.get("function") or {}).get("name") or "": row
         for row in offered_tool_definitions()
     }
-    assert "remember" in names
-    assert "forget" in names
+    assert "remember" in defs
+    assert "forget" in defs
+    for name in ("remember", "forget"):
+        props = (defs[name].get("function") or {}).get("parameters", {}).get(
+            "properties", {}
+        )
+        assert "fact" in props
+        assert "scope" in props
+        assert props["scope"].get("enum") == ["user", "agent"]
+        required = (defs[name].get("function") or {}).get("parameters", {}).get(
+            "required", []
+        )
+        assert "fact" in required
+        assert "scope" not in required
     text = tools_preamble()
     assert "remember" in text
     assert "forget" in text
     assert "记住" in text
     assert "忘掉" in text
+    assert "scope user" in text
     for name in ("remember", "forget"):
         assert name in ALWAYS_PREAMBLE_TOOLS
 
@@ -73,6 +92,18 @@ def test_done_summary_remember_forget_never_paints_fact() -> None:
     assert done_summary("remember", {"fact": FACT}, True, "Remembered") == "Remembered"
     assert done_summary("forget", {"fact": FACT}, True, "Forgot") == "Forgot"
     assert FACT not in done_summary("remember", {"fact": FACT}, True, "Remembered")
+    scoped = done_summary(
+        "remember", {"fact": FACT, "scope": "user"}, True, "Remembered"
+    )
+    assert scoped == "Remembered"
+    assert FACT not in scoped
+    assert "user" not in scoped
+    assert "scope" not in scoped
+    forgot_user = done_summary(
+        "forget", {"fact": FACT, "scope": "user"}, True, "Forgot"
+    )
+    assert forgot_user == "Forgot"
+    assert "user" not in forgot_user
     assert (
         done_summary("remember", {"fact": FACT}, False, ERR_MISSING_FACT)
         == "remember failed"
@@ -356,6 +387,7 @@ def test_seed_memory_skill_maps_remember_forget(client, tmp_path: Path) -> None:
     assert "forget" in text
     assert "记住" in text
     assert "忘掉" in text
+    assert "scope" in text
     dest = (
         tmp_path / "workspaces" / "agents" / SEED / SEED_MEMORY_SLUG / SKILL_FILENAME
     )
@@ -510,3 +542,262 @@ def test_memory_http_is_isolated_and_channel_is_409(
         json={"fact": FACT},
     )
     assert missing_del.status_code == 404
+
+
+def test_scope_user_writes_shared_store_not_agent_file(
+    client, tmp_path: Path
+) -> None:
+    status, events = _send(
+        client,
+        SEED,
+        f'SNORLAX_TOOL remember {{"fact": "{USER_FACT}", "scope": "user"}}',
+    )
+    assert status == 200
+    dones = _tool_dones(events, "remember")
+    assert dones
+    assert dones[0]["ok"] is True
+    assert dones[0]["summary"] == "Remembered"
+    assert USER_FACT not in dones[0]["summary"]
+    assert "user" not in dones[0]["summary"]
+    assert "scope" not in dones[0]["summary"]
+    tools = [m for m in _msgs(client, SEED) if m.get("kind") == "tool"]
+    assert tools[-1]["content"] == "Remembered"
+    assert USER_FACT not in tools[-1]["content"]
+    assert load_facts(tmp_path, SEED) == []
+    assert load_facts(tmp_path, USER_MEMORY_ID) == [USER_FACT]
+    path = memory_path(tmp_path, USER_MEMORY_ID)
+    assert path.is_file()
+    assert path == tmp_path / MEMORY_DIRNAME / "user" / MEMORY_FILENAME
+    assert "workspaces" not in str(path.relative_to(tmp_path))
+    assert not memory_path(tmp_path, SEED).is_file()
+    listed = client.get(f"/v1/agents/{SEED}/memory", headers=AUTH)
+    assert listed.status_code == 200
+    assert listed.json() == {"facts": []}
+
+
+def test_scope_agent_and_omit_write_speaker_file(
+    client, tmp_path: Path
+) -> None:
+    _send(
+        client,
+        SEED,
+        f'SNORLAX_TOOL remember {{"fact": "{FACT}", "scope": "agent"}}',
+    )
+    assert load_facts(tmp_path, SEED) == [FACT]
+    assert load_facts(tmp_path, USER_MEMORY_ID) == []
+    _send(
+        client,
+        SEED,
+        f'SNORLAX_TOOL remember {{"fact": "{OTHER}"}}',
+    )
+    assert load_facts(tmp_path, SEED) == [FACT, OTHER]
+    assert load_facts(tmp_path, USER_MEMORY_ID) == []
+    listed = client.get(f"/v1/agents/{SEED}/memory", headers=AUTH)
+    assert listed.json() == {"facts": [FACT, OTHER]}
+
+
+async def test_user_facts_inject_on_every_agent(client, tmp_path: Path) -> None:
+    alice = client.post("/v1/agents", headers=AUTH, json={"name": "Alice"}).json()
+    bob = client.post("/v1/agents", headers=AUTH, json={"name": "Bob"}).json()
+    _send(
+        client,
+        alice["id"],
+        f'SNORLAX_TOOL remember {{"fact": "{USER_FACT}", "scope": "user"}}',
+    )
+    _send(
+        client,
+        alice["id"],
+        f'SNORLAX_TOOL remember {{"fact": "{FACT}"}}',
+    )
+    _send(
+        client,
+        bob["id"],
+        f'SNORLAX_TOOL remember {{"fact": "{BOB_FACT}"}}',
+    )
+    assert load_facts(tmp_path, USER_MEMORY_ID) == [USER_FACT]
+    assert load_facts(tmp_path, alice["id"]) == [FACT]
+    assert load_facts(tmp_path, bob["id"]) == [BOB_FACT]
+    store = client.app.state.store
+    alice_sys = (
+        await store.inference_transcript(alice["id"], for_agent_id=alice["id"])
+    )[0]["content"]
+    bob_sys = (
+        await store.inference_transcript(bob["id"], for_agent_id=bob["id"])
+    )[0]["content"]
+    seed_sys = (await store.inference_transcript(SEED, for_agent_id=SEED))[0][
+        "content"
+    ]
+    assert "### Memory" in alice_sys
+    assert "### Memory" in bob_sys
+    assert "### Memory" in seed_sys
+    assert USER_FACT in alice_sys
+    assert USER_FACT in bob_sys
+    assert USER_FACT in seed_sys
+    assert alice_sys.index(USER_FACT) < alice_sys.index(FACT)
+    assert FACT in alice_sys
+    assert FACT not in bob_sys
+    assert FACT not in seed_sys
+    assert BOB_FACT in bob_sys
+    assert BOB_FACT not in alice_sys
+    assert BOB_FACT not in seed_sys
+    assert "shared across every agent" in alice_sys
+    assert "private to this agent" in alice_sys
+    alice_list = client.get(f"/v1/agents/{alice['id']}/memory", headers=AUTH)
+    bob_list = client.get(f"/v1/agents/{bob['id']}/memory", headers=AUTH)
+    seed_list = client.get(f"/v1/agents/{SEED}/memory", headers=AUTH)
+    assert alice_list.json() == {"facts": [FACT]}
+    assert bob_list.json() == {"facts": [BOB_FACT]}
+    assert seed_list.json() == {"facts": []}
+
+
+async def test_channel_scope_user_writes_shared_not_speaker(
+    client, tmp_path: Path
+) -> None:
+    alice = client.post("/v1/agents", headers=AUTH, json={"name": "Alice"}).json()
+    status, events = _send(
+        client,
+        CHANNEL,
+        f'@Snorlax SNORLAX_TOOL remember {{"fact": "{USER_FACT}", "scope": "user"}}',
+        mentions=[SEED],
+    )
+    assert status == 200
+    dones = _tool_dones(events, "remember")
+    assert dones[0]["ok"] is True
+    assert dones[0]["summary"] == "Remembered"
+    assert not (tmp_path / MEMORY_DIRNAME / CHANNEL).exists()
+    assert load_facts(tmp_path, SEED) == []
+    assert load_facts(tmp_path, alice["id"]) == []
+    assert load_facts(tmp_path, USER_MEMORY_ID) == [USER_FACT]
+    store = client.app.state.store
+    channel_as_seed = await store.inference_transcript(
+        CHANNEL, for_agent_id=SEED
+    )
+    channel_as_alice = await store.inference_transcript(
+        CHANNEL, for_agent_id=alice["id"]
+    )
+    assert USER_FACT in channel_as_seed[0]["content"]
+    assert USER_FACT in channel_as_alice[0]["content"]
+
+
+def test_forget_scope_looks_only_in_that_store(
+    client, tmp_path: Path
+) -> None:
+    remember_fact(tmp_path, USER_MEMORY_ID, USER_FACT)
+    remember_fact(tmp_path, SEED, FACT)
+    status, events = _send(
+        client, SEED, f'SNORLAX_TOOL forget {{"fact": "{USER_FACT}"}}'
+    )
+    assert status == 200
+    dones = _tool_dones(events, "forget")
+    assert dones[0]["ok"] is False
+    assert dones[0]["summary"] == "forget failed"
+    assert load_facts(tmp_path, USER_MEMORY_ID) == [USER_FACT]
+    assert load_facts(tmp_path, SEED) == [FACT]
+    status, events = _send(
+        client,
+        SEED,
+        f'SNORLAX_TOOL forget {{"fact": "{FACT}", "scope": "user"}}',
+    )
+    assert status == 200
+    dones = _tool_dones(events, "forget")
+    assert dones[0]["ok"] is False
+    assert load_facts(tmp_path, SEED) == [FACT]
+    status, events = _send(
+        client,
+        SEED,
+        f'SNORLAX_TOOL forget {{"fact": "{USER_FACT}", "scope": "user"}}',
+    )
+    assert status == 200
+    dones = _tool_dones(events, "forget")
+    assert dones[0]["ok"] is True
+    assert dones[0]["summary"] == "Forgot"
+    assert USER_FACT not in dones[0]["summary"]
+    assert load_facts(tmp_path, USER_MEMORY_ID) == []
+    assert load_facts(tmp_path, SEED) == [FACT]
+
+
+def test_delete_agent_never_drops_user_memory(
+    client, tmp_path: Path
+) -> None:
+    remember_fact(tmp_path, USER_MEMORY_ID, USER_FACT)
+    created = client.post("/v1/agents", headers=AUTH, json={"name": "Temp"}).json()
+    remember_fact(tmp_path, created["id"], FACT)
+    user_path = memory_path(tmp_path, USER_MEMORY_ID)
+    agent_root = memory_dir(tmp_path, created["id"])
+    assert user_path.is_file()
+    assert agent_root.exists()
+    deleted = client.delete(f"/v1/agents/{created['id']}", headers=AUTH)
+    assert deleted.status_code == 204
+    assert not agent_root.exists()
+    assert user_path.is_file()
+    assert load_facts(tmp_path, USER_MEMORY_ID) == [USER_FACT]
+    drop_memory(tmp_path, USER_MEMORY_ID)
+    assert user_path.is_file()
+    assert load_facts(tmp_path, USER_MEMORY_ID) == [USER_FACT]
+
+
+def test_reserved_user_id_is_not_a_roster_agent(client) -> None:
+    created = client.post("/v1/agents", headers=AUTH, json={"name": "User"}).json()
+    assert created["id"] != USER_MEMORY_ID
+    assert created["kind"] == "agent"
+    channel = client.post(
+        "/v1/agents",
+        headers=AUTH,
+        json={"name": "User", "kind": "channel"},
+    ).json()
+    assert channel["id"] != USER_MEMORY_ID
+    missing = client.get(f"/v1/agents/{USER_MEMORY_ID}/memory", headers=AUTH)
+    assert missing.status_code == 404
+    no_public = client.get("/v1/memory", headers=AUTH)
+    assert no_public.status_code == 404
+
+
+def test_user_store_cap_and_errors_are_separate(tmp_path: Path) -> None:
+    for i in range(MAX_FACTS):
+        assert (
+            remember_fact(tmp_path, USER_MEMORY_ID, f"User fact number {i}.")
+            == "Remembered"
+        )
+    assert len(load_facts(tmp_path, USER_MEMORY_ID)) == MAX_FACTS
+    assert remember_fact(tmp_path, USER_MEMORY_ID, "One more user.") == ERR_FULL
+    assert remember_fact(tmp_path, SEED, FACT) == "Remembered"
+    assert load_facts(tmp_path, SEED) == [FACT]
+    for i in range(MAX_FACTS - 1):
+        assert remember_fact(tmp_path, SEED, f"Agent fact number {i}.") == "Remembered"
+    assert len(load_facts(tmp_path, SEED)) == MAX_FACTS
+    assert remember_fact(tmp_path, SEED, "One more agent.") == ERR_FULL
+    assert len(load_facts(tmp_path, USER_MEMORY_ID)) == MAX_FACTS
+    assert remember_fact(tmp_path, USER_MEMORY_ID, "Still full user.") == ERR_FULL
+
+
+def test_duplicate_user_remember_is_noop(tmp_path: Path) -> None:
+    assert remember_fact(tmp_path, USER_MEMORY_ID, USER_FACT) == "Remembered"
+    assert remember_fact(tmp_path, USER_MEMORY_ID, USER_FACT) == "Remembered"
+    assert load_facts(tmp_path, USER_MEMORY_ID) == [USER_FACT]
+
+
+def test_user_empty_and_too_long(tmp_path: Path) -> None:
+    assert remember_fact(tmp_path, USER_MEMORY_ID, "  ") == ERR_MISSING_FACT
+    assert forget_fact(tmp_path, USER_MEMORY_ID, USER_FACT) == ERR_NO_MATCH
+    too_long = "x" * (MAX_FACT_CHARS + 1)
+    assert remember_fact(tmp_path, USER_MEMORY_ID, too_long) == ERR_TOO_LONG
+    assert load_facts(tmp_path, USER_MEMORY_ID) == []
+
+
+def test_sandbox_cannot_reach_user_memory_dir(tmp_path: Path) -> None:
+    remember_fact(tmp_path, USER_MEMORY_ID, USER_FACT)
+    workspace = tmp_path / "workspaces" / "agents" / SEED
+    workspace.mkdir(parents=True, exist_ok=True)
+    leaked = execute_tool(
+        "read_file",
+        '{"path": "../../memory/user/MEMORY.md"}',
+        workspace,
+    )
+    assert leaked.startswith("Error:")
+    execute_tool(
+        "write_file",
+        '{"path": "../../memory/user/pwned.md", "content": "nope"}',
+        workspace,
+    )
+    assert not (tmp_path / MEMORY_DIRNAME / "user" / "pwned.md").exists()
+    assert load_facts(tmp_path, USER_MEMORY_ID) == [USER_FACT]

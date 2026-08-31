@@ -1,8 +1,12 @@
 # SPDX-License-Identifier: Apache-2.0
-"""Per-agent durable facts on disk. Injected into the system prompt every turn.
+"""Per-agent and shared-user durable facts on disk.
 
-Runtime-owned under ``SNORLAX_DATA_DIR/memory/{agentId}/``, not the sandbox
-workspace. Shell / write_file stay jailed there.
+Injected into the system prompt every turn. Runtime-owned under
+``SNORLAX_DATA_DIR/memory/{agentId}/`` and ``memory/user/``, not the
+sandbox workspace. Shell / write_file stay jailed there.
+
+``user`` is reserved for the human (``USER_SENDER_ID``). It is never a
+roster agent. Agent DELETE must never rmtree ``memory/user/``.
 """
 
 from __future__ import annotations
@@ -15,10 +19,13 @@ import tempfile
 from pathlib import Path
 from typing import Any
 
-from snorlax_runtime import KIND_CHANNEL
+from snorlax_runtime import KIND_CHANNEL, USER_SENDER_ID
 
 MEMORY_DIRNAME = "memory"
 MEMORY_FILENAME = "MEMORY.md"
+USER_MEMORY_ID = USER_SENDER_ID
+SCOPE_AGENT = "agent"
+SCOPE_USER = "user"
 MAX_FACTS = 32
 MAX_FACT_CHARS = 400
 ERR_MISSING_FACT = "Error: missing fact"
@@ -31,7 +38,7 @@ _BULLET = re.compile(r"^\s*(?:[-*]|\d+[.)])\s+")
 
 
 def memory_dir(data_dir: Path, agent_id: str) -> Path:
-    """Runtime-owned per-agent directory. Not a workspace sandbox path."""
+    """Runtime-owned per-store directory. Not a workspace sandbox path."""
     return data_dir / MEMORY_DIRNAME / agent_id
 
 
@@ -40,8 +47,13 @@ def memory_path(data_dir: Path, agent_id: str) -> Path:
 
 
 def drop_memory(data_dir: Path, agent_id: str) -> None:
-    """Remove that agent's memory dir. Missing dirs are fine. Never recreates."""
+    """Remove that agent's memory dir. Missing dirs are fine. Never recreates.
+
+    Never rmtree ``memory/user/`` — that id is reserved for the human.
+    """
     if not _SAFE_ID.match(agent_id or ""):
+        return
+    if agent_id == USER_MEMORY_ID:
         return
     shutil.rmtree(memory_dir(data_dir, agent_id), ignore_errors=True)
 
@@ -108,39 +120,62 @@ def save_facts(data_dir: Path, agent_id: str, facts: list[str]) -> None:
         raise
 
 
-def memory_preamble(facts: list[str]) -> str:
+def memory_preamble(user_facts: list[str], agent_facts: list[str]) -> str:
+    facts = [*user_facts, *agent_facts]
     if not facts:
         return ""
     lines = "\n".join(f"- {fact}" for fact in facts)
     return (
         "### Memory\n"
-        "Curated facts you saved with the remember tool. They persist "
-        "across restarts and are private to you. Use them. Do not recite "
-        "this list unless asked. forget drops a fact by its exact recorded "
+        "User facts are shared across every agent. Agent facts stay "
+        "private to this agent. They persist across restarts. Use them. "
+        "Do not recite this list unless asked. remember / forget with "
+        "scope user writes the shared store; omit or scope agent writes "
+        "this agent's file. forget drops a fact by its exact recorded "
         "text.\n\n"
         f"{lines}"
     )
 
 
 def attach_memory(system: str, data_dir: Path, speaker: dict[str, Any]) -> str:
-    """Append this speaker's facts. Channel rows have no store; speakers do."""
+    """Append user facts, then this speaker's facts.
+
+    Channel rows have no store; speakers do. Every agent (1:1 and
+    channel) gets the shared user list. B never loads A's agent file.
+    """
     if speaker.get("kind") == KIND_CHANNEL:
         return system
     agent_id = str(speaker.get("id") or "")
-    extra = memory_preamble(load_facts(data_dir, agent_id))
+    user_facts = load_facts(data_dir, USER_MEMORY_ID)
+    agent_facts = (
+        load_facts(data_dir, agent_id)
+        if agent_id and agent_id != USER_MEMORY_ID
+        else []
+    )
+    extra = memory_preamble(user_facts, agent_facts)
     if extra and "### Memory" not in system:
         return (system + "\n\n" + extra).strip()
     return system
 
 
-def _parse_fact_arg(arguments: str) -> str:
+def _parse_tool_args(arguments: str) -> tuple[str, str]:
     try:
         args = json.loads(arguments) if (arguments or "").strip() else {}
     except json.JSONDecodeError:
-        return ""
+        return "", SCOPE_AGENT
     if not isinstance(args, dict):
-        return ""
-    return normalize_fact(str(args.get("fact") or ""))
+        return "", SCOPE_AGENT
+    fact = normalize_fact(str(args.get("fact") or ""))
+    raw = args.get("scope")
+    if raw is None or str(raw).strip() == "":
+        return fact, SCOPE_AGENT
+    folded = str(raw).strip().casefold()
+    scope = SCOPE_USER if folded == SCOPE_USER else SCOPE_AGENT
+    return fact, scope
+
+
+def _store_id(agent_id: str, scope: str) -> str:
+    return USER_MEMORY_ID if scope == SCOPE_USER else agent_id
 
 
 def remember_fact(data_dir: Path, agent_id: str, fact: str) -> str:
@@ -188,8 +223,10 @@ def forget_fact(data_dir: Path, agent_id: str, fact: str) -> str:
 
 
 def remember_tool(data_dir: Path, agent_id: str, arguments: str) -> str:
-    return remember_fact(data_dir, agent_id, _parse_fact_arg(arguments))
+    fact, scope = _parse_tool_args(arguments)
+    return remember_fact(data_dir, _store_id(agent_id, scope), fact)
 
 
 def forget_tool(data_dir: Path, agent_id: str, arguments: str) -> str:
-    return forget_fact(data_dir, agent_id, _parse_fact_arg(arguments))
+    fact, scope = _parse_tool_args(arguments)
+    return forget_fact(data_dir, _store_id(agent_id, scope), fact)

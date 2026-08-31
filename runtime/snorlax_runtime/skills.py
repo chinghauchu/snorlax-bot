@@ -64,17 +64,20 @@ description: Save a fact with remember or erase one with forget. 记住 / 忘掉
 ---
 
 Pick the matching built-in tool. Do not invent a second memory API.
-Each fact is one self-contained sentence, private to you, persisted on
-disk under the runtime memory dir (not the sandbox workspace) and
-injected into your prompt every turn. A channel turn writes your file.
+Each fact is one self-contained sentence, persisted on disk under the
+runtime memory dir (not the sandbox workspace) and injected into your
+prompt every turn. Optional scope user writes the shared user store
+every agent injects. Omit or scope agent writes your private file.
+A channel turn with default scope writes your file.
 
-- 记住 / remember / save this / don't forget → `remember` `{ fact }`
-- 忘掉 / forget / erase this → `forget` `{ fact }` (exact recorded text)
+- 记住 / remember / save this / don't forget → `remember` `{ fact, scope? }`
+- 忘掉 / forget / erase this → `forget` `{ fact, scope? }` (exact recorded text)
 
-The tool line is `Remembered` / `Forgot` (never the fact text). Empty
-fact is `Error: missing fact` (the user send stays 200). Cap 32 facts,
-then `Error: Memory is full`. Isolation stands: agent A never sees
-agent B's facts. Channels have no store of their own.
+The tool line is `Remembered` / `Forgot` (never the fact text, never the
+scope word). Empty fact is `Error: missing fact` (the user send stays 200).
+Cap 32 facts per store, then `Error: Memory is full`. Isolation stands:
+agent A never sees agent B's private facts. User facts are shared.
+Channels have no store of their own.
 """
 SEED_SKILL_MARKDOWN = {
     SEED_TEAMMATES_SLUG: SEED_TEAMMATES_MARKDOWN,
@@ -129,7 +132,8 @@ def write_seed_skills(data_dir: Path) -> None:
     """Seed teammates + routines + memory SKILL.md once. Missing file only; never overwrite.
 
     项目 → create_channel, 员工 → create_agent, 定时 / 提醒 → create_routine,
-    记住 / 忘掉 → remember / forget. No Settings chrome.
+    记住 / 忘掉 → remember / forget (optional scope user | agent).
+    No Settings chrome.
     """
     for slug in SEED_SKILL_MARKDOWN:
         write_seed_skill(data_dir, slug)
