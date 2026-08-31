@@ -8,6 +8,7 @@ from snorlax_runtime.memory import (
     ERR_FULL,
     ERR_MISSING_FACT,
     ERR_NO_MATCH,
+    ERR_SHARED_FULL,
     ERR_TOO_LONG,
     MAX_FACT_CHARS,
     MAX_FACTS,
@@ -679,6 +680,23 @@ async def test_channel_scope_user_writes_shared_not_speaker(
     assert USER_FACT in channel_as_alice[0]["content"]
 
 
+def test_default_forget_never_touches_user_file_even_if_same_text(
+    client, tmp_path: Path
+) -> None:
+    remember_fact(tmp_path, USER_MEMORY_ID, FACT)
+    remember_fact(tmp_path, SEED, FACT)
+    status, events = _send(
+        client, SEED, f'SNORLAX_TOOL forget {{"fact": "{FACT}"}}'
+    )
+    assert status == 200
+    dones = _tool_dones(events, "forget")
+    assert dones[0]["ok"] is True
+    assert dones[0]["summary"] == "Forgot"
+    assert load_facts(tmp_path, SEED) == []
+    assert load_facts(tmp_path, USER_MEMORY_ID) == [FACT]
+    assert memory_path(tmp_path, USER_MEMORY_ID).is_file()
+
+
 def test_forget_scope_looks_only_in_that_store(
     client, tmp_path: Path
 ) -> None:
@@ -759,15 +777,18 @@ def test_user_store_cap_and_errors_are_separate(tmp_path: Path) -> None:
             == "Remembered"
         )
     assert len(load_facts(tmp_path, USER_MEMORY_ID)) == MAX_FACTS
-    assert remember_fact(tmp_path, USER_MEMORY_ID, "One more user.") == ERR_FULL
+    assert remember_fact(tmp_path, USER_MEMORY_ID, "One more user.") == ERR_SHARED_FULL
+    assert remember_fact(tmp_path, USER_MEMORY_ID, "One more user.") != ERR_FULL
+    assert ERR_SHARED_FULL == "Error: Shared memory is full."
     assert remember_fact(tmp_path, SEED, FACT) == "Remembered"
     assert load_facts(tmp_path, SEED) == [FACT]
     for i in range(MAX_FACTS - 1):
         assert remember_fact(tmp_path, SEED, f"Agent fact number {i}.") == "Remembered"
     assert len(load_facts(tmp_path, SEED)) == MAX_FACTS
     assert remember_fact(tmp_path, SEED, "One more agent.") == ERR_FULL
+    assert remember_fact(tmp_path, SEED, "One more agent.") != ERR_SHARED_FULL
     assert len(load_facts(tmp_path, USER_MEMORY_ID)) == MAX_FACTS
-    assert remember_fact(tmp_path, USER_MEMORY_ID, "Still full user.") == ERR_FULL
+    assert remember_fact(tmp_path, USER_MEMORY_ID, "Still full user.") == ERR_SHARED_FULL
 
 
 def test_duplicate_user_remember_is_noop(tmp_path: Path) -> None:

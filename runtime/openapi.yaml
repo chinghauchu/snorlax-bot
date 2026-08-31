@@ -785,7 +785,10 @@ info:
     Desktop/iOS idle. remember / forget gain optional scope: user |
     agent (omit/default agent = today's speaker file). User facts live
     at {SNORLAX_DATA_DIR}/memory/user/MEMORY.md (same format, cap 32,
-    separate from each agent's 32). Id user is reserved for the human.
+    separate from each agent's 32). A full user file is exactly
+    `Error: Shared memory is full.` (not the agent Memory is full
+    string). Forget without scope user never touches memory/user/.
+    Id user is reserved for the human.
     Each turn injects user facts first, then that speaker's agent
     facts, under the existing ### Memory heading. Every agent (1:1 and
     channel) gets the user list. B never loads A's agent file.

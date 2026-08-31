@@ -82,6 +82,7 @@ def test_protocol_openapi_is_locked_v0_contract() -> None:
     assert "never paint the fact" in text
     assert "Error: missing fact" in text
     assert "Error: Memory is full" in text
+    assert "Error: Shared memory is full." in text
     assert "Cap 32" in text or "cap 32" in text
     assert "create_routine" in text
     assert "pause_routine" in text

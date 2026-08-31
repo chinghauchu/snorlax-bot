@@ -32,6 +32,7 @@ ERR_MISSING_FACT = "Error: missing fact"
 ERR_NO_MATCH = "Error: no matching fact"
 ERR_TOO_LONG = "Error: fact is too long"
 ERR_FULL = "Error: Memory is full"
+ERR_SHARED_FULL = "Error: Shared memory is full."
 
 _SAFE_ID = re.compile(r"^[A-Za-z0-9._-]+$")
 _BULLET = re.compile(r"^\s*(?:[-*]|\d+[.)])\s+")
@@ -191,6 +192,8 @@ def remember_fact(data_dir: Path, agent_id: str, fact: str) -> str:
         if existing == fact or existing.casefold() == fact.casefold():
             return "Remembered"
     if len(facts) >= MAX_FACTS:
+        if agent_id == USER_MEMORY_ID:
+            return ERR_SHARED_FULL
         return ERR_FULL
     facts.append(fact)
     save_facts(data_dir, agent_id, facts)

@@ -75,7 +75,8 @@ A channel turn with default scope writes your file.
 
 The tool line is `Remembered` / `Forgot` (never the fact text, never the
 scope word). Empty fact is `Error: missing fact` (the user send stays 200).
-Cap 32 facts per store, then `Error: Memory is full`. Isolation stands:
+Cap 32 facts per store. A full agent file is `Error: Memory is full`.
+A full user file is `Error: Shared memory is full.` Isolation stands:
 agent A never sees agent B's private facts. User facts are shared.
 Channels have no store of their own.
 """

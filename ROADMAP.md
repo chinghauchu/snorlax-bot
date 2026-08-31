@@ -66,9 +66,10 @@ Locked v0.1 / v0.2 / v0.3 / v0.4 / v0.5 / v0.6 / v0.7 / v0.8 / v0.9 / v0.10 / v0
   pane chrome (`Remove this memory?`; 2-line clamp; desktop hover title;
   iOS long-press copy; open-pane refetch after Remembered / Forgot).
   **v0.39:** optional `scope: user` writes `{SNORLAX_DATA_DIR}/memory/user/`
-  (cap 32, separate); every agent's turn injects user facts first, then
-  that speaker's private list. Agent pane stays agent-only. Desktop/iOS
-  idle. Marketplace stays later.
+  (cap 32, separate; full is `Error: Shared memory is full.`); every
+  agent's turn injects user facts first, then that speaker's private
+  list. Agent pane stays agent-only. Desktop/iOS idle. Marketplace
+  stays later.
 - Routines: assign a skill to a bot on a schedule **or** a webhook
   (v0.13; cron XOR trigger). **v0.17:** identity-pane Add / Remove
   (Schedule or Webhook). **v0.23:** Slack/GitHub inbound listeners
