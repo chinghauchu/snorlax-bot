@@ -36,7 +36,9 @@ import {
   skillRemoveConfirm,
   canSubmitSkill,
   EMPTY_MEMORY,
+  MEMORY_REMOVE_CONFIRM,
   memoryRemoveConfirm,
+  isMemoryToolLine,
 } from "./infoPane.ts";
 
 test("user-created channels are editable; seed channel is not", () => {
@@ -361,10 +363,22 @@ test("edit-skill submit is name + body; New skill sheet is the blank Add", () =>
   assert.equal(canSubmitSkill({ name: "", body: "" }), false);
 });
 
-test("memory list empty copy and Remove confirm match Skills family", () => {
+test("memory list empty copy and Remove confirm never interpolate the fact", () => {
   assert.equal(EMPTY_MEMORY, "No memories yet.");
-  assert.equal(
-    memoryRemoveConfirm("The user's name is Alex."),
+  assert.equal(MEMORY_REMOVE_CONFIRM, "Remove this memory?");
+  assert.equal(memoryRemoveConfirm(), "Remove this memory?");
+  assert.notEqual(
+    memoryRemoveConfirm(),
     "Remove The user's name is Alex.?",
   );
+});
+
+test("Remembered / Forgot tool lines are the open-pane memory refetch trigger", () => {
+  assert.equal(isMemoryToolLine("Remembered"), true);
+  assert.equal(isMemoryToolLine("Forgot"), true);
+  assert.equal(isMemoryToolLine(" Remembered "), true);
+  assert.equal(isMemoryToolLine("Remembering…"), false);
+  assert.equal(isMemoryToolLine("Forgetting…"), false);
+  assert.equal(isMemoryToolLine("Ran ls"), false);
+  assert.equal(isMemoryToolLine("remember failed"), false);
 });

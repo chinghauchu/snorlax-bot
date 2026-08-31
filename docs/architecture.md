@@ -494,6 +494,13 @@ casefold fallback). Channel 409. Agent pane lists facts with Remove
 (`Remove {fact}?`). Channel pane unchanged. Empty `No memories yet.`
 OpenAPI stays 0.18.0. Never reintroduce `computerPane.ts`.
 
+v0.38: leftover chrome on that pane. Confirm title is `Remove this
+memory?` (never the fact). Facts clamp to 2 lines at 14px/14pt / 1.2;
+desktop hover title is the full fact; iOS long-press copies it. Open
+agent pane refetches GET memory after a Remembered / Forgot tool line
+on that 1:1. Closed pane does not poll. No new HTTP. OpenAPI stays
+0.18.0. Never reintroduce `computerPane.ts`.
+
 ## Inference interface
 
 ```text

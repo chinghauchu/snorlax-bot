@@ -1,12 +1,15 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: Apache-2.0
-"""v0.37 iOS memory pane on the agent identity sheet.
+"""v0.38 leftover chrome on the iOS agent Memory pane.
 
-Below Skills: 12pt muted Memory header, no trailing Add. 44pt wrapping
-14pt fact rows, trailing 12pt muted Remove. Empty still shows the header
-plus No memories yet. Confirm is Remove {fact}? then danger Remove.
-Channel pane has no Memory block. GET /memory + DELETE { fact } wrap
-v0.36 load_facts / forget_fact. OpenAPI stays 0.18.0.
+Below Skills: 12pt muted Memory header, no trailing Add. 14pt / 1.2
+facts clamp to 2 lines with ellipsis; rows min 44pt. Trailing 12pt
+muted Remove. Empty still shows the header plus No memories yet.
+Confirm title is exactly Remove this memory? (never interpolates the
+fact) then danger Remove + Cancel. Long-press copies the full fact.
+Open pane refetches GET /memory after a Remembered / Forgot tool line
+on that agent's 1:1; closed pane does not poll. Channel pane has no
+Memory block. Reuse GET /memory + DELETE { fact }. OpenAPI stays 0.18.0.
 Never reintroduce computerPane.ts.
 """
 
@@ -43,19 +46,34 @@ def test_agent_sheet_memory_below_skills_no_add() -> None:
     assert 'Button("Edit")' not in memory
     assert "size: 12" in memory
     assert "size: 14" in memory
+    assert "1.2" in memory
     assert "minHeight: 44" in memory
-    assert "fixedSize(horizontal: false, vertical: true)" in memory
+    assert "lineLimit(2)" in memory
+    assert "truncationMode(.tail)" in memory
+    assert "onLongPressGesture" in memory
+    assert "UIPasteboard.general.string = fact" in memory
+    assert "fixedSize(horizontal: false, vertical: true)" not in memory
     assert "pendingRemove = .memory(fact)" in memory
     assert "New skill" not in memory
     assert "AgentAvatar" not in memory
 
 
-def test_remove_confirm_is_skills_family() -> None:
-    assert 'pendingRemove.map { "Remove \\($0.name)?" }' in SHEET
-    assert "case .memory(let fact)" in SHEET
+def test_remove_confirm_never_interpolates_the_fact() -> None:
+    assert '"Remove this memory?"' in SHEET
+    assert "removeConfirmTitle" in SHEET
+    assert "case .memory" in SHEET
     assert "removeMemory" in SHEET
     assert 'Button("Remove", role: .destructive)' in SHEET
+    assert 'Button("Cancel", role: .cancel)' in SHEET
     assert "case memory(String)" in SHEET
+    memory_title = SHEET[
+        SHEET.index("private var removeConfirmTitle") : SHEET.index(
+            "init(agent: Agent)"
+        )
+    ]
+    assert '"Remove this memory?"' in memory_title
+    assert "Remove \\(fact)?" not in memory_title
+    assert "Remove \\($0.name)?" not in SHEET
 
 
 def test_http_wraps_v036_store() -> None:
@@ -75,8 +93,20 @@ def test_http_wraps_v036_store() -> None:
     assert "getMemory" in OPENAPI
     assert "deleteMemory" in OPENAPI
     assert "version: 0.18.0" in OPENAPI
-    assert "v0.37" in OPENAPI
     assert "0.18.0" in TYPES
+
+
+def test_open_pane_refetch_after_remembered_forgot() -> None:
+    assert "refreshOpenMemory" in MODEL
+    assert "isMemoryToolLine" in MODEL
+    assert '"Remembered"' in MODEL
+    assert '"Forgot"' in MODEL
+    assert "showProfile" in MODEL
+    assert "loadMemories(for: agent.id)" in MODEL
+    assert "isChannel" in MODEL
+    handle = MODEL[MODEL.index("private func handle") :]
+    assert "refreshOpenMemory(from: message.content)" in handle
+    assert "refreshOpenMemory(from: summary)" in handle
 
 
 def test_channel_pane_and_settings_have_no_memory() -> None:
@@ -98,8 +128,9 @@ def test_channel_pane_and_settings_have_no_memory() -> None:
 def main() -> int:
     tests = [
         test_agent_sheet_memory_below_skills_no_add,
-        test_remove_confirm_is_skills_family,
+        test_remove_confirm_never_interpolates_the_fact,
         test_http_wraps_v036_store,
+        test_open_pane_refetch_after_remembered_forgot,
         test_channel_pane_and_settings_have_no_memory,
     ]
     failed = 0

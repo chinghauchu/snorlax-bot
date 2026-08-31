@@ -77,6 +77,7 @@ import {
   routineRemoveConfirm,
   skillRemoveConfirm,
   memoryRemoveConfirm,
+  isMemoryToolLine,
   EDIT_SKILL_TITLE,
   ADD_SKILL_TITLE,
   EMPTY_MEMORY,
@@ -419,7 +420,9 @@ function AgentMemoryRow({
 }) {
   return (
     <div className="info-memory-row">
-      <p className="info-memory-fact">{fact}</p>
+      <p className="info-memory-fact" title={fact}>
+        {fact}
+      </p>
       <button
         type="button"
         className="info-memory-remove"
@@ -603,6 +606,10 @@ export function App() {
     () => agents.find((a) => a.id === activeId) ?? null,
     [agents, activeId],
   );
+  const profileOpenRef = useRef(profileOpen);
+  profileOpenRef.current = profileOpen;
+  const activeRef = useRef(active);
+  activeRef.current = active;
   const mentionCandidates = useMemo(() => {
     const people = agents
       .filter((a) => a.kind !== "channel")
@@ -1026,6 +1033,13 @@ export function App() {
     }
   }
 
+  function refreshOpenMemory(text: string) {
+    const agent = activeRef.current;
+    if (!profileOpenRef.current || !agent || agent.kind === "channel") return;
+    if (!isMemoryToolLine(text)) return;
+    void loadMemory(agent.id);
+  }
+
   function openRoutineAdd() {
     if (!active || active.kind === "channel") return;
     setRoutineAddName("");
@@ -1388,6 +1402,7 @@ export function App() {
             setToolTraces((prev) =>
               prev.filter((trace) => trace.id !== message.id),
             );
+            refreshOpenMemory(message.content);
           }
           setMessages((prev) => {
             const without = prev.filter((m) => m.id !== message.id);
@@ -1410,6 +1425,7 @@ export function App() {
           if (rosterRefreshTool(trace.name) && session) {
             void listAgents(session).then(setAgents).catch(() => {});
           }
+          refreshOpenMemory(trace.summary);
         }
       },
       onConnectUrl(url, pluginId) {
@@ -3414,7 +3430,7 @@ export function App() {
             aria-label="Confirm remove memory"
             onClick={(e) => e.stopPropagation()}
           >
-            <p>{memoryRemoveConfirm(pendingMemoryRemove)}</p>
+            <p>{memoryRemoveConfirm()}</p>
             <div className="confirm-actions">
               <button
                 type="button"

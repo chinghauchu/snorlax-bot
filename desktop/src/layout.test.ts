@@ -527,7 +527,7 @@ test("skills list is 44px rows with trailing Add, Edit then Remove, New skill sh
   assert.doesNotMatch(recordSave, /body:/);
 });
 
-test("memory list is below Skills, 44px wrapping rows, no Add, Remove confirm", () => {
+test("memory list is below Skills, 44px 2-line clamp rows, no Add, Remove this memory?", () => {
   const header = block(".info-memory-header");
   const row = block(".info-memory-row");
   const fact = block(".info-memory-fact");
@@ -537,6 +537,10 @@ test("memory list is below Skills, 44px wrapping rows, no Add, Remove confirm", 
   assert.match(header, /color:\s*var\(--text-muted\)/);
   assert.match(row, /min-height:\s*44px/);
   assert.match(fact, /font-size:\s*14px/);
+  assert.match(fact, /line-height:\s*1\.2/);
+  assert.match(fact, /-webkit-line-clamp:\s*2/);
+  assert.match(fact, /-webkit-box-orient:\s*vertical/);
+  assert.match(fact, /overflow:\s*hidden/);
   assert.match(fact, /overflow-wrap:\s*anywhere/);
   assert.match(remove, /font-size:\s*12px/);
   assert.match(remove, /color:\s*var\(--text-muted\)/);
@@ -571,13 +575,18 @@ test("memory list is below Skills, 44px wrapping rows, no Add, Remove confirm", 
   assert.match(app, /getMemory/);
   assert.match(app, /deleteMemory/);
   assert.match(app, /pendingMemoryRemove/);
+  assert.match(app, /refreshOpenMemory/);
+  assert.match(app, /isMemoryToolLine/);
+  assert.match(app, /profileOpenRef/);
   assert.match(infoPane, /No memories yet\./);
-  assert.match(infoPane, /Remove \$\{fact\}\?/);
+  assert.match(infoPane, /Remove this memory\?/);
+  assert.doesNotMatch(infoPane, /Remove \$\{fact\}\?/);
   const memoryRow = app.slice(
     app.indexOf("function AgentMemoryRow"),
     app.indexOf("export function App"),
   );
   assert.match(memoryRow, /info-memory-fact/);
+  assert.match(memoryRow, /title=\{fact\}/);
   assert.match(memoryRow, /info-memory-remove/);
   assert.doesNotMatch(memoryRow, /info-skill-edit/);
   assert.doesNotMatch(memoryRow, /avatar/);

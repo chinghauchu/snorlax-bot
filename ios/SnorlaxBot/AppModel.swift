@@ -952,6 +952,21 @@ final class AppModel {
         }
     }
 
+    static func isMemoryToolLine(_ text: String) -> Bool {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed == "Remembered" || trimmed == "Forgot"
+    }
+
+    /// Open agent pane only. Closed pane does not poll. 1:1 Remembered / Forgot.
+    private func refreshOpenMemory(from text: String) {
+        guard showProfile,
+              let agent = selectedAgent,
+              !agent.isChannel,
+              Self.isMemoryToolLine(text)
+        else { return }
+        Task { await loadMemories(for: agent.id) }
+    }
+
     func handleSceneActive() async {
         guard isConfigured else { return }
         if agents.isEmpty {
@@ -989,6 +1004,7 @@ final class AppModel {
             }
             if message.kind == .tool {
                 toolTraces.removeAll { $0.id == message.id }
+                refreshOpenMemory(from: message.content)
             }
         case .error(let message):
             errorMessage = message
@@ -1010,6 +1026,9 @@ final class AppModel {
             }
             if done, name == "create_agent" || name == "create_channel" {
                 Task { await refreshRosterQuietly() }
+            }
+            if done {
+                refreshOpenMemory(from: summary)
             }
         case .connectUrl(let url, _):
             if let resolved = client?.resolve(url) ?? URL(string: url) {
