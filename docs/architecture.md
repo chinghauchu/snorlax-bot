@@ -512,6 +512,19 @@ A's agent file. GET/DELETE `/memory` stay agent-only. Agent DELETE
 never rmtree `memory/user/`. Desktop/iOS idle. No new HTTP. OpenAPI
 stays 0.18.0. Never reintroduce `computerPane.ts`.
 
+v0.40: Settings shared-memory list. `GET /v1/memory` `{ facts }` and
+`DELETE` `{ fact }` wrap the v0.39 `memory/user/MEMORY.md` file
+(empty / missing is `[]`, not 404). Unknown 404. Empty fact 422.
+No POST. Creating user facts stays remember `{ fact, scope: user }`.
+GET/DELETE `/v1/agents/{id}/memory` stay agent-only. Settings
+(desktop + iOS) lists user facts only, above Plugins, with v0.38
+Remove chrome (`Remove this memory?`). Agent pane stays that agent's
+32. Channel pane unchanged. If Settings is open, refetch GET
+`/v1/memory` after ANY Remembered / Forgot tool line (agent-scope
+write is a no-op list; do not special-case user scope). Isolation: Settings never shows agent
+facts; an agent's pane never shows user facts. OpenAPI stays 0.18.0.
+Never reintroduce `computerPane.ts`.
+
 ## Inference interface
 
 ```text

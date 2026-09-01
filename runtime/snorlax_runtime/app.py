@@ -80,6 +80,7 @@ from snorlax_runtime.mcp import (
 from snorlax_runtime.memory import (
     ERR_MISSING_FACT,
     ERR_NO_MATCH,
+    USER_MEMORY_ID,
     drop_memory,
     forget_fact,
     load_facts,
@@ -959,6 +960,30 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             reason="memory is assigned to an agent",
         )
         return AgentMemory(facts=load_facts(store.data_dir, id))
+
+    @app.get("/v1/memory", response_model=AgentMemory)
+    async def get_user_memory(
+        request: Request, _: str = Depends(require_bearer)
+    ) -> AgentMemory:
+        store: Store = request.app.state.store
+        return AgentMemory(facts=load_facts(store.data_dir, USER_MEMORY_ID))
+
+    @app.delete(
+        "/v1/memory",
+        status_code=status.HTTP_204_NO_CONTENT,
+    )
+    async def delete_user_memory(
+        payload: MemoryForget,
+        request: Request,
+        _: str = Depends(require_bearer),
+    ) -> Response:
+        store: Store = request.app.state.store
+        result = forget_fact(store.data_dir, USER_MEMORY_ID, payload.fact)
+        if result == ERR_MISSING_FACT:
+            raise _error(422, result)
+        if result == ERR_NO_MATCH:
+            raise _error(404, result)
+        return Response(status_code=status.HTTP_204_NO_CONTENT)
 
     @app.delete(
         "/v1/agents/{id}/memory",

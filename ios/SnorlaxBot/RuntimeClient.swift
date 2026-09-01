@@ -109,6 +109,19 @@ struct RuntimeClient: Sendable {
         )
     }
 
+    func listUserMemory() async throws -> AgentMemory {
+        try await get("v1/memory")
+    }
+
+    func forgetUserMemory(fact: String) async throws {
+        try await sendEmpty(
+            "v1/memory",
+            method: "DELETE",
+            body: MemoryForget(fact: fact),
+            allowed: [204]
+        )
+    }
+
     func createRoutine(agentId: String, body: RoutineCreate) async throws -> Routine {
         try await send(
             "v1/agents/\(Self.encode(agentId))/routines",

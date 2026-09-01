@@ -174,6 +174,70 @@ test("plugins list is Settings only, not the agent pane", () => {
   assert.equal(existsSync(join(here, "computerPane.ts")), false);
 });
 
+test("Settings Memory lists user facts above Plugins, no Add", () => {
+  const header = block(".settings-memory-header");
+  const row = block(".settings-memory-row");
+  const fact = block(".settings-memory-fact");
+  const remove = block(".settings-memory-remove");
+  const empty = block(".settings-memory-empty");
+  assert.match(header, /font-size:\s*12px/);
+  assert.match(header, /color:\s*var\(--text-muted\)/);
+  assert.match(row, /min-height:\s*44px/);
+  assert.match(fact, /font-size:\s*14px/);
+  assert.match(fact, /line-height:\s*1\.2/);
+  assert.match(fact, /-webkit-line-clamp:\s*2/);
+  assert.match(fact, /-webkit-box-orient:\s*vertical/);
+  assert.match(fact, /overflow:\s*hidden/);
+  assert.match(remove, /font-size:\s*12px/);
+  assert.match(remove, /color:\s*var\(--text-muted\)/);
+  assert.match(empty, /font-size:\s*12px/);
+  assert.match(empty, /color:\s*var\(--text-muted\)/);
+
+  const api = readFileSync(join(here, "api.ts"), "utf8");
+  assert.match(app, /settings-memory/);
+  assert.match(app, /SettingsMemoryRow/);
+  assert.match(app, /EMPTY_MEMORY/);
+  assert.match(app, /getUserMemory/);
+  assert.match(app, /deleteUserMemory/);
+  assert.match(app, /pendingUserMemoryRemove/);
+  assert.match(app, /refreshOpenUserMemory/);
+  assert.match(app, /settingsOpenRef/);
+  assert.match(app, /special-case user scope/);
+  const userRefresh = app.slice(
+    app.indexOf("function refreshOpenUserMemory"),
+    app.indexOf("function openRoutineAdd"),
+  );
+  assert.match(userRefresh, /isMemoryToolLine/);
+  assert.match(userRefresh, /loadUserMemory/);
+  assert.match(userRefresh, /settingsOpenRef/);
+  assert.doesNotMatch(userRefresh, /scope ===/);
+  assert.doesNotMatch(userRefresh, /scope: "user"/);
+  assert.doesNotMatch(userRefresh, /getMemory\(/);
+  assert.ok(app.indexOf("settings-memory") < app.indexOf("settings-plugins"));
+  const settings = app.slice(
+    app.indexOf("aria-label=\"Settings\""),
+    app.indexOf("settings-plugins"),
+  );
+  assert.match(settings, /settings-memory/);
+  assert.match(settings, /EMPTY_MEMORY/);
+  assert.doesNotMatch(settings, />\s*Add\s*</);
+  assert.doesNotMatch(settings, /settings-memory-add/);
+  assert.doesNotMatch(settings, /getMemory\(/);
+  assert.match(api, /\/v1\/memory/);
+  assert.match(api, /getUserMemory/);
+  assert.match(api, /deleteUserMemory/);
+  const userGet = api.slice(
+    api.indexOf("export async function getUserMemory"),
+    api.indexOf("export async function deleteUserMemory"),
+  );
+  assert.match(userGet, /\/v1\/memory/);
+  assert.doesNotMatch(userGet, /\/v1\/agents\//);
+  const userDel = api.slice(api.indexOf("export async function deleteUserMemory"));
+  assert.match(userDel, /\/v1\/memory/);
+  assert.match(userDel, /method: "DELETE"/);
+  assert.doesNotMatch(app, /computerPane\.ts/);
+});
+
 test("catalog sits below custom plugin rows with 12px Add, no search", () => {
   const header = block(".settings-catalog-header");
   const row = block(".catalog-row");
@@ -197,6 +261,7 @@ test("catalog sits below custom plugin rows with 12px Add, no search", () => {
   assert.match(app, /catalogInstallBody/);
   assert.match(api, /\/v1\/plugins\/catalog/);
   assert.match(connectSrc, /catalogInstallBody/);
+  assert.ok(app.indexOf("settings-memory") < app.indexOf("settings-plugins"));
   assert.ok(app.indexOf("settings-plugins") < app.indexOf("settings-catalog"));
   assert.ok(app.indexOf("No plugins yet.") < app.indexOf("settings-catalog"));
   assert.doesNotMatch(app, /plugin-catalog-search/);

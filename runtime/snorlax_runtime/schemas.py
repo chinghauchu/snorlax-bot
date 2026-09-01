@@ -491,13 +491,13 @@ class SkillPatch(BaseModel):
 
 
 class AgentMemory(BaseModel):
-    """GET /v1/agents/{id}/memory. This agent's private facts only."""
+    """GET /v1/agents/{id}/memory or GET /v1/memory. One store's facts."""
 
     facts: list[str]
 
 
 class MemoryForget(BaseModel):
-    """DELETE /v1/agents/{id}/memory. Exact forget (casefold fallback)."""
+    """DELETE /v1/agents/{id}/memory or DELETE /v1/memory. Exact forget."""
 
     fact: str
 

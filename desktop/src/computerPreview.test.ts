@@ -279,10 +279,16 @@ test("iOS agent sheet matches: 16:10, 8pt, 12pt Open when hasSandbox, tap POSTs 
   assert.doesNotMatch(memoryBlock, /Button\("Edit"\)/);
   assert.match(client, /listMemory/);
   assert.match(client, /forgetMemory/);
+  assert.match(client, /listUserMemory/);
+  assert.match(client, /forgetUserMemory/);
   assert.match(model, /loadMemories/);
   assert.match(model, /removeMemory/);
+  assert.match(model, /loadUserMemories/);
+  assert.match(model, /removeUserMemory/);
   assert.match(model, /refreshOpenMemory/);
+  assert.match(model, /refreshOpenUserMemory/);
   assert.match(model, /isMemoryToolLine/);
+  assert.match(model, /showSettings/);
   assert.match(model, /Remembered/);
   assert.match(model, /Forgot/);
   assert.match(model, /showProfile/);

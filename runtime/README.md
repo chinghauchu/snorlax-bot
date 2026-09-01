@@ -193,8 +193,10 @@ separate). A full user file is `Error: Shared memory is full.`
 Forget without `scope: user` never touches that file. Each turn
 injects user facts first, then that speaker's agent facts.
 GET/DELETE `/v1/agents/{id}/memory` stay agent-only. Agent DELETE
-never rmtree `memory/user/`. No `/v1/memory`. Desktop/iOS idle.
-OpenAPI stays 0.18.0.
+never rmtree `memory/user/`. v0.40: `GET /v1/memory` `{ facts }`
+and `DELETE` `{ fact }` wrap that user file (empty / missing is
+`[]`; unknown 404; empty fact 422). No POST. Settings lists user
+facts only; the agent pane stays agent-only. OpenAPI stays 0.18.0.
 
 ## MCP (`mcp.json`)
 

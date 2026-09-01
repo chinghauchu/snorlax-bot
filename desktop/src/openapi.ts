@@ -485,9 +485,11 @@ export interface paths {
          * @description `{ facts: string[] }` from the same v0.36
          *     `~/.snorlax-bot/memory/{agentId}/MEMORY.md` that remember /
          *     forget already use. Cap 32. Empty list is 200 `{ facts: [] }`.
-         *     kind=channel is **409**. Missing agent is 404. Isolation: A
-         *     never lists B. No Add / POST. Creating facts stays the
-         *     remember tool. Chrome is the agent identity pane only.
+         *     Agent-only: does not include user-shared facts from
+         *     `memory/user/` (those are `GET /v1/memory`). kind=channel is
+         *     **409**. Missing agent is 404. Isolation: A never lists B.
+         *     No Add / POST. Creating facts stays the remember tool.
+         *     Chrome is the agent identity pane only.
          */
         get: operations["getMemory"];
         put?: never;
@@ -503,6 +505,44 @@ export interface paths {
          *     is `Remove {fact}?`. Does not paint a chat bubble.
          */
         delete: operations["deleteMemory"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/memory": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List user-shared facts
+         * @description `{ facts: string[] }` from the v0.39
+         *     `{SNORLAX_DATA_DIR}/memory/user/MEMORY.md` that remember /
+         *     forget with `scope: user` already use. Cap 32. Empty list
+         *     and a missing file are 200 `{ facts: [] }` (not 404).
+         *     User-shared only: never includes an agent's MEMORY.md.
+         *     No POST. Creating facts stays remember `{ fact, scope:
+         *     "user" }`. Chrome is Settings only (desktop Settings +
+         *     iOS Settings). Agent pane stays GET
+         *     `/v1/agents/{id}/memory`.
+         */
+        get: operations["getUserMemory"];
+        put?: never;
+        post?: never;
+        /**
+         * Forget one user-shared fact (exact, then casefold)
+         * @description `DELETE /v1/memory` `{ fact }` wraps `forget_fact` against
+         *     `memory/user/MEMORY.md` → **204**, gone from GET. Exact
+         *     recorded text first; casefold fallback like v0.36 forget.
+         *     Unknown fact is **404** `Error: no matching fact`. Empty /
+         *     missing fact is **422** `Error: missing fact`. Does not
+         *     touch `memory/{agentId}/`. Confirm chrome is
+         *     `Remove this memory?`. Does not paint a chat bubble.
+         */
+        delete: operations["deleteUserMemory"];
         options?: never;
         head?: never;
         patch?: never;
@@ -1611,6 +1651,8 @@ export interface components {
             /**
              * @description Curated sentences from MEMORY.md (cap 32). Same list
              *     remember / forget persist. Empty is `[]`.
+             *     GET /v1/memory is the user-shared file; GET
+             *     /v1/agents/{id}/memory is that agent's file.
              */
             facts: string[];
         };
@@ -2240,6 +2282,52 @@ export interface operations {
             401: components["responses"]["Error"];
             404: components["responses"]["Error"];
             409: components["responses"]["Error"];
+            422: components["responses"]["Error"];
+        };
+    };
+    getUserMemory: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description AgentMemory `{ facts }` */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgentMemory"];
+                };
+            };
+            401: components["responses"]["Error"];
+        };
+    };
+    deleteUserMemory: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MemoryForget"];
+            };
+        };
+        responses: {
+            /** @description Forgot; no body */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Error"];
+            404: components["responses"]["Error"];
             422: components["responses"]["Error"];
         };
     };

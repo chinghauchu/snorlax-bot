@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 import SwiftUI
+import UIKit
 
 struct SettingsSheet: View {
     @Environment(AppModel.self) private var model
@@ -7,6 +8,7 @@ struct SettingsSheet: View {
     @State private var showToken = false
     @State private var showAdd = false
     @State private var pendingRemove: Plugin?
+    @State private var pendingMemory: String?
     @State private var catalogAdding: String?
 
     var body: some View {
@@ -80,6 +82,40 @@ struct SettingsSheet: View {
                         }
                         .accessibilityLabel(showToken ? "Hide token" : "Show token")
                     }
+                }
+
+                Section {
+                    if model.userMemories.isEmpty {
+                        Text("No memories yet.")
+                            .font(.system(size: 12))
+                            .foregroundStyle(.secondary)
+                    } else {
+                        ForEach(model.userMemories, id: \.self) { fact in
+                            HStack(alignment: .top, spacing: 8) {
+                                Text(fact)
+                                    .font(.system(size: 14)) // 14pt / 1.2
+                                    .lineLimit(2)
+                                    .truncationMode(.tail)
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+                                    .onLongPressGesture {
+                                        UIPasteboard.general.string = fact
+                                    }
+                                Button("Remove") {
+                                    pendingMemory = fact
+                                }
+                                .font(.system(size: 12, weight: .medium))
+                                .foregroundStyle(.secondary)
+                                .buttonStyle(.plain)
+                                .accessibilityLabel("Remove \(fact)")
+                            }
+                            .frame(minHeight: 44)
+                        }
+                    }
+                } header: {
+                    Text("Memory")
+                        .font(.system(size: 12))
+                        .foregroundStyle(.secondary)
+                        .textCase(nil)
                 }
 
                 Section {
@@ -179,9 +215,26 @@ struct SettingsSheet: View {
                 }
                 Button("Cancel", role: .cancel) { pendingRemove = nil }
             }
+            .confirmationDialog(
+                "Remove this memory?",
+                isPresented: Binding(
+                    get: { pendingMemory != nil },
+                    set: { if !$0 { pendingMemory = nil } }
+                ),
+                titleVisibility: .visible
+            ) {
+                Button("Remove", role: .destructive) {
+                    if let fact = pendingMemory {
+                        Task { await model.removeUserMemory(fact: fact) }
+                    }
+                    pendingMemory = nil
+                }
+                Button("Cancel", role: .cancel) { pendingMemory = nil }
+            }
         }
         .presentationDetents([.medium, .large])
         .task {
+            await model.loadUserMemories()
             await model.refreshPlugins()
         }
         .onDisappear {
