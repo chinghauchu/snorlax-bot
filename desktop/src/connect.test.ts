@@ -202,6 +202,7 @@ test("Settings Memory lists user facts above Plugins, no Add", () => {
   assert.match(app, /pendingUserMemoryRemove/);
   assert.match(app, /refreshOpenUserMemory/);
   assert.match(app, /settingsOpenRef/);
+  assert.match(app, /special-case user scope/);
   const userRefresh = app.slice(
     app.indexOf("function refreshOpenUserMemory"),
     app.indexOf("function openRoutineAdd"),
@@ -209,7 +210,6 @@ test("Settings Memory lists user facts above Plugins, no Add", () => {
   assert.match(userRefresh, /isMemoryToolLine/);
   assert.match(userRefresh, /loadUserMemory/);
   assert.match(userRefresh, /settingsOpenRef/);
-  assert.match(userRefresh, /special-case user scope/);
   assert.doesNotMatch(userRefresh, /scope ===/);
   assert.doesNotMatch(userRefresh, /scope: "user"/);
   assert.doesNotMatch(userRefresh, /getMemory\(/);
