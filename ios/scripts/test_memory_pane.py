@@ -139,7 +139,15 @@ def test_open_settings_refetch_user_memory() -> None:
         )
     ]
     assert "showSettings" in refresh
+    assert "isMemoryToolLine" in refresh
+    assert "loadUserMemories()" in refresh
     assert "loadMemories(for:" not in refresh
+    assert "guard showSettings, Self.isMemoryToolLine(text)" in refresh
+    assert "scope ==" not in refresh
+    assert 'scope: "user"' not in refresh
+    assert "SCOPE_USER" not in refresh
+    assert "ANY Remembered" in OPENAPI
+    assert "special-case user scope" in OPENAPI
 
 
 def test_channel_pane_has_no_memory() -> None:

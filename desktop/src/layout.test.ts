@@ -582,6 +582,15 @@ test("memory list is below Skills, 44px 2-line clamp rows, no Add, Remove this m
   assert.match(app, /settingsOpenRef/);
   assert.match(app, /getUserMemory/);
   assert.match(app, /deleteUserMemory/);
+  const userRefresh = app.slice(
+    app.indexOf("function refreshOpenUserMemory"),
+    app.indexOf("function openRoutineAdd"),
+  );
+  assert.match(userRefresh, /isMemoryToolLine/);
+  assert.match(userRefresh, /loadUserMemory/);
+  assert.match(userRefresh, /special-case user scope/);
+  assert.doesNotMatch(userRefresh, /scope ===/);
+  assert.doesNotMatch(userRefresh, /scope: "user"/);
   assert.match(infoPane, /No memories yet\./);
   assert.match(infoPane, /Remove this memory\?/);
   assert.doesNotMatch(infoPane, /Remove \$\{fact\}\?/);

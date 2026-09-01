@@ -72,6 +72,8 @@ def test_protocol_openapi_is_locked_v0_contract() -> None:
     assert "/v1/memory" in text
     assert "getUserMemory" in text
     assert "deleteUserMemory" in text
+    assert "ANY Remembered" in text
+    assert "special-case user scope" in text
     assert "user-shared" in text or "User facts" in text or "user-shared memory" in text
     assert "not skill-gated" in text
     assert "agent bootstrap" in text

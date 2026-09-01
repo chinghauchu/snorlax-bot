@@ -65,8 +65,8 @@ Concrete follow-ups after v0. Filed on GitHub against
   chrome (`Remove this memory?`; 2-line clamp; desktop hover title; iOS
   long-press copy; open-pane refetch after Remembered / Forgot). **v0.40:**
   Settings Memory list above Plugins (`GET/DELETE /v1/memory`; user facts
-  only; same Remove chrome; open Settings refetches after Remembered /
-  Forgot). Full sandbox computer GUI
+  only; same Remove chrome; open Settings refetches GET `/v1/memory`
+  after ANY Remembered / Forgot). Full sandbox computer GUI
   (browser, VNC, terminal)
   stays later.
 
@@ -111,5 +111,5 @@ Concrete follow-ups after v0. Filed on GitHub against
 - **v0.40:** Settings Memory list above Plugins (`GET /v1/memory`;
   Remove DELETE exact-forgets; empty `No memories yet.`; confirm
   `Remove this memory?`; long-press copies the full fact; open
-  Settings refetches after Remembered / Forgot). Agent sheet stays
+  Settings refetches GET `/v1/memory` after ANY Remembered / Forgot). Agent sheet stays
   agent-only. Channel sheet unchanged.

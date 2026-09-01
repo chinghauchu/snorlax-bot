@@ -519,8 +519,9 @@ No POST. Creating user facts stays remember `{ fact, scope: user }`.
 GET/DELETE `/v1/agents/{id}/memory` stay agent-only. Settings
 (desktop + iOS) lists user facts only, above Plugins, with v0.38
 Remove chrome (`Remove this memory?`). Agent pane stays that agent's
-32. Channel pane unchanged. Open Settings refetches after a
-Remembered / Forgot tool line. Isolation: Settings never shows agent
+32. Channel pane unchanged. If Settings is open, refetch GET
+`/v1/memory` after ANY Remembered / Forgot tool line (agent-scope
+write is a no-op list; do not special-case user scope). Isolation: Settings never shows agent
 facts; an agent's pane never shows user facts. OpenAPI stays 0.18.0.
 Never reintroduce `computerPane.ts`.
 

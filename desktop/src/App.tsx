@@ -1104,6 +1104,9 @@ export function App() {
     }
   }
 
+  /** Open Settings only. Any Remembered / Forgot — GET /v1/memory is
+   * user-only, so an agent-scope write is a no-op list. Do not
+   * special-case user scope. */
   function refreshOpenUserMemory(text: string) {
     if (!settingsOpenRef.current) return;
     if (!isMemoryToolLine(text)) return;

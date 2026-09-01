@@ -817,9 +817,11 @@ info:
     danger Remove / Cancel. Empty still shows the header +
     `No memories yet.` Agent pane stays that agent's 32 only.
     Channel pane unchanged. If Settings is open, refetch GET
-    `/v1/memory` after a Remembered / Forgot tool line. Agent-pane
-    refetch stays agent-only. Tool line stays Remembered / Forgot
-    (never the fact, never the scope word). Isolation: Settings never
+    `/v1/memory` after ANY Remembered / Forgot tool line. That GET
+    is user-only, so an agent-scope write is a no-op list (do not
+    special-case user scope only). Agent-pane refetch stays
+    agent-only. Tool line stays Remembered / Forgot (never the fact,
+    never the scope word). Isolation: Settings never
     shows agent facts; an agent's pane never shows user facts.
     Clients never speak MCP or the model. Never reintroduce
     computerPane.ts. Leave stale PRs #23 and #24 untouched.
