@@ -799,6 +799,31 @@ info:
     store. No transcript scan. No channel-level store. Never
     reintroduce computerPane.ts. Leave stale PRs #23 and #24
     untouched. OpenAPI **0.18.0**.
+
+    v0.40: Settings shared-memory list. One impl PR. Spec rides this
+    PR. **No second PR.** OpenAPI stays **0.18.0**. HTTP (this
+    resource only): `GET /v1/memory` → `{ facts: string[] }` from the
+    v0.39 `{SNORLAX_DATA_DIR}/memory/user/MEMORY.md` (empty / missing
+    file is `[]`, not 404). `DELETE /v1/memory` `{ fact }` wraps
+    exact forget (casefold fallback) against that user file → **204**.
+    Unknown fact is **404** `Error: no matching fact`. Empty fact is
+    **422** `Error: missing fact`. No POST. Creating user facts stays
+    remember `{ fact, scope: "user" }`. GET/DELETE
+    `/v1/agents/{id}/memory` stay agent-only (do not list user facts
+    on the pane). Settings only (desktop Settings + iOS Settings):
+    12px / 12pt muted `Memory` (no Add), 44px / 44pt wrapping
+    14px / 14pt / 1.2 fact rows (max 2 lines + ellipsis), trailing
+    12px / 12pt muted Remove. Confirm is `Remove this memory?` then
+    danger Remove / Cancel. Empty still shows the header +
+    `No memories yet.` Agent pane stays that agent's 32 only.
+    Channel pane unchanged. If Settings is open, refetch GET
+    `/v1/memory` after a Remembered / Forgot tool line. Agent-pane
+    refetch stays agent-only. Tool line stays Remembered / Forgot
+    (never the fact, never the scope word). Isolation: Settings never
+    shows agent facts; an agent's pane never shows user facts.
+    Clients never speak MCP or the model. Never reintroduce
+    computerPane.ts. Leave stale PRs #23 and #24 untouched.
+    OpenAPI **0.18.0**.
   license:
     name: Apache-2.0
     identifier: Apache-2.0
@@ -1477,10 +1502,10 @@ paths:
         `~/.snorlax-bot/memory/{agentId}/MEMORY.md` that remember /
         forget already use. Cap 32. Empty list is 200 `{ facts: [] }`.
         Agent-only: does not include user-shared facts from
-        `memory/user/`. No `/v1/memory`. kind=channel is **409**.
-        Missing agent is 404. Isolation: A never lists B. No Add /
-        POST. Creating facts stays the remember tool. Chrome is the
-        agent identity pane only.
+        `memory/user/` (those are `GET /v1/memory`). kind=channel is
+        **409**. Missing agent is 404. Isolation: A never lists B.
+        No Add / POST. Creating facts stays the remember tool.
+        Chrome is the agent identity pane only.
       operationId: getMemory
       responses:
         "200":
@@ -1520,6 +1545,56 @@ paths:
         "404":
           $ref: "#/components/responses/Error"
         "409":
+          $ref: "#/components/responses/Error"
+        "422":
+          $ref: "#/components/responses/Error"
+
+  /v1/memory:
+    get:
+      summary: List user-shared facts
+      description: |
+        `{ facts: string[] }` from the v0.39
+        `{SNORLAX_DATA_DIR}/memory/user/MEMORY.md` that remember /
+        forget with `scope: user` already use. Cap 32. Empty list
+        and a missing file are 200 `{ facts: [] }` (not 404).
+        User-shared only: never includes an agent's MEMORY.md.
+        No POST. Creating facts stays remember `{ fact, scope:
+        "user" }`. Chrome is Settings only (desktop Settings +
+        iOS Settings). Agent pane stays GET
+        `/v1/agents/{id}/memory`.
+      operationId: getUserMemory
+      responses:
+        "200":
+          description: AgentMemory `{ facts }`
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgentMemory"
+        "401":
+          $ref: "#/components/responses/Error"
+    delete:
+      summary: Forget one user-shared fact (exact, then casefold)
+      description: |
+        `DELETE /v1/memory` `{ fact }` wraps `forget_fact` against
+        `memory/user/MEMORY.md` → **204**, gone from GET. Exact
+        recorded text first; casefold fallback like v0.36 forget.
+        Unknown fact is **404** `Error: no matching fact`. Empty /
+        missing fact is **422** `Error: missing fact`. Does not
+        touch `memory/{agentId}/`. Confirm chrome is
+        `Remove this memory?`. Does not paint a chat bubble.
+      operationId: deleteUserMemory
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MemoryForget"
+      responses:
+        "204":
+          description: Forgot; no body
+        "401":
+          $ref: "#/components/responses/Error"
+        "404":
           $ref: "#/components/responses/Error"
         "422":
           $ref: "#/components/responses/Error"
@@ -3017,6 +3092,8 @@ components:
           description: |
             Curated sentences from MEMORY.md (cap 32). Same list
             remember / forget persist. Empty is `[]`.
+            GET /v1/memory is the user-shared file; GET
+            /v1/agents/{id}/memory is that agent's file.
 
     MemoryForget:
       type: object

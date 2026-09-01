@@ -1,16 +1,11 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: Apache-2.0
-"""v0.38 leftover chrome on the iOS agent Memory pane.
+"""v0.40 Settings shared-memory list + v0.38 agent Memory pane chrome.
 
-Below Skills: 12pt muted Memory header, no trailing Add. 14pt / 1.2
-facts clamp to 2 lines with ellipsis; rows min 44pt. Trailing 12pt
-muted Remove. Empty still shows the header plus No memories yet.
-Confirm title is exactly Remove this memory? (never interpolates the
-fact) then danger Remove + Cancel. Long-press copies the full fact.
-Open pane refetches GET /memory after a Remembered / Forgot tool line
-on that agent's 1:1; closed pane does not poll. Channel pane has no
-Memory block. Reuse GET /memory + DELETE { fact }. OpenAPI stays 0.18.0.
-Never reintroduce computerPane.ts.
+Settings (desktop + iOS) lists user facts from GET /v1/memory with the
+same Remove chrome as the agent pane. Agent pane stays agent-only
+(GET /v1/agents/{id}/memory). Channel pane has no Memory block.
+OpenAPI stays 0.18.0. Never reintroduce computerPane.ts.
 """
 
 from __future__ import annotations
@@ -56,6 +51,8 @@ def test_agent_sheet_memory_below_skills_no_add() -> None:
     assert "pendingRemove = .memory(fact)" in memory
     assert "New skill" not in memory
     assert "AgentAvatar" not in memory
+    assert "listUserMemory" not in memory
+    assert "userMemories" not in memory
 
 
 def test_remove_confirm_never_interpolates_the_fact() -> None:
@@ -96,6 +93,26 @@ def test_http_wraps_v036_store() -> None:
     assert "0.18.0" in TYPES
 
 
+def test_http_user_memory_is_v1_memory() -> None:
+    assert "listUserMemory" in CLIENT
+    assert "forgetUserMemory" in CLIENT
+    assert 'get("v1/memory")' in CLIENT
+    user_forget = CLIENT[
+        CLIENT.index("func forgetUserMemory") : CLIENT.index("func createRoutine")
+    ]
+    assert '"v1/memory"' in user_forget
+    assert "MemoryForget(fact: fact)" in user_forget
+    assert 'method: "DELETE"' in user_forget
+    assert "loadUserMemories" in MODEL
+    assert "removeUserMemory" in MODEL
+    assert "client.listUserMemory" in MODEL
+    assert "client.forgetUserMemory" in MODEL
+    assert "getUserMemory" in OPENAPI
+    assert "deleteUserMemory" in OPENAPI
+    assert "v0.40" in OPENAPI
+    assert "version: 0.18.0" in OPENAPI
+
+
 def test_open_pane_refetch_after_remembered_forgot() -> None:
     assert "refreshOpenMemory" in MODEL
     assert "isMemoryToolLine" in MODEL
@@ -109,20 +126,63 @@ def test_open_pane_refetch_after_remembered_forgot() -> None:
     assert "refreshOpenMemory(from: summary)" in handle
 
 
-def test_channel_pane_and_settings_have_no_memory() -> None:
+def test_open_settings_refetch_user_memory() -> None:
+    assert "refreshOpenUserMemory" in MODEL
+    assert "showSettings" in MODEL
+    assert "loadUserMemories()" in MODEL
+    handle = MODEL[MODEL.index("private func handle") :]
+    assert "refreshOpenUserMemory(from: message.content)" in handle
+    assert "refreshOpenUserMemory(from: summary)" in handle
+    refresh = MODEL[
+        MODEL.index("private func refreshOpenUserMemory") : MODEL.index(
+            "func handleSceneActive"
+        )
+    ]
+    assert "showSettings" in refresh
+    assert "loadMemories(for:" not in refresh
+
+
+def test_channel_pane_has_no_memory() -> None:
     channel = SHEET[
         SHEET.index("private var channelPane") : SHEET.index("private var channelEditForm")
     ]
     assert "memoryList" not in channel
     assert "listMemory" not in channel
+    assert "listUserMemory" not in channel
     assert "No memories yet." not in channel
     assert 'Text("Memory")' not in channel
-    assert "Memory" not in SETTINGS
-    assert "listMemory" not in SETTINGS
     assert "computerPane.ts" not in SHEET
     assert "computerPane.ts" not in CLIENT
     assert "computerPane.ts" not in MODEL
     assert not DESKTOP_PANE.exists()
+
+
+def test_settings_lists_user_memory_above_plugins() -> None:
+    assert 'Text("Memory")' in SETTINGS
+    assert "No memories yet." in SETTINGS
+    assert "userMemories" in SETTINGS
+    assert "loadUserMemories" in SETTINGS
+    assert "removeUserMemory" in SETTINGS
+    assert '"Remove this memory?"' in SETTINGS
+    assert "Remove \\(fact)?" not in SETTINGS
+    assert 'Button("Remove")' in SETTINGS
+    assert "lineLimit(2)" in SETTINGS
+    assert "truncationMode(.tail)" in SETTINGS
+    assert "onLongPressGesture" in SETTINGS
+    assert "UIPasteboard.general.string = fact" in SETTINGS
+    assert "minHeight: 44" in SETTINGS
+    assert "size: 12" in SETTINGS
+    assert "size: 14" in SETTINGS
+    assert "1.2" in SETTINGS
+    assert SETTINGS.index('Text("Memory")') < SETTINGS.index('Text("Plugins")')
+    memory = SETTINGS[
+        SETTINGS.index('Text("Memory")') : SETTINGS.index('Text("Plugins")')
+    ]
+    assert 'Button("Add")' not in memory
+    assert 'Button("Edit")' not in memory
+    assert "listMemory" not in SETTINGS
+    assert "listUserMemory" not in SETTINGS
+    assert "computerPane.ts" not in SETTINGS
 
 
 def main() -> int:
@@ -130,8 +190,11 @@ def main() -> int:
         test_agent_sheet_memory_below_skills_no_add,
         test_remove_confirm_never_interpolates_the_fact,
         test_http_wraps_v036_store,
+        test_http_user_memory_is_v1_memory,
         test_open_pane_refetch_after_remembered_forgot,
-        test_channel_pane_and_settings_have_no_memory,
+        test_open_settings_refetch_user_memory,
+        test_channel_pane_has_no_memory,
+        test_settings_lists_user_memory_above_plugins,
     ]
     failed = 0
     for test in tests:

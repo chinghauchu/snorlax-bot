@@ -58,6 +58,7 @@ final class AppModel {
     var routines: [Routine] = []
     var skills: [Skill] = []
     var memories: [String] = []
+    var userMemories: [String] = []
     var composerSkills: [Skill] = []
     var skillPickerDismissed = false
     var plugins: [Plugin] = []
@@ -631,6 +632,29 @@ final class AppModel {
         }
     }
 
+    func loadUserMemories() async {
+        guard let client else {
+            userMemories = []
+            return
+        }
+        do {
+            userMemories = try await client.listUserMemory().facts
+        } catch {
+            userMemories = []
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    func removeUserMemory(fact: String) async {
+        guard let client else { return }
+        do {
+            try await client.forgetUserMemory(fact: fact)
+            userMemories.removeAll { $0 == fact }
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+
     func send() async {
         guard let client, let agent = selectedAgent else { return }
         let content = draft.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -967,6 +991,12 @@ final class AppModel {
         Task { await loadMemories(for: agent.id) }
     }
 
+    /// Open Settings only. Closed Settings does not poll. User store.
+    private func refreshOpenUserMemory(from text: String) {
+        guard showSettings, Self.isMemoryToolLine(text) else { return }
+        Task { await loadUserMemories() }
+    }
+
     func handleSceneActive() async {
         guard isConfigured else { return }
         if agents.isEmpty {
@@ -1005,6 +1035,7 @@ final class AppModel {
             if message.kind == .tool {
                 toolTraces.removeAll { $0.id == message.id }
                 refreshOpenMemory(from: message.content)
+                refreshOpenUserMemory(from: message.content)
             }
         case .error(let message):
             errorMessage = message
@@ -1029,6 +1060,7 @@ final class AppModel {
             }
             if done {
                 refreshOpenMemory(from: summary)
+                refreshOpenUserMemory(from: summary)
             }
         case .connectUrl(let url, _):
             if let resolved = client?.resolve(url) ?? URL(string: url) {

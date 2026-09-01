@@ -287,6 +287,27 @@ export async function deleteMemory(
   if (!response.ok) throw await parseError(response);
 }
 
+export async function getUserMemory(session: Session): Promise<string[]> {
+  const response = await fetch(`${session.baseUrl}/v1/memory`, {
+    headers: headers(session),
+  });
+  const body = await json<AgentMemory>(response);
+  return Array.isArray(body.facts) ? body.facts : [];
+}
+
+export async function deleteUserMemory(
+  session: Session,
+  fact: string,
+): Promise<void> {
+  const payload: MemoryForget = { fact };
+  const response = await fetch(`${session.baseUrl}/v1/memory`, {
+    method: "DELETE",
+    headers: headers(session, { "Content-Type": "application/json" }),
+    body: JSON.stringify(payload),
+  });
+  if (!response.ok) throw await parseError(response);
+}
+
 export async function listMessages(
   session: Session,
   agentId: string,

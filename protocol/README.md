@@ -179,6 +179,12 @@ v0.37 memory pane: `GET /v1/agents/{id}/memory` `{ facts }` and
 `DELETE` `{ fact }` wrap the v0.36 file (exact forget, casefold
 fallback). Channel 409. No POST. OpenAPI stays 0.18.0.
 
+v0.40 Settings shared-memory list: `GET /v1/memory` `{ facts }` and
+`DELETE` `{ fact }` wrap the v0.39 `memory/user/MEMORY.md` file
+(empty / missing is `[]`; unknown 404; empty fact 422). No POST.
+GET/DELETE `/v1/agents/{id}/memory` stay agent-only. Settings lists
+user facts only. OpenAPI stays 0.18.0.
+
 A copy is also kept at `runtime/openapi.yaml` and `desktop/openapi.yaml`
 so those trees are self-contained. Do not let the files diverge.
 

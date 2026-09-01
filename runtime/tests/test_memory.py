@@ -766,8 +766,98 @@ def test_reserved_user_id_is_not_a_roster_agent(client) -> None:
     assert channel["id"] != USER_MEMORY_ID
     missing = client.get(f"/v1/agents/{USER_MEMORY_ID}/memory", headers=AUTH)
     assert missing.status_code == 404
-    no_public = client.get("/v1/memory", headers=AUTH)
-    assert no_public.status_code == 404
+
+
+def test_get_user_memory_empty_missing_is_array(client, tmp_path: Path) -> None:
+    missing = client.get("/v1/memory", headers=AUTH)
+    assert missing.status_code == 200
+    assert missing.json() == {"facts": []}
+    assert not memory_path(tmp_path, USER_MEMORY_ID).exists()
+
+
+def test_get_user_memory_returns_file_order(client, tmp_path: Path) -> None:
+    remember_fact(tmp_path, USER_MEMORY_ID, USER_FACT)
+    remember_fact(tmp_path, USER_MEMORY_ID, OTHER)
+    remember_fact(tmp_path, SEED, FACT)
+    listed = client.get("/v1/memory", headers=AUTH)
+    assert listed.status_code == 200
+    assert listed.json() == {"facts": [USER_FACT, OTHER]}
+    agent_listed = client.get(f"/v1/agents/{SEED}/memory", headers=AUTH)
+    assert agent_listed.json() == {"facts": [FACT]}
+
+
+def test_delete_user_memory_exact_204_drops_that_bullet(
+    client, tmp_path: Path
+) -> None:
+    remember_fact(tmp_path, USER_MEMORY_ID, USER_FACT)
+    remember_fact(tmp_path, USER_MEMORY_ID, OTHER)
+    remember_fact(tmp_path, SEED, FACT)
+    deleted = client.request(
+        "DELETE",
+        "/v1/memory",
+        headers=AUTH,
+        json={"fact": USER_FACT},
+    )
+    assert deleted.status_code == 204
+    assert load_facts(tmp_path, USER_MEMORY_ID) == [OTHER]
+    listed = client.get("/v1/memory", headers=AUTH)
+    assert listed.json() == {"facts": [OTHER]}
+    assert load_facts(tmp_path, SEED) == [FACT]
+    agent_listed = client.get(f"/v1/agents/{SEED}/memory", headers=AUTH)
+    assert agent_listed.json() == {"facts": [FACT]}
+
+
+def test_delete_user_memory_unknown_is_404(client, tmp_path: Path) -> None:
+    remember_fact(tmp_path, USER_MEMORY_ID, USER_FACT)
+    missing = client.request(
+        "DELETE",
+        "/v1/memory",
+        headers=AUTH,
+        json={"fact": FACT},
+    )
+    assert missing.status_code == 404
+    assert missing.json()["error"] == ERR_NO_MATCH
+    assert load_facts(tmp_path, USER_MEMORY_ID) == [USER_FACT]
+
+
+def test_delete_user_memory_empty_fact_is_422(client, tmp_path: Path) -> None:
+    remember_fact(tmp_path, USER_MEMORY_ID, USER_FACT)
+    blank = client.request(
+        "DELETE",
+        "/v1/memory",
+        headers=AUTH,
+        json={"fact": "  "},
+    )
+    assert blank.status_code == 422
+    assert blank.json()["error"] == ERR_MISSING_FACT
+    assert load_facts(tmp_path, USER_MEMORY_ID) == [USER_FACT]
+
+
+def test_agent_memory_http_does_not_touch_user_store(
+    client, tmp_path: Path
+) -> None:
+    remember_fact(tmp_path, USER_MEMORY_ID, USER_FACT)
+    remember_fact(tmp_path, SEED, FACT)
+    listed = client.get(f"/v1/agents/{SEED}/memory", headers=AUTH)
+    assert listed.json() == {"facts": [FACT]}
+    dropped = client.request(
+        "DELETE",
+        f"/v1/agents/{SEED}/memory",
+        headers=AUTH,
+        json={"fact": FACT},
+    )
+    assert dropped.status_code == 204
+    assert load_facts(tmp_path, SEED) == []
+    assert load_facts(tmp_path, USER_MEMORY_ID) == [USER_FACT]
+    assert client.get("/v1/memory", headers=AUTH).json() == {"facts": [USER_FACT]}
+    leftover = client.request(
+        "DELETE",
+        f"/v1/agents/{SEED}/memory",
+        headers=AUTH,
+        json={"fact": USER_FACT},
+    )
+    assert leftover.status_code == 404
+    assert load_facts(tmp_path, USER_MEMORY_ID) == [USER_FACT]
 
 
 def test_user_store_cap_and_errors_are_separate(tmp_path: Path) -> None:

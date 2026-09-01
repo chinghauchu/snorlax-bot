@@ -23,9 +23,11 @@ import {
   deleteAgent,
   deleteMemory,
   deletePlugin,
+  deleteUserMemory,
   deleteRoutine,
   deleteSkill,
   getMemory,
+  getUserMemory,
   getSkill,
   listAgents,
   listMessages,
@@ -435,6 +437,30 @@ function AgentMemoryRow({
   );
 }
 
+function SettingsMemoryRow({
+  fact,
+  onRemove,
+}: {
+  fact: string;
+  onRemove: (fact: string) => void;
+}) {
+  return (
+    <div className="settings-memory-row">
+      <p className="settings-memory-fact" title={fact}>
+        {fact}
+      </p>
+      <button
+        type="button"
+        className="settings-memory-remove"
+        aria-label={`Remove ${fact}`}
+        onClick={() => onRemove(fact)}
+      >
+        Remove
+      </button>
+    </div>
+  );
+}
+
 export function App() {
   const [urlInput, setUrlInput] = useState(initialUrl);
   const [tokenInput, setTokenInput] = useState(initialToken);
@@ -514,9 +540,13 @@ export function App() {
     null,
   );
   const [memories, setMemories] = useState<string[]>([]);
+  const [userMemories, setUserMemories] = useState<string[]>([]);
   const [pendingMemoryRemove, setPendingMemoryRemove] = useState<string | null>(
     null,
   );
+  const [pendingUserMemoryRemove, setPendingUserMemoryRemove] = useState<
+    string | null
+  >(null);
   const [skillEditOpen, setSkillEditOpen] = useState(false);
   const [skillEditId, setSkillEditId] = useState("");
   const [skillEditName, setSkillEditName] = useState("");
@@ -601,6 +631,7 @@ export function App() {
     setSettingsOpen(false);
     setPluginAddOpen(false);
     setPendingRemove(null);
+    setPendingUserMemoryRemove(null);
   }
   const active = useMemo(
     () => agents.find((a) => a.id === activeId) ?? null,
@@ -608,6 +639,8 @@ export function App() {
   );
   const profileOpenRef = useRef(profileOpen);
   profileOpenRef.current = profileOpen;
+  const settingsOpenRef = useRef(settingsOpen);
+  settingsOpenRef.current = settingsOpen;
   const activeRef = useRef(active);
   activeRef.current = active;
   const mentionCandidates = useMemo(() => {
@@ -851,6 +884,25 @@ export function App() {
     };
   }, [session, settingsOpen]);
 
+  useEffect(() => {
+    if (!session) {
+      setUserMemories([]);
+      return;
+    }
+    if (!settingsOpen) return;
+    let cancelled = false;
+    void getUserMemory(session)
+      .then((facts) => {
+        if (!cancelled) setUserMemories(facts);
+      })
+      .catch(() => {
+        if (!cancelled) setUserMemories([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [session, settingsOpen]);
+
   async function loadConversation(id: string, thread: string | null) {
     setActiveId(id);
     setThreadId(thread);
@@ -1040,6 +1092,24 @@ export function App() {
     void loadMemory(agent.id);
   }
 
+  async function loadUserMemory() {
+    if (!session) {
+      setUserMemories([]);
+      return;
+    }
+    try {
+      setUserMemories(await getUserMemory(session));
+    } catch {
+      setUserMemories([]);
+    }
+  }
+
+  function refreshOpenUserMemory(text: string) {
+    if (!settingsOpenRef.current) return;
+    if (!isMemoryToolLine(text)) return;
+    void loadUserMemory();
+  }
+
   function openRoutineAdd() {
     if (!active || active.kind === "channel") return;
     setRoutineAddName("");
@@ -1210,6 +1280,18 @@ export function App() {
     try {
       await deleteMemory(session, active.id, fact);
       setMemories((prev) => prev.filter((row) => row !== fact));
+    } catch (err) {
+      setComposerError(describeError(err));
+    }
+  }
+
+  async function confirmUserMemoryRemove() {
+    if (!session || !pendingUserMemoryRemove) return;
+    const fact = pendingUserMemoryRemove;
+    setPendingUserMemoryRemove(null);
+    try {
+      await deleteUserMemory(session, fact);
+      setUserMemories((prev) => prev.filter((row) => row !== fact));
     } catch (err) {
       setComposerError(describeError(err));
     }
@@ -1403,6 +1485,7 @@ export function App() {
               prev.filter((trace) => trace.id !== message.id),
             );
             refreshOpenMemory(message.content);
+            refreshOpenUserMemory(message.content);
           }
           setMessages((prev) => {
             const without = prev.filter((m) => m.id !== message.id);
@@ -1426,6 +1509,7 @@ export function App() {
             void listAgents(session).then(setAgents).catch(() => {});
           }
           refreshOpenMemory(trace.summary);
+          refreshOpenUserMemory(trace.summary);
         }
       },
       onConnectUrl(url, pluginId) {
@@ -2937,6 +3021,22 @@ export function App() {
                   </button>
                 </span>
               </label>
+              <section className="settings-memory" aria-label="Memory">
+                <div className="settings-memory-head">
+                  <p className="settings-memory-header">Memory</p>
+                </div>
+                {userMemories.length === 0 ? (
+                  <p className="settings-memory-empty">{EMPTY_MEMORY}</p>
+                ) : (
+                  userMemories.map((fact) => (
+                    <SettingsMemoryRow
+                      key={fact}
+                      fact={fact}
+                      onRemove={(row) => setPendingUserMemoryRemove(row)}
+                    />
+                  ))
+                )}
+              </section>
               <section className="settings-plugins" aria-label="Plugins">
                 <div className="settings-plugins-head">
                   <p className="settings-plugins-header">Plugins</p>
@@ -3442,6 +3542,37 @@ export function App() {
                 type="button"
                 className="danger-fill"
                 onClick={() => void confirmMemoryRemove()}
+              >
+                Remove
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {pendingUserMemoryRemove ? (
+        <div
+          className="modal-backdrop plugin-sheet"
+          onClick={() => setPendingUserMemoryRemove(null)}
+        >
+          <div
+            className="modal confirm"
+            role="dialog"
+            aria-label="Confirm remove memory"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <p>{memoryRemoveConfirm()}</p>
+            <div className="confirm-actions">
+              <button
+                type="button"
+                onClick={() => setPendingUserMemoryRemove(null)}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="danger-fill"
+                onClick={() => void confirmUserMemoryRemove()}
               >
                 Remove
               </button>
