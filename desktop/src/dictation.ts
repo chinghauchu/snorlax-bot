@@ -3,11 +3,11 @@
 
 export type DictationState = "idle" | "recording" | "processing";
 
-export const DICTATE_LABEL = "Dictate";
+export const START_DICTATION_LABEL = "Start dictation";
 export const STOP_DICTATION_LABEL = "Stop dictation";
-export const TRANSCRIBING_LABEL = "Transcribing";
-export const ERR_MIC_PERMISSION = "Microphone permission is required.";
-export const ERR_NO_SPEECH = "No speech detected.";
+export const HINT_TRANSCRIBING = "Transcribing…";
+export const HINT_NO_SPEECH = "No speech detected.";
+export const HINT_MIC_OFF = "Microphone is off.";
 export const ERR_TRANSCRIBE = "Couldn't transcribe that.";
 
 const RECORDER_MIMES = [
@@ -19,8 +19,7 @@ const RECORDER_MIMES = [
 
 export function dictationLabel(state: DictationState): string {
   if (state === "recording") return STOP_DICTATION_LABEL;
-  if (state === "processing") return TRANSCRIBING_LABEL;
-  return DICTATE_LABEL;
+  return START_DICTATION_LABEL;
 }
 
 export function dictationPressed(state: DictationState): boolean {
@@ -29,6 +28,21 @@ export function dictationPressed(state: DictationState): boolean {
 
 export function dictationBusy(state: DictationState): boolean {
   return state === "processing";
+}
+
+/** Esc while listening/recording cancels. No POST /v1/transcribe. No insert. */
+export function dictationCancelable(state: DictationState): boolean {
+  return state === "recording";
+}
+
+/** Composer status hint. Processing and the locked mic strings only. */
+export function composerDictationHint(
+  state: DictationState,
+  error: string | null,
+): string | null {
+  if (state === "processing") return HINT_TRANSCRIBING;
+  if (error === HINT_NO_SPEECH || error === HINT_MIC_OFF) return error;
+  return null;
 }
 
 /** Insert recognized text at the caret. Surrounding spaces when needed. */
