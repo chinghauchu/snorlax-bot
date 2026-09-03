@@ -826,6 +826,25 @@ info:
     Clients never speak MCP or the model. Never reintroduce
     computerPane.ts. Leave stale PRs #23 and #24 untouched.
     OpenAPI **0.18.0**.
+
+    v0.41: desktop local voice dictation. One impl PR. Spec rides
+    this PR. **No second PR.** OpenAPI stays **0.18.0**. New route
+    only: `POST /v1/transcribe` (Bearer, multipart field `audio`)
+    → 200 `{ text }`. Runtime shells to local whisper.cpp
+    (`SNORLAX_WHISPER_BIN` + `SNORLAX_WHISPER_MODEL`, or
+    `~/.snorlax-bot/whisper/`). Never a cloud STT. Empty audio
+    422. Over 25MB 422 `Max 25MB.` Missing local binary/model 503
+    `Speech recognition isn't available.` Failed run 422
+    `Couldn't transcribe.` No speech 422 `No speech detected.`
+    Desktop composer mic (idle / recording / processing) inserts
+    the text at the caret as editable plain text. Focus stays in
+    the composer. Send is unchanged (no auto-send). a11y:
+    `aria-label` Dictate / Stop dictation / Transcribing,
+    `aria-pressed` while recording, `aria-busy` while processing;
+    native button is keyboard operable. iOS idle. No TTS. Clients
+    never speak MCP or the model. Never reintroduce
+    computerPane.ts. Leave stale PRs #23 and #24 untouched.
+    OpenAPI **0.18.0**.
   license:
     name: Apache-2.0
     identifier: Apache-2.0
@@ -1599,6 +1618,46 @@ paths:
         "404":
           $ref: "#/components/responses/Error"
         "422":
+          $ref: "#/components/responses/Error"
+
+  /v1/transcribe:
+    post:
+      summary: Local speech-to-text
+      description: |
+        Desktop dictation. Bearer multipart field `audio`.
+        Runtime shells to local whisper.cpp (`SNORLAX_WHISPER_BIN`
+        + `SNORLAX_WHISPER_MODEL`, or `~/.snorlax-bot/whisper/`).
+        Returns `{ text }` — never sends audio to a cloud STT.
+        Empty audio 422 `Empty audio.` Over 25MB 422 `Max 25MB.`
+        Missing local binary/model 503 `Speech recognition isn't
+        available.` Failed run 422 `Couldn't transcribe.` No
+        speech 422 `No speech detected.` Clients insert the text
+        into the composer; they do not auto-send. iOS idle this
+        slice. Clients never speak MCP or the model.
+      operationId: transcribeAudio
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [audio]
+              properties:
+                audio:
+                  type: string
+                  format: binary
+      responses:
+        "200":
+          description: Transcript `{ text }`
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Transcript"
+        "401":
+          $ref: "#/components/responses/Error"
+        "422":
+          $ref: "#/components/responses/Error"
+        "503":
           $ref: "#/components/responses/Error"
 
   /v1/agents/{id}/workspace:
@@ -3105,6 +3164,16 @@ components:
           type: string
           description: |
             Exact recorded text (casefold fallback). Empty is 422.
+
+    Transcript:
+      type: object
+      required: [text]
+      properties:
+        text:
+          type: string
+          description: |
+            Plain recognized speech from local whisper.cpp.
+            Empty is 422 `No speech detected.` Never a cloud STT.
 
     Plugin:
       type: object

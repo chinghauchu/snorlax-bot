@@ -67,6 +67,19 @@ def test_protocol_openapi_is_locked_v0_contract() -> None:
     assert "v0.37" in text
     assert "v0.39" in text
     assert "v0.40" in text
+    assert "v0.41" in text
+    assert "/v1/transcribe" in text
+    assert "transcribeAudio" in text
+    assert "whisper.cpp" in text
+    assert "SNORLAX_WHISPER_BIN" in text
+    assert "Speech recognition isn't available." in text
+    assert "Couldn't transcribe." in text
+    assert "No speech detected." in text
+    assert "Empty audio." in text
+    assert "Max 25MB." in text
+    assert "Dictate" in text
+    assert "Stop dictation" in text
+    assert "no auto-send" in text or "do not auto-send" in text
     assert "scope: user" in text or "scope user" in text
     assert "memory/user" in text
     assert "/v1/memory" in text

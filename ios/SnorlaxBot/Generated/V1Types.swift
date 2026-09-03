@@ -1376,6 +1376,26 @@ struct MemoryForget: Codable, Hashable, Sendable {
     }
 }
 
+struct Transcript: Codable, Hashable, Sendable {
+    var text: String
+
+    init(text: String) {
+        self.text = text
+    }
+
+    enum CodingKeys: String, CodingKey { case text }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        text = try container.decode(String.self, forKey: .text)
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(text, forKey: .text)
+    }
+}
+
 struct Plugin: Codable, Hashable, Identifiable, Sendable {
     enum Status: String, Codable, Hashable, Sendable {
         case connected

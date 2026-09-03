@@ -78,8 +78,27 @@ curl -N -H "Authorization: Bearer $SNORLAX_TOKEN" \
   http://127.0.0.1:8787/v1/agents/snorlax-bot/messages
 ```
 
+## Local voice dictation (whisper.cpp)
+
+Desktop dictation POSTs audio to the runtime (`POST /v1/transcribe`).
+The runtime shells to **whisper.cpp** — the same backend on Mac Metal
+and NVIDIA CUDA. Clients never call a cloud STT.
+
+```bash
+# https://github.com/ggml-org/whisper.cpp
+cmake -B build -DGGML_METAL=ON          # Mac
+# cmake -B build -DGGML_CUDA=ON         # NVIDIA / Spark
+cmake --build build -j --config Release
+# binary: build/bin/whisper-cli
+# model:  ./models/download-ggml-model.sh base.en
+
+export SNORLAX_WHISPER_BIN=/path/to/whisper-cli
+export SNORLAX_WHISPER_MODEL=/path/to/ggml-base.en.bin
+# or drop both under ~/.snorlax-bot/whisper/
+```
+
 ## Spark (later)
 
 When the box is a DGX Spark, use `SNORLAX_INFERENCE_BACKEND=vllm` and
 `SNORLAX_VLLM_BASE_URL`. Same client URL (`:8787`). Same “no Bearer to
-localhost inference” default.
+localhost inference” default. Whisper.cpp on Spark uses `-DGGML_CUDA=ON`.

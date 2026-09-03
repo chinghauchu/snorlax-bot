@@ -185,6 +185,11 @@ v0.40 Settings shared-memory list: `GET /v1/memory` `{ facts }` and
 GET/DELETE `/v1/agents/{id}/memory` stay agent-only. Settings lists
 user facts only. OpenAPI stays 0.18.0.
 
+v0.41 desktop local voice dictation: `POST /v1/transcribe` (Bearer,
+multipart field `audio`) → 200 `{ text }`. Runtime shells to local
+whisper.cpp. Never a cloud STT. Desktop inserts the text into the
+composer (no auto-send). iOS idle. OpenAPI stays 0.18.0.
+
 A copy is also kept at `runtime/openapi.yaml` and `desktop/openapi.yaml`
 so those trees are self-contained. Do not let the files diverge.
 
