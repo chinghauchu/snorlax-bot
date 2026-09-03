@@ -40,6 +40,7 @@ import {
   patchSkill,
   resolveMediaUrl,
   sendMessage,
+  transcribeAudio,
   uploadAttachment,
   fetchAttachmentBlob,
   startPluginAuth,
@@ -167,6 +168,18 @@ import {
   withPastedName,
   type PendingAttachment,
 } from "./attachments";
+import {
+  ERR_MIC_PERMISSION,
+  ERR_NO_SPEECH,
+  ERR_TRANSCRIBE,
+  audioFileName,
+  dictationBusy,
+  dictationLabel,
+  dictationPressed,
+  insertTranscript,
+  pickRecorderMime,
+  type DictationState,
+} from "./dictation";
 
 const URL_KEY = "snorlax.runtimeUrl";
 const TOKEN_KEY = "snorlax.token";
@@ -495,6 +508,7 @@ export function App() {
     { id: string; summary: string; senderId?: string; senderName?: string }[]
   >([]);
   const [draft, setDraft] = useState("");
+  const [dictation, setDictation] = useState<DictationState>("idle");
   const [pendingAttachments, setPendingAttachments] = useState<
     PendingAttachment[]
   >([]);
@@ -580,6 +594,9 @@ export function App() {
   const skillTypeaheadRef = useRef<HTMLUListElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const avatarFileRef = useRef<HTMLInputElement>(null);
+  const recorderRef = useRef<MediaRecorder | null>(null);
+  const chunksRef = useRef<Blob[]>([]);
+  const streamRef = useRef<MediaStream | null>(null);
 
   const credsReady = session !== null;
   const takeoverOpen = composerInert(Boolean(takeoverId));
@@ -755,6 +772,13 @@ export function App() {
     node.setSelectionRange(caret, caret);
     resizeComposer();
   }, [draft]);
+
+  useEffect(() => {
+    return () => {
+      recorderRef.current?.stop();
+      streamRef.current?.getTracks().forEach((track) => track.stop());
+    };
+  }, []);
 
   useEffect(() => {
     scroller.current?.scrollTo({ top: scroller.current.scrollHeight });
@@ -1872,6 +1896,88 @@ export function App() {
     syncComposerTriggers(next, start + text.length);
   }
 
+  function stopDictationTracks() {
+    streamRef.current?.getTracks().forEach((track) => track.stop());
+    streamRef.current = null;
+  }
+
+  async function finishDictation(mimeType: string) {
+    setDictation("processing");
+    stopDictationTracks();
+    const blob = new Blob(chunksRef.current, {
+      type: mimeType || "audio/webm",
+    });
+    chunksRef.current = [];
+    recorderRef.current = null;
+    if (!session || blob.size === 0) {
+      setDictation("idle");
+      if (blob.size === 0) setComposerError(ERR_NO_SPEECH);
+      return;
+    }
+    try {
+      const { text } = await transcribeAudio(
+        session,
+        blob,
+        audioFileName(blob.type || mimeType),
+      );
+      const el = composerRef.current;
+      const current = el?.value ?? draft;
+      const caret = el?.selectionStart ?? current.length;
+      const next = insertTranscript(current, caret, text);
+      pendingCaret.current = next.caret;
+      setDraft(next.text);
+      syncComposerTriggers(next.text, next.caret);
+      composerRef.current?.focus();
+    } catch (caught) {
+      setComposerError(
+        caught instanceof ApiError ? caught.message : ERR_TRANSCRIBE,
+      );
+    } finally {
+      setDictation("idle");
+    }
+  }
+
+  async function startDictation() {
+    if (!session || composerDisabled) return;
+    setComposerError(null);
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      streamRef.current = stream;
+      const mime = pickRecorderMime((type) =>
+        typeof MediaRecorder !== "undefined" &&
+        typeof MediaRecorder.isTypeSupported === "function"
+          ? MediaRecorder.isTypeSupported(type)
+          : false,
+      );
+      const recorder = mime
+        ? new MediaRecorder(stream, { mimeType: mime })
+        : new MediaRecorder(stream);
+      chunksRef.current = [];
+      recorder.ondataavailable = (event) => {
+        if (event.data.size) chunksRef.current.push(event.data);
+      };
+      recorder.onstop = () => {
+        void finishDictation(recorder.mimeType);
+      };
+      recorderRef.current = recorder;
+      recorder.start();
+      setDictation("recording");
+    } catch {
+      stopDictationTracks();
+      setComposerError(ERR_MIC_PERMISSION);
+      setDictation("idle");
+    }
+  }
+
+  function onMicClick() {
+    if (dictation === "processing") return;
+    if (dictation === "recording") {
+      recorderRef.current?.stop();
+      return;
+    }
+    void startDictation();
+  }
+
   async function applyPastedFiles(files: File[], text: string) {
     if (text) insertDraftAtCaret(text);
     for (const file of files) {
@@ -2581,6 +2687,17 @@ export function App() {
               hidden
               onChange={(e) => void onPickFile(e.target.files?.[0])}
             />
+            <button
+              type="button"
+              className={`icon-btn dictation${dictation === "recording" ? " recording" : ""}${dictation === "processing" ? " processing" : ""}`}
+              aria-label={dictationLabel(dictation)}
+              aria-pressed={dictationPressed(dictation)}
+              aria-busy={dictationBusy(dictation) || undefined}
+              disabled={composerDisabled || dictation === "processing"}
+              onClick={() => onMicClick()}
+            >
+              <MicIcon />
+            </button>
             <div className="composer-field">
               <div className="composer-highlight" aria-hidden ref={highlightRef}>
                 <MentionText
@@ -4063,6 +4180,34 @@ function PlayMark({ size }: { size: number }) {
   return (
     <svg width={size} height={size} viewBox="0 0 24 24" fill="currentColor" aria-hidden>
       <path d="M8 5v14l11-7L8 5Z" />
+    </svg>
+  );
+}
+
+function MicIcon() {
+  return (
+    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" aria-hidden>
+      <rect
+        x="9"
+        y="3"
+        width="6"
+        height="12"
+        rx="3"
+        stroke="currentColor"
+        strokeWidth="1.8"
+      />
+      <path
+        d="M6 11a6 6 0 0 0 12 0"
+        stroke="currentColor"
+        strokeWidth="1.8"
+        strokeLinecap="round"
+      />
+      <path
+        d="M12 17v3M9 20h6"
+        stroke="currentColor"
+        strokeWidth="1.8"
+        strokeLinecap="round"
+      />
     </svg>
   );
 }

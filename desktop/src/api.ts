@@ -20,6 +20,7 @@ import type {
   MemoryForget,
   RuntimeHealth,
   Session,
+  Transcript,
 } from "./types";
 
 export const SEED_AGENT_ID = "snorlax-bot";
@@ -406,6 +407,21 @@ export async function sendMessage(
     for (const chunk of chunks) dispatchSse(chunk, handlers);
   }
   if (buffer.trim()) dispatchSse(buffer, handlers);
+}
+
+export async function transcribeAudio(
+  session: Session,
+  audio: Blob,
+  filename = "speech.webm",
+): Promise<Transcript> {
+  const body = new FormData();
+  body.append("audio", audio, filename);
+  const response = await fetch(`${session.baseUrl}/v1/transcribe`, {
+    method: "POST",
+    headers: headers(session),
+    body,
+  });
+  return json<Transcript>(response);
 }
 
 export async function uploadAttachment(

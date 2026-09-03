@@ -132,6 +132,14 @@ button:disabled {
   background: var(--bg-hover);
 }
 
+.icon-btn.dictation.recording {
+  color: var(--danger);
+}
+
+.icon-btn.dictation.processing {
+  opacity: 0.55;
+}
+
 .icon-btn.tiny {
   width: 20px;
   height: 20px;

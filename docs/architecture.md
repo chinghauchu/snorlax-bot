@@ -525,6 +525,14 @@ write is a no-op list; do not special-case user scope). Isolation: Settings neve
 facts; an agent's pane never shows user facts. OpenAPI stays 0.18.0.
 Never reintroduce `computerPane.ts`.
 
+v0.41: desktop local voice dictation. `POST /v1/transcribe` (Bearer,
+multipart `audio`) → `{ text }`. Runtime shells to local whisper.cpp
+(`SNORLAX_WHISPER_BIN` / `SNORLAX_WHISPER_MODEL`, or
+`~/.snorlax-bot/whisper/`). Never a cloud STT. Desktop composer mic
+(idle / recording / processing) inserts editable plain text at the
+caret. No auto-send. No TTS. iOS idle. OpenAPI stays 0.18.0.
+Never reintroduce `computerPane.ts`.
+
 ## Inference interface
 
 ```text

@@ -556,3 +556,9 @@ class PluginCatalogEntry(BaseModel):
     command: str | None = None
     args: list[str] | None = None
     url: str | None = None
+
+
+class Transcript(BaseModel):
+    """Plain text from local whisper.cpp. Never a cloud STT."""
+
+    text: str

@@ -54,6 +54,7 @@ from snorlax_runtime.schemas import (
     SkillBody,
     SkillCreate,
     SkillPatch,
+    Transcript,
     WorkspaceFile,
     WorkspaceListing,
 )
@@ -265,6 +266,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             f"{' (none)' if not mcp.servers and not mcp.failures else ''}\n"
             f"  scheduler: {'on' if settings.scheduler else 'off'} "
             f"(Asia/Taipei)\n"
+            f"  asr: {settings.whisper_bin or '(local whisper.cpp)'}\n"
             f"  token: {token}",
             flush=True,
         )
@@ -1455,6 +1457,56 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             raise _error(404, f"Attachment {id!r} not found")
         mime, body, _name = found
         return Response(content=body, media_type=mime or "application/octet-stream")
+
+    @app.post("/v1/transcribe", response_model=Transcript)
+    async def post_transcribe(
+        request: Request,
+        audio: UploadFile = File(...),
+        _: str = Depends(require_bearer),
+    ) -> Transcript:
+        from snorlax_runtime.asr import (
+            ERR_EMPTY,
+            ERR_MAX,
+            MAX_AUDIO_BYTES,
+            AsrError,
+            resolve_whisper_bin,
+            resolve_whisper_model,
+            transcribe_audio,
+        )
+
+        settings: Settings = request.app.state.settings
+        name = (audio.filename or "audio").strip() or "audio"
+        mime = (audio.content_type or "application/octet-stream").split(";")[0].strip()
+        length = request.headers.get("content-length")
+        if length and length.isdigit() and int(length) > MAX_AUDIO_BYTES:
+            raise _error(422, ERR_MAX)
+        chunks: list[bytes] = []
+        total = 0
+        while True:
+            chunk = await audio.read(64 * 1024)
+            if not chunk:
+                break
+            total += len(chunk)
+            if total > MAX_AUDIO_BYTES:
+                raise _error(422, ERR_MAX)
+            chunks.append(chunk)
+        data = b"".join(chunks)
+        if not data:
+            raise _error(422, ERR_EMPTY)
+        bin_path = resolve_whisper_bin(settings.whisper_bin, settings.data_dir)
+        model_path = resolve_whisper_model(settings.whisper_model, settings.data_dir)
+        try:
+            text = transcribe_audio(
+                data,
+                name=name,
+                mime=mime,
+                bin_path=bin_path,
+                model_path=model_path,
+                language=settings.whisper_language,
+            )
+        except AsrError as exc:
+            raise _error(exc.status, exc.message) from exc
+        return Transcript(text=text)
 
     return app
 

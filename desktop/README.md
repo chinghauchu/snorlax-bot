@@ -92,6 +92,10 @@ has Copy, no Regenerate. Fenced-code Copy stays.
 v0.32: dedicated `kind=approve` LEFT card for mutating shell (not a
 WidgetCard fork). 240–320px, 12px radius/padding. Command is 12px/1.45
 mono, max 2 lines, hover title is the full command. Approve / Deny / ×.
+v0.41: composer mic (idle / recording / processing) records audio,
+POSTs `/v1/transcribe`, and inserts editable plain text at the
+caret. No auto-send. No TTS. Local whisper.cpp only — see
+[docs/mac-local.md](../docs/mac-local.md).
 Assistant LEFT
 `kind=message` is 14px markdown (no grey bubble, 16/14 headings); user-right stays plain (`https://` tappable). Fenced code is full-turn language + Copy at 12px/1.45.
 iOS has no file-tree computer pane; the agent sheet shows the same preview.

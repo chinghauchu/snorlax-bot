@@ -548,6 +548,35 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/transcribe": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Local speech-to-text
+         * @description Desktop dictation. Bearer multipart field `audio`.
+         *     Runtime shells to local whisper.cpp (`SNORLAX_WHISPER_BIN`
+         *     + `SNORLAX_WHISPER_MODEL`, or `~/.snorlax-bot/whisper/`).
+         *     Returns `{ text }` — never sends audio to a cloud STT.
+         *     Empty audio 422 `Empty audio.` Over 25MB 422 `Max 25MB.`
+         *     Missing local binary/model 503 `Speech recognition isn't
+         *     available.` Failed run 422 `Couldn't transcribe.` No
+         *     speech 422 `No speech detected.` Clients insert the text
+         *     into the composer; they do not auto-send. iOS idle this
+         *     slice. Clients never speak MCP or the model.
+         */
+        post: operations["transcribeAudio"];
+        put?: never;
+        get?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/agents/{id}/workspace": {
         parameters: {
             query?: never;
@@ -1660,6 +1689,13 @@ export interface components {
             /** @description Exact recorded text (casefold fallback). Empty is 422. */
             fact: string;
         };
+        Transcript: {
+            /**
+             * @description Plain recognized speech from local whisper.cpp.
+             *     Empty is 422 `No speech detected.` Never a cloud STT.
+             */
+            text: string;
+        };
         Plugin: {
             id: string;
             name: string;
@@ -2329,6 +2365,35 @@ export interface operations {
             401: components["responses"]["Error"];
             404: components["responses"]["Error"];
             422: components["responses"]["Error"];
+        };
+    };
+    transcribeAudio: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": {
+                    audio: string;
+                };
+            };
+        };
+        responses: {
+            /** @description Transcript `{ text }` */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Transcript"];
+                };
+            };
+            401: components["responses"]["Error"];
+            422: components["responses"]["Error"];
+            503: components["responses"]["Error"];
         };
     };
     listWorkspace: {

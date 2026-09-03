@@ -65,6 +65,9 @@ overrides the file.
 | `SNORLAX_SEARCH_URL` | provider default | Optional search URL template; `{query}` is URL-encoded |
 | `SNORLAX_SCHEDULER` | `true` | Cron scheduler inside this process (Asia/Taipei) |
 | `SNORLAX_SCHEDULER_INTERVAL` | `15` | Seconds between scheduler ticks |
+| `SNORLAX_WHISPER_BIN` | unset | Path to local `whisper-cli` (else `~/.snorlax-bot/whisper/whisper-cli` or PATH) |
+| `SNORLAX_WHISPER_MODEL` | unset | Path to a `ggml-*.bin` (else `~/.snorlax-bot/whisper/ggml-base.en.bin`) |
+| `SNORLAX_WHISPER_LANGUAGE` | `auto` | whisper.cpp `-l` language |
 
 Loopback inference (`127.0.0.1` / `localhost`) gets **no** `Authorization`
 header by default. Do not send the LAN `SNORLAX_TOKEN` to oMLX or vLLM.
@@ -197,6 +200,12 @@ never rmtree `memory/user/`. v0.40: `GET /v1/memory` `{ facts }`
 and `DELETE` `{ fact }` wrap that user file (empty / missing is
 `[]`; unknown 404; empty fact 422). No POST. Settings lists user
 facts only; the agent pane stays agent-only. OpenAPI stays 0.18.0.
+
+v0.41: `POST /v1/transcribe` (Bearer, multipart field `audio`) →
+200 `{ text }`. Runtime shells to local whisper.cpp. Never a cloud
+STT. Empty 422; over 25MB 422; missing binary/model 503. Desktop
+inserts the text into the composer (no auto-send). iOS idle.
+OpenAPI stays 0.18.0. Build notes: [docs/mac-local.md](../docs/mac-local.md).
 
 ## MCP (`mcp.json`)
 
