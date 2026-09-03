@@ -169,11 +169,13 @@ import {
   type PendingAttachment,
 } from "./attachments";
 import {
-  ERR_MIC_PERMISSION,
-  ERR_NO_SPEECH,
   ERR_TRANSCRIBE,
+  HINT_MIC_OFF,
+  HINT_NO_SPEECH,
   audioFileName,
+  composerDictationHint,
   dictationBusy,
+  dictationCancelable,
   dictationLabel,
   dictationPressed,
   insertTranscript,
@@ -779,6 +781,17 @@ export function App() {
       streamRef.current?.getTracks().forEach((track) => track.stop());
     };
   }, []);
+
+  useEffect(() => {
+    if (!dictationCancelable(dictation)) return;
+    const onKey = (event: globalThis.KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      event.preventDefault();
+      cancelDictation();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [dictation]);
 
   useEffect(() => {
     scroller.current?.scrollTo({ top: scroller.current.scrollHeight });
@@ -1879,6 +1892,11 @@ export function App() {
         return;
       }
     }
+    if (event.key === "Escape" && dictationCancelable(dictation)) {
+      event.preventDefault();
+      cancelDictation();
+      return;
+    }
     if (composerEnterSends(event)) {
       event.preventDefault();
       void onSend();
@@ -1901,6 +1919,30 @@ export function App() {
     streamRef.current = null;
   }
 
+  function discardRecorder() {
+    const recorder = recorderRef.current;
+    if (recorder) {
+      recorder.ondataavailable = null;
+      recorder.onstop = null;
+      if (recorder.state !== "inactive") {
+        try {
+          recorder.stop();
+        } catch {
+          /* already stopped */
+        }
+      }
+    }
+    recorderRef.current = null;
+    chunksRef.current = [];
+    stopDictationTracks();
+  }
+
+  function cancelDictation() {
+    if (!dictationCancelable(dictation)) return;
+    discardRecorder();
+    setDictation("idle");
+  }
+
   async function finishDictation(mimeType: string) {
     setDictation("processing");
     stopDictationTracks();
@@ -1911,7 +1953,7 @@ export function App() {
     recorderRef.current = null;
     if (!session || blob.size === 0) {
       setDictation("idle");
-      if (blob.size === 0) setComposerError(ERR_NO_SPEECH);
+      if (blob.size === 0) setComposerError(HINT_NO_SPEECH);
       return;
     }
     try {
@@ -1929,9 +1971,9 @@ export function App() {
       syncComposerTriggers(next.text, next.caret);
       composerRef.current?.focus();
     } catch (caught) {
-      setComposerError(
-        caught instanceof ApiError ? caught.message : ERR_TRANSCRIBE,
-      );
+      const message =
+        caught instanceof ApiError ? caught.message : ERR_TRANSCRIBE;
+      setComposerError(message === "No speech detected." ? HINT_NO_SPEECH : message);
     } finally {
       setDictation("idle");
     }
@@ -1964,7 +2006,7 @@ export function App() {
       setDictation("recording");
     } catch {
       stopDictationTracks();
-      setComposerError(ERR_MIC_PERMISSION);
+      setComposerError(HINT_MIC_OFF);
       setDictation("idle");
     }
   }
@@ -2165,6 +2207,7 @@ export function App() {
   );
   const showStandaloneTraces =
     liveTraces.length > 0 && liveAssistantIdx < 0;
+  const dictationHint = composerDictationHint(dictation, composerError);
   const toolThisTurn = visibleMessages.some(
     (message, index) => index > lastUserIdx && isToolLine(message),
   );
@@ -2687,17 +2730,6 @@ export function App() {
               hidden
               onChange={(e) => void onPickFile(e.target.files?.[0])}
             />
-            <button
-              type="button"
-              className={`icon-btn dictation${dictation === "recording" ? " recording" : ""}${dictation === "processing" ? " processing" : ""}`}
-              aria-label={dictationLabel(dictation)}
-              aria-pressed={dictationPressed(dictation)}
-              aria-busy={dictationBusy(dictation) || undefined}
-              disabled={composerDisabled || dictation === "processing"}
-              onClick={() => onMicClick()}
-            >
-              <MicIcon />
-            </button>
             <div className="composer-field">
               <div className="composer-highlight" aria-hidden ref={highlightRef}>
                 <MentionText
@@ -2740,6 +2772,20 @@ export function App() {
             </div>
             <button
               type="button"
+              className={`icon-btn dictation${dictation === "recording" ? " recording" : ""}${dictation === "processing" ? " processing" : ""}`}
+              aria-label={dictationLabel(dictation)}
+              aria-pressed={dictationPressed(dictation)}
+              aria-busy={dictationBusy(dictation) || undefined}
+              disabled={composerDisabled || dictation === "processing"}
+              onClick={() => onMicClick()}
+            >
+              <MicIcon />
+              {dictation === "recording" ? (
+                <span className="dictation-dot" aria-hidden />
+              ) : null}
+            </button>
+            <button
+              type="button"
               className="send"
               aria-label="Send"
               disabled={
@@ -2753,7 +2799,13 @@ export function App() {
               <SendIcon />
             </button>
           </div>
-          {composerError ? <p className="error under">{composerError}</p> : null}
+          {dictationHint ? (
+            <p className="composer-hint" role="status">
+              {dictationHint}
+            </p>
+          ) : composerError ? (
+            <p className="error under">{composerError}</p>
+          ) : null}
         </footer>
 
         {profileOpen && active ? (

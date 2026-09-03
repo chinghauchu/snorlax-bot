@@ -640,3 +640,31 @@ test("composer slash skill picker reuses @ typeahead: 240px, 8px radius, 36px ro
   assert.doesNotMatch(skillList, /Avatar/);
   assert.doesNotMatch(app, /computerPane\.ts/);
 });
+
+test("composer mic is 12px muted, immediately left of Send, 6px solid listening dot", () => {
+  const mic = block(".icon-btn.dictation");
+  const recording = block(".icon-btn.dictation.recording");
+  const dot = block(".dictation-dot");
+  const hint = block(".composer-hint");
+  assert.match(mic, /color:\s*var\(--text-muted\)/);
+  assert.match(recording, /color:\s*var\(--danger\)/);
+  assert.match(dot, /width:\s*6px/);
+  assert.match(dot, /height:\s*6px/);
+  assert.match(dot, /background:\s*var\(--danger\)/);
+  assert.doesNotMatch(dot, /animation:/);
+  assert.match(hint, /font-size:\s*12px/);
+  assert.match(hint, /color:\s*var\(--text-muted\)/);
+
+  const app = readFileSync(
+    join(dirname(fileURLToPath(import.meta.url)), "App.tsx"),
+    "utf8",
+  );
+  const start = app.indexOf('className="composer-bar"');
+  const bar = app.slice(start, app.indexOf("<SendIcon", start));
+  assert.ok(bar.indexOf('aria-label="Attach file"') < bar.indexOf("composer-field"));
+  assert.ok(bar.indexOf("composer-field") < bar.indexOf("icon-btn dictation"));
+  assert.ok(bar.indexOf("icon-btn dictation") < bar.indexOf('aria-label="Send"'));
+  assert.match(app, /dictation-dot/);
+  assert.match(app, /Start dictation|dictationLabel/);
+  assert.doesNotMatch(app, /Dictate/);
+});

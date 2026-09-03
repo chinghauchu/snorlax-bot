@@ -5,14 +5,16 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import test from "node:test";
 import {
-  DICTATE_LABEL,
-  ERR_MIC_PERMISSION,
-  ERR_NO_SPEECH,
   ERR_TRANSCRIBE,
+  HINT_MIC_OFF,
+  HINT_NO_SPEECH,
+  HINT_TRANSCRIBING,
+  START_DICTATION_LABEL,
   STOP_DICTATION_LABEL,
-  TRANSCRIBING_LABEL,
   audioFileName,
+  composerDictationHint,
   dictationBusy,
+  dictationCancelable,
   dictationLabel,
   dictationPressed,
   insertTranscript,
@@ -22,18 +24,34 @@ import {
 const here = dirname(fileURLToPath(import.meta.url));
 
 test("dictation labels and a11y helpers", () => {
-  assert.equal(dictationLabel("idle"), DICTATE_LABEL);
+  assert.equal(dictationLabel("idle"), START_DICTATION_LABEL);
   assert.equal(dictationLabel("recording"), STOP_DICTATION_LABEL);
-  assert.equal(dictationLabel("processing"), TRANSCRIBING_LABEL);
-  assert.equal(DICTATE_LABEL, "Dictate");
+  assert.equal(dictationLabel("processing"), START_DICTATION_LABEL);
+  assert.equal(START_DICTATION_LABEL, "Start dictation");
   assert.equal(STOP_DICTATION_LABEL, "Stop dictation");
-  assert.equal(TRANSCRIBING_LABEL, "Transcribing");
+  assert.notEqual(START_DICTATION_LABEL, "Dictate");
   assert.equal(dictationPressed("idle"), false);
   assert.equal(dictationPressed("recording"), true);
   assert.equal(dictationPressed("processing"), false);
   assert.equal(dictationBusy("processing"), true);
   assert.equal(dictationBusy("idle"), false);
   assert.equal(dictationBusy("recording"), false);
+});
+
+test("composer hint strings and Esc cancel", () => {
+  assert.equal(HINT_TRANSCRIBING, "Transcribing…");
+  assert.equal(HINT_NO_SPEECH, "No speech detected.");
+  assert.equal(HINT_MIC_OFF, "Microphone is off.");
+  assert.equal(composerDictationHint("processing", null), HINT_TRANSCRIBING);
+  assert.equal(composerDictationHint("processing", HINT_MIC_OFF), HINT_TRANSCRIBING);
+  assert.equal(composerDictationHint("idle", HINT_NO_SPEECH), HINT_NO_SPEECH);
+  assert.equal(composerDictationHint("idle", HINT_MIC_OFF), HINT_MIC_OFF);
+  assert.equal(composerDictationHint("idle", ERR_TRANSCRIBE), null);
+  assert.equal(composerDictationHint("idle", null), null);
+  assert.equal(composerDictationHint("recording", null), null);
+  assert.equal(dictationCancelable("recording"), true);
+  assert.equal(dictationCancelable("idle"), false);
+  assert.equal(dictationCancelable("processing"), false);
 });
 
 test("insertTranscript at caret or append, with spacing", () => {
@@ -76,7 +94,7 @@ test("recorder mime helpers", () => {
   assert.equal(audioFileName("audio/wav"), "speech.wav");
 });
 
-test("desktop composer mic chrome: states, a11y, insert, no auto-send", () => {
+test("desktop composer mic chrome: layout, a11y, insert, Esc cancel, no auto-send", () => {
   const app = readFileSync(join(here, "App.tsx"), "utf8");
   const css = readFileSync(join(here, "styles.css"), "utf8");
   const api = readFileSync(join(here, "api.ts"), "utf8");
@@ -89,20 +107,36 @@ test("desktop composer mic chrome: states, a11y, insert, no auto-send", () => {
   assert.match(app, /insertTranscript/);
   assert.match(app, /pendingCaret\.current = next\.caret/);
   assert.match(app, /composerRef\.current\?\.focus/);
-  assert.match(app, /ERR_MIC_PERMISSION/);
+  assert.match(app, /HINT_MIC_OFF/);
+  assert.match(app, /HINT_NO_SPEECH/);
+  assert.match(app, /composerDictationHint/);
+  assert.match(app, /role="status"/);
+  assert.match(app, /dictationCancelable/);
+  assert.match(app, /cancelDictation/);
   assert.match(api, /\/v1\/transcribe/);
   assert.match(api, /body\.append\("audio"/);
   assert.match(css, /\.icon-btn\.dictation\.recording/);
   assert.match(css, /color:\s*var\(--danger\)/);
+  assert.match(css, /\.dictation-dot/);
+  assert.match(css, /\.composer-hint/);
   assert.match(dictation, /No auto-send/);
+  assert.match(dictation, /No POST \/v1\/transcribe/);
   const finish = app.slice(app.indexOf("async function finishDictation"));
   const finishBody = finish.slice(0, finish.indexOf("\n  async function "));
   assert.doesNotMatch(finishBody, /onSend\(/);
   assert.doesNotMatch(finishBody, /sendMessage\(/);
+  const cancel = app.slice(app.indexOf("function cancelDictation"));
+  const cancelBody = cancel.slice(0, cancel.indexOf("\n  async function "));
+  assert.doesNotMatch(cancelBody, /transcribeAudio/);
+  assert.doesNotMatch(cancelBody, /insertTranscript/);
+  assert.doesNotMatch(cancelBody, /onSend\(/);
   assert.doesNotMatch(app, /speechSynthesis|SpeechSynthesis|webkitSpeechRecognition/);
   assert.doesNotMatch(app, /api\.openai\.com/);
   assert.doesNotMatch(dictation, /whisper\.cpp|MCP|oMLX|vLLM/);
-  assert.doesNotMatch(app, /aria-label="Dictate"[\s\S]{0,200}iOS|ios.*Dictate/);
+  assert.doesNotMatch(app, /Dictate/);
+  assert.doesNotMatch(app, /Microphone permission is required\./);
+  assert.doesNotMatch(dictation, /Dictate/);
+  assert.doesNotMatch(dictation, /Microphone permission is required\./);
 });
 
 test("user-facing dictation copy never names the backend", () => {
@@ -112,7 +146,21 @@ test("user-facing dictation copy never names the backend", () => {
     assert.doesNotMatch(src, /whisper\.cpp/);
     assert.doesNotMatch(src, /SNORLAX_WHISPER/);
   }
-  assert.equal(ERR_MIC_PERMISSION, "Microphone permission is required.");
-  assert.equal(ERR_NO_SPEECH, "No speech detected.");
+  assert.equal(HINT_MIC_OFF, "Microphone is off.");
+  assert.equal(HINT_NO_SPEECH, "No speech detected.");
+  assert.equal(HINT_TRANSCRIBING, "Transcribing…");
   assert.equal(ERR_TRANSCRIBE, "Couldn't transcribe that.");
+});
+
+test("composer bar order is paperclip, field, mic, send", () => {
+  const app = readFileSync(join(here, "App.tsx"), "utf8");
+  const start = app.indexOf('className="composer-bar"');
+  const bar = app.slice(start, app.indexOf("<SendIcon", start));
+  const paperclip = bar.indexOf('aria-label="Attach file"');
+  const field = bar.indexOf('className="composer-field"');
+  const mic = bar.indexOf("icon-btn dictation");
+  const send = bar.indexOf('aria-label="Send"');
+  assert.ok(paperclip >= 0 && field > paperclip);
+  assert.ok(mic > field);
+  assert.ok(send > mic);
 });
