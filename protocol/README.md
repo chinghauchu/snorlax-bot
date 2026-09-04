@@ -190,6 +190,12 @@ multipart field `audio`) → 200 `{ text }`. Runtime shells to local
 whisper.cpp. Never a cloud STT. Desktop inserts the text into the
 composer (no auto-send). iOS idle. OpenAPI stays 0.18.0.
 
+v0.44 local TTS Speak: `POST /v1/speak` (Bearer, JSON `{ "text" }`)
+→ `audio/wav`. Runtime shells to local piper. Never a cloud TTS.
+Empty / whitespace 422; over 8000 characters 422; engine
+missing/failed 503. Desktop + iOS Speak on completed LEFT
+`kind=message` (no autoplay). OpenAPI stays 0.18.0.
+
 A copy is also kept at `runtime/openapi.yaml` and `desktop/openapi.yaml`
 so those trees are self-contained. Do not let the files diverge.
 

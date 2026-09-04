@@ -562,3 +562,9 @@ class Transcript(BaseModel):
     """Plain text from local whisper.cpp. Never a cloud STT."""
 
     text: str
+
+
+class SpeakRequest(BaseModel):
+    """Plain text for local piper. Never a cloud TTS."""
+
+    text: str

@@ -68,7 +68,15 @@ def test_protocol_openapi_is_locked_v0_contract() -> None:
     assert "v0.39" in text
     assert "v0.40" in text
     assert "v0.41" in text
+    assert "v0.44" in text
     assert "/v1/transcribe" in text
+    assert "/v1/speak" in text
+    assert "speakText" in text
+    assert "Speech isn't available." in text
+    assert "Couldn't speak." in text
+    assert "Empty text." in text
+    assert "Max 8000 characters." in text
+    assert "piper" in text
     assert "transcribeAudio" in text
     assert "whisper.cpp" in text
     assert "SNORLAX_WHISPER_BIN" in text

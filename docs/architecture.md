@@ -533,6 +533,16 @@ multipart `audio`) → `{ text }`. Runtime shells to local whisper.cpp
 caret. No auto-send. No TTS. iOS idle. OpenAPI stays 0.18.0.
 Never reintroduce `computerPane.ts`.
 
+v0.44: local TTS Speak on LEFT messages. `POST /v1/speak` (Bearer,
+JSON `{ text }`) → `audio/wav`. Runtime shells to local piper
+(`SNORLAX_TTS_BIN` / `SNORLAX_TTS_MODEL`, or
+`~/.snorlax-bot/tts/`). Never a cloud TTS. Empty / whitespace
+422; over 8000 characters 422; engine missing/failed 503.
+Desktop + iOS muted 12px Speak on completed agent LEFT
+`kind=message` (same row as Copy / Regenerate). Idle Speak;
+playing Stop speaking. Never autoplay. OpenAPI stays 0.18.0.
+Never reintroduce `computerPane.ts`.
+
 ## Inference interface
 
 ```text

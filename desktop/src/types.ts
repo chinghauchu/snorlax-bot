@@ -26,6 +26,7 @@ export type PluginCatalogEntry = components["schemas"]["PluginCatalogEntry"];
 export type ComputerPreview = components["schemas"]["ComputerPreview"];
 export type ComputerSession = components["schemas"]["ComputerSession"];
 export type Transcript = components["schemas"]["Transcript"];
+export type SpeakRequest = components["schemas"]["SpeakRequest"];
 
 export type Session = {
   baseUrl: string;

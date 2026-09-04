@@ -8,7 +8,7 @@
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview",
-    "test": "node --experimental-strip-types --test src/mentions.test.ts src/layout.test.ts src/handoff.test.ts src/infoPane.test.ts src/workspaceTree.test.ts src/thinking.test.ts src/widget.test.ts src/connect.test.ts src/approve.test.ts src/markdown.test.ts src/computerPreview.test.ts src/computerSession.test.ts src/skillsPicker.test.ts src/attachments.test.ts src/composerKeys.test.ts src/messageActions.test.ts src/dictation.test.ts",
+    "test": "node --experimental-strip-types --test src/mentions.test.ts src/layout.test.ts src/handoff.test.ts src/infoPane.test.ts src/workspaceTree.test.ts src/thinking.test.ts src/widget.test.ts src/connect.test.ts src/approve.test.ts src/markdown.test.ts src/computerPreview.test.ts src/computerSession.test.ts src/skillsPicker.test.ts src/attachments.test.ts src/composerKeys.test.ts src/messageActions.test.ts src/dictation.test.ts src/speak.test.ts",
     "generate:api": "openapi-typescript ./openapi.yaml -o src/openapi.ts",
     "tauri": "tauri"
   },

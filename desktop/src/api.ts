@@ -20,6 +20,7 @@ import type {
   MemoryForget,
   RuntimeHealth,
   Session,
+  SpeakRequest,
   Transcript,
 } from "./types";
 
@@ -422,6 +423,20 @@ export async function transcribeAudio(
     body,
   });
   return json<Transcript>(response);
+}
+
+export async function speakText(
+  session: Session,
+  text: string,
+): Promise<Blob> {
+  const body: SpeakRequest = { text };
+  const response = await fetch(`${session.baseUrl}/v1/speak`, {
+    method: "POST",
+    headers: headers(session, { "Content-Type": "application/json" }),
+    body: JSON.stringify(body),
+  });
+  if (!response.ok) throw await parseError(response);
+  return response.blob();
 }
 
 export async function uploadAttachment(

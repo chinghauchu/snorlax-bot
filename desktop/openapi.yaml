@@ -845,6 +845,29 @@ info:
     never speak MCP or the model. Never reintroduce
     computerPane.ts. Leave stale PRs #23 and #24 untouched.
     OpenAPI **0.18.0**.
+
+    v0.44: local TTS Speak on LEFT messages. One impl PR. Spec
+    rides this PR. **No second PR.** OpenAPI stays **0.18.0**. New
+    route only: `POST /v1/speak` (Bearer, JSON `{ "text" }`) →
+    `audio/wav` bytes. Runtime shells to local piper
+    (`SNORLAX_TTS_BIN` + `SNORLAX_TTS_MODEL`, or
+    `~/.snorlax-bot/tts/`). Never a cloud TTS. Empty / whitespace
+    text 422 `Empty text.` Over 8000 characters 422
+    `Max 8000 characters.` Missing local binary/model or a failed
+    run 503 (`Speech isn't available.` / `Couldn't speak.`).
+    Desktop + iOS: muted 12px Speak on completed agent LEFT
+    `kind=message` only (same row as Copy / Regenerate). Idle
+    label Speak; while playing Stop speaking with pressed state.
+    Tap Speak fetches/plays that message's spoken text (markdown
+    stripped reasonably). Tap Stop (or Speak again while playing)
+    stops. Starting Speak on another message stops the previous.
+    Never autoplay on SSE / message.done / history load. a11y
+    Speak / Stop speaking; keyboard operable on desktop. Not
+    per-agent. Do not persist synthesized audio as attachments.
+    Clients never speak MCP or the model. Mac oMLX at
+    `http://127.0.0.1:8000/v1` untouched. Never reintroduce
+    computerPane.ts. Leave stale PRs #23 and #24 untouched.
+    OpenAPI **0.18.0**.
   license:
     name: Apache-2.0
     identifier: Apache-2.0
@@ -1653,6 +1676,43 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Transcript"
+        "401":
+          $ref: "#/components/responses/Error"
+        "422":
+          $ref: "#/components/responses/Error"
+        "503":
+          $ref: "#/components/responses/Error"
+
+  /v1/speak:
+    post:
+      summary: Local text-to-speech
+      description: |
+        Speak a completed agent LEFT `kind=message`. Bearer JSON
+        `{ "text" }`. Runtime shells to local piper
+        (`SNORLAX_TTS_BIN` + `SNORLAX_TTS_MODEL`, or
+        `~/.snorlax-bot/tts/`). Returns `audio/wav` bytes — never
+        sends text to a cloud TTS. Empty / whitespace 422
+        `Empty text.` Over 8000 characters 422
+        `Max 8000 characters.` Missing local binary/model 503
+        `Speech isn't available.` Failed run 503
+        `Couldn't speak.` Clients play only when the user taps
+        Speak. Never autoplay. Do not persist the audio as a chat
+        attachment. Clients never speak MCP or the model.
+      operationId: speakText
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SpeakRequest"
+      responses:
+        "200":
+          description: Synthesized WAV from local piper
+          content:
+            audio/wav:
+              schema:
+                type: string
+                format: binary
         "401":
           $ref: "#/components/responses/Error"
         "422":
@@ -3174,6 +3234,18 @@ components:
           description: |
             Plain recognized speech from local whisper.cpp.
             Empty is 422 `No speech detected.` Never a cloud STT.
+
+    SpeakRequest:
+      type: object
+      required: [text]
+      properties:
+        text:
+          type: string
+          description: |
+            Plain text to synthesize with local piper.
+            Empty / whitespace is 422 `Empty text.`
+            Over 8000 characters is 422 `Max 8000 characters.`
+            Never a cloud TTS.
 
     Plugin:
       type: object

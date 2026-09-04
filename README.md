@@ -34,7 +34,7 @@ watch-video tool (`watch_video` `{ attachmentId }`; `Watched {name}` on the exis
 create agent/channel tools (`create_agent` / `create_channel` wrap `POST /v1/agents`; `Created {name}` tool line; 项目 / 员工 seed skill) +
 IME-safe composer Enter (does not send while composing) +
 composer clipboard paste (Cmd-V / Ctrl-V / paste event of image/file/video → same pending chips; text-only paste stays in the field) +
-Copy / Regenerate on assistant LEFT `kind=message` (Copy 1:1 and channel; Regenerate 1:1 latest only; `{ regenerate: true }`) +
+Copy / Regenerate / Speak on assistant LEFT `kind=message` (Copy 1:1 and channel; Regenerate 1:1 latest only; `{ regenerate: true }`; Speak is local piper via `POST /v1/speak`, no autoplay) +
 identity-pane Box computer preview (Bearer PNG) + desktop Box takeover
 (Open / Done; pointer/key in 1280×800) + teach-a-task (Record / Stop /
 Save as skill inside takeover) + skill markdown editor (identity-pane
@@ -236,7 +236,9 @@ runtime binds write_file / screenshot), and
 v0.30 composer clipboard paste (same pending chips; text-only paste
 stays in the field; OpenAPI stays 0.18.0), and
 v0.31 Copy / Regenerate on assistant LEFT `kind=message` (`{ regenerate: true }`;
-OpenAPI stays 0.18.0).
+OpenAPI stays 0.18.0), and
+v0.44 local TTS Speak on completed LEFT `kind=message` (`POST /v1/speak`;
+piper; no autoplay; OpenAPI stays 0.18.0).
 Later: full sandbox computer GUI, MCP marketplace catalog,
 Slack/GitHub inbound listeners.
 

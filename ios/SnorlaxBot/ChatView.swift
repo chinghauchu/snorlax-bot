@@ -143,6 +143,12 @@ struct ChatView: View {
                                     liveAssistantIdx: liveAssistantIdx,
                                     sending: model.isSending
                                 ),
+                                showSpeak: Self.showsSpeak(
+                                    message,
+                                    index: index,
+                                    liveAssistantIdx: liveAssistantIdx,
+                                    sending: model.isSending
+                                ),
                                 showRegenerate: Self.showsRegenerate(
                                     message,
                                     index: index,
@@ -246,6 +252,7 @@ struct ChatView: View {
         agent: Agent,
         toolTraces: [LiveToolTrace] = [],
         showCopy: Bool = false,
+        showSpeak: Bool = false,
         showRegenerate: Bool = false
     ) -> some View {
         let onTimeline = agent.isChannel && model.threadID == nil
@@ -265,6 +272,7 @@ struct ChatView: View {
                 threadRoot: agent.isChannel && model.threadID != nil && message.isHandoffRoot,
                 toolTraces: toolTraces,
                 showCopy: showCopy,
+                showSpeak: showSpeak,
                 showRegenerate: showRegenerate
             ) { jump in
                 Task { await model.openJump(channelId: jump.channelId, threadId: jump.threadId) }
@@ -322,6 +330,20 @@ struct ChatView: View {
             sending: sending
         ) else { return false }
         return !isChannel && index == lastLeftIdx && !sending
+    }
+
+    private static func showsSpeak(
+        _ message: Message,
+        index: Int,
+        liveAssistantIdx: Int?,
+        sending: Bool
+    ) -> Bool {
+        showsCopy(
+            message,
+            index: index,
+            liveAssistantIdx: liveAssistantIdx,
+            sending: sending
+        )
     }
 }
 
@@ -704,6 +726,7 @@ private struct MessageBubble: View {
     var threadRoot = false
     var toolTraces: [LiveToolTrace] = []
     var showCopy = false
+    var showSpeak = false
     var showRegenerate = false
     var onJump: ((HandoffRef) -> Void)?
     @Environment(AppModel.self) private var model
@@ -820,19 +843,32 @@ private struct MessageBubble: View {
                             names: agents.filter { !$0.isChannel }.map(\.name)
                         )
                     }
-                    if showCopy {
+                    if showCopy || showSpeak {
                         HStack(spacing: 12) {
-                            Button(copied ? "Copied" : "Copy") {
-                                UIPasteboard.general.string = message.content
-                                copied = true
-                                Task {
-                                    try? await Task.sleep(nanoseconds: 1_500_000_000)
-                                    copied = false
+                            if showCopy {
+                                Button(copied ? "Copied" : "Copy") {
+                                    UIPasteboard.general.string = message.content
+                                    copied = true
+                                    Task {
+                                        try? await Task.sleep(nanoseconds: 1_500_000_000)
+                                        copied = false
+                                    }
                                 }
+                                .font(.system(size: 12))
+                                .foregroundStyle(.secondary)
+                                .buttonStyle(.plain)
                             }
-                            .font(.system(size: 12))
-                            .foregroundStyle(.secondary)
-                            .buttonStyle(.plain)
+                            if showSpeak {
+                                let speaking = model.speakingMessageId == message.id
+                                Button(Speak.label(speaking)) {
+                                    Task { await model.toggleSpeak(message: message) }
+                                }
+                                .font(.system(size: 12))
+                                .foregroundStyle(speaking ? Color.primary : Color.secondary)
+                                .buttonStyle(.plain)
+                                .accessibilityLabel(Speak.label(speaking))
+                                .accessibilityAddTraits(Speak.pressed(speaking) ? .isSelected : [])
+                            }
                             if showRegenerate {
                                 Button("Regenerate") {
                                     Task { await model.regenerate() }

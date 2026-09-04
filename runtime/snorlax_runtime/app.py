@@ -54,6 +54,7 @@ from snorlax_runtime.schemas import (
     SkillBody,
     SkillCreate,
     SkillPatch,
+    SpeakRequest,
     Transcript,
     WorkspaceFile,
     WorkspaceListing,
@@ -267,6 +268,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             f"  scheduler: {'on' if settings.scheduler else 'off'} "
             f"(Asia/Taipei)\n"
             f"  asr: {settings.whisper_bin or '(local whisper.cpp)'}\n"
+            f"  tts: {settings.tts_bin or '(local piper)'}\n"
             f"  token: {token}",
             flush=True,
         )
@@ -1507,6 +1509,32 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         except AsrError as exc:
             raise _error(exc.status, exc.message) from exc
         return Transcript(text=text)
+
+    @app.post("/v1/speak")
+    async def post_speak(
+        request: Request,
+        body: SpeakRequest,
+        _: str = Depends(require_bearer),
+    ) -> Response:
+        from snorlax_runtime.tts import (
+            TtsError,
+            resolve_tts_bin,
+            resolve_tts_model,
+            synthesize_speech,
+        )
+
+        settings: Settings = request.app.state.settings
+        bin_path = resolve_tts_bin(settings.tts_bin, settings.data_dir)
+        model_path = resolve_tts_model(settings.tts_model, settings.data_dir)
+        try:
+            wav = synthesize_speech(
+                body.text,
+                bin_path=bin_path,
+                model_path=model_path,
+            )
+        except TtsError as exc:
+            raise _error(exc.status, exc.message) from exc
+        return Response(content=wav, media_type="audio/wav")
 
     return app
 
