@@ -35,6 +35,9 @@ Never autoplay. Never AVSpeechSynthesizer / cloud TTS.
 v0.45: fenced `mermaid` on completed LEFT `kind=message` renders
 via WKWebView + bundled mermaid. Invalid falls back to fence
 chrome. Streaming stays code until complete.
+v0.46: TeX math on completed LEFT `kind=message` (inline `\( \)`
+/ block `$$`) renders via WKWebView + bundled KaTeX. Invalid
+falls back to monospace source. Streaming defers until complete.
 v0.32: dedicated `kind=approve` LEFT card for mutating shell (not a
 WidgetCard fork). Approve / Deny / ×; long-press copies the command.
 Question widgets
@@ -131,6 +134,8 @@ Output: `SnorlaxBot/Generated/V1Types.swift`. Do not hand-edit that file.
 - `SnorlaxBot/AssistantMarkdown.swift` — assistant LEFT markdown
 - `SnorlaxBot/MermaidView.swift` — v0.45 WKWebView mermaid (local)
 - `SnorlaxBot/mermaid.min.js` — bundled official mermaid (IIFE)
+- `SnorlaxBot/MathView.swift` — v0.46 WKWebView KaTeX (local)
+- `SnorlaxBot/katex.min.js` / `katex.min.css` / `fonts/` — bundled KaTeX
 - `SnorlaxBot/RuntimeClient.swift` — `/v1` + SSE
 - `SnorlaxBot/Generated/V1Types.swift` — OpenAPI models
 - `SnorlaxBot/KeychainStore.swift` — bearer token

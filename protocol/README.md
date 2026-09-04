@@ -43,6 +43,10 @@ v0.45 mermaid diagrams: clients render fenced `mermaid` on completed
 LEFT `kind=message` (invalid falls back to fence chrome). No new
 HTTP. OpenAPI stays 0.18.0.
 
+v0.46 math: clients render TeX on completed LEFT `kind=message`
+(inline `\( \)` / block `$$`; invalid falls back to monospace
+source). No new HTTP. OpenAPI stays 0.18.0.
+
 v0.12 MCP Add custom: `POST /v1/plugins` `{ name, transport: "stdio" |
 "url", command?, args?: string[], url? }` → 201 Plugin. `DELETE
 /v1/plugins/{id}` uninstalls (204; disconnect + drop from catalog). No
@@ -204,6 +208,12 @@ v0.45 mermaid diagrams: clients render fenced `mermaid` on
 completed LEFT `kind=message` (desktop official mermaid; iOS
 WKWebView + bundled mermaid). Invalid falls back to fence
 chrome. No new routes. OpenAPI stays 0.18.0.
+
+v0.46 math in assistant markdown: clients render TeX math on
+completed LEFT `kind=message` (inline `\( \)` / block `$$`;
+desktop KaTeX; iOS WKWebView + bundled KaTeX). Invalid falls
+back to monospace source. Single `$` is not math. No new
+routes. OpenAPI stays 0.18.0.
 
 A copy is also kept at `runtime/openapi.yaml` and `desktop/openapi.yaml`
 so those trees are self-contained. Do not let the files diverge.

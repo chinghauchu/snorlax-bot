@@ -17,8 +17,14 @@ enum Speak {
 
     /// Strip markdown to spoken text. Do not invent UI chrome.
     /// Mermaid fences are treated like other fences (source, not narrated).
+    /// Math is spoken as plain TeX source (not narrated as an image).
     static func spokenText(_ src: String) -> String {
         var text = dropFences(src)
+        text = replace(text, "\\$\\$([\\s\\S]*?)\\$\\$", "$1")
+        text = replace(text, "\\\\\\(([\\s\\S]*?)\\\\\\)", "$1")
+        text = replace(text, "\\$\\$", "")
+        text = replace(text, "\\\\\\(", "")
+        text = replace(text, "\\\\\\)", "")
         text = replace(text, "`([^`]+)`", "$1")
         text = replace(text, "!\\[([^\\]]*)\\]\\([^)]+\\)", "$1")
         text = replace(text, "\\[([^\\]]+)\\]\\([^)]+\\)", "$1")

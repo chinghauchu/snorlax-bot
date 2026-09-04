@@ -71,7 +71,9 @@ info:
     Assistant markdown is v0.11 (clients render LEFT kind=message; content
     stays a plain string; runtime does not rewrite). v0.45 renders fenced
     mermaid as diagrams on completed LEFT kind=message (invalid falls
-    back to fence chrome). No new HTTP.
+    back to fence chrome). v0.46 renders TeX math on completed LEFT
+    kind=message (inline \( \) and block $$; invalid falls back to
+    monospace source). No new HTTP.
 
     Images persist and are returned; they are never sent to the model. No mDNS.
 
@@ -884,6 +886,25 @@ info:
     (no cloud render). Not on tool / widget / connect / approve /
     thinking / user-right. Math / KaTeX / raw HTML stay out.
     Clients never speak MCP or the model. Mac oMLX at
+    `http://127.0.0.1:8000/v1` untouched. Never reintroduce
+    computerPane.ts. Leave stale PRs #23 and #24 untouched.
+    OpenAPI **0.18.0**.
+
+    v0.46: math in assistant markdown. One impl PR covering
+    desktop + iOS. Spec rides this PR. **No second PR.**
+    OpenAPI stays **0.18.0**. Do not bump. No new HTTP routes.
+    Runtime idle. Clients render TeX-style math on completed
+    LEFT `kind=message` only (1:1 and channel; same v0.11
+    markdown path). Inline `\( ... \)` and block `$$ ... $$`
+    on their own lines. Do not enable single-`$...$`. Valid
+    math uses KaTeX (desktop KaTeX; iOS WKWebView + bundled
+    KaTeX). Invalid / failed parse falls back to readable
+    monospace source. Streaming defers render until delimiters
+    are closed / the message completes. Speak treats math like
+    other markup (plain source). Mermaid (v0.45) stays
+    unchanged. Not on tool / widget / connect / approve /
+    thinking / user-right. Raw HTML stays out. Clients never
+    speak MCP or the model. Mac oMLX at
     `http://127.0.0.1:8000/v1` untouched. Never reintroduce
     computerPane.ts. Leave stale PRs #23 and #24 untouched.
     OpenAPI **0.18.0**.
@@ -2515,6 +2536,9 @@ components:
             assistant LEFT kind=message as markdown. v0.45 clients
             render fenced mermaid as diagrams on completed LEFT
             kind=message (invalid mermaid stays fence chrome).
+            v0.46 clients render TeX math (inline \( \) and
+            block $$) on completed LEFT kind=message (invalid
+            math stays monospace source).
             widget, connect, tool, approve, and routineName stay. No MCP mix-in.
         images:
           type: array

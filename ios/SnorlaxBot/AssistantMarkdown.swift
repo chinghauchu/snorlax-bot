@@ -6,7 +6,7 @@ import UIKit
 struct AssistantMarkdown: View {
     let text: String
     var names: [String] = []
-    /// Defer mermaid until the LEFT message is complete (no half-drawn diagrams).
+    /// Defer mermaid / math until the LEFT message is complete.
     var completed: Bool = true
 
     var body: some View {
@@ -14,12 +14,18 @@ struct AssistantMarkdown: View {
             ForEach(Array(MarkdownSplit.segments(in: MarkdownSplit.stabilize(text)).enumerated()), id: \.offset) { _, segment in
                 switch segment {
                 case .markdown(let source):
-                    MarkdownRun(source: source, names: names)
+                    MarkdownRun(source: source, names: names, completed: completed)
                 case .code(let language, let source):
                     if completed && MarkdownSplit.isMermaidLanguage(language) {
                         MermaidFence(language: language, source: source)
                     } else {
                         CodeFence(language: language, source: source)
+                    }
+                case .blockMath(let source, let raw, let closed):
+                    if completed && closed {
+                        MathBlock(source: source, raw: raw)
+                    } else {
+                        MathFallback(raw: raw, block: true)
                     }
                 }
             }
@@ -132,13 +138,109 @@ private struct FenceSource: View {
     }
 }
 
+private struct MathBlock: View {
+    let source: String
+    let raw: String
+    @State private var failed = false
+    @State private var size = CGSize(width: 1, height: 1)
+
+    var body: some View {
+        Group {
+            if failed {
+                MathFallback(raw: raw, block: true)
+            } else {
+                ScrollView(.horizontal, showsIndicators: true) {
+                    MathWebView(
+                        source: source,
+                        display: true,
+                        text: MermaidColors.hex(UIColor.label),
+                        failed: $failed,
+                        size: $size
+                    )
+                    .frame(width: max(size.width, 1), height: max(size.height, 1), alignment: .topLeading)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+            }
+        }
+    }
+}
+
+private struct MathInline: View {
+    let source: String
+    let raw: String
+    @State private var failed = false
+    @State private var size = CGSize(width: 1, height: 1)
+
+    var body: some View {
+        Group {
+            if failed {
+                MathFallback(raw: raw, block: false)
+            } else {
+                MathWebView(
+                    source: source,
+                    display: false,
+                    text: MermaidColors.hex(UIColor.label),
+                    failed: $failed,
+                    size: $size
+                )
+                .frame(width: max(size.width, 1), height: max(size.height, 1), alignment: .center)
+            }
+        }
+    }
+}
+
+private struct MathFallback: View {
+    let raw: String
+    var block: Bool
+
+    var body: some View {
+        if block {
+            ScrollView(.horizontal, showsIndicators: true) {
+                Text(raw)
+                    .font(.system(size: 13, design: .monospaced))
+                    .textSelection(.enabled)
+                    .fixedSize(horizontal: true, vertical: false)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+        } else {
+            Text(raw)
+                .font(.system(size: 13, design: .monospaced))
+                .textSelection(.enabled)
+        }
+    }
+}
+
 private struct MarkdownRun: View {
     let source: String
     let names: [String]
+    var completed: Bool = true
     @Environment(\.openURL) private var openURL
 
     var body: some View {
-        Text(wrapping(attributed))
+        let pieces = MarkdownSplit.splitInlineMath(source)
+        if pieces.count == 1, case .text(let only) = pieces[0] {
+            markdownText(only)
+        } else {
+            MathFlowLayout(spacing: 4, lineSpacing: 2) {
+                ForEach(Array(pieces.enumerated()), id: \.offset) { _, piece in
+                    switch piece {
+                    case .text(let text):
+                        markdownText(text)
+                    case .inlineMath(let tex, let raw, let closed):
+                        if completed && closed {
+                            MathInline(source: tex, raw: raw)
+                        } else {
+                            MathFallback(raw: raw, block: false)
+                        }
+                    }
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+    }
+
+    private func markdownText(_ src: String) -> some View {
+        Text(wrapping(attributed(src)))
             .font(.system(size: 14))
             .textSelection(.enabled)
             .multilineTextAlignment(.leading)
@@ -164,15 +266,15 @@ private struct MarkdownRun: View {
         return AttributedString(ns)
     }
 
-    private var attributed: AttributedString {
+    private func attributed(_ src: String) -> AttributedString {
         var parsed: AttributedString
         do {
             var options = AttributedString.MarkdownParsingOptions()
             options.interpretedSyntax = .full
             options.failurePolicy = .returnPartiallyParsedIfPossible
-            parsed = try AttributedString(markdown: source, options: options)
+            parsed = try AttributedString(markdown: src, options: options)
         } catch {
-            parsed = AttributedString(source)
+            parsed = AttributedString(src)
         }
         styleHeadings(&parsed)
         styleInlineCode(&parsed)
@@ -237,6 +339,12 @@ enum MarkdownSplit {
     enum Segment: Equatable {
         case markdown(String)
         case code(language: String, source: String)
+        case blockMath(source: String, raw: String, closed: Bool)
+    }
+
+    enum InlinePiece: Equatable {
+        case text(String)
+        case inlineMath(source: String, raw: String, closed: Bool)
     }
 
     /// Language tag is exactly `mermaid` (case-insensitive).
@@ -303,7 +411,161 @@ enum MarkdownSplit {
         let tail = String(rest)
         if !tail.isEmpty { result.append(.markdown(tail)) }
         if result.isEmpty { result.append(.markdown(text)) }
+        return result.flatMap { segment in
+            guard case .markdown(let source) = segment else { return [segment] }
+            return splitBlockMath(source)
+        }
+    }
+
+    /// Own-line `$$ ... $$` only. Single `$...$` is never math.
+    static func splitBlockMath(_ text: String) -> [Segment] {
+        var result: [Segment] = []
+        var rest = Substring(text)
+        while let open = firstOwnLineDollarDollar(in: rest) {
+            let before = String(rest[rest.startIndex..<open.lowerBound])
+            if !before.isEmpty { result.append(.markdown(before)) }
+            let line = lineContents(in: rest, covering: open.lowerBound)
+            let trimmed = line.text.trimmingCharacters(in: .whitespaces)
+            if trimmed == "$$" {
+                let afterOpen = rest[open.upperBound...]
+                let bodyStart: Substring.Index
+                if let nl = afterOpen.firstIndex(of: "\n") {
+                    bodyStart = afterOpen.index(after: nl)
+                } else {
+                    bodyStart = afterOpen.endIndex
+                }
+                let bodyRest = rest[bodyStart...]
+                if let close = firstOwnLineDollarDollar(in: bodyRest, lone: true) {
+                    var source = String(bodyRest[bodyRest.startIndex..<close.lowerBound])
+                    if source.hasSuffix("\n") { source.removeLast() }
+                    let rawEnd = lineEnd(in: rest, from: close.lowerBound)
+                    let raw = String(rest[open.lowerBound..<rawEnd]).trimmingCharacters(in: .newlines)
+                    result.append(.blockMath(source: source, raw: raw, closed: true))
+                    rest = rest[rawEnd...]
+                    if rest.first == "\n" {
+                        rest = rest[rest.index(after: rest.startIndex)...]
+                    }
+                } else {
+                    let source = String(bodyRest)
+                    result.append(.blockMath(source: source, raw: String(rest[open.lowerBound...]), closed: false))
+                    rest = ""
+                    break
+                }
+            } else if trimmed.hasPrefix("$$"), trimmed.hasSuffix("$$"), trimmed.count > 4 {
+                let tex = String(trimmed.dropFirst(2).dropLast(2))
+                    .trimmingCharacters(in: .whitespaces)
+                result.append(.blockMath(source: tex, raw: trimmed, closed: true))
+                rest = rest[line.end...]
+                if rest.first == "\n" {
+                    rest = rest[rest.index(after: rest.startIndex)...]
+                }
+            } else {
+                rest = rest[rest.index(after: open.lowerBound)...]
+            }
+        }
+        let tail = String(rest)
+        if !tail.isEmpty { result.append(.markdown(tail)) }
+        if result.isEmpty { result.append(.markdown(text)) }
         return result
+    }
+
+    /// Inline `\( ... \)` only. Skips inline `code`.
+    static func splitInlineMath(_ text: String) -> [InlinePiece] {
+        var result: [InlinePiece] = []
+        var rest = Substring(text)
+        while let open = firstInlineMathOpen(in: rest) {
+            let before = String(rest[rest.startIndex..<open.lowerBound])
+            if !before.isEmpty { result.append(.text(before)) }
+            let after = rest[open.upperBound...]
+            if let close = firstInlineMathClose(in: after) {
+                let source = String(after[after.startIndex..<close.lowerBound])
+                let raw = String(rest[open.lowerBound..<close.upperBound])
+                result.append(.inlineMath(source: source, raw: raw, closed: true))
+                rest = after[close.upperBound...]
+            } else {
+                result.append(.inlineMath(source: String(after), raw: String(rest[open.lowerBound...]), closed: false))
+                rest = ""
+                break
+            }
+        }
+        let tail = String(rest)
+        if !tail.isEmpty { result.append(.text(tail)) }
+        if result.isEmpty { result.append(.text(text)) }
+        return result
+    }
+
+    private static func firstOwnLineDollarDollar(in text: Substring, lone: Bool = false) -> Range<Substring.Index>? {
+        var lineStart = text.startIndex
+        while lineStart < text.endIndex {
+            let lineEnd = text[lineStart...].firstIndex(of: "\n") ?? text.endIndex
+            let line = text[lineStart..<lineEnd]
+            let trimmed = line.trimmingCharacters(in: .whitespaces)
+            let isOpen: Bool
+            if lone {
+                isOpen = trimmed == "$$"
+            } else {
+                isOpen = trimmed == "$$" || (trimmed.hasPrefix("$$") && trimmed.hasSuffix("$$") && trimmed.count > 4)
+            }
+            if isOpen, let range = line.range(of: "$$") {
+                let start = range.lowerBound
+                let end = line.index(start, offsetBy: 2)
+                return start..<end
+            }
+            if lineEnd == text.endIndex { break }
+            lineStart = text.index(after: lineEnd)
+        }
+        return nil
+    }
+
+    private static func lineContents(in text: Substring, covering index: Substring.Index) -> (text: String, end: Substring.Index) {
+        var start = text.startIndex
+        var cursor = text.startIndex
+        while cursor < text.endIndex {
+            let lineEnd = text[cursor...].firstIndex(of: "\n") ?? text.endIndex
+            if index >= cursor && index < lineEnd || index == cursor {
+                return (String(text[cursor..<lineEnd]), lineEnd)
+            }
+            if lineEnd == text.endIndex {
+                return (String(text[cursor..<lineEnd]), lineEnd)
+            }
+            start = text.index(after: lineEnd)
+            cursor = start
+        }
+        return (String(text), text.endIndex)
+    }
+
+    private static func lineEnd(in text: Substring, from index: Substring.Index) -> Substring.Index {
+        text[index...].firstIndex(of: "\n") ?? text.endIndex
+    }
+
+    private static func firstInlineMathOpen(in text: Substring) -> Range<Substring.Index>? {
+        firstInlineDelimiter(in: text, open: true)
+    }
+
+    private static func firstInlineMathClose(in text: Substring) -> Range<Substring.Index>? {
+        firstInlineDelimiter(in: text, open: false)
+    }
+
+    private static func firstInlineDelimiter(in text: Substring, open: Bool) -> Range<Substring.Index>? {
+        let needle = open ? "\\(" : "\\)"
+        var i = text.startIndex
+        var inCode = false
+        while i < text.endIndex {
+            if text[i] == "`" {
+                inCode.toggle()
+                i = text.index(after: i)
+                continue
+            }
+            if !inCode {
+                let remaining = text[i...]
+                if remaining.hasPrefix(needle) {
+                    let end = text.index(i, offsetBy: 2)
+                    return i..<end
+                }
+            }
+            i = text.index(after: i)
+        }
+        return nil
     }
 
     private static func firstFence(in text: Substring) -> Range<Substring.Index>? {

@@ -27,7 +27,7 @@ Concrete follow-ups after v0. Filed on GitHub against
 
 ## Frontend
 
-- [F1 — Streaming markdown without flicker](https://github.com/chinghauchu/snorlax-bot/issues/6) — **v0.11:** clients render assistant LEFT `kind=message` as 14px markdown (no grey bubble; 16/14 headings); user-right stays plain (`https://` tappable); fenced code full-turn language + Copy at 12px/1.45; inline code 13px / 4px / accent 18%. Content stays a plain string (no new Message fields). **v0.45:** fenced `mermaid` on completed LEFT `kind=message` renders as a diagram (official mermaid / iOS WKWebView; invalid falls back to fence chrome; streaming stays code until complete). Math / raw HTML still out of scope.
+- [F1 — Streaming markdown without flicker](https://github.com/chinghauchu/snorlax-bot/issues/6) — **v0.11:** clients render assistant LEFT `kind=message` as 14px markdown (no grey bubble; 16/14 headings); user-right stays plain (`https://` tappable); fenced code full-turn language + Copy at 12px/1.45; inline code 13px / 4px / accent 18%. Content stays a plain string (no new Message fields). **v0.45:** fenced `mermaid` on completed LEFT `kind=message` renders as a diagram (official mermaid / iOS WKWebView; invalid falls back to fence chrome; streaming stays code until complete). **v0.46:** TeX math on completed LEFT `kind=message` (inline `\( \)` / block `$$`; KaTeX; invalid falls back to monospace source; single `$` stays currency). Raw HTML still out of scope.
 - [F2 — Pairing: local token file and LAN paste](https://github.com/chinghauchu/snorlax-bot/issues/16)
 - [F3 — Edit agent name and instructions in the desktop UI](https://github.com/chinghauchu/snorlax-bot/issues/19) — v0.3 identity pane PATCHes name/title/description/avatar (no `instructions` field)
 - Attachment chips: **v0.25** user-right composer + transcript (paperclip /
@@ -77,7 +77,9 @@ Concrete follow-ups after v0. Filed on GitHub against
   speaking; `POST /v1/speak`; no autoplay).
   **v0.45:** fenced `mermaid` on completed LEFT `kind=message`
   renders as a diagram (same fence chrome; Copy copies source;
-  invalid stays code). Math / raw HTML still later.
+  invalid stays code). **v0.46:** TeX math on completed LEFT
+  `kind=message` (inline `\( \)` / block `$$`; KaTeX; invalid
+  stays monospace source). Raw HTML still later.
   Full sandbox computer GUI (browser, VNC, terminal)
   stays later.
 
@@ -139,3 +141,8 @@ Concrete follow-ups after v0. Filed on GitHub against
   Invalid falls back to fence chrome. Streaming stays code until
   complete. Speak treats mermaid fences like other fences.
   OpenAPI stays 0.18.0.
+- **v0.46:** TeX math on completed LEFT `kind=message` (inline
+  `\( \)` / block `$$`) renders via WKWebView + bundled KaTeX.
+  Invalid falls back to monospace source. Streaming defers until
+  complete. Speak treats math as plain TeX source. Mermaid
+  unchanged. OpenAPI stays 0.18.0.

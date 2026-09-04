@@ -549,6 +549,12 @@ official mermaid; iOS WKWebView + bundled mermaid). Invalid
 falls back to fence chrome. No new HTTP. OpenAPI stays 0.18.0.
 Never reintroduce `computerPane.ts`.
 
+v0.46: TeX math on completed LEFT `kind=message`. Clients
+render inline `\( \)` and block `$$` (desktop KaTeX; iOS
+WKWebView + bundled KaTeX). Invalid falls back to monospace
+source. Single `$` is not math. No new HTTP. OpenAPI stays
+0.18.0. Never reintroduce `computerPane.ts`.
+
 ## Inference interface
 
 ```text

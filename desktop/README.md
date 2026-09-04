@@ -104,6 +104,10 @@ v0.45: fenced `mermaid` on completed LEFT `kind=message` renders
 as an inline diagram (official mermaid). Invalid / failed parse
 falls back to fence chrome. Streaming stays code until complete.
 Speak treats mermaid fences like other fences.
+v0.46: TeX math on completed LEFT `kind=message` (inline `\( \)`
+/ block `$$`; KaTeX). Invalid / failed parse falls back to
+monospace source. Streaming defers until complete. Speak treats
+math as plain TeX source. Single `$` is not math.
 Assistant LEFT
 `kind=message` is 14px markdown (no grey bubble, 16/14 headings); user-right stays plain (`https://` tappable). Fenced code is full-turn language + Copy at 12px/1.45.
 iOS has no file-tree computer pane; the agent sheet shows the same preview.
