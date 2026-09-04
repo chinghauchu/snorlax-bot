@@ -62,3 +62,4 @@ jobs:
           python3 ios/scripts/test_shell_approve.py
           python3 ios/scripts/test_agent_routines.py
           python3 ios/scripts/test_memory_pane.py
+          python3 ios/scripts/test_ios_dictation.py

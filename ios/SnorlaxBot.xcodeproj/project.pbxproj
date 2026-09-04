@@ -197,6 +197,7 @@
 				INFOPLIST_KEY_CFBundleDisplayName = "Snorlax-Bot";
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.productivity";
 				INFOPLIST_KEY_NSLocalNetworkUsageDescription = "Snorlax-Bot talks to your DGX Spark on the local network so you can message the same teammates as desktop.";
+				INFOPLIST_KEY_NSMicrophoneUsageDescription = "Snorlax-Bot records speech on this device so you can dictate into the composer.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
@@ -231,6 +232,7 @@
 				INFOPLIST_KEY_CFBundleDisplayName = "Snorlax-Bot";
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.productivity";
 				INFOPLIST_KEY_NSLocalNetworkUsageDescription = "Snorlax-Bot talks to your DGX Spark on the local network so you can message the same teammates as desktop.";
+				INFOPLIST_KEY_NSMicrophoneUsageDescription = "Snorlax-Bot records speech on this device so you can dictate into the composer.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;

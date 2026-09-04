@@ -4,6 +4,8 @@
 <dict>
 	<key>NSLocalNetworkUsageDescription</key>
 	<string>Snorlax-Bot talks to your DGX Spark on the local network so you can message the same teammates as desktop.</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>Snorlax-Bot records speech on this device so you can dictate into the composer.</string>
 	<key>NSAppTransportSecurity</key>
 	<dict>
 		<key>NSAllowsLocalNetworking</key>

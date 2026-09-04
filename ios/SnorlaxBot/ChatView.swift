@@ -455,9 +455,33 @@ private struct ComposerBar: View {
                                 )
                             }
                         }
+                    },
+                    onCaretChange: { range in
+                        model.noteComposerSelection(range)
                     }
                 )
                 .frame(minHeight: 22, maxHeight: 120)
+
+                Button {
+                    Task { await model.toggleDictation() }
+                } label: {
+                    ZStack(alignment: .topTrailing) {
+                        Image(systemName: "mic")
+                            .font(.system(size: 16))
+                            .foregroundStyle(
+                                model.dictation == .recording ? Dictation.danger : Color.secondary
+                            )
+                            .frame(width: 44, height: 44)
+                        if model.dictation == .recording {
+                            DictationListeningDot()
+                                .padding(4)
+                        }
+                    }
+                }
+                .disabled(!model.canCompose || Dictation.busy(model.dictation))
+                .accessibilityLabel(Dictation.label(model.dictation))
+                .accessibilityAddTraits(Dictation.pressed(model.dictation) ? .isSelected : [])
+                .accessibilityValue(Dictation.busy(model.dictation) ? Dictation.hintTranscribing : "")
 
                 Button {
                     Task { await model.send() }
@@ -468,7 +492,21 @@ private struct ComposerBar: View {
                 .disabled(!canSend)
                 .accessibilityLabel("Send")
             }
-            if let error = model.composerError, !error.isEmpty {
+            if Dictation.cancelable(model.dictation) {
+                Button("Cancel") {
+                    model.cancelDictation()
+                }
+                .font(.system(size: 12))
+                .foregroundStyle(.secondary)
+                .accessibilityLabel("Cancel dictation")
+            }
+            if let hint = Dictation.composerHint(state: model.dictation, error: model.composerError) {
+                Text(hint)
+                    .font(.system(size: 12))
+                    .foregroundStyle(.secondary)
+                    .accessibilityAddTraits(.updatesFrequently)
+                    .accessibilityIdentifier(Dictation.hintRole)
+            } else if let error = model.composerError, !error.isEmpty {
                 Text(error)
                     .font(.system(size: 13))
                     .foregroundStyle(.red)
@@ -486,6 +524,9 @@ private struct ComposerBar: View {
         .onChange(of: pickerItem) { _, item in
             guard let item else { return }
             Task { await loadPhoto(item) }
+        }
+        .onDisappear {
+            model.cancelDictation()
         }
     }
 
