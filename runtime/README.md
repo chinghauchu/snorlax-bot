@@ -216,6 +216,9 @@ binary/model or a failed run 503. Desktop + iOS play only when
 the user taps Speak (no autoplay). OpenAPI stays 0.18.0.
 Build notes: [docs/mac-local.md](../docs/mac-local.md).
 
+v0.46: clients render TeX math on completed LEFT `kind=message`
+(inline `\( \)` / block `$$`). Runtime idle. OpenAPI stays 0.18.0.
+
 ## MCP (`mcp.json`)
 
 The runtime is the MCP client. Desktop and iOS never speak MCP. Put

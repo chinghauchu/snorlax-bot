@@ -579,6 +579,41 @@ button:disabled {
   max-width: none;
 }
 
+.md-math-block {
+  width: 100%;
+  overflow-x: auto;
+  margin: 0.4em 0;
+}
+
+.md-math-block .katex-display {
+  margin: 0;
+}
+
+.md-math-inline {
+  display: inline;
+}
+
+.md-math-inline .katex,
+.md-math-block .katex {
+  color: var(--text);
+}
+
+.md-math-fallback {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas,
+    "Liberation Mono", monospace;
+  font-size: 13px;
+  line-height: 1.45;
+  color: var(--text);
+}
+
+pre.md-math-fallback.md-math-block {
+  margin: 0.4em 0;
+  padding: 0;
+  background: none;
+  border: none;
+  white-space: pre;
+}
+
 .md-copy {
   font-size: 12px;
   color: var(--text-muted);

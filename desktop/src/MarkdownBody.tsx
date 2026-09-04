@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 import {
   Children,
+  cloneElement,
   isValidElement,
   useEffect,
   useState,
@@ -15,6 +16,13 @@ import {
   splitHttpsUrls,
   stabilizeMarkdown,
 } from "./markdown";
+import {
+  extractMath,
+  renderKatex,
+  shouldRenderMath,
+  splitMathTokens,
+  type MathSlot,
+} from "./math";
 import { shouldRenderMermaid, renderMermaidSvg } from "./mermaid";
 import { splitMentions } from "./mentions";
 import { openOsBrowser } from "./openUrl";
@@ -22,12 +30,14 @@ import { openOsBrowser } from "./openUrl";
 type Props = {
   text: string;
   knownNames: string[];
-  /** Defer mermaid until the LEFT message is complete (no half-drawn diagrams). */
+  /** Defer mermaid / math until the LEFT message is complete. */
   completed?: boolean;
 };
 
 export function MarkdownBody({ text, knownNames, completed = true }: Props) {
-  const source = stabilizeMarkdown(text);
+  const { text: source, slots } = extractMath(stabilizeMarkdown(text));
+  const enrich = (children?: ReactNode) =>
+    enrichChildren(children, knownNames, completed, slots);
   return (
     <Markdown
       components={{
@@ -39,14 +49,18 @@ export function MarkdownBody({ text, knownNames, completed = true }: Props) {
           <code className={className}>{children}</code>
         ),
         img: ({ alt }) => (alt ? <span>{alt}</span> : null),
-        p: ({ children }) => <p>{mentionify(children, knownNames)}</p>,
-        li: ({ children }) => <li>{mentionify(children, knownNames)}</li>,
-        h1: ({ children }) => <h1>{mentionify(children, knownNames)}</h1>,
-        h2: ({ children }) => <h2>{mentionify(children, knownNames)}</h2>,
-        h3: ({ children }) => <h3>{mentionify(children, knownNames)}</h3>,
-        h4: ({ children }) => <h4>{mentionify(children, knownNames)}</h4>,
-        h5: ({ children }) => <h5>{mentionify(children, knownNames)}</h5>,
-        h6: ({ children }) => <h6>{mentionify(children, knownNames)}</h6>,
+        p: ({ children }) => {
+          const block = soleBlockMath(children, slots, completed);
+          if (block) return block;
+          return <p>{enrich(children)}</p>;
+        },
+        li: ({ children }) => <li>{enrich(children)}</li>,
+        h1: ({ children }) => <h1>{enrich(children)}</h1>,
+        h2: ({ children }) => <h2>{enrich(children)}</h2>,
+        h3: ({ children }) => <h3>{enrich(children)}</h3>,
+        h4: ({ children }) => <h4>{enrich(children)}</h4>,
+        h5: ({ children }) => <h5>{enrich(children)}</h5>,
+        h6: ({ children }) => <h6>{enrich(children)}</h6>,
       }}
     >
       {source}
@@ -205,19 +219,131 @@ function codeText(node: ReactNode): string {
   return "";
 }
 
-function mentionify(children: ReactNode, knownNames: string[]): ReactNode {
+function soleBlockMath(
+  children: ReactNode,
+  slots: MathSlot[],
+  completed: boolean,
+): ReactNode | null {
+  const text = onlyText(children).trim();
+  if (!text) return null;
+  const pieces = splitMathTokens(text);
+  if (pieces.length !== 1 || pieces[0]?.type !== "math") return null;
+  const piece = pieces[0];
+  if (piece.kind !== "block") return null;
+  const slot = slots[piece.id];
+  if (!slot) return null;
+  return <MathNode slot={slot} completed={completed} />;
+}
+
+function onlyText(node: ReactNode): string {
+  if (node == null || typeof node === "boolean") return "";
+  if (typeof node === "string" || typeof node === "number") return String(node);
+  if (Array.isArray(node)) return node.map(onlyText).join("");
+  if (isValidElement(node)) {
+    const props = node.props as { children?: ReactNode };
+    return onlyText(props.children);
+  }
+  return "";
+}
+
+function enrichChildren(
+  children: ReactNode,
+  knownNames: string[],
+  completed: boolean,
+  slots: MathSlot[],
+): ReactNode {
   return Children.map(children, (child, index) => {
-    if (typeof child !== "string") return child;
-    const pieces = splitMentions(child, knownNames);
-    if (pieces.length === 1 && pieces[0]?.type === "text") return child;
-    return pieces.map((piece, inner) =>
-      piece.type === "mention" && piece.resolved ? (
-        <span key={`${index}-${inner}`} className="mention">
-          {piece.value}
-        </span>
-      ) : (
-        <span key={`${index}-${inner}`}>{piece.value}</span>
-      ),
+    if (typeof child === "string") {
+      return renderTextWithMath(child, knownNames, completed, slots, index);
+    }
+    if (isValidElement(child)) {
+      const props = child.props as { children?: ReactNode };
+      if (props.children == null) return child;
+      return cloneElement(
+        child,
+        undefined,
+        enrichChildren(props.children, knownNames, completed, slots),
+      );
+    }
+    return child;
+  });
+}
+
+function renderTextWithMath(
+  text: string,
+  knownNames: string[],
+  completed: boolean,
+  slots: MathSlot[],
+  keyBase: number,
+): ReactNode {
+  const pieces = splitMathTokens(text);
+  if (pieces.length === 1 && pieces[0]?.type === "text") {
+    return mentionifyString(text, knownNames, keyBase);
+  }
+  return pieces.map((piece, inner) => {
+    if (piece.type === "math") {
+      const slot = slots[piece.id];
+      return slot ? (
+        <MathNode
+          key={`${keyBase}-m-${inner}`}
+          slot={slot}
+          completed={completed}
+        />
+      ) : null;
+    }
+    return (
+      <span key={`${keyBase}-t-${inner}`}>
+        {mentionifyString(piece.value, knownNames, inner)}
+      </span>
     );
   });
+}
+
+function MathNode({
+  slot,
+  completed,
+}: {
+  slot: MathSlot;
+  completed: boolean;
+}) {
+  const display = slot.kind === "block";
+  const html = shouldRenderMath({ completed, closed: slot.closed })
+    ? renderKatex(slot.tex, display)
+    : null;
+  if (html) {
+    return display ? (
+      <div
+        className="md-math-block"
+        // KaTeX HTML from the local engine only
+        dangerouslySetInnerHTML={{ __html: html }}
+      />
+    ) : (
+      <span
+        className="md-math-inline"
+        dangerouslySetInnerHTML={{ __html: html }}
+      />
+    );
+  }
+  if (display) {
+    return <pre className="md-math-fallback md-math-block">{slot.raw}</pre>;
+  }
+  return <code className="md-math-fallback">{slot.raw}</code>;
+}
+
+function mentionifyString(
+  text: string,
+  knownNames: string[],
+  index: number,
+): ReactNode {
+  const pieces = splitMentions(text, knownNames);
+  if (pieces.length === 1 && pieces[0]?.type === "text") return text;
+  return pieces.map((piece, inner) =>
+    piece.type === "mention" && piece.resolved ? (
+      <span key={`${index}-${inner}`} className="mention">
+        {piece.value}
+      </span>
+    ) : (
+      <span key={`${index}-${inner}`}>{piece.value}</span>
+    ),
+  );
 }

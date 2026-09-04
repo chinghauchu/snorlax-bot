@@ -20,13 +20,20 @@ export function speakLabel(playing: boolean): string {
 }
 
 /** Strip markdown to spoken text. Do not invent UI chrome.
- *  Mermaid fences are treated like other fences (source, not narrated). */
+ *  Mermaid fences are treated like other fences (source, not narrated).
+ *  Math is spoken as plain TeX source (not narrated as an image). */
 export function spokenText(src: string): string {
   let text = src ?? "";
   text = text.replace(/```[\s\S]*?```/g, (block) => {
     const inner = block.replace(/^```[^\n]*\n?/, "").replace(/```$/, "");
     return inner;
   });
+  text = text.replace(/\$\$([\s\S]*?)\$\$/g, (_, inner: string) =>
+    String(inner).trim(),
+  );
+  text = text.replace(/\\\(([\s\S]*?)\\\)/g, "$1");
+  text = text.replace(/\$\$/g, "");
+  text = text.replace(/\\\(/g, "").replace(/\\\)/g, "");
   text = text.replace(/`([^`]+)`/g, "$1");
   text = text.replace(/!\[([^\]]*)\]\([^)]+\)/g, "$1");
   text = text.replace(/\[([^\]]+)\]\([^)]+\)/g, "$1");

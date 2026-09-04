@@ -1211,6 +1211,9 @@ export interface components {
              *     assistant LEFT kind=message as markdown. v0.45 clients
              *     render fenced mermaid as diagrams on completed LEFT
              *     kind=message (invalid mermaid stays fence chrome).
+             *     v0.46 clients render TeX math (inline \( \) and
+             *     block $$) on completed LEFT kind=message (invalid
+             *     math stays monospace source).
              *     widget, connect, tool, approve, and routineName stay. No MCP mix-in.
              */
             content: string;
