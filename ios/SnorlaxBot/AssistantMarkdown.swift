@@ -6,6 +6,8 @@ import UIKit
 struct AssistantMarkdown: View {
     let text: String
     var names: [String] = []
+    /// Defer mermaid until the LEFT message is complete (no half-drawn diagrams).
+    var completed: Bool = true
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -14,7 +16,11 @@ struct AssistantMarkdown: View {
                 case .markdown(let source):
                     MarkdownRun(source: source, names: names)
                 case .code(let language, let source):
-                    CodeFence(language: language, source: source)
+                    if completed && MarkdownSplit.isMermaidLanguage(language) {
+                        MermaidFence(language: language, source: source)
+                    } else {
+                        CodeFence(language: language, source: source)
+                    }
                 }
             }
         }
@@ -23,34 +29,36 @@ struct AssistantMarkdown: View {
     }
 }
 
-private struct CodeFence: View {
+private struct MermaidFence: View {
     let language: String
     let source: String
+    @Environment(\.colorScheme) private var colorScheme
+    @State private var failed = false
+    @State private var size = CGSize(width: 1, height: 1)
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            HStack {
-                Text(language)
-                    .font(.system(size: 12))
-                    .foregroundStyle(.secondary)
-                Spacer(minLength: 0)
-                Button("Copy") {
-                    UIPasteboard.general.string = source
+            FenceBar(language: language, source: source)
+            if failed {
+                FenceSource(source: source)
+            } else {
+                ScrollView(.horizontal, showsIndicators: true) {
+                    MermaidWebView(
+                        source: source,
+                        background: MermaidColors.hex(UIColor.secondarySystemBackground),
+                        text: MermaidColors.hex(UIColor.label),
+                        muted: MermaidColors.hex(UIColor.secondaryLabel),
+                        border: MermaidColors.hex(UIColor.separator),
+                        accent: MermaidColors.hex(UIColor.tintColor),
+                        dark: colorScheme == .dark,
+                        failed: $failed,
+                        size: $size
+                    )
+                    .frame(width: max(size.width, 1), height: max(size.height, 1), alignment: .topLeading)
                 }
-                .font(.system(size: 12))
-                .foregroundStyle(.secondary)
+                .padding(.horizontal, 10)
+                .padding(.vertical, 8)
             }
-            .padding(.horizontal, 10)
-            .padding(.top, 6)
-            ScrollView(.horizontal, showsIndicators: true) {
-                Text(source)
-                    .font(.system(size: 12, design: .monospaced))
-                    .lineSpacing(12 * 0.45)
-                    .textSelection(.enabled)
-                    .fixedSize(horizontal: true, vertical: false)
-            }
-            .padding(.horizontal, 10)
-            .padding(.vertical, 8)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(
@@ -62,6 +70,65 @@ private struct CodeFence: View {
                 .stroke(Color(uiColor: .separator), lineWidth: 1)
         }
         .clipShape(RoundedRectangle(cornerRadius: 8))
+    }
+}
+
+private struct CodeFence: View {
+    let language: String
+    let source: String
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            FenceBar(language: language, source: source)
+            FenceSource(source: source)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(
+            Color(uiColor: .secondarySystemBackground),
+            in: RoundedRectangle(cornerRadius: 8)
+        )
+        .overlay {
+            RoundedRectangle(cornerRadius: 8)
+                .stroke(Color(uiColor: .separator), lineWidth: 1)
+        }
+        .clipShape(RoundedRectangle(cornerRadius: 8))
+    }
+}
+
+private struct FenceBar: View {
+    let language: String
+    let source: String
+
+    var body: some View {
+        HStack {
+            Text(language)
+                .font(.system(size: 12))
+                .foregroundStyle(.secondary)
+            Spacer(minLength: 0)
+            Button("Copy") {
+                UIPasteboard.general.string = source
+            }
+            .font(.system(size: 12))
+            .foregroundStyle(.secondary)
+        }
+        .padding(.horizontal, 10)
+        .padding(.top, 6)
+    }
+}
+
+private struct FenceSource: View {
+    let source: String
+
+    var body: some View {
+        ScrollView(.horizontal, showsIndicators: true) {
+            Text(source)
+                .font(.system(size: 12, design: .monospaced))
+                .lineSpacing(12 * 0.45)
+                .textSelection(.enabled)
+                .fixedSize(horizontal: true, vertical: false)
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 8)
     }
 }
 
@@ -170,6 +237,11 @@ enum MarkdownSplit {
     enum Segment: Equatable {
         case markdown(String)
         case code(language: String, source: String)
+    }
+
+    /// Language tag is exactly `mermaid` (case-insensitive).
+    static func isMermaidLanguage(_ language: String) -> Bool {
+        language.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() == "mermaid"
     }
 
     static func stabilize(_ text: String) -> String {

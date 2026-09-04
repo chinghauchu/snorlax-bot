@@ -64,3 +64,4 @@ jobs:
           python3 ios/scripts/test_memory_pane.py
           python3 ios/scripts/test_ios_dictation.py
           python3 ios/scripts/test_ios_speak.py
+          python3 ios/scripts/test_ios_mermaid.py

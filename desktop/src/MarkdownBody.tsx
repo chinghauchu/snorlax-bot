@@ -2,6 +2,8 @@
 import {
   Children,
   isValidElement,
+  useEffect,
+  useState,
   type MouseEvent,
   type ReactNode,
 } from "react";
@@ -13,21 +15,26 @@ import {
   splitHttpsUrls,
   stabilizeMarkdown,
 } from "./markdown";
+import { shouldRenderMermaid, renderMermaidSvg } from "./mermaid";
 import { splitMentions } from "./mentions";
 import { openOsBrowser } from "./openUrl";
 
 type Props = {
   text: string;
   knownNames: string[];
+  /** Defer mermaid until the LEFT message is complete (no half-drawn diagrams). */
+  completed?: boolean;
 };
 
-export function MarkdownBody({ text, knownNames }: Props) {
+export function MarkdownBody({ text, knownNames, completed = true }: Props) {
   const source = stabilizeMarkdown(text);
   return (
     <Markdown
       components={{
         a: ({ href, children }) => <MdLink href={href}>{children}</MdLink>,
-        pre: ({ children }) => <CodeFence>{children}</CodeFence>,
+        pre: ({ children }) => (
+          <CodeFence completed={completed}>{children}</CodeFence>
+        ),
         code: ({ className, children }) => (
           <code className={className}>{children}</code>
         ),
@@ -91,23 +98,81 @@ export function HttpsText({ text }: { text: string }) {
   );
 }
 
-function CodeFence({ children }: { children?: ReactNode }) {
+function CodeFence({
+  children,
+  completed,
+}: {
+  children?: ReactNode;
+  completed: boolean;
+}) {
   const { text, language } = fenceFromChildren(children);
+  if (shouldRenderMermaid({ language, completed })) {
+    return <MermaidFence language={language} source={text} />;
+  }
+  return <FenceChrome language={language} source={text} />;
+}
+
+function MermaidFence({
+  language,
+  source,
+}: {
+  language: string;
+  source: string;
+}) {
+  const [svg, setSvg] = useState<string | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    setSvg(null);
+    void renderMermaidSvg(source).then((next) => {
+      if (!cancelled) setSvg(next);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [source]);
+  if (!svg) {
+    return <FenceChrome language={language} source={source} />;
+  }
   return (
     <div className="md-fence">
-      <div className="md-fence-bar">
-        <span className="md-fence-lang">{language}</span>
-        <button
-          type="button"
-          className="md-copy"
-          onClick={() => void copyText(text)}
-        >
-          Copy
-        </button>
-      </div>
+      <FenceBar language={language} source={source} />
+      <div
+        className="md-mermaid-body"
+        // mermaid securityLevel=strict; official SVG only
+        dangerouslySetInnerHTML={{ __html: svg }}
+      />
+    </div>
+  );
+}
+
+function FenceChrome({
+  language,
+  source,
+}: {
+  language: string;
+  source: string;
+}) {
+  return (
+    <div className="md-fence">
+      <FenceBar language={language} source={source} />
       <pre className="md-fence-body">
-        <code>{text}</code>
+        <code>{source}</code>
       </pre>
+    </div>
+  );
+}
+
+function FenceBar({ language, source }: { language: string; source: string }) {
+  return (
+    <div className="md-fence-bar">
+      <span className="md-fence-lang">{language}</span>
+      <button
+        type="button"
+        className="md-copy"
+        onClick={() => void copyText(source)}
+      >
+        Copy
+      </button>
     </div>
   );
 }

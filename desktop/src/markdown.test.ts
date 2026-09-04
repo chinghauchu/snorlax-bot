@@ -42,6 +42,7 @@ test("only https:// URLs are safe to open", () => {
   assert.equal(isSafeHttpsUrl(undefined), false);
   assert.equal(fenceLanguage("language-js"), "js");
   assert.equal(fenceLanguage("language-C++"), "C++");
+  assert.equal(fenceLanguage("language-mermaid"), "mermaid");
   const links = splitHttpsUrls("see https://example.com/a, please");
   assert.equal(links[0]?.type, "text");
   assert.equal(links[1]?.type, "link");

@@ -69,7 +69,9 @@ info:
     Hand-edited mcp.json still works. Plugins list is Settings only, not
     the agent pane. No marketplace catalog / public plugin store.
     Assistant markdown is v0.11 (clients render LEFT kind=message; content
-    stays a plain string; runtime does not rewrite).
+    stays a plain string; runtime does not rewrite). v0.45 renders fenced
+    mermaid as diagrams on completed LEFT kind=message (invalid falls
+    back to fence chrome). No new HTTP.
 
     Images persist and are returned; they are never sent to the model. No mDNS.
 
@@ -864,6 +866,23 @@ info:
     Never autoplay on SSE / message.done / history load. a11y
     Speak / Stop speaking; keyboard operable on desktop. Not
     per-agent. Do not persist synthesized audio as attachments.
+    Clients never speak MCP or the model. Mac oMLX at
+    `http://127.0.0.1:8000/v1` untouched. Never reintroduce
+    computerPane.ts. Leave stale PRs #23 and #24 untouched.
+    OpenAPI **0.18.0**.
+
+    v0.45: mermaid diagrams in assistant markdown. One impl PR
+    covering desktop + iOS. Spec rides this PR. **No second PR.**
+    OpenAPI stays **0.18.0**. Do not bump. No new HTTP routes.
+    Runtime idle. Clients render fenced `mermaid` on completed
+    LEFT `kind=message` only (1:1 and channel; same v0.11 markdown
+    path). Invalid / failed parse falls back to existing fence
+    chrome (language + Copy + mono body). Streaming defers diagram
+    render until the message completes. Speak treats mermaid fences
+    like other fences (source, not narrated). Desktop uses the
+    official mermaid library; iOS uses WKWebView + bundled mermaid
+    (no cloud render). Not on tool / widget / connect / approve /
+    thinking / user-right. Math / KaTeX / raw HTML stay out.
     Clients never speak MCP or the model. Mac oMLX at
     `http://127.0.0.1:8000/v1` untouched. Never reintroduce
     computerPane.ts. Leave stale PRs #23 and #24 untouched.
@@ -2493,8 +2512,10 @@ components:
             assistant text to HTML or split one Message into many. SSE
             message.delta is text chunks of this same string. User
             messages stay plain text as stored. v0.11 clients render
-            assistant LEFT kind=message as markdown.             widget, connect,
-            tool, approve, and routineName stay. No MCP mix-in.
+            assistant LEFT kind=message as markdown. v0.45 clients
+            render fenced mermaid as diagrams on completed LEFT
+            kind=message (invalid mermaid stays fence chrome).
+            widget, connect, tool, approve, and routineName stay. No MCP mix-in.
         images:
           type: array
           items:

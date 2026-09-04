@@ -1208,8 +1208,10 @@ export interface components {
              *     assistant text to HTML or split one Message into many. SSE
              *     message.delta is text chunks of this same string. User
              *     messages stay plain text as stored. v0.11 clients render
-             *     assistant LEFT kind=message as markdown.             widget, connect,
-             *     tool, approve, and routineName stay. No MCP mix-in.
+             *     assistant LEFT kind=message as markdown. v0.45 clients
+             *     render fenced mermaid as diagrams on completed LEFT
+             *     kind=message (invalid mermaid stays fence chrome).
+             *     widget, connect, tool, approve, and routineName stay. No MCP mix-in.
              */
             content: string;
             images: components["schemas"]["ImageOut"][];

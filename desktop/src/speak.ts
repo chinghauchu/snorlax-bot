@@ -19,7 +19,8 @@ export function speakLabel(playing: boolean): string {
   return playing ? STOP_SPEAKING_LABEL : SPEAK_LABEL;
 }
 
-/** Strip markdown to spoken text. Do not invent UI chrome. */
+/** Strip markdown to spoken text. Do not invent UI chrome.
+ *  Mermaid fences are treated like other fences (source, not narrated). */
 export function spokenText(src: string): string {
   let text = src ?? "";
   text = text.replace(/```[\s\S]*?```/g, (block) => {

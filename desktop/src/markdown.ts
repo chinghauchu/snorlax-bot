@@ -39,6 +39,11 @@ export function fenceLanguage(className?: string | null): string {
   return match?.[1] ?? "";
 }
 
+/** Language tag is exactly `mermaid` (case-insensitive). */
+export function isMermaidLanguage(language: string | undefined | null): boolean {
+  return (language ?? "").trim().toLowerCase() === "mermaid";
+}
+
 const HTTPS = /https:\/\/[^\s<>"'`]+/g;
 
 export type HttpsPiece = { type: "text"; value: string } | { type: "link"; value: string };

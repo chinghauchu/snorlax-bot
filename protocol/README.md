@@ -39,6 +39,10 @@ assistant text to HTML or split one message into many. SSE
 stay plain text as stored. Clients render markdown. widget / connect /
 tool / routine fields stay. No MCP mix-in.
 
+v0.45 mermaid diagrams: clients render fenced `mermaid` on completed
+LEFT `kind=message` (invalid falls back to fence chrome). No new
+HTTP. OpenAPI stays 0.18.0.
+
 v0.12 MCP Add custom: `POST /v1/plugins` `{ name, transport: "stdio" |
 "url", command?, args?: string[], url? }` → 201 Plugin. `DELETE
 /v1/plugins/{id}` uninstalls (204; disconnect + drop from catalog). No
@@ -195,6 +199,11 @@ v0.44 local TTS Speak: `POST /v1/speak` (Bearer, JSON `{ "text" }`)
 Empty / whitespace 422; over 8000 characters 422; engine
 missing/failed 503. Desktop + iOS Speak on completed LEFT
 `kind=message` (no autoplay). OpenAPI stays 0.18.0.
+
+v0.45 mermaid diagrams: clients render fenced `mermaid` on
+completed LEFT `kind=message` (desktop official mermaid; iOS
+WKWebView + bundled mermaid). Invalid falls back to fence
+chrome. No new routes. OpenAPI stays 0.18.0.
 
 A copy is also kept at `runtime/openapi.yaml` and `desktop/openapi.yaml`
 so those trees are self-contained. Do not let the files diverge.

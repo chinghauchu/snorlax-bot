@@ -32,6 +32,9 @@ Transcript is editable composer text. No auto-send.
 v0.44: Speak on completed LEFT `kind=message` (12pt muted row;
 idle Speak / playing Stop speaking). Local `POST /v1/speak`.
 Never autoplay. Never AVSpeechSynthesizer / cloud TTS.
+v0.45: fenced `mermaid` on completed LEFT `kind=message` renders
+via WKWebView + bundled mermaid. Invalid falls back to fence
+chrome. Streaming stays code until complete.
 v0.32: dedicated `kind=approve` LEFT card for mutating shell (not a
 WidgetCard fork). Approve / Deny / ×; long-press copies the command.
 Question widgets
@@ -126,6 +129,8 @@ Output: `SnorlaxBot/Generated/V1Types.swift`. Do not hand-edit that file.
 - `SnorlaxBot/ConnectCard.swift` — `kind=connect` LEFT card
 - `SnorlaxBot/ApproveCard.swift` — `kind=approve` LEFT card
 - `SnorlaxBot/AssistantMarkdown.swift` — assistant LEFT markdown
+- `SnorlaxBot/MermaidView.swift` — v0.45 WKWebView mermaid (local)
+- `SnorlaxBot/mermaid.min.js` — bundled official mermaid (IIFE)
 - `SnorlaxBot/RuntimeClient.swift` — `/v1` + SSE
 - `SnorlaxBot/Generated/V1Types.swift` — OpenAPI models
 - `SnorlaxBot/KeychainStore.swift` — bearer token
