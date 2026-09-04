@@ -309,6 +309,38 @@ struct RuntimeClient: Sendable {
         }
     }
 
+    /// Existing `POST /v1/transcribe`. Bearer, multipart field `audio` → `{ text }`.
+    func transcribeAudio(fileName: String, mime: String, data: Data) async throws -> Transcript {
+        var request = try makeRequest("v1/transcribe", method: "POST")
+        let boundary = "Boundary-\(UUID().uuidString)"
+        request.setValue(
+            "multipart/form-data; boundary=\(boundary)",
+            forHTTPHeaderField: "Content-Type"
+        )
+        let safeName = fileName
+            .replacingOccurrences(of: "\"", with: "_")
+            .replacingOccurrences(of: "\r", with: "")
+            .replacingOccurrences(of: "\n", with: "")
+        let type = mime.isEmpty ? "application/octet-stream" : mime
+        var body = Data()
+        func append(_ text: String) {
+            body.append(Data(text.utf8))
+        }
+        append("--\(boundary)\r\n")
+        append("Content-Disposition: form-data; name=\"audio\"; filename=\"\(safeName)\"\r\n")
+        append("Content-Type: \(type)\r\n\r\n")
+        body.append(data)
+        append("\r\n--\(boundary)--\r\n")
+        request.httpBody = body
+        let (responseData, response) = try await URLSession.shared.data(for: request)
+        try Self.throwIfNeeded(data: responseData, response: response, allowed: [200])
+        do {
+            return try decoder.decode(Transcript.self, from: responseData)
+        } catch {
+            throw RuntimeError.decoding
+        }
+    }
+
     func sendMessage(
         agentId: String,
         content: String,

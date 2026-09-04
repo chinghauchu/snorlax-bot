@@ -68,6 +68,11 @@ final class AppModel {
     var computerTakeoverOpen = false
     var computerSessionId: String?
     var computerTakeoverAgentId: String?
+    var dictation: Dictation.State = .idle
+    var composerCaret = 0
+    var composerSelectionLength = 0
+    private var dictationCapture = DictationCapture()
+    private var dictationEpoch = 0
 
     init() {
         runtimeURL = UserDefaults.standard.string(forKey: Keys.runtimeURL) ?? ""
@@ -155,6 +160,7 @@ final class AppModel {
     func loadConversation(_ id: String, thread: String?, push: Bool) async {
         if selectedAgentID != id || threadID != thread {
             showProfile = false
+            cancelDictation()
         }
         selectedAgentID = id
         threadID = thread
@@ -655,7 +661,94 @@ final class AppModel {
         }
     }
 
+    func noteComposerSelection(_ range: NSRange) {
+        composerCaret = range.location
+        composerSelectionLength = range.length
+    }
+
+    func toggleDictation() async {
+        if dictation == .processing { return }
+        if dictation == .recording {
+            await finishDictation()
+            return
+        }
+        await startDictation()
+    }
+
+    /// Esc-equivalent. No POST /v1/transcribe. No insert.
+    func cancelDictation() {
+        guard Dictation.cancelable(dictation) else { return }
+        dictationEpoch += 1
+        dictationCapture.cancel()
+        dictation = .idle
+    }
+
+    func startDictation() async {
+        guard canCompose else { return }
+        composerError = nil
+        dictationEpoch += 1
+        let epoch = dictationEpoch
+        do {
+            try await dictationCapture.start()
+            guard epoch == dictationEpoch else { return }
+            dictation = .recording
+        } catch {
+            guard epoch == dictationEpoch else { return }
+            dictation = .idle
+            composerError = Dictation.hintMicOff
+        }
+    }
+
+    func finishDictation() async {
+        guard dictation == .recording else { return }
+        let epoch = dictationEpoch
+        dictation = .processing
+        let packet = dictationCapture.stop()
+        guard epoch == dictationEpoch else { return }
+        guard let packet else {
+            dictation = .idle
+            composerError = Dictation.hintNoSpeech
+            return
+        }
+        guard let client else {
+            dictation = .idle
+            return
+        }
+        do {
+            let result = try await client.transcribeAudio(
+                fileName: packet.name,
+                mime: packet.mime,
+                data: packet.data
+            )
+            guard epoch == dictationEpoch else { return }
+            let next = Dictation.insertTranscript(
+                text: draft,
+                caret: composerCaret,
+                selectionLength: composerSelectionLength,
+                transcript: result.text
+            )
+            draft = next.text
+            composerCaret = next.caret
+            composerSelectionLength = 0
+            pendingComposerCaret = next.caret
+            wantsComposerFocus = true
+            composerError = nil
+        } catch {
+            guard epoch == dictationEpoch else { return }
+            let message: String
+            if let runtime = error as? RuntimeError, case .http(_, let body) = runtime {
+                message = body
+            } else {
+                message = Dictation.errTranscribe
+            }
+            composerError = message == "No speech detected." ? Dictation.hintNoSpeech : message
+        }
+        dictation = .idle
+    }
+
     func send() async {
+        cancelDictation()
+        dictationEpoch += 1
         guard let client, let agent = selectedAgent else { return }
         let content = draft.trimmingCharacters(in: .whitespacesAndNewlines)
         let chips = pendingAttachments

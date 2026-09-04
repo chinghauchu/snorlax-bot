@@ -66,11 +66,13 @@ Concrete follow-ups after v0. Filed on GitHub against
   long-press copy; open-pane refetch after Remembered / Forgot). **v0.40:**
   Settings Memory list above Plugins (`GET/DELETE /v1/memory`; user facts
   only; same Remove chrome; open   Settings refetches GET `/v1/memory`
-  after ANY Remembered / Forgot). **v0.41:** desktop composer mic
+  after ANY Remembered / Forgot).   **v0.41:** desktop composer mic
   (idle / recording / processing) POSTs audio to `/v1/transcribe`
   and inserts editable text at the caret; no auto-send; a11y
-  labels on the mic control; iOS idle. Full sandbox computer GUI
-  (browser, VNC, terminal)
+  labels on the mic control. **v0.43:** iOS composer mic matches
+  that path (paperclip | field | Mic | Send; Cancel while
+  recording; same hints and `Start dictation` / `Stop dictation`).
+  Full sandbox computer GUI (browser, VNC, terminal)
   stays later.
 
 ## iOS
@@ -116,3 +118,9 @@ Concrete follow-ups after v0. Filed on GitHub against
   `Remove this memory?`; long-press copies the full fact; open
   Settings refetches GET `/v1/memory` after ANY Remembered / Forgot). Agent sheet stays
   agent-only. Channel sheet unchanged.
+- **v0.43:** composer Mic left of Send (paperclip | field | Mic |
+  Send). Local `POST /v1/transcribe`. Listening danger + 6pt solid
+  dot. Cancel while recording does not POST or insert. Hints
+  `Transcribing…` / `No speech detected.` / `Microphone is off.`
+  a11y `Start dictation` / `Stop dictation`. Editable insert. No
+  auto-send. Desktop v0.41/v0.42 unchanged.

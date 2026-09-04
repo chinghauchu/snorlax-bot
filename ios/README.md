@@ -23,6 +23,12 @@ v0.31: Copy on completed LEFT `kind=message` (12pt muted; `Copied`
 1.5s). Regenerate 1:1 only on the latest completed LEFT
 `kind=message` (`{ regenerate: true }`). Channel has Copy, no
 Regenerate.
+v0.43: composer Mic immediately left of Send (paperclip | field |
+Mic | Send). Local `POST /v1/transcribe` (multipart `audio`).
+Listening is danger + a 6pt solid dot. Cancel while recording does
+not POST or insert. Hints `Transcribing…` / `No speech detected.` /
+`Microphone is off.` a11y `Start dictation` / `Stop dictation`.
+Transcript is editable composer text. No auto-send. No TTS.
 v0.32: dedicated `kind=approve` LEFT card for mutating shell (not a
 WidgetCard fork). Approve / Deny / ×; long-press copies the command.
 Question widgets
@@ -98,6 +104,7 @@ python3 ios/scripts/test_computer_takeover.py
 python3 ios/scripts/test_skill_autocomplete.py
 python3 ios/scripts/test_blank_new_skill.py
 python3 ios/scripts/test_slack_github_routines.py
+python3 ios/scripts/test_ios_dictation.py
 ```
 
 Output: `SnorlaxBot/Generated/V1Types.swift`. Do not hand-edit that file.
@@ -107,6 +114,7 @@ Output: `SnorlaxBot/Generated/V1Types.swift`. Do not hand-edit that file.
 - `SnorlaxBot/SnorlaxBotApp.swift` — entry, theme, accent
 - `SnorlaxBot/ContentView.swift` — iPhone stack / iPad split chrome
 - `SnorlaxBot/AppModel.swift` — roster, chat, settings persistence
+- `SnorlaxBot/Dictation.swift` — v0.43 composer mic helpers + local capture
 - `SnorlaxBot/SkillPicker.swift` — v0.21 1:1 composer `/` trigger + filter
 - `SnorlaxBot/ProfileSheet.swift` — identity / channel pane; agent routines + skills lists
 - `SnorlaxBot/ComputerSession.swift` — v0.19 Open chrome + v0.20 Record chrome + letterbox pointer map

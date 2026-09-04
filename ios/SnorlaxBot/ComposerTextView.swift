@@ -12,6 +12,7 @@ struct ComposerTextView: UIViewRepresentable {
     var focused: FocusState<Bool>.Binding
     var onReturnSend: (() -> Void)? = nil
     var onPasteAttachments: (([ComposerPasteboard.Attachment]) -> Void)? = nil
+    var onCaretChange: ((NSRange) -> Void)? = nil
 
     func makeCoordinator() -> Coordinator {
         Coordinator(self)
@@ -128,6 +129,11 @@ struct ComposerTextView: UIViewRepresentable {
         func textViewDidChange(_ textView: UITextView) {
             parent.text = textView.text ?? ""
             placeholderLabel.isHidden = !parent.text.isEmpty
+            parent.onCaretChange?(textView.selectedRange)
+        }
+
+        func textViewDidChangeSelection(_ textView: UITextView) {
+            parent.onCaretChange?(textView.selectedRange)
         }
 
         func textViewDidBeginEditing(_ textView: UITextView) {
