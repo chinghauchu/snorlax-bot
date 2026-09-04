@@ -129,6 +129,8 @@ test("Copy / Regenerate chrome: 12px muted row after attachments + markdown", ()
   assert.match(app, /MessageActions/);
   assert.match(app, /showAssistantCopy/);
   assert.match(app, /showAssistantRegenerate/);
+  assert.match(app, /onSpeak/);
+  assert.match(app, /speakLabel/);
   assert.match(app, /dropLastAssistantTurn/);
   assert.match(css, /\n\.message-actions \{/);
   assert.match(css, /\n\.message-action \{/);

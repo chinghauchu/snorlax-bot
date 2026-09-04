@@ -341,6 +341,13 @@ struct RuntimeClient: Sendable {
         }
     }
 
+    func speak(text: String) async throws -> Data {
+        let request = try makeRequest("v1/speak", method: "POST", body: SpeakRequest(text: text))
+        let (data, response) = try await URLSession.shared.data(for: request)
+        try Self.throwIfNeeded(data: data, response: response, allowed: [200])
+        return data
+    }
+
     func sendMessage(
         agentId: String,
         content: String,

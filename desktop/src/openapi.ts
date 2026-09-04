@@ -555,6 +555,8 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        get?: never;
+        put?: never;
         /**
          * Local speech-to-text
          * @description Desktop dictation. Bearer multipart field `audio`.
@@ -569,8 +571,36 @@ export interface paths {
          *     slice. Clients never speak MCP or the model.
          */
         post: operations["transcribeAudio"];
-        put?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/speak": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
         get?: never;
+        put?: never;
+        /**
+         * Local text-to-speech
+         * @description Speak a completed agent LEFT `kind=message`. Bearer JSON
+         *     `{ "text" }`. Runtime shells to local piper
+         *     (`SNORLAX_TTS_BIN` + `SNORLAX_TTS_MODEL`, or
+         *     `~/.snorlax-bot/tts/`). Returns `audio/wav` bytes — never
+         *     sends text to a cloud TTS. Empty / whitespace 422
+         *     `Empty text.` Over 8000 characters 422
+         *     `Max 8000 characters.` Missing local binary/model 503
+         *     `Speech isn't available.` Failed run 503
+         *     `Couldn't speak.` Clients play only when the user taps
+         *     Speak. Never autoplay. Do not persist the audio as a chat
+         *     attachment. Clients never speak MCP or the model.
+         */
+        post: operations["speakText"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1696,6 +1726,15 @@ export interface components {
              */
             text: string;
         };
+        SpeakRequest: {
+            /**
+             * @description Plain text to synthesize with local piper.
+             *     Empty / whitespace is 422 `Empty text.`
+             *     Over 8000 characters is 422 `Max 8000 characters.`
+             *     Never a cloud TTS.
+             */
+            text: string;
+        };
         Plugin: {
             id: string;
             name: string;
@@ -2377,6 +2416,7 @@ export interface operations {
         requestBody: {
             content: {
                 "multipart/form-data": {
+                    /** Format: binary */
                     audio: string;
                 };
             };
@@ -2389,6 +2429,33 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Transcript"];
+                };
+            };
+            401: components["responses"]["Error"];
+            422: components["responses"]["Error"];
+            503: components["responses"]["Error"];
+        };
+    };
+    speakText: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SpeakRequest"];
+            };
+        };
+        responses: {
+            /** @description Synthesized WAV from local piper */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "audio/wav": string;
                 };
             };
             401: components["responses"]["Error"];

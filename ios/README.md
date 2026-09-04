@@ -28,7 +28,10 @@ Mic | Send). Local `POST /v1/transcribe` (multipart `audio`).
 Listening is danger + a 6pt solid dot. Cancel while recording does
 not POST or insert. Hints `Transcribing…` / `No speech detected.` /
 `Microphone is off.` a11y `Start dictation` / `Stop dictation`.
-Transcript is editable composer text. No auto-send. No TTS.
+Transcript is editable composer text. No auto-send.
+v0.44: Speak on completed LEFT `kind=message` (12pt muted row;
+idle Speak / playing Stop speaking). Local `POST /v1/speak`.
+Never autoplay. Never AVSpeechSynthesizer / cloud TTS.
 v0.32: dedicated `kind=approve` LEFT card for mutating shell (not a
 WidgetCard fork). Approve / Deny / ×; long-press copies the command.
 Question widgets

@@ -40,6 +40,7 @@ import {
   patchSkill,
   resolveMediaUrl,
   sendMessage,
+  speakText,
   transcribeAudio,
   uploadAttachment,
   fetchAttachmentBlob,
@@ -182,6 +183,7 @@ import {
   pickRecorderMime,
   type DictationState,
 } from "./dictation";
+import { speakLabel, spokenText } from "./speak";
 
 const URL_KEY = "snorlax.runtimeUrl";
 const TOKEN_KEY = "snorlax.token";
@@ -352,13 +354,17 @@ function AgentRoutineRow({
 
 function MessageActions({
   content,
+  speaking,
   showRegenerate,
   disabled,
+  onSpeak,
   onRegenerate,
 }: {
   content: string;
+  speaking: boolean;
   showRegenerate: boolean;
   disabled?: boolean;
+  onSpeak: () => void;
   onRegenerate: () => void;
 }) {
   const [copied, setCopied] = useState(false);
@@ -377,10 +383,20 @@ function MessageActions({
       timer.current = null;
     }, MESSAGE_COPY_FEEDBACK_MS);
   }
+  const speakName = speakLabel(speaking);
   return (
     <div className="message-actions">
       <button type="button" className="message-action" onClick={() => void onCopy()}>
         {copied ? "Copied" : "Copy"}
+      </button>
+      <button
+        type="button"
+        className={`message-action${speaking ? " is-speaking" : ""}`}
+        aria-label={speakName}
+        aria-pressed={speaking}
+        onClick={onSpeak}
+      >
+        {speakName}
       </button>
       {showRegenerate ? (
         <button
@@ -511,6 +527,10 @@ export function App() {
   >([]);
   const [draft, setDraft] = useState("");
   const [dictation, setDictation] = useState<DictationState>("idle");
+  const [speakingId, setSpeakingId] = useState<string | null>(null);
+  const speakAudio = useRef<HTMLAudioElement | null>(null);
+  const speakObjectUrl = useRef<string | null>(null);
+  const speakEpoch = useRef(0);
   const [pendingAttachments, setPendingAttachments] = useState<
     PendingAttachment[]
   >([]);
@@ -1684,6 +1704,72 @@ export function App() {
     });
   }
 
+  function stopSpeaking() {
+    speakEpoch.current += 1;
+    const audio = speakAudio.current;
+    speakAudio.current = null;
+    if (audio) {
+      audio.onended = null;
+      audio.pause();
+      audio.removeAttribute("src");
+      audio.load();
+    }
+    if (speakObjectUrl.current) {
+      URL.revokeObjectURL(speakObjectUrl.current);
+      speakObjectUrl.current = null;
+    }
+    setSpeakingId(null);
+  }
+
+  async function toggleSpeak(messageId: string, content: string) {
+    // User tap only. Do not start playback from SSE, message done, or history load.
+    if (speakingId === messageId) {
+      stopSpeaking();
+      return;
+    }
+    stopSpeaking();
+    if (!session) return;
+    const text = spokenText(content);
+    const epoch = speakEpoch.current;
+    try {
+      const blob = await speakText(session, text);
+      if (epoch !== speakEpoch.current) return;
+      const url = URL.createObjectURL(blob);
+      speakObjectUrl.current = url;
+      const audio = new Audio(url);
+      speakAudio.current = audio;
+      audio.onended = () => {
+        if (speakEpoch.current === epoch) stopSpeaking();
+      };
+      setSpeakingId(messageId);
+      await audio.play();
+    } catch (err) {
+      if (epoch === speakEpoch.current) {
+        stopSpeaking();
+        setComposerError(describeError(err));
+      }
+    }
+  }
+
+  useEffect(() => {
+    stopSpeaking();
+    return () => {
+      speakEpoch.current += 1;
+      const audio = speakAudio.current;
+      speakAudio.current = null;
+      if (audio) {
+        audio.onended = null;
+        audio.pause();
+        audio.removeAttribute("src");
+        audio.load();
+      }
+      if (speakObjectUrl.current) {
+        URL.revokeObjectURL(speakObjectUrl.current);
+        speakObjectUrl.current = null;
+      }
+    };
+  }, [activeId, threadId]);
+
   async function onRegenerate() {
     if (!session || !active || busy || active.kind === "channel") return;
     setComposerError(null);
@@ -2527,6 +2613,7 @@ export function App() {
                         }) ? (
                           <MessageActions
                             content={message.content}
+                            speaking={speakingId === message.id}
                             showRegenerate={showAssistantRegenerate({
                               message,
                               completed: !(busy && index === liveAssistantIdx),
@@ -2535,6 +2622,7 @@ export function App() {
                               streaming: busy,
                             })}
                             disabled={busy}
+                            onSpeak={() => void toggleSpeak(message.id, message.content)}
                             onRegenerate={() => void onRegenerate()}
                           />
                         ) : null}

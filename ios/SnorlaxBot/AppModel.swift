@@ -69,10 +69,13 @@ final class AppModel {
     var computerSessionId: String?
     var computerTakeoverAgentId: String?
     var dictation: Dictation.State = .idle
+    var speakingMessageId: String?
     var composerCaret = 0
     var composerSelectionLength = 0
     private var dictationCapture = DictationCapture()
     private var dictationEpoch = 0
+    private var speakPlayback = SpeakPlayback()
+    private var speakEpoch = 0
 
     init() {
         runtimeURL = UserDefaults.standard.string(forKey: Keys.runtimeURL) ?? ""
@@ -161,6 +164,7 @@ final class AppModel {
         if selectedAgentID != id || threadID != thread {
             showProfile = false
             cancelDictation()
+            stopSpeaking()
         }
         selectedAgentID = id
         threadID = thread
@@ -943,6 +947,46 @@ final class AppModel {
 
     func dismissConnect(id: String) async {
         await streamAnswer(connectReply: ConnectReply(id: id, dismissed: true))
+    }
+
+    func stopSpeaking() {
+        speakEpoch += 1
+        speakPlayback.stop()
+        speakingMessageId = nil
+    }
+
+    func toggleSpeak(message: Message) async {
+        // User tap only. Do not start playback from SSE, message done, or history load.
+        if speakingMessageId == message.id {
+            stopSpeaking()
+            return
+        }
+        stopSpeaking()
+        guard let client else { return }
+        let text = Speak.spokenText(message.content)
+        let epoch = speakEpoch
+        do {
+            let data = try await client.speak(text: text)
+            guard epoch == speakEpoch else { return }
+            speakPlayback.onEnd = { [weak self] in
+                Task { @MainActor in
+                    if self?.speakEpoch == epoch {
+                        self?.stopSpeaking()
+                    }
+                }
+            }
+            try speakPlayback.play(data)
+            speakingMessageId = message.id
+        } catch {
+            if epoch == speakEpoch {
+                stopSpeaking()
+                if let runtime = error as? RuntimeError, case .http(_, let message) = runtime {
+                    composerError = message
+                } else {
+                    composerError = error.localizedDescription
+                }
+            }
+        }
     }
 
     func regenerate() async {

@@ -31,6 +31,8 @@ class Settings(BaseSettings):
     whisper_bin: str | None = None
     whisper_model: str | None = None
     whisper_language: str = "auto"
+    tts_bin: str | None = None
+    tts_model: str | None = None
 
     def resolved_backend(self) -> str:
         name = self.inference_backend.strip().lower()

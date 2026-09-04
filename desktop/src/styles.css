@@ -1869,6 +1869,11 @@ button:disabled {
   color: var(--accent);
 }
 
+.message-action.is-speaking,
+.message-action[aria-pressed="true"] {
+  color: var(--text);
+}
+
 .info-routine-remove {
   flex-shrink: 0;
   border: 0;

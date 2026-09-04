@@ -68,6 +68,8 @@ overrides the file.
 | `SNORLAX_WHISPER_BIN` | unset | Path to local `whisper-cli` (else `~/.snorlax-bot/whisper/whisper-cli` or PATH) |
 | `SNORLAX_WHISPER_MODEL` | unset | Path to a `ggml-*.bin` (else `~/.snorlax-bot/whisper/ggml-base.en.bin`) |
 | `SNORLAX_WHISPER_LANGUAGE` | `auto` | whisper.cpp `-l` language |
+| `SNORLAX_TTS_BIN` | unset | Path to local `piper` (else `~/.snorlax-bot/tts/piper` or PATH) |
+| `SNORLAX_TTS_MODEL` | unset | Path to a piper `*.onnx` (else `~/.snorlax-bot/tts/en_US-lessac-medium.onnx`) |
 
 Loopback inference (`127.0.0.1` / `localhost`) gets **no** `Authorization`
 header by default. Do not send the LAN `SNORLAX_TOKEN` to oMLX or vLLM.
@@ -206,6 +208,13 @@ v0.41: `POST /v1/transcribe` (Bearer, multipart field `audio`) →
 STT. Empty 422; over 25MB 422; missing binary/model 503. Desktop
 inserts the text into the composer (no auto-send). iOS idle.
 OpenAPI stays 0.18.0. Build notes: [docs/mac-local.md](../docs/mac-local.md).
+
+v0.44: `POST /v1/speak` (Bearer, JSON `{ "text" }`) → 200
+`audio/wav`. Runtime shells to local piper. Never a cloud TTS.
+Empty / whitespace 422; over 8000 characters 422; missing
+binary/model or a failed run 503. Desktop + iOS play only when
+the user taps Speak (no autoplay). OpenAPI stays 0.18.0.
+Build notes: [docs/mac-local.md](../docs/mac-local.md).
 
 ## MCP (`mcp.json`)
 

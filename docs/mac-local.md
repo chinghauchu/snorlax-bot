@@ -97,8 +97,35 @@ export SNORLAX_WHISPER_MODEL=/path/to/ggml-base.en.bin
 # or drop both under ~/.snorlax-bot/whisper/
 ```
 
+## Local TTS (piper)
+
+Speak on LEFT messages POSTs text to the runtime (`POST /v1/speak`).
+The runtime shells to **piper** — a local ONNX voice. Clients never
+call a cloud TTS. Never autoplay; tap Speak on a completed agent
+message.
+
+```bash
+# https://github.com/rhasspy/piper
+# binary: piper
+# model:  a *.onnx voice (plus its *.onnx.json next to it)
+
+export SNORLAX_TTS_BIN=/path/to/piper
+export SNORLAX_TTS_MODEL=/path/to/en_US-lessac-medium.onnx
+# or drop piper + *.onnx under ~/.snorlax-bot/tts/
+```
+
+Example voices (Apache-2.0 / MIT-friendly community models):
+<https://github.com/rhasspy/piper/blob/master/VOICES.md>
+
+```bash
+mkdir -p ~/.snorlax-bot/tts
+# copy `piper` into that folder (or keep SNORLAX_TTS_BIN)
+# copy en_US-lessac-medium.onnx and en_US-lessac-medium.onnx.json
+```
+
 ## Spark (later)
 
 When the box is a DGX Spark, use `SNORLAX_INFERENCE_BACKEND=vllm` and
 `SNORLAX_VLLM_BASE_URL`. Same client URL (`:8787`). Same “no Bearer to
 localhost inference” default. Whisper.cpp on Spark uses `-DGGML_CUDA=ON`.
+Piper is a local CPU/ONNX binary on Mac and Spark.
