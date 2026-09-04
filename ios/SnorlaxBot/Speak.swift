@@ -16,6 +16,7 @@ enum Speak {
     }
 
     /// Strip markdown to spoken text. Do not invent UI chrome.
+    /// Mermaid fences are treated like other fences (source, not narrated).
     static func spokenText(_ src: String) -> String {
         var text = dropFences(src)
         text = replace(text, "`([^`]+)`", "$1")

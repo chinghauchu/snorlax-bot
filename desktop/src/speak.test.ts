@@ -85,8 +85,16 @@ test("spokenText strips markdown without inventing chrome", () => {
   assert.equal(spokenText("# Title\n\nA [link](https://example.com)."), "Title\n\nA link.");
   assert.equal(spokenText("Use `code` and ![alt](http://x)"), "Use code and alt");
   assert.equal(spokenText("```ts\nconst x = 1;\n```"), "const x = 1;");
+  assert.equal(
+    spokenText("```mermaid\ngraph TD; A-->B;\n```"),
+    "graph TD; A-->B;",
+  );
   assert.equal(spokenText("  "), "");
   assert.doesNotMatch(spokenText("**hi**"), /\*\*|Speak|Stop/);
+  assert.doesNotMatch(
+    spokenText("```mermaid\ngraph TD; A-->B;\n```"),
+    /diagram|Speak|Stop/i,
+  );
 });
 
 test("Speak chrome: 12px muted row; pressed while playing; no autoplay", () => {

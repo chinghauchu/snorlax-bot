@@ -2605,6 +2605,7 @@ export function App() {
                               message.senderName,
                             )}
                             knownNames={knownNames}
+                            completed={!(busy && index === liveAssistantIdx)}
                           />
                         ) : null}
                         {showAssistantCopy({

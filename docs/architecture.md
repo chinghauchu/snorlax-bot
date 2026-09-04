@@ -543,6 +543,12 @@ Desktop + iOS muted 12px Speak on completed agent LEFT
 playing Stop speaking. Never autoplay. OpenAPI stays 0.18.0.
 Never reintroduce `computerPane.ts`.
 
+v0.45: mermaid diagrams on completed LEFT `kind=message`.
+Clients render fenced `mermaid` as an inline diagram (desktop
+official mermaid; iOS WKWebView + bundled mermaid). Invalid
+falls back to fence chrome. No new HTTP. OpenAPI stays 0.18.0.
+Never reintroduce `computerPane.ts`.
+
 ## Inference interface
 
 ```text

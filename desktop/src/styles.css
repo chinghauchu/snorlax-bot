@@ -568,6 +568,17 @@ button:disabled {
   line-height: 1.45;
 }
 
+.md-mermaid-body {
+  margin: 0;
+  padding: 8px 10px 10px;
+  overflow-x: auto;
+}
+
+.md-mermaid-body svg {
+  display: block;
+  max-width: none;
+}
+
 .md-copy {
   font-size: 12px;
   color: var(--text-muted);

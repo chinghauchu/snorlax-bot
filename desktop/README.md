@@ -100,6 +100,10 @@ v0.44: muted 12px Speak on completed LEFT `kind=message` (same
 row as Copy / Regenerate). Idle Speak; while playing Stop
 speaking. POSTs `/v1/speak` and plays the WAV. No autoplay.
 Local piper only — see [docs/mac-local.md](../docs/mac-local.md).
+v0.45: fenced `mermaid` on completed LEFT `kind=message` renders
+as an inline diagram (official mermaid). Invalid / failed parse
+falls back to fence chrome. Streaming stays code until complete.
+Speak treats mermaid fences like other fences.
 Assistant LEFT
 `kind=message` is 14px markdown (no grey bubble, 16/14 headings); user-right stays plain (`https://` tappable). Fenced code is full-turn language + Copy at 12px/1.45.
 iOS has no file-tree computer pane; the agent sheet shows the same preview.

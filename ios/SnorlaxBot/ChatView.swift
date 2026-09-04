@@ -156,7 +156,8 @@ struct ChatView: View {
                                     isChannel: agent.isChannel,
                                     liveAssistantIdx: liveAssistantIdx,
                                     sending: model.isSending
-                                )
+                                ),
+                                completed: !(model.isSending && index == liveAssistantIdx)
                             )
                             .padding(.top, turnSpacing(at: index, in: visible, message: message))
                             .id(message.id)
@@ -253,7 +254,8 @@ struct ChatView: View {
         toolTraces: [LiveToolTrace] = [],
         showCopy: Bool = false,
         showSpeak: Bool = false,
-        showRegenerate: Bool = false
+        showRegenerate: Bool = false,
+        completed: Bool = true
     ) -> some View {
         let onTimeline = agent.isChannel && model.threadID == nil
         if onTimeline, message.isHandoffRoot {
@@ -273,7 +275,8 @@ struct ChatView: View {
                 toolTraces: toolTraces,
                 showCopy: showCopy,
                 showSpeak: showSpeak,
-                showRegenerate: showRegenerate
+                showRegenerate: showRegenerate,
+                completed: completed
             ) { jump in
                 Task { await model.openJump(channelId: jump.channelId, threadId: jump.threadId) }
             }
@@ -728,6 +731,7 @@ private struct MessageBubble: View {
     var showCopy = false
     var showSpeak = false
     var showRegenerate = false
+    var completed = true
     var onJump: ((HandoffRef) -> Void)?
     @Environment(AppModel.self) private var model
     @State private var shareURL: URL?
@@ -840,7 +844,8 @@ private struct MessageBubble: View {
                     if !message.content.isEmpty {
                         AssistantMarkdown(
                             text: message.displayContent,
-                            names: agents.filter { !$0.isChannel }.map(\.name)
+                            names: agents.filter { !$0.isChannel }.map(\.name),
+                            completed: completed
                         )
                     }
                     if showCopy || showSpeak {
