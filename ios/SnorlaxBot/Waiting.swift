@@ -2,9 +2,15 @@
 import SwiftUI
 
 /// LEFT 12pt muted pulsing ··· until the first assistant token.
+/// v0.58: OS Reduce Motion → static muted ··· (no pulse). Pulse when off.
 enum WaitingChrome {
     static let dot = "·"
     static let label = "···"
+
+    /// Pulse only when Reduce Motion is off. Static muted `···` when on.
+    static func shouldPulse(reduceMotion: Bool) -> Bool {
+        !reduceMotion
+    }
 
     /// Show pulsing ··· after Send while busy, until the first token,
     /// a tool line, Stop, error, or empty reply.
@@ -37,9 +43,7 @@ struct WaitingLabel: View {
 
     var body: some View {
         Group {
-            if reduceMotion {
-                Text(WaitingChrome.label)
-            } else {
+            if WaitingChrome.shouldPulse(reduceMotion: reduceMotion) {
                 TimelineView(.animation(minimumInterval: 1.0 / 30.0, paused: false)) { context in
                     let t = context.date.timeIntervalSinceReferenceDate
                     HStack(spacing: 0) {
@@ -49,6 +53,9 @@ struct WaitingLabel: View {
                         }
                     }
                 }
+            } else {
+                // v0.58: Reduce Motion — static muted ···, no pulse.
+                Text(WaitingChrome.label)
             }
         }
         .font(.system(size: 12))

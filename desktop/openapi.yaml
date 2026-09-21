@@ -1111,6 +1111,22 @@ info:
     `http://127.0.0.1:8000/v1` untouched. Never reintroduce
     computerPane.ts. Leave stale PRs #23 and #24 untouched.
     OpenAPI **0.18.0**.
+
+    v0.58: Reduce Motion static ···. One impl PR covering
+    desktop + iOS. Spec rides this PR. **No second PR.**
+    OpenAPI stays **0.18.0**. Do not bump. No new HTTP
+    routes. Runtime idle. Waiting ··· LEFT placeholder:
+    when the OS Reduce Motion / accessibility setting is
+    on, paint static muted `···` (no pulse). When Reduce
+    Motion is off: keep the existing pulse. Streaming caret
+    already static under Reduce Motion (v0.52) — no change
+    there. Appear/dismiss rules for ··· unchanged (Send →
+    first token / Stop / error / empty). Keep v0.47–v0.57
+    intact. Out: VNC, extra channels, store, coding-agent,
+    new surfaces. Clients never speak MCP or the model.
+    Mac oMLX at `http://127.0.0.1:8000/v1` untouched. Never
+    reintroduce computerPane.ts. Leave stale PRs #23 and
+    #24 untouched. OpenAPI **0.18.0**.
   license:
     name: Apache-2.0
     identifier: Apache-2.0

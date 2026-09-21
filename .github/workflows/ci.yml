@@ -77,3 +77,4 @@ jobs:
           python3 ios/scripts/test_ios_send_muted.py
           python3 ios/scripts/test_ios_compact_tools.py
           python3 ios/scripts/test_ios_mid_stream_plaintext.py
+          python3 ios/scripts/test_ios_reduce_motion_waiting.py

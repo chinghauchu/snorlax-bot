@@ -57,7 +57,9 @@ NVIDIA DGX Spark.
   chevron, default collapsed, single tool unchanged, widget/approve/
   connect never fold; v0.57 mid-stream LEFT kind=message is plaintext
   until complete / Stop, then markdown (bold/lists/code/links + mermaid
-  + math) renders once and the blank-line split applies), a display-only
+  + math) renders once and the blank-line split applies; v0.58 Reduce
+  Motion paints static muted ··· with no pulse, and keeps the pulse
+  when Reduce Motion is off), a display-only
   Box computer preview (`GET /v1/agents/{id}/computer` JSON; Bearer PNG at
   `/computer/screenshot`; identity pane), desktop Box takeover
   (`POST /computer/session` → 201 `{ sessionId }`; `DELETE .../session` or

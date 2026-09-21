@@ -263,6 +263,10 @@ kind=message is plain text; markdown + mermaid + math
 render once on complete / Stop, then the blank-line split).
 Runtime idle. OpenAPI stays 0.18.0.
 
+v0.58: Reduce Motion static ··· is client-only (OS Reduce
+Motion on → static muted ···, no pulse; off → existing
+pulse). Runtime idle. OpenAPI stays 0.18.0.
+
 ## MCP (`mcp.json`)
 
 The runtime is the MCP client. Desktop and iOS never speak MCP. Put

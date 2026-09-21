@@ -1158,6 +1158,8 @@ pre.md-math-fallback.md-math-block {
   animation: waiting-dot 1.2s ease-in-out infinite;
 }
 
+/* v0.58: Reduce Motion off keeps the pulse above. */
+
 .waiting-dots span:nth-child(2) {
   animation-delay: 0.2s;
 }
@@ -1177,6 +1179,7 @@ pre.md-math-fallback.md-math-block {
   }
 }
 
+/* v0.58: Reduce Motion on → static muted ··· (no pulse). */
 @media (prefers-reduced-motion: reduce) {
   .waiting-dots span {
     animation: none;

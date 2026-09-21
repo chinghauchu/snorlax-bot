@@ -4,10 +4,21 @@
  * v0.51: LEFT 12px muted pulsing ··· until the first assistant token.
  * Not a tool line. Not a bubble. Hide on first token, Stop, error, or
  * empty reply.
+ *
+ * v0.58: OS Reduce Motion → static muted ··· (no pulse). Pulse when
+ * Reduce Motion is off. Appear/dismiss rules unchanged.
  */
 
 export const WAITING_DOT = "·";
 export const WAITING_LABEL = `${WAITING_DOT}${WAITING_DOT}${WAITING_DOT}`;
+
+/**
+ * Pulse the LEFT ··· only when the OS Reduce Motion setting is off.
+ * When Reduce Motion is on, paint static muted `···`.
+ */
+export function waitingDotsShouldPulse(reduceMotion: boolean): boolean {
+  return !reduceMotion;
+}
 
 export function hasAssistantToken(message: {
   content?: string;
