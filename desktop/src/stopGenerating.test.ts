@@ -148,10 +148,9 @@ test("12px muted Stop sits at the bottom of the chat column, above Jump to lates
   assert.match(stopChip, /font-size:\s*12px/);
   assert.match(stopChip, /color:\s*var\(--text-muted\)/);
 
-  const overlay = app.slice(
-    app.indexOf('className="transcript-chips"'),
-    app.indexOf("composerRootRef"),
-  );
+  const overlayStart = app.indexOf('className="transcript-chips"');
+  const overlayEnd = app.indexOf('ref={composerRootRef}', overlayStart);
+  const overlay = app.slice(overlayStart, overlayEnd);
   const stopAt = overlay.indexOf("className=\"stop-generating\"");
   const jumpAt = overlay.indexOf("className=\"jump-latest\"");
   assert.ok(stopAt >= 0 && jumpAt > stopAt);
