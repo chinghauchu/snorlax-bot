@@ -43,6 +43,7 @@ same-turn consecutive LEFT bubbles 6px/6pt (different turns / after tool-widget-
 Stop generating mid-stream (12px/12pt muted Stop at the chat-column bottom; client abort; keep partial LEFT as completed; composer stays focused) +
 waiting ··· until first token (LEFT 12px/12pt muted pulsing ··· after Send until the first assistant token) +
 streaming caret on the growing LEFT bubble (12px/12pt muted blinking caret after the first token until complete / Stop) +
+compact tool traces (2+ consecutive kind=tool → 12px/12pt muted `N tools` + chevron; default collapsed) +
 identity-pane Box computer preview (Bearer PNG) + desktop Box takeover
 (Open / Done; pointer/key in 1280×800) + teach-a-task (Record / Stop /
 Save as skill inside takeover) + skill markdown editor (identity-pane
@@ -283,7 +284,11 @@ and user-right unchanged; OpenAPI stays 0.18.0), and
 v0.55 Send muted while generating (Send control muted and
 disabled from Send until complete / Stop / error / empty;
 Enter does not send; composer stays editable; re-enables
-immediately; Stop + Esc unchanged; OpenAPI stays 0.18.0).
+immediately; Stop + Esc unchanged; OpenAPI stays 0.18.0), and
+v0.56 compact tool traces (2+ consecutive kind=tool lines
+collapse to one 12px/12pt muted `N tools` + chevron;
+default collapsed; single tool unchanged; widget/approve/
+connect never fold; OpenAPI stays 0.18.0).
 Later: full sandbox computer GUI, MCP marketplace catalog,
 Slack/GitHub inbound listeners.
 

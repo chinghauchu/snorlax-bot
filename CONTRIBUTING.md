@@ -52,7 +52,10 @@ NVIDIA DGX Spark.
   different turns / after tool-widget-approve-connect stay 12px/12pt;
   v0.55 Send is muted and disabled while generating — Enter does not
   send; composer text stays editable; Send re-enables on complete /
-  Stop / error / empty), a display-only
+  Stop / error / empty; v0.56 compact tool traces collapse 2+
+  consecutive kind=tool lines to one 12px/12pt muted `N tools` +
+  chevron, default collapsed, single tool unchanged, widget/approve/
+  connect never fold), a display-only
   Box computer preview (`GET /v1/agents/{id}/computer` JSON; Bearer PNG at
   `/computer/screenshot`; identity pane), desktop Box takeover
   (`POST /computer/session` → 201 `{ sessionId }`; `DELETE .../session` or

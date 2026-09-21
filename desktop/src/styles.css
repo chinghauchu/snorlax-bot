@@ -2660,6 +2660,31 @@ legend {
   align-self: flex-start;
 }
 
+/* v0.56: collapsed 2+ consecutive kind=tool lines. */
+.tool-stack {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  border: 0;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 12px;
+  line-height: 1.3;
+  cursor: pointer;
+  text-align: left;
+  font-family: inherit;
+}
+
+.tool-stack-chevron {
+  display: inline-block;
+  font-size: 10px;
+  line-height: 1;
+}
+
+.tool-stack-chevron.open {
+  transform: rotate(90deg);
+}
+
 .shared-project {
   display: flex;
   align-items: flex-start;

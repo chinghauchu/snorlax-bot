@@ -189,6 +189,17 @@ import {
   shouldRefetchAfterStop,
 } from "./stopGenerating";
 import { sendMutedWhileGenerating } from "./sendMuted";
+import {
+  TOOL_STACK_CHEVRON,
+  collapsedToolsLabel,
+  compactToolStacks,
+  hidePersistedTool,
+  liveToolPaint,
+  showStackHeader,
+  stackCollapsed,
+  stackForMessageIndex,
+  toggleExpanded,
+} from "./compactToolTraces";
 import { catalogInstallBody, isConnect, isPendingConnect, parsePluginArgs, pluginStatusLabel } from "./connect";
 import { isApprove, isPendingApprove } from "./approve";
 import { isPendingWidget, isWidget } from "./widget";
@@ -568,6 +579,9 @@ export function App() {
   const [toolTraces, setToolTraces] = useState<
     { id: string; summary: string; senderId?: string; senderName?: string }[]
   >([]);
+  const [expandedToolStacks, setExpandedToolStacks] = useState<Set<string>>(
+    () => new Set(),
+  );
   const [draft, setDraft] = useState("");
   const [dictation, setDictation] = useState<DictationState>("idle");
   const [speakingId, setSpeakingId] = useState<string | null>(null);
@@ -1071,6 +1085,7 @@ export function App() {
   async function loadConversation(id: string, thread: string | null) {
     setActiveId(id);
     setThreadId(thread);
+    setExpandedToolStacks(new Set());
     setComposerError(null);
     setAttachError(null);
     setPendingAttachments((prev) => {
@@ -2492,6 +2507,30 @@ export function App() {
     busy,
     liveAssistantIdx,
   });
+  const liveToolItems = liveTraces.map((trace) => ({
+    id: trace.id,
+    summary: trace.summary,
+  }));
+  const toolStacks = compactToolStacks({
+    messages: visibleMessages.map((message) => ({
+      id: message.id,
+      kind: message.kind,
+      content: message.content,
+    })),
+    liveTraces: liveToolItems,
+    liveAt: liveTraces.length
+      ? showStandaloneTraces
+        ? visibleMessages.length
+        : liveAssistantIdx
+      : null,
+  });
+  const livePaint = liveToolPaint(
+    toolStacks,
+    liveToolItems,
+    expandedToolStacks,
+  );
+  const showLiveChrome =
+    livePaint.header != null || livePaint.lines.length > 0;
 
   return (
     <div className={computerOpen ? "app computer-open" : "app computer-collapsed"}>
@@ -2626,6 +2665,23 @@ export function App() {
               <p className="transcript-line error">{loadError}</p>
             ) : (
               visibleMessages.map((message, index) => {
+                const toolStack = stackForMessageIndex(toolStacks, index);
+                const toolStackIsCollapsed = toolStack
+                  ? stackCollapsed(
+                      expandedToolStacks,
+                      toolStack.id,
+                      toolStack.items.length,
+                    )
+                  : false;
+                if (
+                  hidePersistedTool(
+                    toolStack,
+                    index,
+                    toolStackIsCollapsed,
+                  )
+                ) {
+                  return null;
+                }
                 const prev = visibleMessages[index - 1];
                 const mine = isUserSender(message.senderId, message.role);
                 const sameSender =
@@ -2715,12 +2771,29 @@ export function App() {
                         </span>
                       </div>
                     ) : null}
-                    {!mine && index === liveAssistantIdx
-                      ? liveTraces.map((trace) => (
-                          <p key={trace.id} className="tool-trace">
-                            {trace.summary}
-                          </p>
-                        ))
+                    {!mine && index === liveAssistantIdx && showLiveChrome
+                      ? (
+                          <>
+                            {livePaint.header ? (
+                              <ToolStackHeader
+                                count={livePaint.header.items.length}
+                                expanded={expandedToolStacks.has(
+                                  livePaint.header.id,
+                                )}
+                                onToggle={() =>
+                                  setExpandedToolStacks((prev) =>
+                                    toggleExpanded(prev, livePaint.header!.id),
+                                  )
+                                }
+                              />
+                            ) : null}
+                            {livePaint.lines.map((trace) => (
+                              <p key={trace.id} className="tool-trace">
+                                {trace.summary}
+                              </p>
+                            ))}
+                          </>
+                        )
                       : null}
                     {threadRoot ? (
                       <div className="handoff-card">
@@ -2738,7 +2811,23 @@ export function App() {
                         ) : null}
                       </div>
                     ) : isToolLine(message) ? (
-                      <p className="tool-trace">{message.content}</p>
+                      <>
+                        {showStackHeader(toolStack, index) && toolStack ? (
+                          <ToolStackHeader
+                            count={toolStack.items.length}
+                            expanded={!toolStackIsCollapsed}
+                            onToggle={() =>
+                              setExpandedToolStacks((prev) =>
+                                toggleExpanded(prev, toolStack.id),
+                              )
+                            }
+                          />
+                        ) : null}
+                        {toolStackIsCollapsed &&
+                        showStackHeader(toolStack, index) ? null : (
+                          <p className="tool-trace">{message.content}</p>
+                        )}
+                      </>
                     ) : isWidget(message) && message.widget ? (
                       <WidgetCard
                         messageId={message.id}
@@ -2869,7 +2958,7 @@ export function App() {
                 );
               })
             )}
-            {showStandaloneTraces ? (
+            {showStandaloneTraces && showLiveChrome ? (
               <article className="turn left new-sender">
                 <div className="sender-row">
                   <Avatar
@@ -2892,7 +2981,18 @@ export function App() {
                     {liveTraces[0]?.senderName || active?.name || "Agent"}
                   </span>
                 </div>
-                {liveTraces.map((trace) => (
+                {livePaint.header ? (
+                  <ToolStackHeader
+                    count={livePaint.header.items.length}
+                    expanded={expandedToolStacks.has(livePaint.header.id)}
+                    onToggle={() =>
+                      setExpandedToolStacks((prev) =>
+                        toggleExpanded(prev, livePaint.header!.id),
+                      )
+                    }
+                  />
+                ) : null}
+                {livePaint.lines.map((trace) => (
                   <p key={trace.id} className="tool-trace">
                     {trace.summary}
                   </p>
@@ -4349,6 +4449,34 @@ function MentionText({
         ),
       )}
     </>
+  );
+}
+
+function ToolStackHeader({
+  count,
+  expanded,
+  onToggle,
+}: {
+  count: number;
+  expanded: boolean;
+  onToggle: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      className="tool-trace tool-stack"
+      aria-expanded={expanded}
+      aria-label={collapsedToolsLabel(count)}
+      onClick={onToggle}
+    >
+      <span
+        className={expanded ? "tool-stack-chevron open" : "tool-stack-chevron"}
+        aria-hidden="true"
+      >
+        {TOOL_STACK_CHEVRON}
+      </span>
+      {collapsedToolsLabel(count)}
+    </button>
   );
 }
 

@@ -268,6 +268,12 @@ send. Composer text stays editable. Stop + Esc unchanged.
 Send re-enables on complete / Stop / error / empty. No new
 routes. OpenAPI stays 0.18.0.
 
+v0.56 compact tool traces: within one assistant turn, 2+
+consecutive kind=tool lines collapse client-side into one
+12px / 12pt muted `N tools` line with a small chevron.
+Default collapsed. Single tool unchanged. widget / approve
+/ connect never fold. No new routes. OpenAPI stays 0.18.0.
+
 A copy is also kept at `runtime/openapi.yaml` and `desktop/openapi.yaml`
 so those trees are self-contained. Do not let the files diverge.
 
