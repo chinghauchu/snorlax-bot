@@ -8,6 +8,7 @@ import GameController
 /// v0.53: hardware Esc is the same abort (see `escapeStops`).
 /// v0.59: after Stop/Esc, focus the composer only when a hardware
 /// keyboard is attached — do not force the software keyboard up.
+/// v0.62: Jump to latest (chip tap or Esc=Jump) uses the same rule.
 enum StopGenerating {
     static let label = "Stop"
 
@@ -82,8 +83,8 @@ enum StopGenerating {
         GCKeyboard.coalesced != nil
     }
 
-    /// After Stop/Esc abort: focus the composer when a hardware keyboard
-    /// is attached. Do not force the software keyboard up.
+    /// After Stop/Esc abort or Jump (v0.62): focus the composer when a
+    /// hardware keyboard is attached. Do not force the software keyboard up.
     static func shouldFocusComposerAfterAbort(hardwareKeyboardAttached: Bool) -> Bool {
         hardwareKeyboardAttached
     }

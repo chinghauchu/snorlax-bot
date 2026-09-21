@@ -125,6 +125,11 @@ v0.61: Copied feedback. On Copy of a completed LEFT
 kind=message, muted 12pt Copied appears beside Copy for
 1.2s. Copy stays in place and clickable. No toast.
 Speak / Regenerate unchanged. OpenAPI stays 0.18.0.
+v0.62: focus composer after Jump. Chip tap or Esc=Jump
+returns focus to the composer after scroll/re-arm/dismiss
+— only when a hardware keyboard is attached (do not force
+the software keyboard up). Complete / error / empty leave
+focus alone. OpenAPI stays 0.18.0.
 v0.32: dedicated `kind=approve` LEFT card for mutating shell (not a
 WidgetCard fork). Approve / Deny / ×; long-press copies the command.
 Question widgets
@@ -207,6 +212,7 @@ python3 ios/scripts/test_ios_compact_tools.py
 python3 ios/scripts/test_ios_focus_composer_after_stop.py
 python3 ios/scripts/test_ios_esc_jump.py
 python3 ios/scripts/test_ios_copied_feedback.py
+python3 ios/scripts/test_ios_focus_composer_after_jump.py
 ```
 
 Output: `SnorlaxBot/Generated/V1Types.swift`. Do not hand-edit that file.
@@ -215,7 +221,7 @@ Output: `SnorlaxBot/Generated/V1Types.swift`. Do not hand-edit that file.
 
 - `SnorlaxBot/SnorlaxBotApp.swift` — entry, theme, accent
 - `SnorlaxBot/ContentView.swift` — iPhone stack / iPad split chrome
-- `SnorlaxBot/ChatView.swift` — transcript; v0.61 Copied beside Copy for 1.2s
+- `SnorlaxBot/ChatView.swift` — transcript; v0.61 Copied beside Copy for 1.2s; v0.62 focus composer after Jump (hardware keyboard only)
 - `SnorlaxBot/AppModel.swift` — roster, chat, settings persistence
 - `SnorlaxBot/Dictation.swift` — v0.43 composer mic helpers + local capture
 - `SnorlaxBot/SkillPicker.swift` — v0.21 1:1 composer `/` trigger + filter
@@ -229,9 +235,9 @@ Output: `SnorlaxBot/Generated/V1Types.swift`. Do not hand-edit that file.
 - `SnorlaxBot/MermaidView.swift` — v0.45 WKWebView mermaid (local)
 - `SnorlaxBot/mermaid.min.js` — bundled official mermaid (IIFE)
 - `SnorlaxBot/MathView.swift` — v0.46 WKWebView KaTeX (local)
-- `SnorlaxBot/StickToBottom.swift` — v0.47 stick/freeze/Jump to latest; v0.60 Esc = Jump when frozen
+- `SnorlaxBot/StickToBottom.swift` — v0.47 stick/freeze/Jump to latest; v0.60 Esc = Jump when frozen; v0.62 focus after Jump
 - `SnorlaxBot/OptimisticSend.swift` — v0.49 optimistic user-RIGHT on Send
-- `SnorlaxBot/StopGenerating.swift` — v0.50 12pt muted Stop (client abort); v0.53 Esc = Stop; v0.59 focus composer after Stop (hardware keyboard only)
+- `SnorlaxBot/StopGenerating.swift` — v0.50 12pt muted Stop (client abort); v0.53 Esc = Stop; v0.59 focus composer after Stop (hardware keyboard only); v0.62 Jump reuses that focus helper
 - `SnorlaxBot/Waiting.swift` — v0.51 waiting ··· until first token; v0.58 Reduce Motion static ···
 - `SnorlaxBot/StreamingCaret.swift` — v0.52 streaming caret on LEFT bubble
 - `SnorlaxBot/ComposerTextView.swift` — v0.53 UIKeyCommand Escape = Stop; v0.55 Return does not send while generating; v0.60 Esc = Jump when frozen

@@ -197,6 +197,10 @@ completed LEFT kind=message, muted 12px Copied appears
 beside Copy for 1.2s. Copy stays in place and clickable.
 No toast. Speak / Regenerate unchanged. OpenAPI stays
 0.18.0.
+v0.62: focus composer after Jump (Grok Bot feel). When
+Jump to latest runs (chip click or Esc=Jump), return focus
+to the composer after scroll/re-arm/dismiss. Complete /
+error / empty leave focus alone. OpenAPI stays 0.18.0.
 Assistant LEFT
 `kind=message` is 14px markdown (16/14 headings) in short
 agent bubbles after complete; user-right stays plain (`https://` tappable). Fenced code is full-turn language + Copy at 12px/1.45.

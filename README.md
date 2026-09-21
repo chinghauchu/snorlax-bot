@@ -310,7 +310,12 @@ window Esc; iOS hardware Escape only; OpenAPI stays 0.18.0), and
 v0.61 Copied feedback (on Copy of a completed LEFT kind=message,
 muted 12px/12pt Copied beside the Copy control for 1.2s; Copy
 stays in place and clickable; no toast; Speak / Regenerate
-unchanged; OpenAPI stays 0.18.0).
+unchanged; OpenAPI stays 0.18.0), and
+v0.62 focus composer after Jump (chip click or Esc=Jump
+returns focus after scroll/re-arm/dismiss; desktop always;
+iOS hardware keyboard only — do not force the software
+keyboard; complete / error / empty leave focus alone;
+OpenAPI stays 0.18.0).
 Later: full sandbox computer GUI, MCP marketplace catalog,
 Slack/GitHub inbound listeners.
 

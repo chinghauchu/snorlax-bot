@@ -81,3 +81,4 @@ jobs:
           python3 ios/scripts/test_ios_focus_composer_after_stop.py
           python3 ios/scripts/test_ios_esc_jump.py
           python3 ios/scripts/test_ios_copied_feedback.py
+          python3 ios/scripts/test_ios_focus_composer_after_jump.py

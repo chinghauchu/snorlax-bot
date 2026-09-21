@@ -63,7 +63,9 @@ NVIDIA DGX Spark.
   composer immediately — desktop always, iOS hardware keyboard only;
   v0.60 Esc activates Jump when the chip is visible and idle, and still
   Stop while generating; v0.61 Copy shows muted Copied beside the control
-  for 1.2s without replacing the Copy label or a toast), a display-only
+  for 1.2s without replacing the Copy label or a toast; v0.62 Jump (chip
+  or Esc) returns focus to the composer — desktop always, iOS hardware
+  keyboard only), a display-only
   Box computer preview (`GET /v1/agents/{id}/computer` JSON; Bearer PNG at
   `/computer/screenshot`; identity pane), desktop Box takeover
   (`POST /computer/session` → 201 `{ sessionId }`; `DELETE .../session` or

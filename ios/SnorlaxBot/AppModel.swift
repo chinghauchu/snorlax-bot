@@ -135,6 +135,7 @@ final class AppModel {
     /// v0.60: hardware Esc activates Jump when frozen (chip visible,
     /// not generating). Same skips as v0.53. Stop wins while in flight
     /// because `escapeJumps` is false when busy.
+    /// v0.62: Esc implies a hardware keyboard — return focus after Jump.
     func jumpToLatestFromEscape(composing: Bool, showJump: Bool) {
         guard StickToBottom.escapeJumps(
             showJump: showJump,
@@ -145,6 +146,9 @@ final class AppModel {
             pendingConnect: StopGenerating.pendingConnect(in: messages)
         ) else { return }
         stickBump += 1
+        if StopGenerating.shouldFocusComposerAfterAbort(hardwareKeyboardAttached: true) {
+            wantsComposerFocus = true
+        }
     }
 
     var isAttaching: Bool { attachInFlight > 0 }

@@ -281,6 +281,11 @@ struct ChatView: View {
                     if stick.showJump {
                         Button(StickToBottom.jumpLabel) {
                             snapToBottom(proxy)
+                            if StopGenerating.shouldFocusComposerAfterAbort(
+                                hardwareKeyboardAttached: StopGenerating.hardwareKeyboardAttached
+                            ) {
+                                model.wantsComposerFocus = true
+                            }
                         }
                         .font(.system(size: 12))
                         .foregroundStyle(.secondary)

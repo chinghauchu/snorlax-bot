@@ -280,6 +280,11 @@ v0.61: Copied feedback is client-only (muted Copied beside
 Copy for 1.2s; Copy label stays; no toast). Runtime idle.
 OpenAPI stays 0.18.0.
 
+v0.62: focus composer after Jump is client-only (Jump chip
+or Esc=Jump returns composer focus; iOS hardware keyboard
+only; complete/error/empty do not steal). Runtime idle.
+OpenAPI stays 0.18.0.
+
 ## MCP (`mcp.json`)
 
 The runtime is the MCP client. Desktop and iOS never speak MCP. Put

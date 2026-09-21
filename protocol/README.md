@@ -303,6 +303,12 @@ for 1.2s. Copy stays in place and clickable. No toast.
 Speak / Regenerate unchanged. No new routes. OpenAPI stays
 0.18.0.
 
+v0.62 focus composer after Jump: when Jump to latest runs
+(chip click or Esc=Jump), clients return focus to the
+composer after scroll/re-arm/dismiss (iOS only with a
+hardware keyboard). Complete / error / empty do not steal
+focus. No new routes. OpenAPI stays 0.18.0.
+
 A copy is also kept at `runtime/openapi.yaml` and `desktop/openapi.yaml`
 so those trees are self-contained. Do not let the files diverge.
 
