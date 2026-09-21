@@ -39,6 +39,7 @@ mermaid diagrams on completed LEFT `kind=message` (fenced `mermaid`; invalid fal
 TeX math on completed LEFT `kind=message` (inline `\( \)` / block `$$`; KaTeX; invalid falls back to monospace source) +
 stick-to-bottom while streaming (follow within ~64px; freeze on scroll-up; Send / Regenerates re-arm; 12px muted Jump to latest) +
 short multi-bubbles on completed LEFT `kind=message` (split on blank lines after the stream completes; Copy / Speak / Regenerates on the last bubble) +
+same-turn consecutive LEFT bubbles 6px/6pt (different turns / after tool-widget-approve-connect stay 12px/12pt) +
 Stop generating mid-stream (12px/12pt muted Stop at the chat-column bottom; client abort; keep partial LEFT as completed; composer stays focused) +
 waiting ··· until first token (LEFT 12px/12pt muted pulsing ··· after Send until the first assistant token) +
 streaming caret on the growing LEFT bubble (12px/12pt muted blinking caret after the first token until complete / Stop) +
@@ -274,7 +275,11 @@ v0.53 Esc = Stop while generating (window Esc / iOS
 UIKeyCommand Escape aborts the in-flight stream the same as
 tapping Stop; do not steal Esc during IME or a pending
 widget / approve / connect card; on-screen Stop unchanged;
-no POST /cancel; OpenAPI stays 0.18.0).
+no POST /cancel; OpenAPI stays 0.18.0), and
+v0.54 same-turn multi-bubble gap (consecutive LEFT bubbles
+from the same completed turn 6px/6pt; different turns /
+after tool-widget-approve-connect stay 12px/12pt; mid-stream
+and user-right unchanged; OpenAPI stays 0.18.0).
 Later: full sandbox computer GUI, MCP marketplace catalog,
 Slack/GitHub inbound listeners.
 

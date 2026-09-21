@@ -334,6 +334,30 @@ private struct MarkdownRun: View {
     }
 }
 
+/// v0.54 same-turn multi-bubble gap. Consecutive LEFT bubbles from the
+/// same completed turn (blank-line split) sit 6pt apart. Different turns
+/// and after tool / widget / approve / connect stay 12pt. User-right
+/// unchanged (4pt same-sender / 16pt speaker change). Mid-stream is one
+/// growing bubble.
+enum AssistantBubbleGap {
+    static let sameTurn: CGFloat = 6
+    static let differentTurn: CGFloat = 12
+    static let userSameSender: CGFloat = 4
+    static let userNewSender: CGFloat = 16
+
+    static func turnSpacing(
+        index: Int,
+        isUser: Bool,
+        sameSender: Bool,
+        isHandoffRoot: Bool
+    ) -> CGFloat {
+        if isHandoffRoot { return index == 0 ? 0 : userNewSender }
+        guard index > 0 else { return 0 }
+        if isUser { return sameSender ? userSameSender : userNewSender }
+        return differentTurn
+    }
+}
+
 enum MarkdownSplit {
     enum Segment: Equatable {
         case markdown(String)

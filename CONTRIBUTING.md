@@ -48,7 +48,8 @@ NVIDIA DGX Spark.
   v0.53 Esc = Stop while generating is window Esc / iOS UIKeyCommand
   Escape — same client abort as tapping Stop; do not steal Esc during
   IME composing or a pending widget / approve / connect card; on-screen
-  Stop unchanged), a display-only
+  Stop unchanged; v0.54 same-turn consecutive LEFT bubbles are 6px/6pt,
+  different turns / after tool-widget-approve-connect stay 12px/12pt), a display-only
   Box computer preview (`GET /v1/agents/{id}/computer` JSON; Bearer PNG at
   `/computer/screenshot`; identity pane), desktop Box takeover
   (`POST /computer/session` → 201 `{ sessionId }`; `DELETE .../session` or

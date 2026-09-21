@@ -404,7 +404,20 @@ button:disabled {
   margin-top: 4px;
 }
 
+/* v0.54: LEFT different turns / after tool-widget-approve-connect stay 12px. */
+.turn.left.new-sender {
+  margin-top: 12px;
+}
+
+.turn.left.same-sender {
+  margin-top: 12px;
+}
+
 .turn:first-child {
+  margin-top: 0;
+}
+
+.turn.left:first-child {
   margin-top: 0;
 }
 
@@ -472,7 +485,7 @@ button:disabled {
   display: flex;
   flex-direction: column;
   align-items: flex-start;
-  gap: 4px;
+  gap: 6px;
   width: 100%;
   max-width: 100%;
   min-width: 0;

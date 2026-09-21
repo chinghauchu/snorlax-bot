@@ -616,6 +616,14 @@ Escape when a hardware keyboard is attached; on-screen Stop
 unchanged. No new chrome. No new HTTP. OpenAPI stays 0.18.0.
 Never reintroduce `computerPane.ts`.
 
+v0.54: same-turn multi-bubble gap. Consecutive LEFT bubbles
+from the same completed turn (blank-line split) use a 6px /
+6pt vertical gap. Between different turns, and after tool /
+widget / approve / connect, keep 12px / 12pt. Mid-stream
+(one growing bubble) unchanged. User-right unchanged. No
+new HTTP. OpenAPI stays 0.18.0. Never reintroduce
+`computerPane.ts`.
+
 ## Inference interface
 
 ```text

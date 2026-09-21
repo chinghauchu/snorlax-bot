@@ -147,6 +147,12 @@ assistant LEFT turn is in flight, window Esc aborts the
 in-flight stream — same as tapping Stop. Do not steal Esc
 when IME is composing, or when a pending widget / approve /
 connect card is up. No new chrome. OpenAPI stays 0.18.0.
+v0.54: same-turn multi-bubble gap (Grok Bot feel).
+Consecutive LEFT bubbles from the same completed turn
+(blank-line split) use a 6px gap. Different turns / after
+tool / widget / approve / connect stay 12px. Mid-stream
+(one growing bubble) unchanged. User-right unchanged.
+OpenAPI stays 0.18.0.
 Assistant LEFT
 `kind=message` is 14px markdown (16/14 headings) in short
 agent bubbles after complete; user-right stays plain (`https://` tappable). Fenced code is full-turn language + Copy at 12px/1.45.
