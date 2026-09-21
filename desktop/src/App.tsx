@@ -139,6 +139,10 @@ import { ConnectCard } from "./ConnectCard";
 import { HttpsText, MarkdownBody } from "./MarkdownBody";
 import { copyText } from "./markdown";
 import {
+  assistantBubbleWide,
+  splitAssistantBubbles,
+} from "./assistantBubbles";
+import {
   dropLastAssistantTurn,
   lastCompletedLeftMessageIndex,
   MESSAGE_COPY_FEEDBACK_MS,
@@ -2527,6 +2531,11 @@ export function App() {
                   "everyone",
                 ];
                 const jump = visibleJump(message, agents);
+                const completed = !(busy && index === liveAssistantIdx);
+                const leftBubbles = splitAssistantBubbles(
+                  displayBody(message.content, message.senderName),
+                  completed,
+                );
                 const viewingChannel = active?.kind === "channel";
                 const timelineHandoff =
                   viewingChannel && !threadId && isHandoffRoot(message);
@@ -2678,26 +2687,36 @@ export function App() {
                           session={session}
                           onOpenFile={openAttachedFile}
                         />
-                        {message.content ? (
-                          <MarkdownBody
-                            text={displayBody(
-                              message.content,
-                              message.senderName,
-                            )}
-                            knownNames={knownNames}
-                            completed={!(busy && index === liveAssistantIdx)}
-                          />
+                        {leftBubbles.length ? (
+                          <div className="assistant-bubbles">
+                            {leftBubbles.map((part, bubbleIdx) => (
+                              <div
+                                key={`${message.id}-${bubbleIdx}`}
+                                className={
+                                  assistantBubbleWide(part)
+                                    ? "bubble agent wide"
+                                    : "bubble agent"
+                                }
+                              >
+                                <MarkdownBody
+                                  text={part}
+                                  knownNames={knownNames}
+                                  completed={completed}
+                                />
+                              </div>
+                            ))}
+                          </div>
                         ) : null}
                         {showAssistantCopy({
                           message,
-                          completed: !(busy && index === liveAssistantIdx),
+                          completed,
                         }) ? (
                           <MessageActions
                             content={message.content}
                             speaking={speakingId === message.id}
                             showRegenerate={showAssistantRegenerate({
                               message,
-                              completed: !(busy && index === liveAssistantIdx),
+                              completed,
                               isLatest: index === lastLeftIdx,
                               isChannel: active?.kind === "channel",
                               streaming: busy,

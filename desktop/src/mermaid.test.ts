@@ -53,7 +53,8 @@ test("mermaid renders only on completed LEFT kind=message fences", () => {
   );
   assert.equal(shouldRenderMermaid({ language: "js", completed: true }), false);
   assert.match(app, /<MarkdownBody/);
-  assert.match(app, /completed=\{!\(busy && index === liveAssistantIdx\)\}/);
+  assert.match(app, /const completed = !\(busy && index === liveAssistantIdx\);/);
+  assert.match(app, /completed=\{completed\}/);
   assert.match(body, /shouldRenderMermaid/);
   assert.match(body, /MermaidFence/);
   assert.match(body, /renderMermaidSvg/);

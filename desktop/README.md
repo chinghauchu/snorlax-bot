@@ -113,8 +113,13 @@ bottom, follow tokens. Scroll up freezes. Send / Regenerates
 snap and re-arm. New assistant bubble while stuck: 12px muted
 Jump to latest chip at the bottom of the chat column. Composer
 focus stays after Send.
+v0.48: completed LEFT `kind=message` splits on blank lines
+into short multi-bubbles (Grok Bot feel). Mid-stream stays
+one growing bubble. Copy / Speak / Regenerates only on the
+last bubble of that turn. OpenAPI stays 0.18.0.
 Assistant LEFT
-`kind=message` is 14px markdown (no grey bubble, 16/14 headings); user-right stays plain (`https://` tappable). Fenced code is full-turn language + Copy at 12px/1.45.
+`kind=message` is 14px markdown (16/14 headings) in short
+agent bubbles after complete; user-right stays plain (`https://` tappable). Fenced code is full-turn language + Copy at 12px/1.45.
 iOS has no file-tree computer pane; the agent sheet shows the same preview.
 
 Types and the `/v1` client are generated from the locked camelCase OpenAPI

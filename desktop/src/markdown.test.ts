@@ -49,7 +49,7 @@ test("only https:// URLs are safe to open", () => {
   assert.equal(links[1]?.value, "https://example.com/a");
 });
 
-test("assistant kind=message is 14px markdown with no grey bubble", () => {
+test("assistant kind=message is 14px markdown; completed LEFT uses short agent bubbles", () => {
   const md = block(".assistant-md");
   const left = block(".turn.left");
   assert.match(md, /font-size:\s*14px/);
@@ -60,6 +60,8 @@ test("assistant kind=message is 14px markdown with no grey bubble", () => {
   assert.match(left, /width:\s*100%/);
   assert.match(app, /MarkdownBody/);
   assert.match(app, /className="assistant-md"/);
+  assert.match(app, /splitAssistantBubbles/);
+  assert.match(app, /bubble agent/);
   assert.doesNotMatch(app, /bubble \$\{mine \? "user" : "agent"\}/);
   assert.match(app, /className="bubble user"/);
 });

@@ -439,6 +439,23 @@ button:disabled {
 
 .bubble.agent {
   align-self: flex-start;
+  width: fit-content;
+  max-width: 100%;
+  min-width: 0;
+}
+
+.bubble.agent.wide {
+  width: 100%;
+}
+
+.assistant-bubbles {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
 }
 
 .bubble pre {

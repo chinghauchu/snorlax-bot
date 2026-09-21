@@ -31,7 +31,6 @@ struct AssistantMarkdown: View {
             }
         }
         .font(.system(size: 14))
-        .frame(maxWidth: .infinity, alignment: .leading)
     }
 }
 
@@ -350,6 +349,62 @@ enum MarkdownSplit {
     /// Language tag is exactly `mermaid` (case-insensitive).
     static func isMermaidLanguage(_ language: String) -> Bool {
         language.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() == "mermaid"
+    }
+
+    /// v0.48: completed LEFT `kind=message` splits on blank lines.
+    /// Mid-stream stays one growing bubble. Fences and `$$` math stay intact.
+    static func bubbles(in text: String, completed: Bool) -> [String] {
+        if text.isEmpty { return [] }
+        if !completed { return [text] }
+        let lines = text.split(separator: "\n", omittingEmptySubsequences: false).map(String.init)
+        var parts: [String] = []
+        var chunk: [String] = []
+        var fence: String?
+        var inMath = false
+
+        func flush() {
+            while let first = chunk.first, first.trimmingCharacters(in: .whitespaces).isEmpty {
+                chunk.removeFirst()
+            }
+            while let last = chunk.last, last.trimmingCharacters(in: .whitespaces).isEmpty {
+                chunk.removeLast()
+            }
+            let joined = chunk.joined(separator: "\n")
+            if !joined.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                parts.append(joined)
+            }
+            chunk = []
+        }
+
+        for line in lines {
+            if !inMath, let _ = line.range(of: #"^( {0,3})(`{3,}|~{3,})(.*)$"#, options: .regularExpression) {
+                if let markerRange = line.range(of: #"[`~]{3,}"#, options: .regularExpression) {
+                    let marker = String(line[markerRange])
+                    let info = String(line[markerRange.upperBound...])
+                    if fence == nil {
+                        fence = marker
+                    } else if let open = fence,
+                              marker.first == open.first,
+                              marker.count >= open.count,
+                              info.trimmingCharacters(in: .whitespaces).isEmpty
+                    {
+                        fence = nil
+                    }
+                }
+            } else if fence == nil {
+                if line.trimmingCharacters(in: .whitespaces) == "$$" {
+                    inMath.toggle()
+                }
+            }
+
+            if fence == nil, !inMath, line.trimmingCharacters(in: .whitespaces).isEmpty {
+                flush()
+                continue
+            }
+            chunk.append(line)
+        }
+        flush()
+        return parts
     }
 
     static func stabilize(_ text: String) -> String {
