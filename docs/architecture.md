@@ -671,6 +671,15 @@ up). Natural complete / error / empty leave focus alone.
 No new HTTP. OpenAPI stays 0.18.0. Never reintroduce
 `computerPane.ts`.
 
+v0.60: Esc = Jump when frozen. When the Jump to latest chip
+is visible AND no assistant turn is in flight, Esc activates
+Jump (scroll to bottom, re-arm, dismiss chip) — same as
+clicking the chip. While generating, Esc still Stop. Same
+IME / pending-card skips as v0.53. Desktop window Esc; iOS
+hardware Escape only. Focus-after-Stop stays intact. No new
+HTTP. OpenAPI stays 0.18.0. Never reintroduce
+`computerPane.ts`.
+
 ## Inference interface
 
 ```text

@@ -291,6 +291,12 @@ immediately (iOS only with a hardware keyboard). Complete /
 error / empty do not steal focus. No new routes. OpenAPI
 stays 0.18.0.
 
+v0.60 Esc = Jump when frozen: when the Jump to latest chip
+is visible and nothing is generating, Esc activates Jump
+(same as clicking the chip). While generating, Esc still
+Stop. Same IME / pending-card skips as v0.53. No new routes.
+OpenAPI stays 0.18.0.
+
 A copy is also kept at `runtime/openapi.yaml` and `desktop/openapi.yaml`
 so those trees are self-contained. Do not let the files diverge.
 

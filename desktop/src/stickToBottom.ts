@@ -86,3 +86,26 @@ export function onAssistantActivity(
   }
   return state;
 }
+
+/**
+ * v0.60: Esc activates Jump when the chip is visible and no
+ * assistant turn is in flight. Same skips as v0.53 (IME composing,
+ * pending widget / approve / connect). While generating, Esc=Stop
+ * wins — this returns false so Stop stays first.
+ */
+export function escapeJumpsToLatest(input: {
+  showJump: boolean;
+  busy?: boolean;
+  composing?: boolean;
+  pendingWidget?: boolean;
+  pendingApprove?: boolean;
+  pendingConnect?: boolean;
+}): boolean {
+  if (input.busy) return false;
+  if (!input.showJump) return false;
+  if (input.composing) return false;
+  if (input.pendingWidget || input.pendingApprove || input.pendingConnect) {
+    return false;
+  }
+  return true;
+}

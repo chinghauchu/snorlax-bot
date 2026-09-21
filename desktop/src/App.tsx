@@ -162,6 +162,7 @@ import {
   NEAR_BOTTOM_PX,
   STICK_ARMED,
   assistantBubbleSignature,
+  escapeJumpsToLatest,
   isNearBottom,
   onAssistantActivity,
   onJumpToLatest,
@@ -1819,7 +1820,7 @@ export function App() {
       if (takeoverOpen) return;
       if (dictationCancelable(dictation)) return;
       if (
-        !escapeStopsGenerating({
+        escapeStopsGenerating({
           busy,
           composing: isComposerComposing(event),
           pendingWidget: messages.some(isPendingWidget),
@@ -1827,14 +1828,27 @@ export function App() {
           pendingConnect: messages.some(isPendingConnect),
         })
       ) {
+        event.preventDefault();
+        onStopGenerating();
         return;
       }
-      event.preventDefault();
-      onStopGenerating();
+      if (
+        escapeJumpsToLatest({
+          showJump,
+          busy,
+          composing: isComposerComposing(event),
+          pendingWidget: messages.some(isPendingWidget),
+          pendingApprove: messages.some(isPendingApprove),
+          pendingConnect: messages.some(isPendingConnect),
+        })
+      ) {
+        event.preventDefault();
+        onJumpLatest();
+      }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [busy, messages, mentionOpen, skillOpen, takeoverOpen, dictation]);
+  }, [busy, messages, mentionOpen, skillOpen, takeoverOpen, dictation, showJump, onJumpLatest]);
 
   async function onSend() {
     if (!session || !active || inFlight.current || sendBlocked) return;

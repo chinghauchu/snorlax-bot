@@ -60,7 +60,9 @@ NVIDIA DGX Spark.
   + math) renders once and the blank-line split applies; v0.58 Reduce
   Motion paints static muted ··· with no pulse, and keeps the pulse
   when Reduce Motion is off; v0.59 Stop/Esc abort returns focus to the
-  composer immediately — desktop always, iOS hardware keyboard only), a display-only
+  composer immediately — desktop always, iOS hardware keyboard only;
+  v0.60 Esc activates Jump when the chip is visible and idle, and still
+  Stop while generating), a display-only
   Box computer preview (`GET /v1/agents/{id}/computer` JSON; Bearer PNG at
   `/computer/screenshot`; identity pane), desktop Box takeover
   (`POST /computer/session` → 201 `{ sessionId }`; `DELETE .../session` or

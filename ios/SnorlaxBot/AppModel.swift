@@ -132,6 +132,21 @@ final class AppModel {
         }
     }
 
+    /// v0.60: hardware Esc activates Jump when frozen (chip visible,
+    /// not generating). Same skips as v0.53. Stop wins while in flight
+    /// because `escapeJumps` is false when busy.
+    func jumpToLatestFromEscape(composing: Bool, showJump: Bool) {
+        guard StickToBottom.escapeJumps(
+            showJump: showJump,
+            busy: isSending,
+            composing: composing,
+            pendingWidget: StopGenerating.pendingWidget(in: messages),
+            pendingApprove: StopGenerating.pendingApprove(in: messages),
+            pendingConnect: StopGenerating.pendingConnect(in: messages)
+        ) else { return }
+        stickBump += 1
+    }
+
     var isAttaching: Bool { attachInFlight > 0 }
 
     var visibleAgents: [Agent] {

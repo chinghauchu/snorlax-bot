@@ -13,7 +13,8 @@ struct ComposerTextView: UIViewRepresentable {
     var onReturnSend: (() -> Void)? = nil
     var onPasteAttachments: (([ComposerPasteboard.Attachment]) -> Void)? = nil
     var onCaretChange: ((NSRange) -> Void)? = nil
-    /// Hardware Esc while generating. `composing` is IME marked text.
+    /// Hardware Esc: Stop while generating (v0.53), Jump when frozen (v0.60).
+    /// `composing` is IME marked text.
     var onEscapeStop: ((Bool) -> Void)? = nil
     /// v0.55: hardware Return does not send while an assistant turn is in flight.
     var sendMuted: Bool = false

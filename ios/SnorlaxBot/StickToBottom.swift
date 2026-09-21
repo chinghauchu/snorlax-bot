@@ -72,4 +72,24 @@ enum StickToBottom {
         }
         return state
     }
+
+    /// v0.60: hardware Esc activates Jump when the chip is visible
+    /// and no assistant turn is in flight. Same skips as v0.53
+    /// (IME composing, pending widget / approve / connect). While
+    /// generating, Esc=Stop wins — this returns false so Stop stays first.
+    static func escapeJumps(
+        showJump: Bool,
+        busy: Bool,
+        composing: Bool,
+        pendingWidget: Bool,
+        pendingApprove: Bool,
+        pendingConnect: Bool
+    ) -> Bool {
+        showJump
+            && !busy
+            && !composing
+            && !pendingWidget
+            && !pendingApprove
+            && !pendingConnect
+    }
 }
