@@ -1184,12 +1184,12 @@ pre.md-math-fallback.md-math-block {
   }
 }
 
-.bubble.agent:has(> .streaming-caret) > :not(.streaming-caret) {
-  display: contents;
-}
-
-.bubble.agent:has(> .streaming-caret) > p:last-of-type {
-  display: inline;
+.assistant-plain {
+  margin: 0;
+  padding: 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font: inherit;
 }
 
 .streaming-caret {

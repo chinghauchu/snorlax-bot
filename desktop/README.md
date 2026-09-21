@@ -168,6 +168,15 @@ first tool paints normally; on the 2nd, swap to collapsed
 `N tools` and bump N. kind=widget / approve / connect
 never fold. Stick-to-bottom / Jump / multi-bubble gap
 unchanged. OpenAPI stays 0.18.0.
+v0.57: mid-stream plaintext (Grok Bot feel). While a LEFT
+kind=message is mid-stream (growing bubble + caret), paint
+plain text only — no live markdown, mermaid, or math. On
+complete or Stop (partial stays completed): render markdown
+once (bold/lists/code/links + mermaid + math), then the
+blank-line multi-bubble split. Copy / Speak / Regenerates
+still only on the last bubble after complete. ··· waiting,
+caret, stick-to-bottom, compact tools unchanged. OpenAPI
+stays 0.18.0.
 Assistant LEFT
 `kind=message` is 14px markdown (16/14 headings) in short
 agent bubbles after complete; user-right stays plain (`https://` tappable). Fenced code is full-turn language + Copy at 12px/1.45.
