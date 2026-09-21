@@ -301,7 +301,12 @@ v0.59 focus composer after Stop (Stop or Esc abort returns
 focus to the composer immediately; desktop window; iOS
 only when a hardware keyboard is attached — do not force
 the software keyboard; complete / error / empty leave
-focus alone; OpenAPI stays 0.18.0).
+focus alone; OpenAPI stays 0.18.0), and
+v0.60 Esc = Jump when frozen (when the Jump to latest chip
+is visible and nothing is generating, Esc activates Jump
+— same as clicking the chip; while generating, Esc still
+Stop; same IME / pending-card skips as v0.53; desktop
+window Esc; iOS hardware Escape only; OpenAPI stays 0.18.0).
 Later: full sandbox computer GUI, MCP marketplace catalog,
 Slack/GitHub inbound listeners.
 

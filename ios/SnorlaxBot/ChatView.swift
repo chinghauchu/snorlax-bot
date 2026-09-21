@@ -24,7 +24,7 @@ struct ChatView: View {
         VStack(spacing: 0) {
             transcript
             Divider()
-            ComposerBar(agentName: agent.name, isChannel: agent.isChannel, focused: $composerFocused)
+            ComposerBar(agentName: agent.name, isChannel: agent.isChannel, focused: $composerFocused, showJump: stick.showJump)
         }
         .navigationTitle(agent.name)
         .navigationBarTitleDisplayMode(.inline)
@@ -531,6 +531,7 @@ private struct ComposerBar: View {
     let agentName: String
     var isChannel: Bool
     var focused: FocusState<Bool>.Binding
+    var showJump = false
     @Environment(AppModel.self) private var model
     @State private var pickerItem: PhotosPickerItem?
     @State private var attachMenu = false
@@ -668,6 +669,7 @@ private struct ComposerBar: View {
                     },
                     onEscapeStop: { composing in
                         model.stopGeneratingFromEscape(composing: composing)
+                        model.jumpToLatestFromEscape(composing: composing, showJump: showJump)
                     },
                     sendMuted: SendMuted.whileGenerating(busy: model.isSending)
                 )
