@@ -46,10 +46,12 @@ v0.48: completed LEFT `kind=message` splits on blank lines
 into short multi-bubbles. Mid-stream stays one growing
 bubble. Copy / Speak / Regenerates only on the last bubble
 of that turn. OpenAPI stays 0.18.0.
-v0.49: optimistic user-RIGHT bubble on Send. On success,
-reconcile with the server turn (no duplicate). On failure,
-restore the composer and a muted 12pt Couldn't send. hint.
-OpenAPI stays 0.18.0.
+v0.49: optimistic user-RIGHT bubble on Send. Paint text +
+pending chips immediately; upload first; block a second
+Send until the round-trip settles. On success, reconcile
+with the server turn (no duplicate). On 4xx/5xx, restore
+text + chips and a muted 12pt Couldn't send. hint.
+Regenerates unchanged. OpenAPI stays 0.18.0.
 v0.32: dedicated `kind=approve` LEFT card for mutating shell (not a
 WidgetCard fork). Approve / Deny / ×; long-press copies the command.
 Question widgets

@@ -948,17 +948,20 @@ info:
     covering desktop + iOS. Spec rides this PR. **No second
     PR.** OpenAPI stays **0.18.0**. Do not bump. No new HTTP
     routes. Runtime idle. On Send: immediately show an
-    optimistic user-RIGHT bubble with the outgoing text (Grok
-    Bot feel). On success: reconcile with the real server/turn
-    message (no duplicate bubbles). On failure: remove the
-    optimistic bubble, restore the text to the composer, and
-    show a muted 12px Couldn't send. hint (same family as
-    other composer hints). Keep v0.47 stick-to-bottom and
-    v0.48 multi-bubbles intact. Out: VNC, extra channels,
-    store, coding-agent, new surfaces. Clients never speak MCP
-    or the model. Mac oMLX at `http://127.0.0.1:8000/v1`
-    untouched. Never reintroduce computerPane.ts. Leave stale
-    PRs #23 and #24 untouched. OpenAPI **0.18.0**.
+    optimistic user-RIGHT bubble with the outgoing text and
+    pending attachment chips (Grok Bot feel). Attachments
+    upload first, then optimistic Send. Block a second Send
+    until the round-trip settles. On success: reconcile to
+    the server id (no duplicate bubbles). On 4xx/5xx: remove
+    the optimistic bubble, restore text + chips, and show a
+    muted 12px Couldn't send. hint (same family as other
+    composer hints). Regenerates unchanged. Keep v0.47
+    stick-to-bottom and v0.48 multi-bubbles intact. Out: VNC,
+    extra channels, store, coding-agent, new surfaces. Clients
+    never speak MCP or the model. Mac oMLX at
+    `http://127.0.0.1:8000/v1` untouched. Never reintroduce
+    computerPane.ts. Leave stale PRs #23 and #24 untouched.
+    OpenAPI **0.18.0**.
   license:
     name: Apache-2.0
     identifier: Apache-2.0

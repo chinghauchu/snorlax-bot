@@ -571,10 +571,12 @@ approve / connect and user-right unchanged. No new HTTP.
 OpenAPI stays 0.18.0. Never reintroduce `computerPane.ts`.
 
 v0.49: optimistic user-RIGHT bubble on Send. Clients paint
-the outgoing text immediately (Grok Bot feel), then
-reconcile with the server/turn message (no duplicate). On
-failure, restore the composer and show a muted 12px
-Couldn't send. hint. No new HTTP. OpenAPI stays 0.18.0.
+the outgoing text and pending chips immediately (Grok Bot
+feel), upload attachments first, block a second Send until
+the round-trip settles, then reconcile with the server/turn
+message (no duplicate). On 4xx/5xx, drop the bubble, restore
+text + chips, and show a muted 12px Couldn't send. hint.
+Regenerates unchanged. No new HTTP. OpenAPI stays 0.18.0.
 Never reintroduce `computerPane.ts`.
 
 ## Inference interface

@@ -78,7 +78,7 @@ struct ChatView: View {
             }
         }
         .onChange(of: model.wantsComposerFocus) { _, wants in
-            guard wants, model.canCompose else { return }
+            guard wants, model.canCompose || model.isSending else { return }
             composerFocused = true
             model.wantsComposerFocus = false
         }
@@ -430,6 +430,7 @@ private struct ComposerBar: View {
     private var canSend: Bool {
         let trimmed = model.draft.trimmingCharacters(in: .whitespacesAndNewlines)
         return model.canCompose
+            && !model.isAttaching
             && model.attachError == nil
             && (!trimmed.isEmpty || !model.pendingAttachments.isEmpty)
     }
@@ -523,7 +524,7 @@ private struct ComposerBar: View {
                     text: $model.draft,
                     chipNames: model.composerChipNames,
                     placeholder: "Message \(agentName)",
-                    disabled: !model.canCompose,
+                    disabled: !(model.canCompose || model.isSending),
                     pendingCaret: $model.pendingComposerCaret,
                     focused: focused,
                     onReturnSend: { Task { await model.send() } },

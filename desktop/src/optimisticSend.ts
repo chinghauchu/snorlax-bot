@@ -122,3 +122,16 @@ export function composerSendHint(
 ): string | null {
   return error === COULDNT_SEND ? COULDNT_SEND : null;
 }
+
+/** Second Send is blocked while a turn is in flight or an attachment is still uploading. */
+export function shouldBlockSend(input: {
+  busy: boolean;
+  attaching: boolean;
+}): boolean {
+  return Boolean(input.busy || input.attaching);
+}
+
+/** HTTP 4xx/5xx on Send — restore composer and show Couldn't send. */
+export function isHttpSendFailure(status: number): boolean {
+  return status >= 400 && status < 600;
+}

@@ -49,6 +49,7 @@ final class AppModel {
     }
     var pendingAttachments: [PendingChatAttachment] = []
     var attachError: String?
+    var attachInFlight = 0
     var isSending = false
     var errorMessage: String?
     var composerError: String?
@@ -101,6 +102,8 @@ final class AppModel {
     var canCompose: Bool {
         client != nil && !isSending && selectedAgent != nil && !computerTakeoverOpen
     }
+
+    var isAttaching: Bool { attachInFlight > 0 }
 
     var visibleAgents: [Agent] {
         if !isConfigured && agents.isEmpty {
@@ -756,10 +759,16 @@ final class AppModel {
         cancelDictation()
         dictationEpoch += 1
         guard let client, let agent = selectedAgent else { return }
+        guard !isSending, !isAttaching else { return }
         let content = draft.trimmingCharacters(in: .whitespacesAndNewlines)
         let chips = pendingAttachments
         guard !content.isEmpty || !chips.isEmpty else { return }
         guard attachError == nil else { return }
+        isSending = true
+        defer {
+            isSending = false
+            wantsComposerFocus = true
+        }
         let mentionIDs = mentionIDs(in: content)
         draft = ""
         pendingComposerCaret = 0
@@ -781,8 +790,6 @@ final class AppModel {
         }
         messages = OptimisticSend.insert(messages, user)
         toolTraces = []
-        isSending = true
-        defer { isSending = false }
 
         do {
             try await client.sendMessage(
@@ -812,13 +819,23 @@ final class AppModel {
         } catch is CancellationError {
             await refreshMessages()
         } catch {
-            let failed = OptimisticSend.fail(messages, id: user.id)
-            messages = failed.messages
-            localPreviews[user.id] = nil
-            draft = content
-            pendingComposerCaret = content.utf16.count
-            pendingAttachments = chips
-            composerError = failed.hint
+            let status: Int
+            if let runtime = error as? RuntimeError, case .http(let code, _) = runtime {
+                status = code
+            } else {
+                status = 0
+            }
+            if status == 0 || OptimisticSend.isHttpSendFailure(status) {
+                let failed = OptimisticSend.fail(messages, id: user.id)
+                messages = failed.messages
+                localPreviews[user.id] = nil
+                draft = content
+                pendingComposerCaret = content.utf16.count
+                pendingAttachments = chips
+                composerError = failed.hint
+            } else {
+                errorMessage = error.localizedDescription
+            }
         }
     }
 
@@ -1334,6 +1351,8 @@ final class AppModel {
             return
         }
         attachError = nil
+        attachInFlight += 1
+        defer { attachInFlight = max(0, attachInFlight - 1) }
         do {
             let row = try await client.uploadAttachment(
                 agentId: agent.id,

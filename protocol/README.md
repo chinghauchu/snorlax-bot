@@ -226,10 +226,11 @@ v0.48 short multi-bubbles: clients display completed LEFT
 routes. OpenAPI stays 0.18.0.
 
 v0.49 optimistic user-RIGHT on Send: clients paint the
-outgoing text immediately, then reconcile with the stored
-user message (no duplicate). On failure, restore the composer
-and show muted Couldn't send. No new routes. OpenAPI stays
-0.18.0.
+outgoing text and pending chips immediately (upload first;
+block a second Send), then reconcile with the stored user
+message (no duplicate). On 4xx/5xx, restore text + chips and
+show muted Couldn't send. Regenerates unchanged. No new
+routes. OpenAPI stays 0.18.0.
 
 A copy is also kept at `runtime/openapi.yaml` and `desktop/openapi.yaml`
 so those trees are self-contained. Do not let the files diverge.

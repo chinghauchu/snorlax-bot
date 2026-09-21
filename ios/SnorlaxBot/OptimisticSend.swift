@@ -55,4 +55,12 @@ enum OptimisticSend {
     static func composerHint(error: String?) -> String? {
         error == couldntSend ? couldntSend : nil
     }
+
+    static func shouldBlockSend(busy: Bool, attaching: Bool) -> Bool {
+        busy || attaching
+    }
+
+    static func isHttpSendFailure(_ status: Int) -> Bool {
+        (400..<600).contains(status)
+    }
 }

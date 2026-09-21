@@ -86,8 +86,9 @@ Concrete follow-ups after v0. Filed on GitHub against
   `kind=message` splits on blank lines into short
   multi-bubbles after complete (Copy / Speak / Regenerates
   on the last bubble). **v0.49:** optimistic user-RIGHT
-  bubble on Send (reconcile on success; restore composer +
-  muted Couldn't send. on failure). Raw HTML still later.
+  bubble on Send (chips on the bubble; upload first; block
+  second Send; reconcile to server id; 4xx/5xx restore +
+  muted Couldn't send.). Raw HTML still later.
   Full sandbox computer GUI (browser, VNC, terminal)
   stays later.
 
@@ -164,8 +165,9 @@ Concrete follow-ups after v0. Filed on GitHub against
   lines into short multi-bubbles. Mid-stream stays one
   growing bubble. Copy / Speak / Regenerates only on the last
   bubble of that turn. Desktop matches. OpenAPI stays 0.18.0.
-- **v0.49:** optimistic user-RIGHT bubble on Send. On
-  success, reconcile with the server/turn message (no
-  duplicate). On failure, restore the composer and a muted
-  12pt Couldn't send. hint. Desktop matches. OpenAPI stays
-  0.18.0.
+- **v0.49:** optimistic user-RIGHT bubble on Send (text +
+  pending chips). Upload first, then Send. Block a second
+  Send until the round-trip settles. Success reconciles to
+  the server id. 4xx/5xx drop the bubble, restore text +
+  chips, muted 12pt Couldn't send. Regenerates unchanged.
+  Desktop matches. OpenAPI stays 0.18.0.

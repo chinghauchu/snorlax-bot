@@ -168,8 +168,10 @@ import {
   composerSendHint,
   failOptimistic,
   insertOptimistic,
+  isHttpSendFailure,
   optimisticUserMessage,
   reconcileOptimistic,
+  shouldBlockSend,
 } from "./optimisticSend";
 import { catalogInstallBody, isConnect, parsePluginArgs, pluginStatusLabel } from "./connect";
 import { isApprove } from "./approve";
@@ -560,8 +562,10 @@ export function App() {
     PendingAttachment[]
   >([]);
   const [attachError, setAttachError] = useState<string | null>(null);
+  const [attachInFlight, setAttachInFlight] = useState(0);
   const [dropTarget, setDropTarget] = useState(false);
   const [busy, setBusy] = useState(false);
+  const inFlight = useRef(false);
   const [composerError, setComposerError] = useState<string | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [mentionOpen, setMentionOpen] = useState(false);
@@ -791,7 +795,10 @@ export function App() {
   function canDelete(agent: Agent) {
     return canDeleteAgent(agent);
   }
-  const composerDisabled = !credsReady || busy || takeoverOpen;
+  const fieldDisabled = !credsReady || takeoverOpen;
+  const composerDisabled = fieldDisabled || busy;
+  const attaching = attachInFlight > 0;
+  const sendBlocked = shouldBlockSend({ busy, attaching });
 
   useEffect(() => {
     applyChrome(themePref, accent);
@@ -1557,8 +1564,20 @@ export function App() {
       attachmentIds?: string[];
       regenerate?: boolean;
     };
+    holdBusy?: boolean;
   }) {
-    if (!session || !active || busy) return;
+    if (!session || !active) {
+      if (opts.holdBusy) {
+        inFlight.current = false;
+        setBusy(false);
+      }
+      return;
+    }
+    if (!opts.holdBusy) {
+      if (inFlight.current) return;
+      inFlight.current = true;
+      setBusy(true);
+    }
     const content = opts.content;
     const images = opts.images ?? [];
     const localImages = opts.localImages ?? [];
@@ -1576,7 +1595,6 @@ export function App() {
       setMessages((prev) => insertOptimistic(prev, userMsg!));
     }
     setToolTraces([]);
-    setBusy(true);
     const handlers: StreamHandlers = {
       onDelta(messageId, delta, sender) {
         if (active.kind === "channel" && !threadId) return;
@@ -1697,12 +1715,17 @@ export function App() {
       }
     } catch (err) {
       if (userMsg) {
-        setMessages((prev) => failOptimistic(prev, userMsg!.id).messages);
-        if (content) setDraft(content);
-        if (opts.restoreAttachments?.length) {
-          setPendingAttachments(opts.restoreAttachments);
+        const status = err instanceof ApiError ? err.status : 0;
+        if (status === 0 || isHttpSendFailure(status)) {
+          setMessages((prev) => failOptimistic(prev, userMsg!.id).messages);
+          if (content) setDraft(content);
+          if (opts.restoreAttachments?.length) {
+            setPendingAttachments(opts.restoreAttachments);
+          }
+          setComposerError(COULDNT_SEND);
+        } else {
+          setComposerError(describeError(err));
         }
-        setComposerError(COULDNT_SEND);
       } else if (
         err instanceof ApiError &&
         (err.status === 422 || err.status === 409)
@@ -1724,17 +1747,20 @@ export function App() {
         }
       }
     } finally {
+      inFlight.current = false;
       setBusy(false);
       focusComposer();
     }
   }
 
   async function onSend() {
-    if (!session || !active || busy) return;
+    if (!session || !active || inFlight.current || sendBlocked) return;
     const content = draft.trim();
     const chips = pendingAttachments;
     if (!content && chips.length === 0) return;
     if (attachError) return;
+    inFlight.current = true;
+    setBusy(true);
     snapStick();
     focusComposer();
     setDraft("");
@@ -1755,6 +1781,7 @@ export function App() {
       optimisticUser: true,
       restoreAttachments: chips,
       extra: { attachmentIds: chips.map((row) => row.id) },
+      holdBusy: true,
     });
   }
 
@@ -2266,6 +2293,7 @@ export function App() {
       return;
     }
     setAttachError(null);
+    setAttachInFlight((n) => n + 1);
     try {
       const row = await uploadAttachment(session, active.id, file);
       const previewUrl =
@@ -2277,6 +2305,8 @@ export function App() {
       setAttachError(
         caught instanceof ApiError ? caught.message : describeError(caught),
       );
+    } finally {
+      setAttachInFlight((n) => Math.max(0, n - 1));
     }
   }
 
@@ -2949,7 +2979,7 @@ export function App() {
                 ref={composerRef}
                 value={draft}
                 rows={1}
-                disabled={composerDisabled}
+                disabled={fieldDisabled}
                 readOnly={takeoverOpen}
                 tabIndex={takeoverOpen ? -1 : undefined}
                 placeholder={
@@ -2997,6 +3027,7 @@ export function App() {
               aria-label="Send"
               disabled={
                 composerDisabled ||
+                sendBlocked ||
                 !active ||
                 Boolean(attachError) ||
                 (!draft.trim() && pendingAttachments.length === 0)

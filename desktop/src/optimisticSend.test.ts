@@ -11,9 +11,11 @@ import {
   composerSendHint,
   failOptimistic,
   insertOptimistic,
+  isHttpSendFailure,
   isOptimisticId,
   optimisticUserMessage,
   reconcileOptimistic,
+  shouldBlockSend,
 } from "./optimisticSend.ts";
 import { isUserSender } from "./mentions.ts";
 
@@ -58,17 +60,26 @@ function left(id: string, content: string) {
   };
 }
 
-test("Send inserts an optimistic user-RIGHT bubble with the outgoing text", () => {
+test("Send inserts an optimistic user-RIGHT bubble with text and pending chips", () => {
   const prior = [left("a1", "hello")];
+  const chip = {
+    id: "att-1",
+    kind: "image" as const,
+    name: "shot.png",
+    url: "/v1/attachments/att-1",
+    size: 12,
+  };
   const row = optimisticUserMessage({
     id: "local-1",
     agentId: "snorlax-bot",
     content: "ping",
+    attachments: [chip],
     createdAt: "2026-09-21T00:00:00.000Z",
   });
   assert.equal(row.role, "user");
   assert.equal(row.senderId, "user");
   assert.equal(row.content, "ping");
+  assert.deepEqual(row.attachments, [chip]);
   assert.equal(isOptimisticId(row.id), true);
   assert.ok(row.id.startsWith(OPTIMISTIC_ID_PREFIX));
   assert.equal(isUserSender(row.senderId, row.role), true);
@@ -101,6 +112,7 @@ test("success reconciles the optimistic bubble with the server turn (no duplicat
   assert.equal(absorbed[1]?.id, "srv-u");
   assert.equal(absorbed[1]?.content, "ping");
   assert.equal(absorbed.some((m) => m.id === "local-1"), false);
+  assert.equal(next[1]?.id, "srv-u");
 });
 
 test("failure removes the optimistic bubble, restores composer text, Couldn’t send.", () => {
@@ -112,6 +124,11 @@ test("failure removes the optimistic bubble, restores composer text, Couldn’t 
   assert.equal(COULDNT_SEND, "Couldn't send.");
   assert.equal(composerSendHint(COULDNT_SEND), COULDNT_SEND);
   assert.equal(composerSendHint("Max 10MB."), null);
+  assert.equal(isHttpSendFailure(400), true);
+  assert.equal(isHttpSendFailure(422), true);
+  assert.equal(isHttpSendFailure(500), true);
+  assert.equal(isHttpSendFailure(200), false);
+  assert.equal(isHttpSendFailure(0), false);
 });
 
 test("desktop wires insert, reconcile, failure restore, muted 12px Couldn’t send", () => {
@@ -124,10 +141,23 @@ test("desktop wires insert, reconcile, failure restore, muted 12px Couldn’t se
   assert.match(app, /COULDNT_SEND/);
   assert.match(app, /composerSendHint/);
   assert.match(app, /onSend\(\) \{[\s\S]*optimisticUser: true/);
+  assert.match(app, /onSend\(\) \{[\s\S]*attachments: chips/);
+  assert.match(app, /onSend\(\) \{[\s\S]*holdBusy: true/);
+  assert.match(app, /onSend\(\) \{[\s\S]*inFlight\.current = true/);
+  assert.match(app, /onSend\(\) \{[\s\S]*focusComposer\(\)/);
+  assert.match(app, /const fieldDisabled = !credsReady \|\| takeoverOpen/);
+  assert.match(app, /<textarea[\s\S]*disabled=\{fieldDisabled\}/);
   assert.match(app, /if \(content\) setDraft\(content\)/);
+  assert.match(app, /restoreAttachments/);
+  assert.match(app, /isHttpSendFailure/);
+  assert.match(app, /shouldBlockSend/);
+  assert.match(app, /sendBlocked/);
+  assert.match(app, /attachInFlight/);
   assert.match(app, /statusHint/);
   assert.match(app, /className="composer-hint"/);
   assert.match(app, /role="status"/);
+  assert.doesNotMatch(app, /onRegenerate\(\) \{[\s\S]*optimisticUser: true/);
+  assert.match(app, /onRegenerate\(\) \{[\s\S]*regeneratePostBody\(\)/);
   assert.doesNotMatch(app, /computerPane\.ts/);
   assert.equal(existsSync(join(here, "computerPane.ts")), false);
   assert.doesNotMatch(sendSrc, /computerPane\.ts/);
@@ -147,4 +177,22 @@ test("OpenAPI stays 0.18.0; v0.49 is documented; no new HTTP", () => {
   assert.match(runtimeOpenapi, /v0\.49/);
   assert.doesNotMatch(sendSrc, /\/v1\/optimistic/);
   assert.doesNotMatch(app, /\/v1\/optimistic/);
+});
+
+test("attachments upload first; second Send is blocked while busy or attaching", () => {
+  assert.equal(shouldBlockSend({ busy: true, attaching: false }), true);
+  assert.equal(shouldBlockSend({ busy: false, attaching: true }), true);
+  assert.equal(shouldBlockSend({ busy: false, attaching: false }), false);
+
+  const addStart = app.indexOf("async function addPendingFile");
+  const addBody = app.slice(addStart, app.indexOf("async function onPickFile", addStart));
+  const uploadAt = addBody.indexOf("uploadAttachment");
+  const pendingAt = addBody.indexOf("setPendingAttachments");
+  assert.ok(uploadAt >= 0 && pendingAt > uploadAt);
+
+  const sendStart = app.indexOf("async function onSend()");
+  const sendBody = app.slice(sendStart, app.indexOf("async function answerWidget", sendStart));
+  assert.doesNotMatch(sendBody, /uploadAttachment/);
+  assert.match(sendBody, /attachmentIds: chips\.map/);
+  assert.match(sendBody, /sendBlocked/);
 });

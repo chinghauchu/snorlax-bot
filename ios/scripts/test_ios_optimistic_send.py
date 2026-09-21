@@ -2,11 +2,12 @@
 # SPDX-License-Identifier: Apache-2.0
 """v0.49 iOS optimistic user-RIGHT bubble on Send.
 
-On Send: immediately show an optimistic user-RIGHT bubble. On success,
-reconcile with the server/turn message (no duplicate). On failure: drop
-the optimistic bubble, restore composer text, muted Couldn't send. hint.
-Keep v0.47 stick-to-bottom and v0.48 multi-bubbles. OpenAPI stays 0.18.0.
-Never reintroduce computerPane.ts.
+On Send: immediately show an optimistic user-RIGHT bubble with text +
+pending chips. Attachments upload first. Block a second Send until the
+round-trip settles. Success reconciles to the server id. 4xx/5xx drop
+the bubble, restore text + chips, muted Couldn't send. Regenerates
+unchanged. Keep v0.47 stick-to-bottom and v0.48 multi-bubbles. OpenAPI
+stays 0.18.0. Never reintroduce computerPane.ts.
 """
 
 from __future__ import annotations
@@ -35,11 +36,22 @@ COULDNT = "Couldn't send."
 
 
 def _fn(src: str, name: str) -> str:
-    marker = f"func {name}"
-    start = src.index(marker)
-    nxt = src.find("\n    func ", start + len(marker))
+    markers = (f"func {name}", f"async function {name}", f"function {name}")
+    start = -1
+    used = ""
+    for marker in markers:
+        idx = src.find(marker)
+        if idx >= 0:
+            start = idx
+            used = marker
+            break
+    if start < 0:
+        raise AssertionError(f"missing {name}")
+    nxt = src.find("\n    func ", start + len(used))
     if nxt < 0:
-        nxt = src.find("\n    var ", start + len(marker))
+        nxt = src.find("\n    async function ", start + len(used))
+    if nxt < 0:
+        nxt = src.find("\n    var ", start + len(used))
     return src[start:nxt] if nxt > 0 else src[start:]
 
 
@@ -52,9 +64,16 @@ def test_insert_optimistic_user_right() -> None:
     assert 'senderId: "user"' in MODELS
     send = _fn(MODEL, "send()")
     assert "Message.optimisticUser(" in send
+    assert "chips.map(\\.asAttachment)" in send
     assert "OptimisticSend.insert(messages, user)" in send
+    assert send.index("isSending = true") < send.index("OptimisticSend.insert")
+    assert "wantsComposerFocus = true" in send
+    assert "disabled: !(model.canCompose || model.isSending)" in CHAT
+    assert "model.canCompose || model.isSending" in CHAT
+    assert "fieldDisabled" in DESKTOP_APP
     assert "optimisticUserMessage(" in DESKTOP_APP
     assert "insertOptimistic(" in DESKTOP_APP
+    assert "attachments: chips.map" in DESKTOP_APP
     assert 'COULDNT_SEND = "Couldn\'t send."' in DESKTOP_SEND
 
 
@@ -74,7 +93,9 @@ def test_success_reconcile_no_duplicate() -> None:
 def test_failure_restore_and_couldnt_send() -> None:
     assert f'static let couldntSend = "{COULDNT}"' in OPT
     assert "static func fail(" in OPT
+    assert "static func isHttpSendFailure" in OPT
     send = _fn(MODEL, "send()")
+    assert "OptimisticSend.isHttpSendFailure(status)" in send
     assert "OptimisticSend.fail(messages, id: user.id)" in send
     assert "draft = content" in send
     assert "pendingAttachments = chips" in send
@@ -83,10 +104,31 @@ def test_failure_restore_and_couldnt_send() -> None:
     assert ".font(.system(size: 12))" in CHAT
     assert ".foregroundStyle(.secondary)" in CHAT
     assert "failOptimistic(" in DESKTOP_APP
+    assert "isHttpSendFailure" in DESKTOP_APP
     assert "if (content) setDraft(content)" in DESKTOP_APP
     assert "COULDNT_SEND" in DESKTOP_APP
     assert "composerSendHint" in DESKTOP_APP
     assert 'className="composer-hint"' in DESKTOP_APP
+
+
+def test_upload_first_block_second_send_regenerate_unchanged() -> None:
+    assert "var attachInFlight = 0" in MODEL
+    assert "var isAttaching: Bool { attachInFlight > 0 }" in MODEL
+    assert "!model.isAttaching" in CHAT
+    assert "static func shouldBlockSend" in OPT
+    send = _fn(MODEL, "send()")
+    assert "guard !isSending, !isAttaching else { return }" in send
+    add = _fn(MODEL, "addPendingFile")
+    assert add.index("uploadAttachment") < add.index("pendingAttachments.append")
+    assert "uploadAttachment" not in send
+    assert "chips.map(\\.id)" in send
+    regen = _fn(MODEL, "regenerate()")
+    assert "OptimisticSend.insert" not in regen
+    assert "optimisticUser" not in regen
+    assert "regenerate: true" in regen
+    assert "optimisticUser: true" not in _fn(DESKTOP_APP, "onRegenerate()")
+    assert "shouldBlockSend" in DESKTOP_APP
+    assert "attachInFlight" in DESKTOP_APP
 
 
 def test_stick_multi_bubbles_openapi_no_computer_pane() -> None:
@@ -111,6 +153,7 @@ def main() -> int:
         test_insert_optimistic_user_right,
         test_success_reconcile_no_duplicate,
         test_failure_restore_and_couldnt_send,
+        test_upload_first_block_second_send_regenerate_unchanged,
         test_stick_multi_bubbles_openapi_no_computer_pane,
     ]
     failed = 0
