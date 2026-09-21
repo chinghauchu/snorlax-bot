@@ -280,6 +280,11 @@ text only — no live markdown, mermaid, or math. On complete
 or Stop, markdown renders once then the blank-line split.
 No new routes. OpenAPI stays 0.18.0.
 
+v0.58 Reduce Motion static ···: when the OS Reduce Motion
+setting is on, clients paint static muted ··· (no pulse).
+When off, keep the existing pulse. Caret Reduce Motion
+unchanged. No new routes. OpenAPI stays 0.18.0.
+
 A copy is also kept at `runtime/openapi.yaml` and `desktop/openapi.yaml`
 so those trees are self-contained. Do not let the files diverge.
 

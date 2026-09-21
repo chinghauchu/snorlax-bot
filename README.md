@@ -41,7 +41,7 @@ stick-to-bottom while streaming (follow within ~64px; freeze on scroll-up; Send 
 short multi-bubbles on completed LEFT `kind=message` (split on blank lines after the stream completes; Copy / Speak / Regenerates on the last bubble) +
 same-turn consecutive LEFT bubbles 6px/6pt (different turns / after tool-widget-approve-connect stay 12px/12pt) +
 Stop generating mid-stream (12px/12pt muted Stop at the chat-column bottom; client abort; keep partial LEFT as completed; composer stays focused) +
-waiting ··· until first token (LEFT 12px/12pt muted pulsing ··· after Send until the first assistant token) +
+waiting ··· until first token (LEFT 12px/12pt muted pulsing ··· after Send until the first assistant token; Reduce Motion static) +
 streaming caret on the growing LEFT bubble (12px/12pt muted blinking caret after the first token until complete / Stop) +
 compact tool traces (2+ consecutive kind=tool → 12px/12pt muted `N tools` + chevron; default collapsed) +
 identity-pane Box computer preview (Bearer PNG) + desktop Box takeover
@@ -293,7 +293,10 @@ v0.57 mid-stream plaintext (live LEFT kind=message is
 plain text — no live markdown, mermaid, or math; on
 complete / Stop markdown renders once then the blank-line
 split; Copy / Speak / Regenerates still last-bubble-only;
-OpenAPI stays 0.18.0).
+OpenAPI stays 0.18.0), and
+v0.58 Reduce Motion static ··· (OS Reduce Motion on →
+static muted ···, no pulse; off → existing pulse; caret
+Reduce Motion unchanged; OpenAPI stays 0.18.0).
 Later: full sandbox computer GUI, MCP marketplace catalog,
 Slack/GitHub inbound listeners.
 

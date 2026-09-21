@@ -177,6 +177,12 @@ blank-line multi-bubble split. Copy / Speak / Regenerates
 still only on the last bubble after complete. ··· waiting,
 caret, stick-to-bottom, compact tools unchanged. OpenAPI
 stays 0.18.0.
+v0.58: Reduce Motion static ··· (Grok Bot feel). When the
+OS Reduce Motion setting is on, waiting ··· is static
+muted (no pulse). When off, keep the existing pulse.
+Streaming caret Reduce Motion is already static (v0.52).
+Appear/dismiss rules for ··· unchanged. OpenAPI stays
+0.18.0.
 Assistant LEFT
 `kind=message` is 14px markdown (16/14 headings) in short
 agent bubbles after complete; user-right stays plain (`https://` tappable). Fenced code is full-turn language + Copy at 12px/1.45.

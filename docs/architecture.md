@@ -656,6 +656,13 @@ Regenerates still only on the last bubble after complete.
 unchanged. No new HTTP. OpenAPI stays 0.18.0. Never
 reintroduce `computerPane.ts`.
 
+v0.58: Reduce Motion static ···. When the OS Reduce Motion
+/ accessibility setting is on, waiting ··· is static muted
+(no pulse). When off, keep the existing pulse. Streaming
+caret Reduce Motion is already static (v0.52). Appear /
+dismiss rules for ··· unchanged. No new HTTP. OpenAPI stays
+0.18.0. Never reintroduce `computerPane.ts`.
+
 ## Inference interface
 
 ```text

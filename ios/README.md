@@ -106,6 +106,11 @@ blank-line multi-bubble split. Copy / Speak / Regenerates
 still only on the last bubble after complete. ··· waiting,
 caret, stick-to-bottom, compact tools unchanged. OpenAPI
 stays 0.18.0.
+v0.58: Reduce Motion static ···. When the OS Reduce Motion
+setting is on, waiting ··· is static muted (no pulse).
+When off, keep the existing pulse. Streaming caret Reduce
+Motion is already static (v0.52). Appear/dismiss rules for
+··· unchanged. OpenAPI stays 0.18.0.
 v0.32: dedicated `kind=approve` LEFT card for mutating shell (not a
 WidgetCard fork). Approve / Deny / ×; long-press copies the command.
 Question widgets
@@ -209,7 +214,7 @@ Output: `SnorlaxBot/Generated/V1Types.swift`. Do not hand-edit that file.
 - `SnorlaxBot/StickToBottom.swift` — v0.47 stick/freeze/Jump to latest
 - `SnorlaxBot/OptimisticSend.swift` — v0.49 optimistic user-RIGHT on Send
 - `SnorlaxBot/StopGenerating.swift` — v0.50 12pt muted Stop (client abort); v0.53 Esc = Stop
-- `SnorlaxBot/Waiting.swift` — v0.51 waiting ··· until first token
+- `SnorlaxBot/Waiting.swift` — v0.51 waiting ··· until first token; v0.58 Reduce Motion static ···
 - `SnorlaxBot/StreamingCaret.swift` — v0.52 streaming caret on LEFT bubble
 - `SnorlaxBot/ComposerTextView.swift` — v0.53 UIKeyCommand Escape = Stop; v0.55 Return does not send while generating
 - `SnorlaxBot/SendMuted.swift` — v0.55 Send muted while generating
