@@ -122,7 +122,12 @@ import {
   loadInitialRuntimeUrl,
   normalizeRuntimeUrl,
 } from "./runtimeUrl";
-import { showThinkingLine, THINKING_LABEL } from "./thinking";
+import {
+  WAITING_DOT,
+  WAITING_LABEL,
+  WAITING_WORD,
+  showWaitingLine,
+} from "./waiting";
 import { ComputerPane, ComputerSeamButton } from "./ComputerPane";
 import {
   COMPUTER_OPEN_KEY,
@@ -2438,7 +2443,7 @@ export function App() {
   const toolThisTurn = visibleMessages.some(
     (message, index) => index > lastUserIdx && isToolLine(message),
   );
-  const showThinking = showThinkingLine({
+  const showWaiting = showWaitingLine({
     busy,
     hasLiveAssistant: liveAssistantIdx >= 0,
     hasLiveTool: liveTraces.length > 0 || toolThisTurn,
@@ -2836,11 +2841,11 @@ export function App() {
                 ))}
               </article>
             ) : null}
-            {showThinking ? (
+            {showWaiting ? (
               <article
                 className="turn left new-sender"
                 aria-live="polite"
-                aria-label={THINKING_LABEL}
+                aria-label={WAITING_LABEL}
               >
                 <div className="sender-row">
                   <Avatar
@@ -2853,8 +2858,13 @@ export function App() {
                     {active?.name || "Agent"}
                   </span>
                 </div>
-                <p className="thinking" role="status">
-                  <span className="thinking-label">{THINKING_LABEL}</span>
+                <p className="waiting" role="status">
+                  <span className="waiting-word">{WAITING_WORD}</span>{" "}
+                  <span className="waiting-dots" aria-hidden="true">
+                    <span>{WAITING_DOT}</span>
+                    <span>{WAITING_DOT}</span>
+                    <span>{WAITING_DOT}</span>
+                  </span>
                 </p>
               </article>
             ) : null}

@@ -118,7 +118,7 @@ struct ChatView: View {
                                 $0.offset > lastUserIdx && $0.element.isToolLine
                             }
                         }()
-                        let showThinking = ThinkingChrome.shouldShow(
+                        let showWaiting = WaitingChrome.shouldShow(
                             busy: model.isSending,
                             hasLiveAssistant: liveAssistantIdx != nil,
                             hasLiveTool: !liveTraces.isEmpty || toolThisTurn
@@ -170,8 +170,8 @@ struct ChatView: View {
                         if liveAssistantIdx == nil, !liveTraces.isEmpty {
                             liveToolStreak(agent: agent, traces: liveTraces)
                         }
-                        if showThinking {
-                            thinkingStreak(agent: agent)
+                        if showWaiting {
+                            waitingStreak(agent: agent)
                         }
                     }
                     Color.clear.frame(height: 1).id("bottom")
@@ -295,7 +295,7 @@ struct ChatView: View {
     }
 
     @ViewBuilder
-    private func thinkingStreak(agent: Agent) -> some View {
+    private func waitingStreak(agent: Agent) -> some View {
         VStack(alignment: .leading, spacing: 4) {
             HStack(spacing: 6) {
                 AgentAvatar(agent: agent, size: 20)
@@ -304,14 +304,14 @@ struct ChatView: View {
                     .foregroundStyle(.secondary)
             }
             .padding(.horizontal, 12)
-            ThinkingLabel()
+            WaitingLabel()
                 .padding(.horizontal, 12)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.top, 16)
-        .id("thinking")
+        .id("waiting")
         .accessibilityElement(children: .combine)
-        .accessibilityLabel("\(agent.name), \(ThinkingChrome.label)")
+        .accessibilityLabel("\(agent.name), \(WaitingChrome.label)")
     }
 
     /// Match desktop: speaker is the trace's senderId, else the conversation

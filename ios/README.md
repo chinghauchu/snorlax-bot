@@ -58,6 +58,11 @@ the chat column (above Jump to latest if both show). Tap
 aborts the in-flight stream; stop appending tokens; the
 partial LEFT stays as completed. Hide Stop when idle.
 Composer stays focused. OpenAPI stays 0.18.0.
+v0.51: waiting ··· until first token. After Send, a 12pt
+muted waiting ··· sits on the LEFT until the first assistant
+token/content. Hide it and show the normal streaming LEFT
+bubble once tokens arrive. Works with optimistic Send and
+Stop. OpenAPI stays 0.18.0.
 v0.32: dedicated `kind=approve` LEFT card for mutating shell (not a
 WidgetCard fork). Approve / Deny / ×; long-press copies the command.
 Question widgets
@@ -159,6 +164,7 @@ Output: `SnorlaxBot/Generated/V1Types.swift`. Do not hand-edit that file.
 - `SnorlaxBot/StickToBottom.swift` — v0.47 stick/freeze/Jump to latest
 - `SnorlaxBot/OptimisticSend.swift` — v0.49 optimistic user-RIGHT on Send
 - `SnorlaxBot/StopGenerating.swift` — v0.50 12pt muted Stop (client abort)
+- `SnorlaxBot/Waiting.swift` — v0.51 waiting ··· until first token
 - `SnorlaxBot/katex.min.js` / `katex.min.css` / `fonts/` — bundled KaTeX
 - `SnorlaxBot/RuntimeClient.swift` — `/v1` + SSE
 - `SnorlaxBot/Generated/V1Types.swift` — OpenAPI models

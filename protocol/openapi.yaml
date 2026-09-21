@@ -980,6 +980,23 @@ info:
     the model. Mac oMLX at `http://127.0.0.1:8000/v1`
     untouched. Never reintroduce computerPane.ts. Leave stale
     PRs #23 and #24 untouched. OpenAPI **0.18.0**.
+
+    v0.51: waiting ··· until first token. One impl PR covering
+    desktop + iOS. Spec rides this PR. **No second PR.**
+    OpenAPI stays **0.18.0**. Do not bump. No new HTTP
+    routes. Runtime idle. After Send (while waiting for the
+    assistant to start streaming), clients show a waiting ···
+    indicator (Grok Bot feel) until the first token/content
+    arrives. Once the first assistant token arrives, hide
+    waiting ··· and show the normal streaming LEFT bubble.
+    Works with v0.49 optimistic user-RIGHT and v0.50 Stop.
+    Keep v0.47 stick-to-bottom, v0.48 multi-bubbles, v0.49
+    optimistic Send, v0.50 Stop intact. Out: VNC, extra
+    channels, store, coding-agent, new surfaces. Clients never
+    speak MCP or the model. Mac oMLX at
+    `http://127.0.0.1:8000/v1` untouched. Never reintroduce
+    computerPane.ts. Leave stale PRs #23 and #24 untouched.
+    OpenAPI **0.18.0**.
   license:
     name: Apache-2.0
     identifier: Apache-2.0

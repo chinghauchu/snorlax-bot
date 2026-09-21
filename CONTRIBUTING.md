@@ -39,7 +39,9 @@ NVIDIA DGX Spark.
   Couldn't send. on 4xx/5xx; v0.50 Stop generating mid-stream is a
   12px/12pt muted Stop chip at the chat-column bottom — client abort
   that keeps the partial LEFT as completed and keeps the composer
-  focused), a display-only
+  focused; v0.51 waiting ··· until first token is a 12px/12pt muted
+  LEFT indicator after Send until the first assistant token, then
+  the normal streaming LEFT bubble), a display-only
   Box computer preview (`GET /v1/agents/{id}/computer` JSON; Bearer PNG at
   `/computer/screenshot`; identity pane), desktop Box takeover
   (`POST /computer/session` → 201 `{ sessionId }`; `DELETE .../session` or

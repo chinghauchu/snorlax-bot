@@ -27,7 +27,7 @@ Concrete follow-ups after v0. Filed on GitHub against
 
 ## Frontend
 
-- [F1 — Streaming markdown without flicker](https://github.com/chinghauchu/snorlax-bot/issues/6) — **v0.11:** clients render assistant LEFT `kind=message` as 14px markdown (no grey bubble; 16/14 headings); user-right stays plain (`https://` tappable); fenced code full-turn language + Copy at 12px/1.45; inline code 13px / 4px / accent 18%. Content stays a plain string (no new Message fields). **v0.45:** fenced `mermaid` on completed LEFT `kind=message` renders as a diagram (official mermaid / iOS WKWebView; invalid falls back to fence chrome; streaming stays code until complete). **v0.46:** TeX math on completed LEFT `kind=message` (inline `\( \)` / block `$$`; KaTeX; invalid falls back to monospace source; single `$` stays currency). **v0.47:** stick-to-bottom while streaming (~64px slack; freeze on scroll-up; Send / Regenerates snap and re-arm; 12px muted Jump to latest while a new assistant bubble arrives stuck). **v0.48:** completed LEFT `kind=message` splits on blank lines into short multi-bubbles after the stream completes (mid-stream stays one bubble; Copy / Speak / Regenerates only on the last bubble). **v0.49:** optimistic user-RIGHT bubble on Send (reconcile on success; restore composer + muted Couldn't send. on failure). **v0.50:** Stop generating mid-stream (12px muted Stop at chat-column bottom; client abort; keep partial LEFT as completed; hide when idle; composer focused). Raw HTML still out of scope.
+- [F1 — Streaming markdown without flicker](https://github.com/chinghauchu/snorlax-bot/issues/6) — **v0.11:** clients render assistant LEFT `kind=message` as 14px markdown (no grey bubble; 16/14 headings); user-right stays plain (`https://` tappable); fenced code full-turn language + Copy at 12px/1.45; inline code 13px / 4px / accent 18%. Content stays a plain string (no new Message fields). **v0.45:** fenced `mermaid` on completed LEFT `kind=message` renders as a diagram (official mermaid / iOS WKWebView; invalid falls back to fence chrome; streaming stays code until complete). **v0.46:** TeX math on completed LEFT `kind=message` (inline `\( \)` / block `$$`; KaTeX; invalid falls back to monospace source; single `$` stays currency). **v0.47:** stick-to-bottom while streaming (~64px slack; freeze on scroll-up; Send / Regenerates snap and re-arm; 12px muted Jump to latest while a new assistant bubble arrives stuck). **v0.48:** completed LEFT `kind=message` splits on blank lines into short multi-bubbles after the stream completes (mid-stream stays one bubble; Copy / Speak / Regenerates only on the last bubble). **v0.49:** optimistic user-RIGHT bubble on Send (reconcile on success; restore composer + muted Couldn't send. on failure). **v0.50:** Stop generating mid-stream (12px muted Stop at chat-column bottom; client abort; keep partial LEFT as completed; hide when idle; composer focused). **v0.51:** waiting ··· until first token (after Send until first assistant token/content; hide when the LEFT bubble streams). Raw HTML still out of scope.
 - [F2 — Pairing: local token file and LAN paste](https://github.com/chinghauchu/snorlax-bot/issues/16)
 - [F3 — Edit agent name and instructions in the desktop UI](https://github.com/chinghauchu/snorlax-bot/issues/19) — v0.3 identity pane PATCHes name/title/description/avatar (no `instructions` field)
 - Attachment chips: **v0.25** user-right composer + transcript (paperclip /
@@ -91,7 +91,10 @@ Concrete follow-ups after v0. Filed on GitHub against
   muted Couldn't send.). **v0.50:** Stop generating mid-stream
   (12px muted Stop at chat-column bottom, above Jump to
   latest; client abort; keep partial LEFT as completed;
-  hide when idle; composer stays focused). Raw HTML still later.
+  hide when idle; composer stays focused). **v0.51:** waiting
+  ··· until first token (Grok Bot feel; after Send until the
+  first assistant token; hide when the LEFT bubble streams).
+  Raw HTML still later.
   Full sandbox computer GUI (browser, VNC, terminal)
   stays later.
 
@@ -181,3 +184,9 @@ Concrete follow-ups after v0. Filed on GitHub against
   tokens; the partial LEFT stays as completed. Hide Stop
   when idle. Composer stays focused. Desktop matches.
   OpenAPI stays 0.18.0. No POST /cancel.
+- **v0.51:** waiting ··· until first token. After Send, show
+  12pt muted waiting ··· on the LEFT until the first
+  assistant token/content. Hide it and show the normal
+  streaming LEFT bubble once tokens arrive. Works with
+  optimistic Send and Stop. Desktop matches. OpenAPI stays
+  0.18.0.
