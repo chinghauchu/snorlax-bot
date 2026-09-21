@@ -244,6 +244,11 @@ v0.53: Esc = Stop while generating is client-only
 (window Esc / iOS UIKeyCommand). Runtime idle (no
 POST /cancel). OpenAPI stays 0.18.0.
 
+v0.54: same-turn multi-bubble gap is client-only
+(6px / 6pt inside a completed LEFT turn; 12px / 12pt
+between turns / after tool-widget-approve-connect).
+Runtime idle. OpenAPI stays 0.18.0.
+
 ## MCP (`mcp.json`)
 
 The runtime is the MCP client. Desktop and iOS never speak MCP. Put

@@ -256,6 +256,12 @@ tapping Stop. Do not steal Esc during IME or a pending
 widget / approve / connect card. Desktop window Esc; iOS
 UIKeyCommand Escape. No new routes. OpenAPI stays 0.18.0.
 
+v0.54 same-turn multi-bubble gap: clients display consecutive
+LEFT bubbles from the same completed turn 6px / 6pt apart.
+Different turns / after tool / widget / approve / connect
+stay 12px / 12pt. Mid-stream unchanged. Runtime does not
+split. No new routes. OpenAPI stays 0.18.0.
+
 A copy is also kept at `runtime/openapi.yaml` and `desktop/openapi.yaml`
 so those trees are self-contained. Do not let the files diverge.
 

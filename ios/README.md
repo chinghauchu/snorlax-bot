@@ -76,6 +76,11 @@ the client stream — same as tapping Stop. Do not steal Esc
 while IME is composing (`markedTextRange`) or when a pending
 widget / approve / connect card is up. On-screen Stop
 unchanged. OpenAPI stays 0.18.0.
+v0.54: same-turn multi-bubble gap. Consecutive LEFT bubbles
+from the same completed turn (blank-line split) use a 6pt
+gap. Different turns / after tool / widget / approve /
+connect stay 12pt. Mid-stream (one growing bubble)
+unchanged. User-right unchanged. OpenAPI stays 0.18.0.
 v0.32: dedicated `kind=approve` LEFT card for mutating shell (not a
 WidgetCard fork). Approve / Deny / ×; long-press copies the command.
 Question widgets
@@ -170,7 +175,7 @@ Output: `SnorlaxBot/Generated/V1Types.swift`. Do not hand-edit that file.
 - `SnorlaxBot/SettingsSheet.swift` — URL, token, plugins list + Add sheet
 - `SnorlaxBot/ConnectCard.swift` — `kind=connect` LEFT card
 - `SnorlaxBot/ApproveCard.swift` — `kind=approve` LEFT card
-- `SnorlaxBot/AssistantMarkdown.swift` — assistant LEFT markdown + v0.48 blank-line split
+- `SnorlaxBot/AssistantMarkdown.swift` — assistant LEFT markdown + v0.48 blank-line split + v0.54 6pt same-turn gap
 - `SnorlaxBot/MermaidView.swift` — v0.45 WKWebView mermaid (local)
 - `SnorlaxBot/mermaid.min.js` — bundled official mermaid (IIFE)
 - `SnorlaxBot/MathView.swift` — v0.46 WKWebView KaTeX (local)

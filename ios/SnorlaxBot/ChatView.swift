@@ -391,11 +391,16 @@ struct ChatView: View {
         return senderKey(messages[index - 1]) == senderKey(messages[index])
     }
 
-    /// 4pt inside a streak (same sender), 16pt when the sender changes.
+    /// v0.54: LEFT different turns / after tool-widget-approve-connect are
+    /// 12pt. User-right stays 4pt same-sender / 16pt speaker change.
     private func turnSpacing(at index: Int, in messages: [Message], message: Message? = nil) -> CGFloat {
-        if message?.isHandoffRoot == true { return index == 0 ? 0 : 16 }
-        guard index > 0 else { return 0 }
-        return sameSender(at: index, in: messages) ? 4 : 16
+        let row = message ?? (messages.indices.contains(index) ? messages[index] : nil)
+        return AssistantBubbleGap.turnSpacing(
+            index: index,
+            isUser: row?.isFromUser == true,
+            sameSender: sameSender(at: index, in: messages),
+            isHandoffRoot: row?.isHandoffRoot == true
+        )
     }
 
     private static func showsCopy(
@@ -952,7 +957,7 @@ private struct MessageBubble: View {
                     userAttachments
                     if !leftBubbles.isEmpty {
                         HStack(alignment: .top, spacing: 0) {
-                            VStack(alignment: .leading, spacing: 4) {
+                            VStack(alignment: .leading, spacing: AssistantBubbleGap.sameTurn) {
                                 ForEach(Array(leftBubbles.enumerated()), id: \.offset) { offset, part in
                                     HStack(alignment: .lastTextBaseline, spacing: 2) {
                                         AssistantMarkdown(
