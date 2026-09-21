@@ -96,7 +96,8 @@ test("on complete or Stop, markdown renders once then the multi-bubble split", (
   const md = assistantMdSlice();
   assert.match(md, /<MarkdownBody/);
   assert.match(md, /completed=\{completed\}/);
-  assert.match(md, /splitAssistantBubbles/);
+  assert.match(app, /splitAssistantBubbles/);
+  assert.match(app, /leftBubbles/);
   assert.match(app, /shouldOfferStop\(busy\)/);
   assert.match(app, /onStopGenerating/);
   assert.equal(shouldOfferStop(true), true);
