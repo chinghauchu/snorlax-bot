@@ -69,3 +69,4 @@ jobs:
           python3 ios/scripts/test_ios_stick_to_bottom.py
           python3 ios/scripts/test_ios_assistant_bubbles.py
           python3 ios/scripts/test_ios_optimistic_send.py
+          python3 ios/scripts/test_ios_stop_generating.py

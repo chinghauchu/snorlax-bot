@@ -52,6 +52,12 @@ Send until the round-trip settles. On success, reconcile
 with the server turn (no duplicate). On 4xx/5xx, restore
 text + chips and a muted 12pt Couldn't send. hint.
 Regenerates unchanged. OpenAPI stays 0.18.0.
+v0.50: Stop generating mid-stream. While an assistant LEFT
+turn is streaming, offer a 12pt muted Stop at the bottom of
+the chat column (above Jump to latest if both show). Tap
+aborts the in-flight stream; stop appending tokens; the
+partial LEFT stays as completed. Hide Stop when idle.
+Composer stays focused. OpenAPI stays 0.18.0.
 v0.32: dedicated `kind=approve` LEFT card for mutating shell (not a
 WidgetCard fork). Approve / Deny / ×; long-press copies the command.
 Question widgets
@@ -128,6 +134,7 @@ python3 ios/scripts/test_skill_autocomplete.py
 python3 ios/scripts/test_blank_new_skill.py
 python3 ios/scripts/test_slack_github_routines.py
 python3 ios/scripts/test_ios_dictation.py
+python3 ios/scripts/test_ios_stop_generating.py
 ```
 
 Output: `SnorlaxBot/Generated/V1Types.swift`. Do not hand-edit that file.
@@ -151,6 +158,7 @@ Output: `SnorlaxBot/Generated/V1Types.swift`. Do not hand-edit that file.
 - `SnorlaxBot/MathView.swift` — v0.46 WKWebView KaTeX (local)
 - `SnorlaxBot/StickToBottom.swift` — v0.47 stick/freeze/Jump to latest
 - `SnorlaxBot/OptimisticSend.swift` — v0.49 optimistic user-RIGHT on Send
+- `SnorlaxBot/StopGenerating.swift` — v0.50 12pt muted Stop (client abort)
 - `SnorlaxBot/katex.min.js` / `katex.min.css` / `fonts/` — bundled KaTeX
 - `SnorlaxBot/RuntimeClient.swift` — `/v1` + SSE
 - `SnorlaxBot/Generated/V1Types.swift` — OpenAPI models

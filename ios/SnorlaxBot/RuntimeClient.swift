@@ -386,42 +386,52 @@ struct RuntimeClient: Sendable {
         config.timeoutIntervalForResource = 3600
         config.waitsForConnectivity = false
         let streamSession = URLSession(configuration: config)
-        let (bytes, response) = try await streamSession.bytes(for: request)
-        guard let http = response as? HTTPURLResponse else { throw RuntimeError.http(status: 0, message: "No response") }
-        if !(200 ..< 300).contains(http.statusCode) {
-            var collected = Data()
-            for try await chunk in bytes {
-                collected.append(chunk)
+        do {
+            let (bytes, response): (URLSession.AsyncBytes, URLResponse) = try await withTaskCancellationHandler {
+                try await streamSession.bytes(for: request)
+            } onCancel: {
+                streamSession.invalidateAndCancel()
             }
-            throw Self.error(from: collected, status: http.statusCode)
-        }
-
-        var eventName = "message"
-        var dataLines: [String] = []
-
-        func flush() {
-            guard !dataLines.isEmpty else { return }
-            let raw = dataLines.joined(separator: "\n")
-            dataLines = []
-            let name = eventName
-            eventName = "message"
-            guard let event = StreamEvent.parse(name: name, data: raw) else { return }
-            onEvent(event)
-        }
-
-        for try await line in bytes.lines {
-            if line.isEmpty {
-                flush()
-                continue
+            guard let http = response as? HTTPURLResponse else { throw RuntimeError.http(status: 0, message: "No response") }
+            if !(200 ..< 300).contains(http.statusCode) {
+                var collected = Data()
+                for try await chunk in bytes {
+                    collected.append(chunk)
+                }
+                throw Self.error(from: collected, status: http.statusCode)
             }
-            if line.hasPrefix(":") { continue }
-            if line.hasPrefix("event:") {
-                eventName = line.dropFirst(6).trimmingCharacters(in: .whitespaces)
-            } else if line.hasPrefix("data:") {
-                dataLines.append(line.dropFirst(5).trimmingCharacters(in: .whitespaces))
+
+            var eventName = "message"
+            var dataLines: [String] = []
+
+            func flush() {
+                guard !dataLines.isEmpty else { return }
+                let raw = dataLines.joined(separator: "\n")
+                dataLines = []
+                let name = eventName
+                eventName = "message"
+                guard let event = StreamEvent.parse(name: name, data: raw) else { return }
+                onEvent(event)
             }
+
+            for try await line in bytes.lines {
+                try Task.checkCancellation()
+                if line.isEmpty {
+                    flush()
+                    continue
+                }
+                if line.hasPrefix(":") { continue }
+                if line.hasPrefix("event:") {
+                    eventName = line.dropFirst(6).trimmingCharacters(in: .whitespaces)
+                } else if line.hasPrefix("data:") {
+                    dataLines.append(line.dropFirst(5).trimmingCharacters(in: .whitespaces))
+                }
+            }
+            flush()
+        } catch {
+            streamSession.invalidateAndCancel()
+            throw error
         }
-        flush()
     }
 
     func resolve(_ urlString: String) -> URL? {

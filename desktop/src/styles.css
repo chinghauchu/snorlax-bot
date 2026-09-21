@@ -316,12 +316,19 @@ button:disabled {
   padding: 16px 20px 24px;
 }
 
-.jump-latest {
+.transcript-chips {
   position: absolute;
   left: 50%;
   bottom: 12px;
   transform: translateX(-50%);
   z-index: 2;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+}
+
+.stop-generating {
   margin: 0;
   padding: 6px 10px;
   border: 1px solid var(--border);
@@ -333,6 +340,19 @@ button:disabled {
   white-space: nowrap;
 }
 
+.jump-latest {
+  margin: 0;
+  padding: 6px 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg-elevated);
+  color: var(--text-muted);
+  font-size: 12px;
+  line-height: 1.3;
+  white-space: nowrap;
+}
+
+.stop-generating:hover,
 .jump-latest:hover {
   color: var(--text);
   background: var(--bg-elevated);

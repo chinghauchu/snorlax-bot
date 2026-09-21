@@ -232,6 +232,13 @@ message (no duplicate). On 4xx/5xx, restore text + chips and
 show muted Couldn't send. Regenerates unchanged. No new
 routes. OpenAPI stays 0.18.0.
 
+v0.50 Stop generating mid-stream: 12px/12pt muted Stop at the
+bottom of the chat column (above Jump to latest). Clients abort
+the in-flight SSE (`AbortController` / SSE disconnect) and keep
+the partial LEFT as completed. Hide Stop when idle. Composer
+stays focused. No POST /cancel. No new routes. OpenAPI stays
+0.18.0.
+
 A copy is also kept at `runtime/openapi.yaml` and `desktop/openapi.yaml`
 so those trees are self-contained. Do not let the files diverge.
 

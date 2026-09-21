@@ -173,6 +173,13 @@ import {
   reconcileOptimistic,
   shouldBlockSend,
 } from "./optimisticSend";
+import {
+  STOP_LABEL,
+  isAbortError,
+  keepPartialOnStop,
+  shouldOfferStop,
+  shouldRefetchAfterStop,
+} from "./stopGenerating";
 import { catalogInstallBody, isConnect, parsePluginArgs, pluginStatusLabel } from "./connect";
 import { isApprove } from "./approve";
 import { isWidget } from "./widget";
@@ -566,6 +573,7 @@ export function App() {
   const [dropTarget, setDropTarget] = useState(false);
   const [busy, setBusy] = useState(false);
   const inFlight = useRef(false);
+  const abortRef = useRef<AbortController | null>(null);
   const [composerError, setComposerError] = useState<string | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [mentionOpen, setMentionOpen] = useState(false);
@@ -1585,6 +1593,8 @@ export function App() {
     const extra = opts.extra;
     let openedPluginId: string | null = null;
     let userMsg: ChatMessage | null = null;
+    const ac = new AbortController();
+    abortRef.current = ac;
     if (opts.optimisticUser) {
       userMsg = optimisticUserMessage({
         agentId: active.id,
@@ -1685,6 +1695,7 @@ export function App() {
         active.kind === "channel" && threadId ? threadId : undefined,
         active.kind === "channel" ? undefined : lastExtraChannelId.current,
         extra,
+        ac.signal,
       );
       if (openedPluginId) {
         await waitUntilPluginConnected(session, openedPluginId);
@@ -1714,6 +1725,12 @@ export function App() {
         }
       }
     } catch (err) {
+      if (isAbortError(err) || ac.signal.aborted) {
+        if (!shouldRefetchAfterStop()) {
+          setMessages((prev) => keepPartialOnStop(prev));
+        }
+        return;
+      }
       if (userMsg) {
         const status = err instanceof ApiError ? err.status : 0;
         if (status === 0 || isHttpSendFailure(status)) {
@@ -1747,10 +1764,16 @@ export function App() {
         }
       }
     } finally {
+      if (abortRef.current === ac) abortRef.current = null;
       inFlight.current = false;
       setBusy(false);
       focusComposer();
     }
+  }
+
+  function onStopGenerating() {
+    abortRef.current?.abort();
+    focusComposer();
   }
 
   async function onSend() {
@@ -2837,14 +2860,27 @@ export function App() {
             ) : null}
           </div>
         </div>
-        {showJump ? (
-          <button
-            type="button"
-            className="jump-latest"
-            onClick={onJumpLatest}
-          >
-            {JUMP_TO_LATEST_LABEL}
-          </button>
+        {(shouldOfferStop(busy) || showJump) ? (
+          <div className="transcript-chips">
+            {shouldOfferStop(busy) ? (
+              <button
+                type="button"
+                className="stop-generating"
+                onClick={onStopGenerating}
+              >
+                {STOP_LABEL}
+              </button>
+            ) : null}
+            {showJump ? (
+              <button
+                type="button"
+                className="jump-latest"
+                onClick={onJumpLatest}
+              >
+                {JUMP_TO_LATEST_LABEL}
+              </button>
+            ) : null}
+          </div>
         ) : null}
         </div>
 

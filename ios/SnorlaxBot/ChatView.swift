@@ -203,25 +203,48 @@ struct ChatView: View {
                 followStream(proxy)
             }
             .simultaneousGesture(TapGesture().onEnded { model.dismissSkillPicker() })
-            if stick.showJump {
-                Button(StickToBottom.jumpLabel) {
-                    snapToBottom(proxy)
-                }
-                .font(.system(size: 12))
-                .foregroundStyle(.secondary)
-                .buttonStyle(.plain)
-                .padding(.horizontal, 10)
-                .padding(.vertical, 6)
-                .background {
-                    RoundedRectangle(cornerRadius: 8, style: .continuous)
-                        .fill(Color(uiColor: .secondarySystemBackground))
-                        .overlay {
-                            RoundedRectangle(cornerRadius: 8, style: .continuous)
-                                .stroke(Color(uiColor: .separator), lineWidth: 1)
+            if StopGenerating.shouldOffer(busy: model.isSending) || stick.showJump {
+                VStack(spacing: 6) {
+                    if StopGenerating.shouldOffer(busy: model.isSending) {
+                        Button(StopGenerating.label) {
+                            model.stopGenerating()
                         }
+                        .font(.system(size: 12))
+                        .foregroundStyle(.secondary)
+                        .buttonStyle(.plain)
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 6)
+                        .background {
+                            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                                .fill(Color(uiColor: .secondarySystemBackground))
+                                .overlay {
+                                    RoundedRectangle(cornerRadius: 8, style: .continuous)
+                                        .stroke(Color(uiColor: .separator), lineWidth: 1)
+                                }
+                        }
+                        .accessibilityLabel(StopGenerating.label)
+                    }
+                    if stick.showJump {
+                        Button(StickToBottom.jumpLabel) {
+                            snapToBottom(proxy)
+                        }
+                        .font(.system(size: 12))
+                        .foregroundStyle(.secondary)
+                        .buttonStyle(.plain)
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 6)
+                        .background {
+                            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                                .fill(Color(uiColor: .secondarySystemBackground))
+                                .overlay {
+                                    RoundedRectangle(cornerRadius: 8, style: .continuous)
+                                        .stroke(Color(uiColor: .separator), lineWidth: 1)
+                                }
+                        }
+                        .accessibilityLabel(StickToBottom.jumpLabel)
+                    }
                 }
                 .padding(.bottom, 12)
-                .accessibilityLabel(StickToBottom.jumpLabel)
             }
             }
         }

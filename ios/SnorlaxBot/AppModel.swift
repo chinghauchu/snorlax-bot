@@ -56,6 +56,8 @@ final class AppModel {
     var wantsComposerFocus = false
     /// Bumped on Send / Regenerate so the transcript snaps and re-arms stick.
     var stickBump = 0
+    private var streamTask: Task<Void, Never>?
+    private var streamEpoch = 0
     var showSettings = false
     var showProfile = false
     var routines: [Routine] = []
@@ -101,6 +103,13 @@ final class AppModel {
 
     var canCompose: Bool {
         client != nil && !isSending && selectedAgent != nil && !computerTakeoverOpen
+    }
+
+    func stopGenerating() {
+        guard isSending else { return }
+        streamEpoch += 1
+        streamTask?.cancel()
+        wantsComposerFocus = true
     }
 
     var isAttaching: Bool { attachInFlight > 0 }
@@ -791,52 +800,64 @@ final class AppModel {
         messages = OptimisticSend.insert(messages, user)
         toolTraces = []
 
-        do {
-            try await client.sendMessage(
-                agentId: agent.id,
-                content: content,
-                images: [],
-                mentions: mentionIDs,
-                replyTo: agent.isChannel ? threadID : nil,
-                channelId: agent.isChannel ? nil : lastExtraChannelID,
-                attachmentIds: chips.map(\.id)
-            ) { [weak self] event in
-                Task { @MainActor in
-                    self?.handle(event, agentId: agent.id)
-                }
-            }
-            if !Task.isCancelled, selectedAgentID == agent.id {
-                let listed = try await client.listMessages(agentId: agent.id, threadId: threadID)
-                messages = OptimisticSend.reconcile(listed: listed)
-                toolTraces = []
-                prunePreviews()
-                if !agent.isChannel {
-                    if let channelId = messages.compactMap({ $0.visibleJump(in: self.agents)?.channelId }).last {
-                        unreadChannelIDs.insert(channelId)
+        let epoch = streamEpoch
+        let work = Task { @MainActor in
+            do {
+                try await client.sendMessage(
+                    agentId: agent.id,
+                    content: content,
+                    images: [],
+                    mentions: mentionIDs,
+                    replyTo: agent.isChannel ? threadID : nil,
+                    channelId: agent.isChannel ? nil : lastExtraChannelID,
+                    attachmentIds: chips.map(\.id)
+                ) { [weak self] event in
+                    Task { @MainActor in
+                        guard let self, self.streamEpoch == epoch else { return }
+                        self.handle(event, agentId: agent.id)
                     }
                 }
-            }
-        } catch is CancellationError {
-            await refreshMessages()
-        } catch {
-            let status: Int
-            if let runtime = error as? RuntimeError, case .http(let code, _) = runtime {
-                status = code
-            } else {
-                status = 0
-            }
-            if status == 0 || OptimisticSend.isHttpSendFailure(status) {
-                let failed = OptimisticSend.fail(messages, id: user.id)
-                messages = failed.messages
-                localPreviews[user.id] = nil
-                draft = content
-                pendingComposerCaret = content.utf16.count
-                pendingAttachments = chips
-                composerError = failed.hint
-            } else {
-                errorMessage = error.localizedDescription
+                if Task.isCancelled || self.streamEpoch != epoch { return }
+                if selectedAgentID == agent.id {
+                    let listed = try await client.listMessages(agentId: agent.id, threadId: threadID)
+                    messages = OptimisticSend.reconcile(listed: listed)
+                    toolTraces = []
+                    prunePreviews()
+                    if !agent.isChannel {
+                        if let channelId = messages.compactMap({ $0.visibleJump(in: self.agents)?.channelId }).last {
+                            unreadChannelIDs.insert(channelId)
+                        }
+                    }
+                }
+            } catch {
+                if StopGenerating.isAbort(error) || Task.isCancelled || self.streamEpoch != epoch {
+                    if !StopGenerating.shouldRefetchAfterStop() {
+                        messages = StopGenerating.keepPartial(messages)
+                    }
+                    return
+                }
+                let status: Int
+                if let runtime = error as? RuntimeError, case .http(let code, _) = runtime {
+                    status = code
+                } else {
+                    status = 0
+                }
+                if status == 0 || OptimisticSend.isHttpSendFailure(status) {
+                    let failed = OptimisticSend.fail(messages, id: user.id)
+                    messages = failed.messages
+                    localPreviews[user.id] = nil
+                    draft = content
+                    pendingComposerCaret = content.utf16.count
+                    pendingAttachments = chips
+                    composerError = failed.hint
+                } else {
+                    errorMessage = error.localizedDescription
+                }
             }
         }
+        streamTask = work
+        await work.value
+        streamTask = nil
     }
 
     func answerWidget(id: String, values: [String]) async {
@@ -1018,34 +1039,46 @@ final class AppModel {
         toolTraces = []
         isSending = true
         defer { isSending = false }
-        do {
-            try await client.sendMessage(
-                agentId: agent.id,
-                content: "",
-                images: [],
-                replyTo: nil,
-                channelId: lastExtraChannelID,
-                regenerate: true
-            ) { [weak self] event in
-                Task { @MainActor in
-                    self?.handle(event, agentId: agent.id)
+        let epoch = streamEpoch
+        let work = Task { @MainActor in
+            do {
+                try await client.sendMessage(
+                    agentId: agent.id,
+                    content: "",
+                    images: [],
+                    replyTo: nil,
+                    channelId: lastExtraChannelID,
+                    regenerate: true
+                ) { [weak self] event in
+                    Task { @MainActor in
+                        guard let self, self.streamEpoch == epoch else { return }
+                        self.handle(event, agentId: agent.id)
+                    }
                 }
+                if Task.isCancelled || self.streamEpoch != epoch { return }
+                if selectedAgentID == agent.id {
+                    messages = try await client.listMessages(agentId: agent.id, threadId: threadID)
+                    toolTraces = []
+                    prunePreviews()
+                }
+            } catch {
+                if StopGenerating.isAbort(error) || Task.isCancelled || self.streamEpoch != epoch {
+                    if !StopGenerating.shouldRefetchAfterStop() {
+                        messages = StopGenerating.keepPartial(messages)
+                    }
+                    return
+                }
+                if let runtime = error as? RuntimeError, case .http(_, let message) = runtime {
+                    composerError = message
+                } else {
+                    errorMessage = error.localizedDescription
+                }
+                await refreshMessages()
             }
-            if !Task.isCancelled, selectedAgentID == agent.id {
-                messages = try await client.listMessages(agentId: agent.id, threadId: threadID)
-                toolTraces = []
-                prunePreviews()
-            }
-        } catch is CancellationError {
-            await refreshMessages()
-        } catch {
-            if let runtime = error as? RuntimeError, case .http(_, let message) = runtime {
-                composerError = message
-            } else {
-                errorMessage = error.localizedDescription
-            }
-            await refreshMessages()
         }
+        streamTask = work
+        await work.value
+        streamTask = nil
     }
 
     private func dropLastAssistantTurn() {
@@ -1084,36 +1117,48 @@ final class AppModel {
         toolTraces = []
         isSending = true
         defer { isSending = false }
-        do {
-            try await client.sendMessage(
-                agentId: agent.id,
-                content: "",
-                images: [],
-                replyTo: agent.isChannel ? threadID : nil,
-                channelId: agent.isChannel ? nil : lastExtraChannelID,
-                widgetReply: widgetReply,
-                connectReply: connectReply,
-                approveReply: approveReply
-            ) { [weak self] event in
-                Task { @MainActor in
-                    self?.handle(event, agentId: agent.id)
+        let epoch = streamEpoch
+        let work = Task { @MainActor in
+            do {
+                try await client.sendMessage(
+                    agentId: agent.id,
+                    content: "",
+                    images: [],
+                    replyTo: agent.isChannel ? threadID : nil,
+                    channelId: agent.isChannel ? nil : lastExtraChannelID,
+                    widgetReply: widgetReply,
+                    connectReply: connectReply,
+                    approveReply: approveReply
+                ) { [weak self] event in
+                    Task { @MainActor in
+                        guard let self, self.streamEpoch == epoch else { return }
+                        self.handle(event, agentId: agent.id)
+                    }
                 }
+                if Task.isCancelled || self.streamEpoch != epoch { return }
+                if selectedAgentID == agent.id {
+                    messages = try await client.listMessages(agentId: agent.id, threadId: threadID)
+                    toolTraces = []
+                    prunePreviews()
+                }
+            } catch {
+                if StopGenerating.isAbort(error) || Task.isCancelled || self.streamEpoch != epoch {
+                    if !StopGenerating.shouldRefetchAfterStop() {
+                        messages = StopGenerating.keepPartial(messages)
+                    }
+                    return
+                }
+                if let runtime = error as? RuntimeError, case .http(_, let message) = runtime {
+                    composerError = message
+                } else {
+                    errorMessage = error.localizedDescription
+                }
+                await refreshMessages()
             }
-            if !Task.isCancelled, selectedAgentID == agent.id {
-                messages = try await client.listMessages(agentId: agent.id, threadId: threadID)
-                toolTraces = []
-                prunePreviews()
-            }
-        } catch is CancellationError {
-            await refreshMessages()
-        } catch {
-            if let runtime = error as? RuntimeError, case .http(_, let message) = runtime {
-                composerError = message
-            } else {
-                errorMessage = error.localizedDescription
-            }
-            await refreshMessages()
         }
+        streamTask = work
+        await work.value
+        streamTask = nil
     }
 
     func refreshMessages() async {
