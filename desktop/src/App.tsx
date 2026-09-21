@@ -160,17 +160,23 @@ import {
   showAssistantRegenerate,
 } from "./messageActions";
 import {
+  JUMP_CHIP_HIDDEN,
   JUMP_TO_LATEST_LABEL,
   NEAR_BOTTOM_PX,
   STICK_ARMED,
   assistantBubbleSignature,
   escapeJumpsToLatest,
   isNearBottom,
+  jumpChipAppear,
+  jumpChipDismiss,
+  jumpChipFadeMs,
+  jumpChipShown,
   onAssistantActivity,
   onJumpToLatest,
   onSendOrRegenerate,
   onUserScroll,
   shouldFollowStream,
+  type JumpChipPaint,
   type StickState,
 } from "./stickToBottom";
 import {
@@ -688,6 +694,7 @@ export function App() {
   const stickRef = useRef<StickState>(STICK_ARMED);
   const lastAssistantSig = useRef("");
   const [showJump, setShowJump] = useState(false);
+  const [jumpPaint, setJumpPaint] = useState<JumpChipPaint>(JUMP_CHIP_HIDDEN);
   const composerRef = useRef<HTMLTextAreaElement>(null);
   const composerRootRef = useRef<HTMLElement>(null);
   const skillTypeaheadRef = useRef<HTMLUListElement>(null);
@@ -934,6 +941,25 @@ export function App() {
       focusComposer();
     }
   }, [applyStick, focusComposer]);
+
+  useEffect(() => {
+    const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    if (showJump) {
+      setJumpPaint(jumpChipAppear(reduce));
+      if (reduce) return;
+      const frame = requestAnimationFrame(() => {
+        setJumpPaint(jumpChipShown());
+      });
+      return () => cancelAnimationFrame(frame);
+    }
+    setJumpPaint(jumpChipDismiss(reduce));
+    const ms = jumpChipFadeMs(reduce);
+    if (ms === 0) return;
+    const timer = window.setTimeout(() => {
+      setJumpPaint(JUMP_CHIP_HIDDEN);
+    }, ms);
+    return () => window.clearTimeout(timer);
+  }, [showJump]);
 
   useLayoutEffect(() => {
     applyStick(onSendOrRegenerate());
@@ -3067,7 +3093,7 @@ export function App() {
             ) : null}
           </div>
         </div>
-        {(shouldOfferStop(busy) || showJump) ? (
+        {(shouldOfferStop(busy) || showJump || jumpPaint.mounted) ? (
           <div className="transcript-chips">
             {shouldOfferStop(busy) ? (
               <button
@@ -3078,10 +3104,11 @@ export function App() {
                 {STOP_LABEL}
               </button>
             ) : null}
-            {showJump ? (
+            {showJump || jumpPaint.mounted ? (
               <button
                 type="button"
                 className="jump-latest"
+                data-shown={jumpPaint.shown ? "true" : "false"}
                 onClick={onJumpLatest}
               >
                 {JUMP_TO_LATEST_LABEL}

@@ -201,6 +201,10 @@ v0.62: focus composer after Jump (Grok Bot feel). When
 Jump to latest runs (chip click or Esc=Jump), return focus
 to the composer after scroll/re-arm/dismiss. Complete /
 error / empty leave focus alone. OpenAPI stays 0.18.0.
+v0.63: Jump chip fade (Grok Bot feel). Appear and dismiss
+with a 120ms opacity fade. Reduce Motion on: instant
+show/hide (no fade). Click / Esc=Jump behavior unchanged.
+OpenAPI stays 0.18.0.
 Assistant LEFT
 `kind=message` is 14px markdown (16/14 headings) in short
 agent bubbles after complete; user-right stays plain (`https://` tappable). Fenced code is full-turn language + Copy at 12px/1.45.

@@ -309,6 +309,11 @@ composer after scroll/re-arm/dismiss (iOS only with a
 hardware keyboard). Complete / error / empty do not steal
 focus. No new routes. OpenAPI stays 0.18.0.
 
+v0.63 Jump chip fade: appear and dismiss with a 120ms
+opacity fade. Reduce Motion on → instant show/hide. Click /
+Esc=Jump behavior unchanged. No new routes. OpenAPI stays
+0.18.0.
+
 A copy is also kept at `runtime/openapi.yaml` and `desktop/openapi.yaml`
 so those trees are self-contained. Do not let the files diverge.
 

@@ -65,7 +65,8 @@ NVIDIA DGX Spark.
   Stop while generating; v0.61 Copy shows muted Copied beside the control
   for 1.2s without replacing the Copy label or a toast; v0.62 Jump (chip
   or Esc) returns focus to the composer — desktop always, iOS hardware
-  keyboard only), a display-only
+  keyboard only; v0.63 Jump chip appear/dismiss is a 120ms opacity fade,
+  instant when Reduce Motion is on), a display-only
   Box computer preview (`GET /v1/agents/{id}/computer` JSON; Bearer PNG at
   `/computer/screenshot`; identity pane), desktop Box takeover
   (`POST /computer/session` → 201 `{ sessionId }`; `DELETE .../session` or

@@ -350,6 +350,22 @@ button:disabled {
   font-size: 12px;
   line-height: 1.3;
   white-space: nowrap;
+  opacity: 0;
+  pointer-events: none;
+  /* v0.63: 120ms; keep in lockstep with JUMP_CHIP_FADE_MS */
+  transition: opacity 120ms ease;
+}
+
+.jump-latest[data-shown="true"] {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+/* v0.63: Reduce Motion on → instant show/hide (no fade). */
+@media (prefers-reduced-motion: reduce) {
+  .jump-latest {
+    transition: none;
+  }
 }
 
 .stop-generating:hover,

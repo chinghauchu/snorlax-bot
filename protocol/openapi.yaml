@@ -1195,6 +1195,19 @@ info:
     `http://127.0.0.1:8000/v1` untouched. Never reintroduce
     computerPane.ts. Leave stale PRs #23 and #24 untouched.
     OpenAPI **0.18.0**.
+
+    v0.63: Jump chip fade. One impl PR covering desktop +
+    iOS. Spec rides this PR. **No second PR.** OpenAPI stays
+    **0.18.0**. Do not bump. No new HTTP routes. Runtime idle.
+    Jump to latest chip: appear and dismiss with a 120ms
+    opacity fade. Reduce Motion on: instant show/hide (no
+    fade). Click / Esc=Jump behavior unchanged (scroll,
+    re-arm, dismiss, focus composer). Keep v0.47–v0.62
+    intact. Out: VNC, extra channels, store, coding-agent,
+    new surfaces. Clients never speak MCP or the model. Mac
+    oMLX at `http://127.0.0.1:8000/v1` untouched. Never
+    reintroduce computerPane.ts. Leave stale PRs #23 and #24
+    untouched. OpenAPI **0.18.0**.
   license:
     name: Apache-2.0
     identifier: Apache-2.0

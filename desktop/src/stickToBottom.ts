@@ -7,6 +7,40 @@ export const NEAR_BOTTOM_PX = 64;
 
 export const JUMP_TO_LATEST_LABEL = "Jump to latest";
 
+/** v0.63: Jump chip appear/dismiss opacity fade. Instant under Reduce Motion. */
+export const JUMP_CHIP_FADE_MS = 120;
+
+export type JumpChipPaint = {
+  /** Keep the chip in the tree, including during the dismiss fade. */
+  mounted: boolean;
+  /** Fully opaque and clickable. False at the start of appear / during dismiss. */
+  shown: boolean;
+};
+
+export const JUMP_CHIP_HIDDEN: JumpChipPaint = { mounted: false, shown: false };
+
+/** Appear/dismiss opacity fade. Instant when Reduce Motion is on. */
+export function jumpChipFadeMs(reduceMotion: boolean): number {
+  return reduceMotion ? 0 : JUMP_CHIP_FADE_MS;
+}
+
+/** First paint when the chip appears. Reduce Motion → fully shown. */
+export function jumpChipAppear(reduceMotion: boolean): JumpChipPaint {
+  return { mounted: true, shown: reduceMotion };
+}
+
+/** After the opening frame (or instantly under Reduce Motion). */
+export function jumpChipShown(): JumpChipPaint {
+  return { mounted: true, shown: true };
+}
+
+/** First paint when the chip dismisses. Reduce Motion → unmount. */
+export function jumpChipDismiss(reduceMotion: boolean): JumpChipPaint {
+  return reduceMotion
+    ? JUMP_CHIP_HIDDEN
+    : { mounted: true, shown: false };
+}
+
 export type StickBox = {
   scrollTop: number;
   scrollHeight: number;

@@ -130,6 +130,10 @@ returns focus to the composer after scroll/re-arm/dismiss
 — only when a hardware keyboard is attached (do not force
 the software keyboard up). Complete / error / empty leave
 focus alone. OpenAPI stays 0.18.0.
+v0.63: Jump chip fade. Appear and dismiss with a 120ms
+opacity fade. Reduce Motion on: instant show/hide (no
+fade). Click / Esc=Jump behavior unchanged. OpenAPI stays
+0.18.0.
 v0.32: dedicated `kind=approve` LEFT card for mutating shell (not a
 WidgetCard fork). Approve / Deny / ×; long-press copies the command.
 Question widgets
@@ -213,6 +217,7 @@ python3 ios/scripts/test_ios_focus_composer_after_stop.py
 python3 ios/scripts/test_ios_esc_jump.py
 python3 ios/scripts/test_ios_copied_feedback.py
 python3 ios/scripts/test_ios_focus_composer_after_jump.py
+python3 ios/scripts/test_ios_jump_chip_fade.py
 ```
 
 Output: `SnorlaxBot/Generated/V1Types.swift`. Do not hand-edit that file.
@@ -221,7 +226,7 @@ Output: `SnorlaxBot/Generated/V1Types.swift`. Do not hand-edit that file.
 
 - `SnorlaxBot/SnorlaxBotApp.swift` — entry, theme, accent
 - `SnorlaxBot/ContentView.swift` — iPhone stack / iPad split chrome
-- `SnorlaxBot/ChatView.swift` — transcript; v0.61 Copied beside Copy for 1.2s; v0.62 focus composer after Jump (hardware keyboard only)
+- `SnorlaxBot/ChatView.swift` — transcript; v0.61 Copied beside Copy for 1.2s; v0.62 focus composer after Jump (hardware keyboard only); v0.63 Jump chip 120ms opacity fade
 - `SnorlaxBot/AppModel.swift` — roster, chat, settings persistence
 - `SnorlaxBot/Dictation.swift` — v0.43 composer mic helpers + local capture
 - `SnorlaxBot/SkillPicker.swift` — v0.21 1:1 composer `/` trigger + filter
@@ -235,7 +240,7 @@ Output: `SnorlaxBot/Generated/V1Types.swift`. Do not hand-edit that file.
 - `SnorlaxBot/MermaidView.swift` — v0.45 WKWebView mermaid (local)
 - `SnorlaxBot/mermaid.min.js` — bundled official mermaid (IIFE)
 - `SnorlaxBot/MathView.swift` — v0.46 WKWebView KaTeX (local)
-- `SnorlaxBot/StickToBottom.swift` — v0.47 stick/freeze/Jump to latest; v0.60 Esc = Jump when frozen; v0.62 focus after Jump
+- `SnorlaxBot/StickToBottom.swift` — v0.47 stick/freeze/Jump to latest; v0.60 Esc = Jump when frozen; v0.62 focus after Jump; v0.63 Jump chip fade
 - `SnorlaxBot/OptimisticSend.swift` — v0.49 optimistic user-RIGHT on Send
 - `SnorlaxBot/StopGenerating.swift` — v0.50 12pt muted Stop (client abort); v0.53 Esc = Stop; v0.59 focus composer after Stop (hardware keyboard only); v0.62 Jump reuses that focus helper
 - `SnorlaxBot/Waiting.swift` — v0.51 waiting ··· until first token; v0.58 Reduce Motion static ···
