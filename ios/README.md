@@ -63,6 +63,13 @@ muted pulsing ··· sits on the LEFT (not a tool line, not a
 bubble) until the first assistant token. First token swaps
 to the growing LEFT bubble. Stop / error / empty reply
 dismisses the dots. OpenAPI stays 0.18.0.
+v0.52: streaming caret on the growing LEFT bubble. After the
+first assistant token and until complete / Stop, a 12pt muted
+blinking caret sits at the end of the mid-stream LEFT text.
+On complete / Stop the caret is gone immediately. Waiting ···
+stays pre-first-token only; never both. Reduce Motion: static
+muted caret. Not on tool / widget / approve / connect /
+user-right. OpenAPI stays 0.18.0.
 v0.32: dedicated `kind=approve` LEFT card for mutating shell (not a
 WidgetCard fork). Approve / Deny / ×; long-press copies the command.
 Question widgets
@@ -165,6 +172,7 @@ Output: `SnorlaxBot/Generated/V1Types.swift`. Do not hand-edit that file.
 - `SnorlaxBot/OptimisticSend.swift` — v0.49 optimistic user-RIGHT on Send
 - `SnorlaxBot/StopGenerating.swift` — v0.50 12pt muted Stop (client abort)
 - `SnorlaxBot/Waiting.swift` — v0.51 waiting ··· until first token
+- `SnorlaxBot/StreamingCaret.swift` — v0.52 streaming caret on LEFT bubble
 - `SnorlaxBot/katex.min.js` / `katex.min.css` / `fonts/` — bundled KaTeX
 - `SnorlaxBot/RuntimeClient.swift` — `/v1` + SSE
 - `SnorlaxBot/Generated/V1Types.swift` — OpenAPI models

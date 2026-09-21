@@ -40,6 +40,8 @@ TeX math on completed LEFT `kind=message` (inline `\( \)` / block `$$`; KaTeX; i
 stick-to-bottom while streaming (follow within ~64px; freeze on scroll-up; Send / Regenerates re-arm; 12px muted Jump to latest) +
 short multi-bubbles on completed LEFT `kind=message` (split on blank lines after the stream completes; Copy / Speak / Regenerates on the last bubble) +
 Stop generating mid-stream (12px/12pt muted Stop at the chat-column bottom; client abort; keep partial LEFT as completed; composer stays focused) +
+waiting ··· until first token (LEFT 12px/12pt muted pulsing ··· after Send until the first assistant token) +
+streaming caret on the growing LEFT bubble (12px/12pt muted blinking caret after the first token until complete / Stop) +
 identity-pane Box computer preview (Bearer PNG) + desktop Box takeover
 (Open / Done; pointer/key in 1280×800) + teach-a-task (Record / Stop /
 Save as skill inside takeover) + skill markdown editor (identity-pane
@@ -263,7 +265,11 @@ POST /cancel; OpenAPI stays 0.18.0), and
 v0.51 waiting ··· until first token (LEFT 12px/12pt muted
 pulsing ··· after Send until the first assistant token;
 first token swaps to the growing LEFT bubble; Stop / error /
-empty reply dismisses the dots; OpenAPI stays 0.18.0).
+empty reply dismisses the dots; OpenAPI stays 0.18.0), and
+v0.52 streaming caret on the growing LEFT bubble (12px/12pt
+muted blinking caret at the end of mid-stream LEFT text after
+the first token until complete / Stop; never with waiting ···;
+Reduce Motion static; OpenAPI stays 0.18.0).
 Later: full sandbox computer GUI, MCP marketplace catalog,
 Slack/GitHub inbound listeners.
 

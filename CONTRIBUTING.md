@@ -41,7 +41,10 @@ NVIDIA DGX Spark.
   that keeps the partial LEFT as completed and keeps the composer
   focused; v0.51 waiting ··· until first token is a 12px/12pt muted
   LEFT pulsing ··· after Send until the first assistant token, then
-  the growing LEFT bubble; Stop / error / empty reply dismisses it), a display-only
+  the growing LEFT bubble; Stop / error / empty reply dismisses it;
+  v0.52 streaming caret is a 12px/12pt muted blinking caret at the
+  end of that growing LEFT bubble after the first token until
+  complete / Stop — never with waiting ···; Reduce Motion static), a display-only
   Box computer preview (`GET /v1/agents/{id}/computer` JSON; Bearer PNG at
   `/computer/screenshot`; identity pane), desktop Box takeover
   (`POST /computer/session` → 201 `{ sessionId }`; `DELETE .../session` or

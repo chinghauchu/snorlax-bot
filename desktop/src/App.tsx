@@ -129,6 +129,7 @@ import {
   isEmptyAssistantReply,
   showWaitingLine,
 } from "./waiting";
+import { showStreamingCaret } from "./streamingCaret";
 import { ComputerPane, ComputerSeamButton } from "./ComputerPane";
 import {
   COMPUTER_OPEN_KEY,
@@ -2766,22 +2767,40 @@ export function App() {
                         />
                         {leftBubbles.length ? (
                           <div className="assistant-bubbles">
-                            {leftBubbles.map((part, bubbleIdx) => (
-                              <div
-                                key={`${message.id}-${bubbleIdx}`}
-                                className={
-                                  assistantBubbleWide(part)
-                                    ? "bubble agent wide"
-                                    : "bubble agent"
-                                }
-                              >
-                                <MarkdownBody
-                                  text={part}
-                                  knownNames={knownNames}
-                                  completed={completed}
-                                />
-                              </div>
-                            ))}
+                            {leftBubbles.map((part, bubbleIdx) => {
+                              const showCaret =
+                                bubbleIdx === leftBubbles.length - 1 &&
+                                showStreamingCaret({
+                                  busy,
+                                  completed,
+                                  hasFirstToken:
+                                    (message.content ?? "").length > 0,
+                                  kind: message.kind,
+                                  isUser: mine,
+                                });
+                              return (
+                                <div
+                                  key={`${message.id}-${bubbleIdx}`}
+                                  className={
+                                    assistantBubbleWide(part)
+                                      ? "bubble agent wide"
+                                      : "bubble agent"
+                                  }
+                                >
+                                  <MarkdownBody
+                                    text={part}
+                                    knownNames={knownNames}
+                                    completed={completed}
+                                  />
+                                  {showCaret ? (
+                                    <span
+                                      className="streaming-caret"
+                                      aria-hidden="true"
+                                    />
+                                  ) : null}
+                                </div>
+                              );
+                            })}
                           </div>
                         ) : null}
                         {showAssistantCopy({

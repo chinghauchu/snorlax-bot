@@ -244,6 +244,12 @@ show LEFT pulsing ··· until the first assistant token,
 then the growing LEFT bubble. Stop / error / empty reply
 dismiss the dots. No new routes. OpenAPI stays 0.18.0.
 
+v0.52 streaming caret on the growing LEFT bubble: after the
+first assistant token and until complete / Stop, clients show
+a 12px/12pt muted blinking caret at the end of the mid-stream
+LEFT text. Never with waiting ···. Reduce Motion static. No
+new routes. OpenAPI stays 0.18.0.
+
 A copy is also kept at `runtime/openapi.yaml` and `desktop/openapi.yaml`
 so those trees are self-contained. Do not let the files diverge.
 
