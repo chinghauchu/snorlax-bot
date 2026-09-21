@@ -476,6 +476,7 @@ private struct ComposerBar: View {
     private var canSend: Bool {
         let trimmed = model.draft.trimmingCharacters(in: .whitespacesAndNewlines)
         return model.canCompose
+            && !SendMuted.whileGenerating(busy: model.isSending)
             && !model.isAttaching
             && model.attachError == nil
             && (!trimmed.isEmpty || !model.pendingAttachments.isEmpty)
@@ -573,7 +574,10 @@ private struct ComposerBar: View {
                     disabled: !(model.canCompose || model.isSending),
                     pendingCaret: $model.pendingComposerCaret,
                     focused: focused,
-                    onReturnSend: { Task { await model.send() } },
+                    onReturnSend: {
+                        guard SendMuted.enterSends(busy: model.isSending) else { return }
+                        Task { await model.send() }
+                    },
                     onPasteAttachments: { items in
                         Task {
                             for item in items {
@@ -590,7 +594,8 @@ private struct ComposerBar: View {
                     },
                     onEscapeStop: { composing in
                         model.stopGeneratingFromEscape(composing: composing)
-                    }
+                    },
+                    sendMuted: SendMuted.whileGenerating(busy: model.isSending)
                 )
                 .frame(minHeight: 22, maxHeight: 120)
 
@@ -622,6 +627,11 @@ private struct ComposerBar: View {
                         .font(.system(size: 28))
                 }
                 .disabled(!canSend)
+                .opacity(
+                    SendMuted.whileGenerating(busy: model.isSending)
+                        ? SendMuted.disabledOpacity
+                        : 1
+                )
                 .accessibilityLabel("Send")
             }
             if Dictation.cancelable(model.dictation) {

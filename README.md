@@ -279,7 +279,11 @@ no POST /cancel; OpenAPI stays 0.18.0), and
 v0.54 same-turn multi-bubble gap (consecutive LEFT bubbles
 from the same completed turn 6px/6pt; different turns /
 after tool-widget-approve-connect stay 12px/12pt; mid-stream
-and user-right unchanged; OpenAPI stays 0.18.0).
+and user-right unchanged; OpenAPI stays 0.18.0), and
+v0.55 Send muted while generating (Send control muted and
+disabled from Send until complete / Stop / error / empty;
+Enter does not send; composer stays editable; re-enables
+immediately; Stop + Esc unchanged; OpenAPI stays 0.18.0).
 Later: full sandbox computer GUI, MCP marketplace catalog,
 Slack/GitHub inbound listeners.
 
