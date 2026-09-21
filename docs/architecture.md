@@ -680,6 +680,13 @@ hardware Escape only. Focus-after-Stop stays intact. No new
 HTTP. OpenAPI stays 0.18.0. Never reintroduce
 `computerPane.ts`.
 
+v0.61: Copied feedback. On Copy of a completed LEFT
+kind=message, muted 12px / 12pt Copied appears beside Copy
+for 1.2s. Copy stays in place and clickable (do not replace
+the Copy label). No toast overlay, no chat layout jump.
+Speak / Regenerate unchanged. No new HTTP. OpenAPI stays
+0.18.0. Never reintroduce `computerPane.ts`.
+
 ## Inference interface
 
 ```text

@@ -276,6 +276,10 @@ v0.60: Esc = Jump when frozen is client-only (Esc activates
 Jump when the chip is visible and idle; Esc still Stop while
 generating). Runtime idle. OpenAPI stays 0.18.0.
 
+v0.61: Copied feedback is client-only (muted Copied beside
+Copy for 1.2s; Copy label stays; no toast). Runtime idle.
+OpenAPI stays 0.18.0.
+
 ## MCP (`mcp.json`)
 
 The runtime is the MCP client. Desktop and iOS never speak MCP. Put

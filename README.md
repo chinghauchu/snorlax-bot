@@ -306,7 +306,11 @@ v0.60 Esc = Jump when frozen (when the Jump to latest chip
 is visible and nothing is generating, Esc activates Jump
 — same as clicking the chip; while generating, Esc still
 Stop; same IME / pending-card skips as v0.53; desktop
-window Esc; iOS hardware Escape only; OpenAPI stays 0.18.0).
+window Esc; iOS hardware Escape only; OpenAPI stays 0.18.0), and
+v0.61 Copied feedback (on Copy of a completed LEFT kind=message,
+muted 12px/12pt Copied beside the Copy control for 1.2s; Copy
+stays in place and clickable; no toast; Speak / Regenerate
+unchanged; OpenAPI stays 0.18.0).
 Later: full sandbox computer GUI, MCP marketplace catalog,
 Slack/GitHub inbound listeners.
 

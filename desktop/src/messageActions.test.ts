@@ -8,6 +8,9 @@ import {
   dropLastAssistantTurn,
   isLeftKindMessage,
   lastCompletedLeftMessageIndex,
+  COPIED_FEEDBACK_LABEL,
+  COPY_CONTROL_LABEL,
+  copiedFeedbackLabel,
   MESSAGE_COPY_FEEDBACK_MS,
   regeneratePostBody,
   showAssistantCopy,
@@ -125,15 +128,22 @@ test("regenerate POST body is { regenerate: true }", () => {
 });
 
 test("Copy / Regenerate chrome: 12px muted row after attachments + markdown", () => {
-  assert.equal(MESSAGE_COPY_FEEDBACK_MS, 1500);
+  assert.equal(MESSAGE_COPY_FEEDBACK_MS, 1200);
+  assert.equal(COPY_CONTROL_LABEL, "Copy");
+  assert.equal(COPIED_FEEDBACK_LABEL, "Copied");
+  assert.equal(copiedFeedbackLabel(true), "Copied");
+  assert.equal(copiedFeedbackLabel(false), null);
   assert.match(app, /MessageActions/);
   assert.match(app, /showAssistantCopy/);
   assert.match(app, /showAssistantRegenerate/);
   assert.match(app, /onSpeak/);
   assert.match(app, /speakLabel/);
   assert.match(app, /dropLastAssistantTurn/);
+  assert.match(app, /copiedFeedbackLabel/);
+  assert.match(app, /className="message-copied"/);
   assert.match(css, /\n\.message-actions \{/);
   assert.match(css, /\n\.message-action \{/);
+  assert.match(css, /\n\.message-copied \{/);
   const actions = css.slice(css.indexOf("\n.message-actions {"));
   const block = actions.slice(0, actions.indexOf("}") + 1);
   assert.match(block, /gap:\s*12px/);
@@ -141,6 +151,10 @@ test("Copy / Regenerate chrome: 12px muted row after attachments + markdown", ()
   const btnBlock = btn.slice(0, btn.indexOf("}") + 1);
   assert.match(btnBlock, /font-size:\s*12px/);
   assert.match(btnBlock, /color:\s*var\(--text-muted\)/);
+  const copied = css.slice(css.indexOf("\n.message-copied {"));
+  const copiedBlock = copied.slice(0, copied.indexOf("}") + 1);
+  assert.match(copiedBlock, /font-size:\s*12px/);
+  assert.match(copiedBlock, /color:\s*var\(--text-muted\)/);
   assert.match(css, /\.assistant-md\s*\{[^}]*gap:\s*6px/);
   assert.doesNotMatch(app, /computerPane\.ts/);
   assert.equal(existsSync(join(here, "computerPane.ts")), false);

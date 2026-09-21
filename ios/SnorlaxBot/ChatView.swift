@@ -939,6 +939,7 @@ private struct MessageBubble: View {
     @Environment(AppModel.self) private var model
     @State private var shareURL: URL?
     @State private var copied = false
+    @State private var copyPulse = 0
 
     private var isUser: Bool { message.isFromUser }
 
@@ -1103,17 +1104,28 @@ private struct MessageBubble: View {
                     if showCopy || showSpeak {
                         HStack(spacing: 12) {
                             if showCopy {
-                                Button(copied ? "Copied" : "Copy") {
-                                    UIPasteboard.general.string = message.content
-                                    copied = true
-                                    Task {
-                                        try? await Task.sleep(nanoseconds: 1_500_000_000)
-                                        copied = false
+                                HStack(spacing: 6) {
+                                    Button("Copy") {
+                                        UIPasteboard.general.string = message.content
+                                        copied = true
+                                        copyPulse += 1
+                                        let pulse = copyPulse
+                                        Task {
+                                            try? await Task.sleep(nanoseconds: 1_200_000_000)
+                                            if pulse == copyPulse {
+                                                copied = false
+                                            }
+                                        }
+                                    }
+                                    .font(.system(size: 12))
+                                    .foregroundStyle(.secondary)
+                                    .buttonStyle(.plain)
+                                    if copied {
+                                        Text("Copied")
+                                            .font(.system(size: 12))
+                                            .foregroundStyle(.secondary)
                                     }
                                 }
-                                .font(.system(size: 12))
-                                .foregroundStyle(.secondary)
-                                .buttonStyle(.plain)
                             }
                             if showSpeak {
                                 let speaking = model.speakingMessageId == message.id

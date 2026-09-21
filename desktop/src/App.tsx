@@ -150,6 +150,8 @@ import {
   splitAssistantBubbles,
 } from "./assistantBubbles";
 import {
+  COPY_CONTROL_LABEL,
+  copiedFeedbackLabel,
   dropLastAssistantTurn,
   lastCompletedLeftMessageIndex,
   MESSAGE_COPY_FEEDBACK_MS,
@@ -442,11 +444,19 @@ function MessageActions({
     }, MESSAGE_COPY_FEEDBACK_MS);
   }
   const speakName = speakLabel(speaking);
+  const copiedLabel = copiedFeedbackLabel(copied);
   return (
     <div className="message-actions">
-      <button type="button" className="message-action" onClick={() => void onCopy()}>
-        {copied ? "Copied" : "Copy"}
-      </button>
+      <span className="message-copy">
+        <button type="button" className="message-action" onClick={() => void onCopy()}>
+          {COPY_CONTROL_LABEL}
+        </button>
+        {copiedLabel ? (
+          <span className="message-copied" aria-live="polite">
+            {copiedLabel}
+          </span>
+        ) : null}
+      </span>
       <button
         type="button"
         className={`message-action${speaking ? " is-speaking" : ""}`}

@@ -2021,6 +2021,28 @@ pre.md-math-fallback.md-math-block {
   padding: 0;
 }
 
+.message-copy {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 6px;
+  position: relative;
+}
+
+.message-copied {
+  flex-shrink: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1.2;
+  color: var(--text-muted);
+  pointer-events: none;
+  white-space: nowrap;
+}
+
 .message-action {
   flex-shrink: 0;
   margin: 0;
