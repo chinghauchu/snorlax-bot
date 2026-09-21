@@ -315,7 +315,10 @@ v0.62 focus composer after Jump (chip click or Esc=Jump
 returns focus after scroll/re-arm/dismiss; desktop always;
 iOS hardware keyboard only — do not force the software
 keyboard; complete / error / empty leave focus alone;
-OpenAPI stays 0.18.0).
+OpenAPI stays 0.18.0), and
+v0.63 Jump chip fade (appear/dismiss 120ms opacity fade;
+Reduce Motion on → instant show/hide; click / Esc=Jump
+behavior unchanged; OpenAPI stays 0.18.0).
 Later: full sandbox computer GUI, MCP marketplace catalog,
 Slack/GitHub inbound listeners.
 

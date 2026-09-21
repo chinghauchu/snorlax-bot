@@ -127,6 +127,9 @@ Concrete follow-ups after v0. Filed on GitHub against
   returns focus after scroll/re-arm/dismiss; desktop always;
   iOS hardware keyboard only — do not force the software
   keyboard; natural complete does not steal).
+  **v0.63:** Jump chip fade (appear/dismiss 120ms opacity fade;
+  Reduce Motion on → instant show/hide; click / Esc=Jump
+  unchanged).
   Raw HTML still later.
   Full sandbox computer GUI (browser, VNC, terminal)
   stays later.
@@ -302,3 +305,7 @@ Concrete follow-ups after v0. Filed on GitHub against
   iOS only when a hardware keyboard is attached — do not
   force the software keyboard up. Natural complete leaves
   focus alone. Desktop matches. OpenAPI stays 0.18.0.
+- **v0.63:** Jump chip fade. Appear and dismiss with a 120ms
+  opacity fade. Reduce Motion on → instant show/hide. Click /
+  Esc=Jump behavior unchanged. Desktop matches. OpenAPI stays
+  0.18.0.

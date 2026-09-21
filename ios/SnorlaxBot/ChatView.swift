@@ -8,9 +8,12 @@ struct ChatView: View {
     let agentID: String
     @Environment(AppModel.self) private var model
     @FocusState private var composerFocused: Bool
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var stick = StickToBottom.State.armed
     @State private var lastAssistantSig = ""
     @State private var expandedToolStacks: Set<String> = []
+    @State private var jumpPaint = StickToBottom.JumpChipPaint.hidden
+    @State private var jumpPaintGeneration = 0
 
     private var agent: Agent {
         model.visibleAgents.first(where: { $0.id == agentID })
@@ -256,8 +259,11 @@ struct ChatView: View {
             .onChange(of: model.isSending) { _, _ in
                 followStream(proxy)
             }
+            .onChange(of: stick.showJump) { _, shown in
+                applyJumpChipPaint(shown: shown)
+            }
             .simultaneousGesture(TapGesture().onEnded { model.dismissSkillPicker() })
-            if StopGenerating.shouldOffer(busy: model.isSending) || stick.showJump {
+            if StopGenerating.shouldOffer(busy: model.isSending) || stick.showJump || jumpPaint.mounted {
                 VStack(spacing: 6) {
                     if StopGenerating.shouldOffer(busy: model.isSending) {
                         Button(StopGenerating.label) {
@@ -278,7 +284,7 @@ struct ChatView: View {
                         }
                         .accessibilityLabel(StopGenerating.label)
                     }
-                    if stick.showJump {
+                    if stick.showJump || jumpPaint.mounted {
                         Button(StickToBottom.jumpLabel) {
                             snapToBottom(proxy)
                             if StopGenerating.shouldFocusComposerAfterAbort(
@@ -300,12 +306,40 @@ struct ChatView: View {
                                         .stroke(Color(uiColor: .separator), lineWidth: 1)
                                 }
                         }
+                        .opacity(jumpPaint.shown ? 1 : 0)
+                        .animation(
+                            StickToBottom.jumpChipAnimation(reduceMotion: reduceMotion),
+                            value: jumpPaint.shown
+                        )
+                        .allowsHitTesting(jumpPaint.shown && stick.showJump)
                         .accessibilityLabel(StickToBottom.jumpLabel)
+                        .accessibilityHidden(!jumpPaint.shown)
                     }
                 }
                 .padding(.bottom, 12)
             }
             }
+        }
+    }
+
+    private func applyJumpChipPaint(shown: Bool) {
+        jumpPaintGeneration += 1
+        let gen = jumpPaintGeneration
+        if shown {
+            jumpPaint = StickToBottom.jumpChipAppear(reduceMotion: reduceMotion)
+            guard !reduceMotion else { return }
+            DispatchQueue.main.async {
+                guard gen == jumpPaintGeneration else { return }
+                jumpPaint = StickToBottom.jumpChipShown()
+            }
+            return
+        }
+        jumpPaint = StickToBottom.jumpChipDismiss(reduceMotion: reduceMotion)
+        let delay = StickToBottom.jumpChipFadeSeconds(reduceMotion: reduceMotion)
+        guard delay > 0 else { return }
+        DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
+            guard gen == jumpPaintGeneration else { return }
+            jumpPaint = .hidden
         }
     }
 

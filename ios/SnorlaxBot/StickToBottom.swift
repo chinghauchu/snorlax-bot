@@ -5,6 +5,36 @@ import SwiftUI
 enum StickToBottom {
     static let nearBottom: CGFloat = 64
     static let jumpLabel = "Jump to latest"
+    /// v0.63: Jump chip appear/dismiss opacity fade. Instant under Reduce Motion.
+    static let jumpFadeMs: Double = 120
+    static var jumpFadeSeconds: Double { jumpFadeMs / 1000 }
+
+    struct JumpChipPaint: Equatable {
+        var mounted: Bool
+        var shown: Bool
+
+        static let hidden = JumpChipPaint(mounted: false, shown: false)
+    }
+
+    static func jumpChipFadeSeconds(reduceMotion: Bool) -> Double {
+        reduceMotion ? 0 : jumpFadeSeconds
+    }
+
+    static func jumpChipAnimation(reduceMotion: Bool) -> Animation? {
+        reduceMotion ? nil : .easeInOut(duration: jumpFadeSeconds)
+    }
+
+    static func jumpChipAppear(reduceMotion: Bool) -> JumpChipPaint {
+        JumpChipPaint(mounted: true, shown: reduceMotion)
+    }
+
+    static func jumpChipShown() -> JumpChipPaint {
+        JumpChipPaint(mounted: true, shown: true)
+    }
+
+    static func jumpChipDismiss(reduceMotion: Bool) -> JumpChipPaint {
+        reduceMotion ? .hidden : JumpChipPaint(mounted: true, shown: false)
+    }
 
     struct State: Equatable {
         var armed: Bool

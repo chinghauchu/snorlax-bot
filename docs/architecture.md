@@ -695,6 +695,11 @@ do not force the software keyboard up). Same focus rules as
 v0.59. Natural complete leaves focus alone. No new HTTP.
 OpenAPI stays 0.18.0. Never reintroduce `computerPane.ts`.
 
+v0.63: Jump chip fade. Appear and dismiss with a 120ms
+opacity fade. Reduce Motion on: instant show/hide (no fade).
+Click / Esc=Jump behavior unchanged. No new HTTP. OpenAPI
+stays 0.18.0. Never reintroduce `computerPane.ts`.
+
 ## Inference interface
 
 ```text
