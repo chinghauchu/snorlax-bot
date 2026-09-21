@@ -36,7 +36,9 @@ NVIDIA DGX Spark.
   LEFT `kind=message`; v0.48 completed LEFT `kind=message` splits on blank
   lines into short multi-bubbles; v0.49 optimistic user-RIGHT bubble on
   Send with pending chips, upload-first, blocked second Send, and muted
-  Couldn't send. on 4xx/5xx), a display-only
+  Couldn't send. on 4xx/5xx; v0.50 Stop generating mid-stream is a
+  client abort that keeps the partial LEFT text and re-enables the
+  composer), a display-only
   Box computer preview (`GET /v1/agents/{id}/computer` JSON; Bearer PNG at
   `/computer/screenshot`; identity pane), desktop Box takeover
   (`POST /computer/session` → 201 `{ sessionId }`; `DELETE .../session` or

@@ -1383,6 +1383,10 @@ pre.md-math-fallback.md-math-block {
   opacity: 0.35;
 }
 
+.send.stop-generating {
+  cursor: pointer;
+}
+
 .profile {
   position: absolute;
   top: 0;

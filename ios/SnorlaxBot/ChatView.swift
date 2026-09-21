@@ -567,13 +567,17 @@ private struct ComposerBar: View {
                 .accessibilityValue(Dictation.busy(model.dictation) ? Dictation.hintTranscribing : "")
 
                 Button {
-                    Task { await model.send() }
+                    if model.isSending {
+                        model.stopGenerating()
+                    } else {
+                        Task { await model.send() }
+                    }
                 } label: {
-                    Image(systemName: "arrow.up.circle.fill")
+                    Image(systemName: model.isSending ? "stop.circle.fill" : "arrow.up.circle.fill")
                         .font(.system(size: 28))
                 }
-                .disabled(!canSend)
-                .accessibilityLabel("Send")
+                .disabled(!(canSend || StopGenerating.shouldOffer(busy: model.isSending)))
+                .accessibilityLabel(model.isSending ? StopGenerating.label : "Send")
             }
             if Dictation.cancelable(model.dictation) {
                 Button("Cancel") {

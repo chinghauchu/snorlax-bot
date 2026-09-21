@@ -360,6 +360,7 @@ export async function sendMessage(
     attachmentIds?: string[];
     regenerate?: boolean;
   },
+  signal?: AbortSignal,
 ): Promise<void> {
   const body: {
     content: string;
@@ -390,6 +391,7 @@ export async function sendMessage(
       method: "POST",
       headers: headers(session, { "Content-Type": "application/json" }),
       body: JSON.stringify(body),
+      signal,
     },
   );
   if (!response.ok) throw await parseError(response);

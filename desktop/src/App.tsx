@@ -173,6 +173,13 @@ import {
   reconcileOptimistic,
   shouldBlockSend,
 } from "./optimisticSend";
+import {
+  STOP_GENERATING_LABEL,
+  isAbortError,
+  keepPartialOnStop,
+  shouldOfferStop,
+  shouldRefetchAfterStop,
+} from "./stopGenerating";
 import { catalogInstallBody, isConnect, parsePluginArgs, pluginStatusLabel } from "./connect";
 import { isApprove } from "./approve";
 import { isWidget } from "./widget";
@@ -566,6 +573,7 @@ export function App() {
   const [dropTarget, setDropTarget] = useState(false);
   const [busy, setBusy] = useState(false);
   const inFlight = useRef(false);
+  const abortRef = useRef<AbortController | null>(null);
   const [composerError, setComposerError] = useState<string | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [mentionOpen, setMentionOpen] = useState(false);
@@ -1585,6 +1593,8 @@ export function App() {
     const extra = opts.extra;
     let openedPluginId: string | null = null;
     let userMsg: ChatMessage | null = null;
+    const ac = new AbortController();
+    abortRef.current = ac;
     if (opts.optimisticUser) {
       userMsg = optimisticUserMessage({
         agentId: active.id,
@@ -1685,6 +1695,7 @@ export function App() {
         active.kind === "channel" && threadId ? threadId : undefined,
         active.kind === "channel" ? undefined : lastExtraChannelId.current,
         extra,
+        ac.signal,
       );
       if (openedPluginId) {
         await waitUntilPluginConnected(session, openedPluginId);
@@ -1714,6 +1725,12 @@ export function App() {
         }
       }
     } catch (err) {
+      if (isAbortError(err) || ac.signal.aborted) {
+        if (!shouldRefetchAfterStop()) {
+          setMessages((prev) => keepPartialOnStop(prev));
+        }
+        return;
+      }
       if (userMsg) {
         const status = err instanceof ApiError ? err.status : 0;
         if (status === 0 || isHttpSendFailure(status)) {
@@ -1747,10 +1764,15 @@ export function App() {
         }
       }
     } finally {
+      if (abortRef.current === ac) abortRef.current = null;
       inFlight.current = false;
       setBusy(false);
       focusComposer();
     }
+  }
+
+  function onStopGenerating() {
+    abortRef.current?.abort();
   }
 
   async function onSend() {
@@ -3021,6 +3043,17 @@ export function App() {
                 <span className="dictation-dot" aria-hidden />
               ) : null}
             </button>
+            {shouldOfferStop(busy) ? (
+              <button
+                type="button"
+                className="send stop-generating"
+                aria-label={STOP_GENERATING_LABEL}
+                title={STOP_GENERATING_LABEL}
+                onClick={onStopGenerating}
+              >
+                <StopGeneratingIcon />
+              </button>
+            ) : (
             <button
               type="button"
               className="send"
@@ -3036,6 +3069,7 @@ export function App() {
             >
               <SendIcon />
             </button>
+            )}
           </div>
           {statusHint ? (
             <p className="composer-hint" role="status">
@@ -4541,6 +4575,14 @@ function SendIcon() {
         fill="currentColor"
         d="M2.4 8.75h8.44L7.7 12.9a.75.75 0 0 0 1.1 1.02l5.5-5.9a.75.75 0 0 0 0-1.04l-5.5-5.9A.75.75 0 1 0 7.7 3.1l3.14 3.4H2.4a.75.75 0 0 0 0 1.5Z"
       />
+    </svg>
+  );
+}
+
+function StopGeneratingIcon() {
+  return (
+    <svg width="10" height="10" viewBox="0 0 10 10" aria-hidden>
+      <rect width="10" height="10" rx="1.5" fill="currentColor" />
     </svg>
   );
 }

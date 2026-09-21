@@ -579,6 +579,13 @@ text + chips, and show a muted 12px Couldn't send. hint.
 Regenerates unchanged. No new HTTP. OpenAPI stays 0.18.0.
 Never reintroduce `computerPane.ts`.
 
+v0.50: Stop generating mid-stream. While an assistant LEFT
+turn is streaming, clients offer Stop generating (Grok Bot
+feel). Stop is a client abort of the in-flight stream;
+keep the partial assistant text. After stop, composer is
+usable again; no auto-restart. No new HTTP. OpenAPI stays
+0.18.0. Never reintroduce `computerPane.ts`.
+
 ## Inference interface
 
 ```text
