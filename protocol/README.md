@@ -225,6 +225,12 @@ v0.48 short multi-bubbles: clients display completed LEFT
 (mid-stream stays one bubble). Runtime does not split. No new
 routes. OpenAPI stays 0.18.0.
 
+v0.49 optimistic user-RIGHT on Send: clients paint the
+outgoing text immediately, then reconcile with the stored
+user message (no duplicate). On failure, restore the composer
+and show muted Couldn't send. No new routes. OpenAPI stays
+0.18.0.
+
 A copy is also kept at `runtime/openapi.yaml` and `desktop/openapi.yaml`
 so those trees are self-contained. Do not let the files diverge.
 

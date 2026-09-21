@@ -582,7 +582,9 @@ private struct ComposerBar: View {
                 .foregroundStyle(.secondary)
                 .accessibilityLabel("Cancel dictation")
             }
-            if let hint = Dictation.composerHint(state: model.dictation, error: model.composerError) {
+            if let hint = Dictation.composerHint(state: model.dictation, error: model.composerError)
+                ?? OptimisticSend.composerHint(error: model.composerError)
+            {
                 Text(hint)
                     .font(.system(size: 12))
                     .foregroundStyle(.secondary)

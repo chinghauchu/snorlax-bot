@@ -117,6 +117,10 @@ v0.48: completed LEFT `kind=message` splits on blank lines
 into short multi-bubbles (Grok Bot feel). Mid-stream stays
 one growing bubble. Copy / Speak / Regenerates only on the
 last bubble of that turn. OpenAPI stays 0.18.0.
+v0.49: optimistic user-RIGHT bubble on Send (Grok Bot feel).
+On success, reconcile with the server/turn message (no
+duplicate). On failure, restore the composer and show a
+muted 12px Couldn't send. hint. OpenAPI stays 0.18.0.
 Assistant LEFT
 `kind=message` is 14px markdown (16/14 headings) in short
 agent bubbles after complete; user-right stays plain (`https://` tappable). Fenced code is full-turn language + Copy at 12px/1.45.

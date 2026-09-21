@@ -779,7 +779,7 @@ final class AppModel {
         if !previews.isEmpty {
             localPreviews[user.id] = previews
         }
-        messages.append(user)
+        messages = OptimisticSend.insert(messages, user)
         toolTraces = []
         isSending = true
         defer { isSending = false }
@@ -799,7 +799,8 @@ final class AppModel {
                 }
             }
             if !Task.isCancelled, selectedAgentID == agent.id {
-                messages = try await client.listMessages(agentId: agent.id, threadId: threadID)
+                let listed = try await client.listMessages(agentId: agent.id, threadId: threadID)
+                messages = OptimisticSend.reconcile(listed: listed)
                 toolTraces = []
                 prunePreviews()
                 if !agent.isChannel {
@@ -811,14 +812,13 @@ final class AppModel {
         } catch is CancellationError {
             await refreshMessages()
         } catch {
-            if let runtime = error as? RuntimeError, case .http(let status, let message) = runtime, status == 422 || status == 409 {
-                composerError = message
-                messages.removeAll { $0.id == user.id }
-                draft = content
-                pendingAttachments = chips
-            } else {
-                errorMessage = error.localizedDescription
-            }
+            let failed = OptimisticSend.fail(messages, id: user.id)
+            messages = failed.messages
+            localPreviews[user.id] = nil
+            draft = content
+            pendingComposerCaret = content.utf16.count
+            pendingAttachments = chips
+            composerError = failed.hint
         }
     }
 
@@ -1171,7 +1171,9 @@ final class AppModel {
             }
         case .done(let message):
             if onTimeline, message.replyTo != nil { return }
-            if let index = messages.firstIndex(where: { $0.id == message.id }) {
+            if message.isFromUser {
+                messages = OptimisticSend.absorb(messages, incoming: message)
+            } else if let index = messages.firstIndex(where: { $0.id == message.id }) {
                 messages[index] = message
             } else {
                 messages.append(message)

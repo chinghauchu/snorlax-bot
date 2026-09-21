@@ -95,7 +95,6 @@ import {
   GITHUB_HINT,
 } from "./infoPane";
 import {
-  USER_SENDER_ID,
   filterCandidates,
   insertMention,
   isTranscriptVisible,
@@ -163,6 +162,15 @@ import {
   shouldFollowStream,
   type StickState,
 } from "./stickToBottom";
+import {
+  COULDNT_SEND,
+  absorbServerUser,
+  composerSendHint,
+  failOptimistic,
+  insertOptimistic,
+  optimisticUserMessage,
+  reconcileOptimistic,
+} from "./optimisticSend";
 import { catalogInstallBody, isConnect, parsePluginArgs, pluginStatusLabel } from "./connect";
 import { isApprove } from "./approve";
 import { isWidget } from "./widget";
@@ -1559,21 +1567,13 @@ export function App() {
     let openedPluginId: string | null = null;
     let userMsg: ChatMessage | null = null;
     if (opts.optimisticUser) {
-      userMsg = {
-        id: `local-${Date.now()}`,
+      userMsg = optimisticUserMessage({
         agentId: active.id,
-        role: "user",
         content,
         images: localImages,
         attachments: opts.attachments ?? [],
-        createdAt: new Date().toISOString(),
-        senderId: USER_SENDER_ID,
-        senderName: "User",
-        senderAvatar: null,
-        hop: 0,
-        mentions: [],
-      };
-      setMessages((prev) => [...prev, userMsg!]);
+      });
+      setMessages((prev) => insertOptimistic(prev, userMsg!));
     }
     setToolTraces([]);
     setBusy(true);
@@ -1624,6 +1624,9 @@ export function App() {
             refreshOpenUserMemory(message.content);
           }
           setMessages((prev) => {
+            if (isUserSender(message.senderId, message.role)) {
+              return absorbServerUser(prev, message);
+            }
             const without = prev.filter((m) => m.id !== message.id);
             return [...without, message];
           });
@@ -1674,7 +1677,9 @@ export function App() {
         active.id,
         active.kind === "channel" && threadId ? { threadId } : undefined,
       );
-      setMessages(listed);
+      setMessages(
+        userMsg ? reconcileOptimistic([], userMsg.id, listed) : listed,
+      );
       setToolTraces([]);
       if (active.kind !== "channel") {
         const channelId = listed
@@ -1691,15 +1696,18 @@ export function App() {
         }
       }
     } catch (err) {
-      if (err instanceof ApiError && (err.status === 422 || err.status === 409)) {
-        setComposerError(err.message);
-        if (userMsg) {
-          setMessages((prev) => prev.filter((m) => m.id !== userMsg!.id));
-          if (content) setDraft(content);
-          if (opts.restoreAttachments?.length) {
-            setPendingAttachments(opts.restoreAttachments);
-          }
+      if (userMsg) {
+        setMessages((prev) => failOptimistic(prev, userMsg!.id).messages);
+        if (content) setDraft(content);
+        if (opts.restoreAttachments?.length) {
+          setPendingAttachments(opts.restoreAttachments);
         }
+        setComposerError(COULDNT_SEND);
+      } else if (
+        err instanceof ApiError &&
+        (err.status === 422 || err.status === 409)
+      ) {
+        setComposerError(err.message);
       } else {
         setComposerError(describeError(err));
       }
@@ -2373,6 +2381,7 @@ export function App() {
   const showStandaloneTraces =
     liveTraces.length > 0 && liveAssistantIdx < 0;
   const dictationHint = composerDictationHint(dictation, composerError);
+  const statusHint = dictationHint ?? composerSendHint(composerError);
   const toolThisTurn = visibleMessages.some(
     (message, index) => index > lastUserIdx && isToolLine(message),
   );
@@ -2997,9 +3006,9 @@ export function App() {
               <SendIcon />
             </button>
           </div>
-          {dictationHint ? (
+          {statusHint ? (
             <p className="composer-hint" role="status">
-              {dictationHint}
+              {statusHint}
             </p>
           ) : composerError ? (
             <p className="error under">{composerError}</p>

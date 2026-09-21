@@ -570,6 +570,13 @@ only on the last bubble of that turn. Tool / widget /
 approve / connect and user-right unchanged. No new HTTP.
 OpenAPI stays 0.18.0. Never reintroduce `computerPane.ts`.
 
+v0.49: optimistic user-RIGHT bubble on Send. Clients paint
+the outgoing text immediately (Grok Bot feel), then
+reconcile with the server/turn message (no duplicate). On
+failure, restore the composer and show a muted 12px
+Couldn't send. hint. No new HTTP. OpenAPI stays 0.18.0.
+Never reintroduce `computerPane.ts`.
+
 ## Inference interface
 
 ```text
