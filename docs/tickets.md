@@ -27,7 +27,7 @@ Concrete follow-ups after v0. Filed on GitHub against
 
 ## Frontend
 
-- [F1 — Streaming markdown without flicker](https://github.com/chinghauchu/snorlax-bot/issues/6) — **v0.11:** clients render assistant LEFT `kind=message` as 14px markdown (no grey bubble; 16/14 headings); user-right stays plain (`https://` tappable); fenced code full-turn language + Copy at 12px/1.45; inline code 13px / 4px / accent 18%. Content stays a plain string (no new Message fields). **v0.45:** fenced `mermaid` on completed LEFT `kind=message` renders as a diagram (official mermaid / iOS WKWebView; invalid falls back to fence chrome; streaming stays code until complete). **v0.46:** TeX math on completed LEFT `kind=message` (inline `\( \)` / block `$$`; KaTeX; invalid falls back to monospace source; single `$` stays currency). **v0.47:** stick-to-bottom while streaming (~64px slack; freeze on scroll-up; Send / Regenerates snap and re-arm; 12px muted Jump to latest while a new assistant bubble arrives stuck). **v0.48:** completed LEFT `kind=message` splits on blank lines into short multi-bubbles after the stream completes (mid-stream stays one bubble; Copy / Speak / Regenerates only on the last bubble). **v0.49:** optimistic user-RIGHT bubble on Send (reconcile on success; restore composer + muted Couldn't send. on failure). **v0.50:** Stop generating mid-stream (12px muted Stop at chat-column bottom; client abort; keep partial LEFT as completed; hide when idle; composer focused). **v0.51:** waiting ··· until first token (after Send until first assistant token/content; hide when the LEFT bubble streams). Raw HTML still out of scope.
+- [F1 — Streaming markdown without flicker](https://github.com/chinghauchu/snorlax-bot/issues/6) — **v0.11:** clients render assistant LEFT `kind=message` as 14px markdown (no grey bubble; 16/14 headings); user-right stays plain (`https://` tappable); fenced code full-turn language + Copy at 12px/1.45; inline code 13px / 4px / accent 18%. Content stays a plain string (no new Message fields). **v0.45:** fenced `mermaid` on completed LEFT `kind=message` renders as a diagram (official mermaid / iOS WKWebView; invalid falls back to fence chrome; streaming stays code until complete). **v0.46:** TeX math on completed LEFT `kind=message` (inline `\( \)` / block `$$`; KaTeX; invalid falls back to monospace source; single `$` stays currency). **v0.47:** stick-to-bottom while streaming (~64px slack; freeze on scroll-up; Send / Regenerates snap and re-arm; 12px muted Jump to latest while a new assistant bubble arrives stuck). **v0.48:** completed LEFT `kind=message` splits on blank lines into short multi-bubbles after the stream completes (mid-stream stays one bubble; Copy / Speak / Regenerates only on the last bubble). **v0.49:** optimistic user-RIGHT bubble on Send (reconcile on success; restore composer + muted Couldn't send. on failure). **v0.50:** Stop generating mid-stream (12px muted Stop at chat-column bottom; client abort; keep partial LEFT as completed; hide when idle; composer focused). **v0.51:** waiting ··· until first token (after Send until first assistant token/content; hide when the LEFT bubble streams). **v0.52:** streaming caret on the growing LEFT bubble (12px muted blink after first token until complete / Stop; never with ···; Reduce Motion static). Raw HTML still out of scope.
 - [F2 — Pairing: local token file and LAN paste](https://github.com/chinghauchu/snorlax-bot/issues/16)
 - [F3 — Edit agent name and instructions in the desktop UI](https://github.com/chinghauchu/snorlax-bot/issues/19) — v0.3 identity pane PATCHes name/title/description/avatar (no `instructions` field)
 - Attachment chips: **v0.25** user-right composer + transcript (paperclip /
@@ -94,6 +94,9 @@ Concrete follow-ups after v0. Filed on GitHub against
   hide when idle; composer stays focused). **v0.51:** waiting
   ··· until first token (LEFT 12px muted pulsing ··· until
   first token; Stop / error / empty reply dismisses).
+  **v0.52:** streaming caret on the growing LEFT bubble
+  (12px muted blink after first token until complete / Stop;
+  never with ···; Reduce Motion static).
   Raw HTML still later.
   Full sandbox computer GUI (browser, VNC, terminal)
   stays later.
@@ -190,3 +193,11 @@ Concrete follow-ups after v0. Filed on GitHub against
   to the growing LEFT bubble. Stop / error / empty reply
   dismisses the dots. Works with optimistic Send and Stop.
   Desktop matches. OpenAPI stays 0.18.0.
+- **v0.52:** streaming caret on the growing LEFT bubble.
+  After the first assistant token and until complete / Stop,
+  a 12pt muted blinking caret sits at the end of the
+  mid-stream LEFT text. On complete / Stop the caret is gone
+  immediately. Waiting ··· stays pre-first-token only; never
+  both. Reduce Motion: static muted caret. Not on tool /
+  widget / approve / connect / user-right. Desktop matches.
+  OpenAPI stays 0.18.0.

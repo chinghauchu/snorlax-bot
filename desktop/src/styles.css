@@ -1171,6 +1171,37 @@ pre.md-math-fallback.md-math-block {
   }
 }
 
+.bubble.agent:has(> .streaming-caret) > :not(.streaming-caret) {
+  display: contents;
+}
+
+.bubble.agent:has(> .streaming-caret) > p:last-of-type {
+  display: inline;
+}
+
+.streaming-caret {
+  display: inline-block;
+  width: 1.5px;
+  height: 12px;
+  margin-left: 2px;
+  vertical-align: -1px;
+  background: var(--text-muted);
+  animation: streaming-caret-blink 1s step-end infinite;
+}
+
+@keyframes streaming-caret-blink {
+  50% {
+    opacity: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .streaming-caret {
+    animation: none;
+    opacity: 1;
+  }
+}
+
 .composer {
   padding: 10px 16px 16px;
   max-width: 712px;

@@ -596,6 +596,16 @@ dismisses the dots. Works with v0.49 optimistic
 user-RIGHT and v0.50 Stop. No new HTTP. OpenAPI stays 0.18.0.
 Never reintroduce `computerPane.ts`.
 
+v0.52: streaming caret on the growing LEFT bubble. After the
+first assistant token and until complete / Stop, clients show
+a 12px / 12pt muted blinking caret at the end of the
+mid-stream LEFT text. On complete / Stop the caret is gone
+immediately. Waiting ··· stays pre-first-token only; never
+both. Reduce Motion: static muted caret. Not on tool /
+widget / approve / connect / user-right. Mid-stream stays
+one bubble. No new HTTP. OpenAPI stays 0.18.0. Never
+reintroduce `computerPane.ts`.
+
 ## Inference interface
 
 ```text

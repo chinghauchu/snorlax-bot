@@ -171,7 +171,14 @@ struct ChatView: View {
                                     liveAssistantIdx: liveAssistantIdx,
                                     sending: model.isSending
                                 ),
-                                completed: !(model.isSending && index == liveAssistantIdx)
+                                completed: !(model.isSending && index == liveAssistantIdx),
+                                showCaret: StreamingCaretChrome.shouldShow(
+                                    busy: model.isSending,
+                                    completed: !(model.isSending && index == liveAssistantIdx),
+                                    hasFirstToken: !message.content.isEmpty,
+                                    isUser: message.isFromUser,
+                                    isKindMessage: message.isKindMessage
+                                )
                             )
                             .padding(.top, turnSpacing(at: index, in: visible, message: message))
                             .id(message.id)
@@ -344,7 +351,8 @@ struct ChatView: View {
         showCopy: Bool = false,
         showSpeak: Bool = false,
         showRegenerate: Bool = false,
-        completed: Bool = true
+        completed: Bool = true,
+        showCaret: Bool = false
     ) -> some View {
         let onTimeline = agent.isChannel && model.threadID == nil
         if onTimeline, message.isHandoffRoot {
@@ -365,7 +373,8 @@ struct ChatView: View {
                 showCopy: showCopy,
                 showSpeak: showSpeak,
                 showRegenerate: showRegenerate,
-                completed: completed
+                completed: completed,
+                showCaret: showCaret
             ) { jump in
                 Task { await model.openJump(channelId: jump.channelId, threadId: jump.threadId) }
             }
@@ -824,6 +833,7 @@ private struct MessageBubble: View {
     var showSpeak = false
     var showRegenerate = false
     var completed = true
+    var showCaret = false
     var onJump: ((HandoffRef) -> Void)?
     @Environment(AppModel.self) private var model
     @State private var shareURL: URL?
@@ -940,12 +950,17 @@ private struct MessageBubble: View {
                     if !leftBubbles.isEmpty {
                         HStack(alignment: .top, spacing: 0) {
                             VStack(alignment: .leading, spacing: 4) {
-                                ForEach(Array(leftBubbles.enumerated()), id: \.offset) { _, part in
-                                    AssistantMarkdown(
-                                        text: part,
-                                        names: agents.filter { !$0.isChannel }.map(\.name),
-                                        completed: completed
-                                    )
+                                ForEach(Array(leftBubbles.enumerated()), id: \.offset) { offset, part in
+                                    HStack(alignment: .lastTextBaseline, spacing: 2) {
+                                        AssistantMarkdown(
+                                            text: part,
+                                            names: agents.filter { !$0.isChannel }.map(\.name),
+                                            completed: completed
+                                        )
+                                        if showCaret && offset == leftBubbles.count - 1 {
+                                            StreamingCaretView()
+                                        }
+                                    }
                                     .padding(.horizontal, 12)
                                     .padding(.vertical, 8)
                                     .background(

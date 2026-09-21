@@ -71,3 +71,4 @@ jobs:
           python3 ios/scripts/test_ios_optimistic_send.py
           python3 ios/scripts/test_ios_stop_generating.py
           python3 ios/scripts/test_ios_waiting.py
+          python3 ios/scripts/test_ios_streaming_caret.py
