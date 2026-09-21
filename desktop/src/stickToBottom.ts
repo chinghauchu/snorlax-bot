@@ -51,6 +51,7 @@ export function onSendOrRegenerate(): StickState {
   return { ...STICK_ARMED };
 }
 
+/** Snap, re-arm, dismiss chip. v0.62: callers then focus the composer. */
 export function onJumpToLatest(): StickState {
   return { ...STICK_ARMED };
 }

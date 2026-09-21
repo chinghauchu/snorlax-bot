@@ -922,11 +922,18 @@ export function App() {
     );
   }, [applyStick]);
 
+  const focusComposer = useCallback(() => {
+    requestAnimationFrame(() => composerRef.current?.focus());
+  }, []);
+
   const onJumpLatest = useCallback(() => {
     applyStick(onJumpToLatest());
     const el = scroller.current;
     if (el) el.scrollTop = el.scrollHeight;
-  }, [applyStick]);
+    if (shouldFocusComposerAfterAbort()) {
+      focusComposer();
+    }
+  }, [applyStick, focusComposer]);
 
   useLayoutEffect(() => {
     applyStick(onSendOrRegenerate());
@@ -992,10 +999,6 @@ export function App() {
       window.removeEventListener("keydown", onKey);
     };
   }, [settingsOpen, urlInput, tokenInput]);
-
-  const focusComposer = useCallback(() => {
-    requestAnimationFrame(() => composerRef.current?.focus());
-  }, []);
 
   const loadRoster = useCallback(
     async (next: Session) => {

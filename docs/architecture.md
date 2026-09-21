@@ -687,6 +687,14 @@ the Copy label). No toast overlay, no chat layout jump.
 Speak / Regenerate unchanged. No new HTTP. OpenAPI stays
 0.18.0. Never reintroduce `computerPane.ts`.
 
+v0.62: focus composer after Jump. When Jump to latest runs
+(chip click or Esc=Jump): after scroll-to-bottom + re-arm
+stick + dismiss chip, return focus to the composer (desktop
+always; on iOS only when a hardware keyboard is attached —
+do not force the software keyboard up). Same focus rules as
+v0.59. Natural complete leaves focus alone. No new HTTP.
+OpenAPI stays 0.18.0. Never reintroduce `computerPane.ts`.
+
 ## Inference interface
 
 ```text

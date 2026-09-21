@@ -47,6 +47,7 @@ enum StickToBottom {
 
     static func onSendOrRegenerate() -> State { .armed }
 
+    /// Snap, re-arm, dismiss chip. v0.62: callers then focus the composer.
     static func onJumpToLatest() -> State { .armed }
 
     static func isAssistantBubble(_ message: Message) -> Bool {
