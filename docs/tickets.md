@@ -27,7 +27,7 @@ Concrete follow-ups after v0. Filed on GitHub against
 
 ## Frontend
 
-- [F1 — Streaming markdown without flicker](https://github.com/chinghauchu/snorlax-bot/issues/6) — **v0.11:** clients render assistant LEFT `kind=message` as 14px markdown (no grey bubble; 16/14 headings); user-right stays plain (`https://` tappable); fenced code full-turn language + Copy at 12px/1.45; inline code 13px / 4px / accent 18%. Content stays a plain string (no new Message fields). **v0.45:** fenced `mermaid` on completed LEFT `kind=message` renders as a diagram (official mermaid / iOS WKWebView; invalid falls back to fence chrome; streaming stays code until complete). **v0.46:** TeX math on completed LEFT `kind=message` (inline `\( \)` / block `$$`; KaTeX; invalid falls back to monospace source; single `$` stays currency). **v0.47:** stick-to-bottom while streaming (~64px slack; freeze on scroll-up; Send / Regenerates snap and re-arm; 12px muted Jump to latest while a new assistant bubble arrives stuck). **v0.48:** completed LEFT `kind=message` splits on blank lines into short multi-bubbles after the stream completes (mid-stream stays one bubble; Copy / Speak / Regenerates only on the last bubble). **v0.49:** optimistic user-RIGHT bubble on Send (reconcile on success; restore composer + muted Couldn't send. on failure). **v0.50:** Stop generating mid-stream (12px muted Stop at chat-column bottom; client abort; keep partial LEFT as completed; hide when idle; composer focused). **v0.51:** waiting ··· until first token (after Send until first assistant token/content; hide when the LEFT bubble streams). **v0.52:** streaming caret on the growing LEFT bubble (12px muted blink after first token until complete / Stop; never with ···; Reduce Motion static). **v0.53:** Esc = Stop while generating (window Esc / iOS UIKeyCommand Escape; same client abort as Stop; do not steal Esc during IME or pending widget/approve/connect). **v0.54:** same-turn consecutive LEFT bubbles use a 6px/6pt gap; different-turn / after tool-widget-approve-connect stay 12px/12pt; mid-stream and user-right unchanged. Raw HTML still out of scope.
+- [F1 — Streaming markdown without flicker](https://github.com/chinghauchu/snorlax-bot/issues/6) — **v0.11:** clients render assistant LEFT `kind=message` as 14px markdown (no grey bubble; 16/14 headings); user-right stays plain (`https://` tappable); fenced code full-turn language + Copy at 12px/1.45; inline code 13px / 4px / accent 18%. Content stays a plain string (no new Message fields). **v0.45:** fenced `mermaid` on completed LEFT `kind=message` renders as a diagram (official mermaid / iOS WKWebView; invalid falls back to fence chrome; streaming stays code until complete). **v0.46:** TeX math on completed LEFT `kind=message` (inline `\( \)` / block `$$`; KaTeX; invalid falls back to monospace source; single `$` stays currency). **v0.47:** stick-to-bottom while streaming (~64px slack; freeze on scroll-up; Send / Regenerates snap and re-arm; 12px muted Jump to latest while a new assistant bubble arrives stuck). **v0.48:** completed LEFT `kind=message` splits on blank lines into short multi-bubbles after the stream completes (mid-stream stays one bubble; Copy / Speak / Regenerates only on the last bubble). **v0.49:** optimistic user-RIGHT bubble on Send (reconcile on success; restore composer + muted Couldn't send. on failure). **v0.50:** Stop generating mid-stream (12px muted Stop at chat-column bottom; client abort; keep partial LEFT as completed; hide when idle; composer focused). **v0.51:** waiting ··· until first token (after Send until first assistant token/content; hide when the LEFT bubble streams). **v0.52:** streaming caret on the growing LEFT bubble (12px muted blink after first token until complete / Stop; never with ···; Reduce Motion static). **v0.53:** Esc = Stop while generating (window Esc / iOS UIKeyCommand Escape; same client abort as Stop; do not steal Esc during IME or pending widget/approve/connect). **v0.54:** same-turn consecutive LEFT bubbles use a 6px/6pt gap; different-turn / after tool-widget-approve-connect stay 12px/12pt; mid-stream and user-right unchanged. **v0.55:** Send muted while generating (Send control muted+disabled from Send until complete / Stop / error / empty; Enter does not send; composer stays editable; re-enables immediately). Raw HTML still out of scope.
 - [F2 — Pairing: local token file and LAN paste](https://github.com/chinghauchu/snorlax-bot/issues/16)
 - [F3 — Edit agent name and instructions in the desktop UI](https://github.com/chinghauchu/snorlax-bot/issues/19) — v0.3 identity pane PATCHes name/title/description/avatar (no `instructions` field)
 - Attachment chips: **v0.25** user-right composer + transcript (paperclip /
@@ -101,7 +101,10 @@ Concrete follow-ups after v0. Filed on GitHub against
   Escape; same client abort as Stop; do not steal Esc during
   IME or pending widget/approve/connect). **v0.54:** same-turn
   consecutive LEFT bubbles 6px/6pt; different-turn / after
-  tool-widget-approve-connect stay 12px/12pt.
+  tool-widget-approve-connect stay 12px/12pt. **v0.55:** Send
+  muted while generating (muted+disabled from Send until
+  complete / Stop / error / empty; Enter does not send;
+  composer stays editable; re-enables immediately).
   Raw HTML still later.
   Full sandbox computer GUI (browser, VNC, terminal)
   stays later.
@@ -221,3 +224,11 @@ Concrete follow-ups after v0. Filed on GitHub against
   approve / connect stay 12pt. Mid-stream (one growing
   bubble) unchanged. User-right unchanged. Desktop matches.
   OpenAPI stays 0.18.0.
+- **v0.55:** Send muted while generating. While an
+  assistant LEFT turn is in flight (from Send until
+  complete / Stop / error / empty): Send control is muted
+  and disabled; Enter does not send. Composer text stays
+  editable (draft the next message). Stop + Esc unchanged;
+  IME composing still skips Esc=Stop. On complete / Stop /
+  error / empty: Send re-enables immediately. Desktop
+  matches. OpenAPI stays 0.18.0.

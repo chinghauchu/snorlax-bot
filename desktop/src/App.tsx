@@ -188,6 +188,7 @@ import {
   shouldOfferStop,
   shouldRefetchAfterStop,
 } from "./stopGenerating";
+import { sendMutedWhileGenerating } from "./sendMuted";
 import { catalogInstallBody, isConnect, isPendingConnect, parsePluginArgs, pluginStatusLabel } from "./connect";
 import { isApprove, isPendingApprove } from "./approve";
 import { isPendingWidget, isWidget } from "./widget";
@@ -2157,6 +2158,9 @@ export function App() {
       cancelDictation();
       return;
     }
+    if (sendMutedWhileGenerating(busy)) {
+      return;
+    }
     if (composerEnterSends(event)) {
       event.preventDefault();
       void onSend();
@@ -3125,6 +3129,7 @@ export function App() {
               className="send"
               aria-label="Send"
               disabled={
+                sendMutedWhileGenerating(busy) ||
                 composerDisabled ||
                 sendBlocked ||
                 !active ||

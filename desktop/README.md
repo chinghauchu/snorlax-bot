@@ -153,6 +153,12 @@ Consecutive LEFT bubbles from the same completed turn
 tool / widget / approve / connect stay 12px. Mid-stream
 (one growing bubble) unchanged. User-right unchanged.
 OpenAPI stays 0.18.0.
+v0.55: Send muted while generating (Grok Bot feel). While
+an assistant LEFT turn is in flight, Send is muted and
+disabled; Enter does not send. Composer text stays
+editable (draft the next message). Stop + Esc unchanged.
+On complete / Stop / error / empty, Send re-enables
+immediately. OpenAPI stays 0.18.0.
 Assistant LEFT
 `kind=message` is 14px markdown (16/14 headings) in short
 agent bubbles after complete; user-right stays plain (`https://` tappable). Fenced code is full-turn language + Copy at 12px/1.45.

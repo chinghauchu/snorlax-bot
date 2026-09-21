@@ -249,6 +249,11 @@ v0.54: same-turn multi-bubble gap is client-only
 between turns / after tool-widget-approve-connect).
 Runtime idle. OpenAPI stays 0.18.0.
 
+v0.55: Send muted while generating is client-only
+(Send muted+disabled until complete / Stop / error /
+empty; Enter does not send; composer stays editable).
+Runtime idle. OpenAPI stays 0.18.0.
+
 ## MCP (`mcp.json`)
 
 The runtime is the MCP client. Desktop and iOS never speak MCP. Put

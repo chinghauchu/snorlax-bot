@@ -81,6 +81,13 @@ from the same completed turn (blank-line split) use a 6pt
 gap. Different turns / after tool / widget / approve /
 connect stay 12pt. Mid-stream (one growing bubble)
 unchanged. User-right unchanged. OpenAPI stays 0.18.0.
+v0.55: Send muted while generating. While an assistant LEFT
+turn is in flight (from Send until complete / Stop / error /
+empty), Send is muted and disabled; Enter does not send.
+Composer text stays editable (draft the next message). Stop
++ Esc unchanged; IME composing still skips Esc=Stop. On
+complete / Stop / error / empty, Send re-enables
+immediately. OpenAPI stays 0.18.0.
 v0.32: dedicated `kind=approve` LEFT card for mutating shell (not a
 WidgetCard fork). Approve / Deny / ×; long-press copies the command.
 Question widgets
@@ -158,6 +165,7 @@ python3 ios/scripts/test_blank_new_skill.py
 python3 ios/scripts/test_slack_github_routines.py
 python3 ios/scripts/test_ios_dictation.py
 python3 ios/scripts/test_ios_stop_generating.py
+python3 ios/scripts/test_ios_send_muted.py
 ```
 
 Output: `SnorlaxBot/Generated/V1Types.swift`. Do not hand-edit that file.
@@ -184,7 +192,8 @@ Output: `SnorlaxBot/Generated/V1Types.swift`. Do not hand-edit that file.
 - `SnorlaxBot/StopGenerating.swift` — v0.50 12pt muted Stop (client abort); v0.53 Esc = Stop
 - `SnorlaxBot/Waiting.swift` — v0.51 waiting ··· until first token
 - `SnorlaxBot/StreamingCaret.swift` — v0.52 streaming caret on LEFT bubble
-- `SnorlaxBot/ComposerTextView.swift` — v0.53 UIKeyCommand Escape = Stop
+- `SnorlaxBot/ComposerTextView.swift` — v0.53 UIKeyCommand Escape = Stop; v0.55 Return does not send while generating
+- `SnorlaxBot/SendMuted.swift` — v0.55 Send muted while generating
 - `SnorlaxBot/katex.min.js` / `katex.min.css` / `fonts/` — bundled KaTeX
 - `SnorlaxBot/RuntimeClient.swift` — `/v1` + SSE
 - `SnorlaxBot/Generated/V1Types.swift` — OpenAPI models

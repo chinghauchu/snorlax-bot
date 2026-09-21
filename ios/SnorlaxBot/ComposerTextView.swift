@@ -15,6 +15,8 @@ struct ComposerTextView: UIViewRepresentable {
     var onCaretChange: ((NSRange) -> Void)? = nil
     /// Hardware Esc while generating. `composing` is IME marked text.
     var onEscapeStop: ((Bool) -> Void)? = nil
+    /// v0.55: hardware Return does not send while an assistant turn is in flight.
+    var sendMuted: Bool = false
 
     func makeCoordinator() -> Coordinator {
         Coordinator(self)
@@ -32,6 +34,7 @@ struct ComposerTextView: UIViewRepresentable {
         view.onEscapeStop = { [coordinator = context.coordinator] composing in
             coordinator.parent.onEscapeStop?(composing)
         }
+        view.sendMuted = sendMuted
         view.font = .systemFont(ofSize: 14)
         view.backgroundColor = .clear
         view.textContainerInset = UIEdgeInsets(top: 4, left: 0, bottom: 4, right: 0)
@@ -53,6 +56,7 @@ struct ComposerTextView: UIViewRepresentable {
         view.onEscapeStop = { [coordinator = context.coordinator] composing in
             coordinator.parent.onEscapeStop?(composing)
         }
+        view.sendMuted = sendMuted
         view.isEditable = !disabled
         view.isUserInteractionEnabled = !disabled
         if view.text != text {
@@ -168,6 +172,7 @@ final class ComposerUITextView: UITextView {
     var onReturnSend: (() -> Void)?
     var onPasteAttachments: (([ComposerPasteboard.Attachment]) -> Void)?
     var onEscapeStop: ((Bool) -> Void)?
+    var sendMuted = false
 
     override var keyCommands: [UIKeyCommand]? {
         let escape = UIKeyCommand(
@@ -215,6 +220,10 @@ final class ComposerUITextView: UITextView {
                     return
                 }
                 if key.modifierFlags.contains(.shift) {
+                    super.pressesBegan(presses, with: event)
+                    return
+                }
+                if sendMuted {
                     super.pressesBegan(presses, with: event)
                     return
                 }

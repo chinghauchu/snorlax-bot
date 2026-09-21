@@ -624,6 +624,16 @@ widget / approve / connect, keep 12px / 12pt. Mid-stream
 new HTTP. OpenAPI stays 0.18.0. Never reintroduce
 `computerPane.ts`.
 
+v0.55: Send muted while generating. While an assistant
+turn is in flight (from Send until complete / Stop / error
+/ empty): Send is muted and disabled; Enter does not send.
+Composer text stays editable (draft the next message).
+Stop + Esc unchanged; IME composing still skips Esc=Stop.
+On complete / Stop / error / empty: Send re-enables
+immediately. Pending widget / approve / connect unchanged.
+No new HTTP. OpenAPI stays 0.18.0. Never reintroduce
+`computerPane.ts`.
+
 ## Inference interface
 
 ```text

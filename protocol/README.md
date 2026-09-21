@@ -262,6 +262,12 @@ Different turns / after tool / widget / approve / connect
 stay 12px / 12pt. Mid-stream unchanged. Runtime does not
 split. No new routes. OpenAPI stays 0.18.0.
 
+v0.55 Send muted while generating: while an assistant turn
+is in flight, Send is muted and disabled; Enter does not
+send. Composer text stays editable. Stop + Esc unchanged.
+Send re-enables on complete / Stop / error / empty. No new
+routes. OpenAPI stays 0.18.0.
+
 A copy is also kept at `runtime/openapi.yaml` and `desktop/openapi.yaml`
 so those trees are self-contained. Do not let the files diverge.
 
