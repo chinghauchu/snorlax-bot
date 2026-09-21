@@ -183,6 +183,10 @@ muted (no pulse). When off, keep the existing pulse.
 Streaming caret Reduce Motion is already static (v0.52).
 Appear/dismiss rules for ··· unchanged. OpenAPI stays
 0.18.0.
+v0.59: focus composer after Stop (Grok Bot feel). When
+Stop or Esc aborts an in-flight turn, return focus to the
+composer immediately. Complete / error / empty leave
+focus alone. OpenAPI stays 0.18.0.
 Assistant LEFT
 `kind=message` is 14px markdown (16/14 headings) in short
 agent bubbles after complete; user-right stays plain (`https://` tappable). Fenced code is full-turn language + Copy at 12px/1.45.

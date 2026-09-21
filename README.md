@@ -296,7 +296,12 @@ split; Copy / Speak / Regenerates still last-bubble-only;
 OpenAPI stays 0.18.0), and
 v0.58 Reduce Motion static ··· (OS Reduce Motion on →
 static muted ···, no pulse; off → existing pulse; caret
-Reduce Motion unchanged; OpenAPI stays 0.18.0).
+Reduce Motion unchanged; OpenAPI stays 0.18.0), and
+v0.59 focus composer after Stop (Stop or Esc abort returns
+focus to the composer immediately; desktop window; iOS
+only when a hardware keyboard is attached — do not force
+the software keyboard; complete / error / empty leave
+focus alone; OpenAPI stays 0.18.0).
 Later: full sandbox computer GUI, MCP marketplace catalog,
 Slack/GitHub inbound listeners.
 

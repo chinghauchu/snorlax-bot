@@ -663,6 +663,14 @@ caret Reduce Motion is already static (v0.52). Appear /
 dismiss rules for ··· unchanged. No new HTTP. OpenAPI stays
 0.18.0. Never reintroduce `computerPane.ts`.
 
+v0.59: focus composer after Stop. When Stop or Esc aborts
+an in-flight assistant turn, return focus to the composer
+immediately (desktop window; on iOS only when a hardware
+keyboard is attached — do not force the software keyboard
+up). Natural complete / error / empty leave focus alone.
+No new HTTP. OpenAPI stays 0.18.0. Never reintroduce
+`computerPane.ts`.
+
 ## Inference interface
 
 ```text

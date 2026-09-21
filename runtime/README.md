@@ -267,6 +267,11 @@ v0.58: Reduce Motion static ··· is client-only (OS Reduce
 Motion on → static muted ···, no pulse; off → existing
 pulse). Runtime idle. OpenAPI stays 0.18.0.
 
+v0.59: focus composer after Stop is client-only (Stop/Esc
+abort returns composer focus; iOS hardware keyboard only;
+complete/error/empty do not steal). Runtime idle. OpenAPI
+stays 0.18.0.
+
 ## MCP (`mcp.json`)
 
 The runtime is the MCP client. Desktop and iOS never speak MCP. Put

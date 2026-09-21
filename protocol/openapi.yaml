@@ -1127,6 +1127,23 @@ info:
     Mac oMLX at `http://127.0.0.1:8000/v1` untouched. Never
     reintroduce computerPane.ts. Leave stale PRs #23 and
     #24 untouched. OpenAPI **0.18.0**.
+
+    v0.59: focus composer after Stop. One impl PR covering
+    desktop + iOS. Spec rides this PR. **No second PR.**
+    OpenAPI stays **0.18.0**. Do not bump. No new HTTP
+    routes. Runtime idle. When Stop or Esc aborts an
+    in-flight assistant turn: return focus to the composer
+    immediately (desktop window; on iOS only when a hardware
+    keyboard is attached — do not force the software
+    keyboard up). On natural complete / error / empty: leave
+    focus alone (do not steal). Send re-enable timing
+    unchanged (v0.55). Esc=Stop from v0.53 stays intact.
+    Keep v0.47–v0.58 intact. Out: VNC, extra channels,
+    store, coding-agent, new surfaces. Clients never speak
+    MCP or the model. Mac oMLX at
+    `http://127.0.0.1:8000/v1` untouched. Never reintroduce
+    computerPane.ts. Leave stale PRs #23 and #24 untouched.
+    OpenAPI **0.18.0**.
   license:
     name: Apache-2.0
     identifier: Apache-2.0

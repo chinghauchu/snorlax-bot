@@ -109,10 +109,15 @@ final class AppModel {
         guard isSending else { return }
         streamEpoch += 1
         streamTask?.cancel()
-        wantsComposerFocus = true
+        if StopGenerating.shouldFocusComposerAfterAbort(
+            hardwareKeyboardAttached: StopGenerating.hardwareKeyboardAttached
+        ) {
+            wantsComposerFocus = true
+        }
     }
 
     /// Hardware Escape (UIKeyCommand). Same abort as tapping Stop.
+    /// Esc implies a hardware keyboard — return focus to the composer.
     func stopGeneratingFromEscape(composing: Bool) {
         guard StopGenerating.escapeStops(
             busy: isSending,
@@ -122,6 +127,9 @@ final class AppModel {
             pendingConnect: StopGenerating.pendingConnect(in: messages)
         ) else { return }
         stopGenerating()
+        if StopGenerating.shouldFocusComposerAfterAbort(hardwareKeyboardAttached: true) {
+            wantsComposerFocus = true
+        }
     }
 
     var isAttaching: Bool { attachInFlight > 0 }
@@ -788,7 +796,9 @@ final class AppModel {
         isSending = true
         defer {
             isSending = false
-            wantsComposerFocus = true
+            if StopGenerating.shouldFocusComposerOnSettle() {
+                wantsComposerFocus = true
+            }
         }
         let mentionIDs = mentionIDs(in: content)
         draft = ""
