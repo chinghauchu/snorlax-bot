@@ -219,6 +219,9 @@ Build notes: [docs/mac-local.md](../docs/mac-local.md).
 v0.46: clients render TeX math on completed LEFT `kind=message`
 (inline `\( \)` / block `$$`). Runtime idle. OpenAPI stays 0.18.0.
 
+v0.47: stick-to-bottom while streaming is client-only. Runtime
+idle. OpenAPI stays 0.18.0.
+
 ## MCP (`mcp.json`)
 
 The runtime is the MCP client. Desktop and iOS never speak MCP. Put

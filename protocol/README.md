@@ -215,6 +215,11 @@ desktop KaTeX; iOS WKWebView + bundled KaTeX). Invalid falls
 back to monospace source. Single `$` is not math. No new
 routes. OpenAPI stays 0.18.0.
 
+v0.47 stick-to-bottom while streaming: clients follow tokens
+when within ~64px of the bottom; scroll-up freezes. Send /
+Regenerates snap and re-arm. Jump to latest chip while stuck.
+No new routes. OpenAPI stays 0.18.0.
+
 A copy is also kept at `runtime/openapi.yaml` and `desktop/openapi.yaml`
 so those trees are self-contained. Do not let the files diverge.
 

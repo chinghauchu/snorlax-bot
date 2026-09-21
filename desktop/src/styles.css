@@ -300,10 +300,42 @@ button:disabled {
   font-weight: 500;
 }
 
+.transcript-col {
+  position: relative;
+  min-height: 0;
+  min-width: 0;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
 .transcript {
   overflow: auto;
   min-height: 0;
+  flex: 1;
   padding: 16px 20px 24px;
+}
+
+.jump-latest {
+  position: absolute;
+  left: 50%;
+  bottom: 12px;
+  transform: translateX(-50%);
+  z-index: 2;
+  margin: 0;
+  padding: 6px 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg-elevated);
+  color: var(--text-muted);
+  font-size: 12px;
+  line-height: 1.3;
+  white-space: nowrap;
+}
+
+.jump-latest:hover {
+  color: var(--text);
+  background: var(--bg-elevated);
 }
 
 .transcript-inner {

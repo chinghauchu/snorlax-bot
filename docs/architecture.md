@@ -555,6 +555,14 @@ WKWebView + bundled KaTeX). Invalid falls back to monospace
 source. Single `$` is not math. No new HTTP. OpenAPI stays
 0.18.0. Never reintroduce `computerPane.ts`.
 
+v0.47: stick-to-bottom while streaming. If the user is within
+~64px of the bottom, follow tokens. Scroll up freezes — never
+yank mid-stream. Send and Regenerates snap and re-arm. New
+assistant bubble while stuck: 12px muted Jump to latest chip
+(tap snaps and re-arms; dismiss when they scroll to bottom).
+Composer focus stays after Send. Desktop + iOS. No new HTTP.
+OpenAPI stays 0.18.0. Never reintroduce `computerPane.ts`.
+
 ## Inference interface
 
 ```text

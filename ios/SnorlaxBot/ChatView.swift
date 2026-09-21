@@ -8,6 +8,8 @@ struct ChatView: View {
     let agentID: String
     @Environment(AppModel.self) private var model
     @FocusState private var composerFocused: Bool
+    @State private var stick = StickToBottom.State.armed
+    @State private var lastAssistantSig = ""
 
     private var agent: Agent {
         model.visibleAgents.first(where: { $0.id == agentID })
@@ -64,6 +66,8 @@ struct ChatView: View {
             }
         }
         .task(id: agentID) {
+            stick = StickToBottom.State.armed
+            lastAssistantSig = ""
             guard hasRealAgent || !model.isConfigured else { return }
             if !(model.selectedAgentID == agentID && model.threadID != nil) {
                 await model.select(agentID, push: false)
@@ -82,6 +86,7 @@ struct ChatView: View {
 
     private var transcript: some View {
         ScrollViewReader { proxy in
+            ZStack(alignment: .bottom) {
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 0) {
                     if model.messages.isEmpty, !model.isConfigured {
@@ -173,20 +178,72 @@ struct ChatView: View {
                 }
                 .padding(.vertical, 8)
             }
+            .onScrollGeometryChange(for: Bool.self) { geo in
+                StickToBottom.isNearBottom(
+                    contentHeight: geo.contentSize.height,
+                    containerHeight: geo.containerSize.height,
+                    offsetY: geo.contentOffset.y
+                )
+            } action: { _, nearBottom in
+                stick = StickToBottom.onUserScroll(state: stick, nearBottom: nearBottom)
+            }
+            .onChange(of: model.stickBump) { _, _ in
+                snapToBottom(proxy)
+            }
             .onChange(of: model.messages.count) { _, _ in
-                proxy.scrollTo("bottom", anchor: .bottom)
+                followStream(proxy)
             }
             .onChange(of: model.messages.last?.content) { _, _ in
-                proxy.scrollTo("bottom", anchor: .bottom)
+                followStream(proxy)
             }
             .onChange(of: model.toolTraces.count) { _, _ in
-                proxy.scrollTo("bottom", anchor: .bottom)
+                followStream(proxy)
             }
             .onChange(of: model.isSending) { _, _ in
-                proxy.scrollTo("bottom", anchor: .bottom)
+                followStream(proxy)
             }
             .simultaneousGesture(TapGesture().onEnded { model.dismissSkillPicker() })
+            if stick.showJump {
+                Button(StickToBottom.jumpLabel) {
+                    snapToBottom(proxy)
+                }
+                .font(.system(size: 12))
+                .foregroundStyle(.secondary)
+                .buttonStyle(.plain)
+                .padding(.horizontal, 10)
+                .padding(.vertical, 6)
+                .background {
+                    RoundedRectangle(cornerRadius: 8, style: .continuous)
+                        .fill(Color(uiColor: .secondarySystemBackground))
+                        .overlay {
+                            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                                .stroke(Color(uiColor: .separator), lineWidth: 1)
+                        }
+                }
+                .padding(.bottom, 12)
+                .accessibilityLabel(StickToBottom.jumpLabel)
+            }
+            }
         }
+    }
+
+    private func snapToBottom(_ proxy: ScrollViewProxy) {
+        stick = StickToBottom.onSendOrRegenerate()
+        lastAssistantSig = StickToBottom.signature(messages: model.visibleMessages(for: agent))
+        proxy.scrollTo("bottom", anchor: .bottom)
+    }
+
+    private func followStream(_ proxy: ScrollViewProxy) {
+        if StickToBottom.shouldFollow(stick) {
+            proxy.scrollTo("bottom", anchor: .bottom)
+        }
+        let next = StickToBottom.signature(messages: model.visibleMessages(for: agent))
+        stick = StickToBottom.onAssistantActivity(
+            state: stick,
+            prev: lastAssistantSig,
+            next: next
+        )
+        lastAssistantSig = next
     }
 
     @ViewBuilder

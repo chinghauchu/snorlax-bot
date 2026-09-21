@@ -908,6 +908,22 @@ info:
     `http://127.0.0.1:8000/v1` untouched. Never reintroduce
     computerPane.ts. Leave stale PRs #23 and #24 untouched.
     OpenAPI **0.18.0**.
+
+    v0.47: stick-to-bottom while streaming. One impl PR covering
+    desktop + iOS. Spec rides this PR. **No second PR.**
+    OpenAPI stays **0.18.0**. Do not bump. No new HTTP routes.
+    Runtime idle. If the user is within ~64px of the bottom,
+    follow the stream as tokens arrive. Scroll up freezes —
+    never yank mid-stream. Send and Regenerates snap to bottom
+    and re-arm stick. New assistant bubble while stuck: a 12px
+    muted Jump to latest chip at the bottom of the chat column;
+    tap/click snaps and re-arms. Dismiss when they scroll to
+    bottom themselves. Composer focus stays after Send. Out:
+    VNC, extra channels, store, coding-agent, new surfaces,
+    raw HTML, math/mermaid changes. Clients never speak MCP or
+    the model. Mac oMLX at `http://127.0.0.1:8000/v1` untouched.
+    Never reintroduce computerPane.ts. Leave stale PRs #23 and
+    #24 untouched. OpenAPI **0.18.0**.
   license:
     name: Apache-2.0
     identifier: Apache-2.0

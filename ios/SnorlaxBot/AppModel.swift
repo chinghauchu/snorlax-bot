@@ -53,6 +53,8 @@ final class AppModel {
     var errorMessage: String?
     var composerError: String?
     var wantsComposerFocus = false
+    /// Bumped on Send / Regenerate so the transcript snaps and re-arms stick.
+    var stickBump = 0
     var showSettings = false
     var showProfile = false
     var routines: [Routine] = []
@@ -765,6 +767,8 @@ final class AppModel {
         pendingAttachments = []
         attachError = nil
         composerError = nil
+        wantsComposerFocus = true
+        stickBump += 1
 
         let user = Message.optimisticUser(
             agentId: agent.id,
@@ -992,6 +996,7 @@ final class AppModel {
     func regenerate() async {
         guard let client, let agent = selectedAgent, !agent.isChannel, !isSending else { return }
         composerError = nil
+        stickBump += 1
         dropLastAssistantTurn()
         toolTraces = []
         isSending = true
