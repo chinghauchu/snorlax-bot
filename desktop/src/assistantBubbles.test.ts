@@ -75,9 +75,9 @@ test("blank lines inside fences and $$ math stay one bubble", () => {
 });
 
 test("Copy / Speak / Regenerates only on the last bubble of that turn", () => {
+  assert.match(app, /splitAssistantBubbles/);
   const mdStart = app.indexOf('className="assistant-md"');
   const md = app.slice(mdStart, mdStart + 1800);
-  assert.match(md, /splitAssistantBubbles/);
   assert.match(md, /assistant-bubbles/);
   assert.match(md, /bubble agent/);
   const bubbleBlock = md.slice(

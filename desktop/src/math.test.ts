@@ -70,7 +70,8 @@ test("inline \\( \\) and block $$ render on completed LEFT kind=message", () => 
   assert.ok(display && display.includes("katex"));
 
   assert.match(app, /<MarkdownBody/);
-  assert.match(app, /completed=\{!\(busy && index === liveAssistantIdx\)\}/);
+  assert.match(app, /const completed = !\(busy && index === liveAssistantIdx\);/);
+  assert.match(app, /completed=\{completed\}/);
   assert.match(body, /extractMath/);
   assert.match(body, /shouldRenderMath/);
   assert.match(body, /renderKatex/);
