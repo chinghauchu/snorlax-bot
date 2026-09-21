@@ -55,13 +55,12 @@ test("tool traces are 12px muted system lines", () => {
   assert.match(trace, /color:\s*var\(--text-muted\)/);
 });
 
-test("waiting line is 12px muted like a tool trace, with pulsing dots and reduced-motion static text", () => {
+test("waiting line is 12px muted pulsing ···, not a tool line or bubble", () => {
   const waiting = block(".waiting");
-  const word = block(".waiting-word");
   assert.match(waiting, /font-size:\s*12px/);
   assert.match(waiting, /color:\s*var\(--text-muted\)/);
-  assert.match(word, /color:\s*var\(--text-muted\)/);
   assert.doesNotMatch(css, /\.thinking\s*\{/);
+  assert.doesNotMatch(css, /\.waiting-word\s*\{/);
   assert.match(css, /@keyframes\s+waiting-dot/);
   assert.match(
     css,

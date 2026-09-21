@@ -59,10 +59,10 @@ aborts the in-flight stream; stop appending tokens; the
 partial LEFT stays as completed. Hide Stop when idle.
 Composer stays focused. OpenAPI stays 0.18.0.
 v0.51: waiting ··· until first token. After Send, a 12pt
-muted waiting ··· sits on the LEFT until the first assistant
-token/content. Hide it and show the normal streaming LEFT
-bubble once tokens arrive. Works with optimistic Send and
-Stop. OpenAPI stays 0.18.0.
+muted pulsing ··· sits on the LEFT (not a tool line, not a
+bubble) until the first assistant token. First token swaps
+to the growing LEFT bubble. Stop / error / empty reply
+dismisses the dots. OpenAPI stays 0.18.0.
 v0.32: dedicated `kind=approve` LEFT card for mutating shell (not a
 WidgetCard fork). Approve / Deny / ×; long-press copies the command.
 Question widgets

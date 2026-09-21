@@ -9,7 +9,8 @@ import { shouldOfferStop } from "./stopGenerating.ts";
 import {
   WAITING_DOT,
   WAITING_LABEL,
-  WAITING_WORD,
+  hasAssistantToken,
+  isEmptyAssistantReply,
   showWaitingLine,
 } from "./waiting.ts";
 
@@ -31,7 +32,7 @@ test("waiting ··· shows after Send until the first token", () => {
   assert.equal(
     showWaitingLine({
       busy: true,
-      hasLiveAssistant: false,
+      hasFirstToken: false,
       hasLiveTool: false,
     }),
     true,
@@ -40,39 +41,34 @@ test("waiting ··· shows after Send until the first token", () => {
   assert.equal(
     showWaitingLine({
       busy: false,
-      hasLiveAssistant: false,
+      hasFirstToken: false,
       hasLiveTool: false,
     }),
     false,
-    "idle hides waiting",
+    "idle / Stop hides waiting",
   );
 });
 
-test("waiting ··· hides on the first assistant token", () => {
+test("first token swaps to the growing LEFT bubble", () => {
   assert.equal(
     showWaitingLine({
       busy: true,
-      hasLiveAssistant: true,
+      hasFirstToken: true,
       hasLiveTool: false,
     }),
     false,
     "message.delta / first content takes over",
   );
-  assert.equal(
-    showWaitingLine({
-      busy: true,
-      hasLiveAssistant: true,
-      hasLiveTool: true,
-    }),
-    false,
-  );
+  assert.equal(hasAssistantToken({ content: "Hi" }), true);
+  assert.equal(hasAssistantToken({ content: "" }), false);
+  assert.equal(hasAssistantToken({ content: "", attachments: [{}] }), true);
 });
 
 test("a tool line also hides waiting even if busy stays true", () => {
   assert.equal(
     showWaitingLine({
       busy: true,
-      hasLiveAssistant: false,
+      hasFirstToken: false,
       hasLiveTool: true,
     }),
     false,
@@ -80,13 +76,51 @@ test("a tool line also hides waiting even if busy stays true", () => {
   );
 });
 
-test("Stop stays available while waiting (v0.50)", () => {
-  const waiting = showWaitingLine({
-    busy: true,
-    hasLiveAssistant: false,
-    hasLiveTool: false,
-  });
-  assert.equal(waiting, true);
+test("Stop / error / empty reply dismiss the dots", () => {
+  assert.equal(
+    showWaitingLine({
+      busy: false,
+      hasFirstToken: false,
+      hasLiveTool: false,
+    }),
+    false,
+    "Stop clears busy",
+  );
+  assert.equal(
+    showWaitingLine({
+      busy: true,
+      hasFirstToken: false,
+      hasLiveTool: false,
+      hasError: true,
+    }),
+    false,
+    "error dismisses dots",
+  );
+  assert.equal(
+    isEmptyAssistantReply({
+      role: "assistant",
+      kind: "message",
+      content: "",
+      attachments: [],
+    }),
+    true,
+  );
+  assert.equal(
+    isEmptyAssistantReply({
+      role: "assistant",
+      kind: "message",
+      content: "ok",
+    }),
+    false,
+  );
+  assert.equal(
+    isEmptyAssistantReply({
+      role: "user",
+      kind: "message",
+      content: "",
+    }),
+    false,
+  );
   assert.equal(shouldOfferStop(true), true);
   assert.equal(shouldOfferStop(false), false);
 });
@@ -98,34 +132,42 @@ test("1:1 isolation still hides a peer agent from A's transcript", () => {
   assert.equal(
     showWaitingLine({
       busy: true,
-      hasLiveAssistant: false,
+      hasFirstToken: false,
       hasLiveTool: false,
     }),
     true,
   );
 });
 
-test("desktop chrome is waiting ··· with sequential dots, not Thinking", () => {
-  assert.equal(WAITING_WORD, "waiting");
+test("desktop chrome is LEFT 12px muted pulsing ··· — not a tool line, not a bubble", () => {
   assert.equal(WAITING_DOT, "·");
-  assert.equal(WAITING_LABEL, "waiting ···");
+  assert.equal(WAITING_LABEL, "···");
   assert.match(app, /from "\.\/waiting"/);
   assert.match(app, /showWaitingLine/);
   assert.match(app, /WAITING_LABEL/);
-  assert.match(app, /WAITING_WORD/);
   assert.match(app, /className="waiting"/);
-  assert.match(app, /className="waiting-word"/);
   assert.match(app, /className="waiting-dots"/);
+  assert.doesNotMatch(app, /WAITING_WORD/);
+  assert.doesNotMatch(app, /className="waiting-word"/);
+  assert.doesNotMatch(css, /\.waiting-word\s*\{/);
   assert.doesNotMatch(app, /from "\.\/thinking"/);
-  assert.doesNotMatch(app, /THINKING_LABEL/);
-  assert.doesNotMatch(app, /showThinkingLine/);
   assert.doesNotMatch(app, /className="thinking"/);
   assert.doesNotMatch(css, /\.thinking\s*\{/);
   assert.match(css, /\.waiting\s*\{/);
-  assert.match(css, /\.waiting-word\s*\{/);
-  assert.match(css, /\.waiting-dots/);
   assert.match(css, /@keyframes\s+waiting-dot/);
   assert.match(css, /prefers-reduced-motion:\s*reduce/);
+
+  const overlayStart = app.indexOf("{showWaiting ? (");
+  assert.ok(overlayStart >= 0, "missing showWaiting render");
+  const render = app.slice(overlayStart, overlayStart + 1400);
+  assert.match(render, /aria-label=\{WAITING_LABEL\}/);
+  assert.match(render, /className="waiting"/);
+  assert.doesNotMatch(render, /className="bubble/);
+  assert.doesNotMatch(render, /tool-trace/);
+  assert.doesNotMatch(render, /waiting-word/);
+  assert.match(app, /isEmptyAssistantReply/);
+  assert.match(app, /if \(!delta\) return prev;/);
+  assert.match(app, /hasError: Boolean\(composerError\)/);
 });
 
 test("waiting line is 12px muted; dots pulse; reduced-motion is static", () => {
@@ -141,25 +183,11 @@ test("waiting line is 12px muted; dots pulse; reduced-motion is static", () => {
   const waiting = block(".waiting");
   assert.match(waiting, /font-size:\s*12px/);
   assert.match(waiting, /color:\s*var\(--text-muted\)/);
-  const word = block(".waiting-word");
-  assert.match(word, /color:\s*var\(--text-muted\)/);
   assert.match(css, /@keyframes\s+waiting-dot/);
   assert.match(
     css,
     /prefers-reduced-motion:\s*reduce[\s\S]*\.waiting-dots span \{[\s\S]*animation:\s*none/,
   );
-});
-
-test("waiting sits after the optimistic user-RIGHT and before the streaming LEFT", () => {
-  const overlayStart = app.indexOf("{showWaiting ? (");
-  assert.ok(overlayStart >= 0, "missing showWaiting render");
-  const render = app.slice(overlayStart, overlayStart + 1200);
-  assert.match(render, /aria-label=\{WAITING_LABEL\}/);
-  assert.match(render, /className="waiting"/);
-  assert.match(render, /\{WAITING_WORD\}/);
-  assert.match(render, /WAITING_DOT/);
-  assert.match(app, /optimisticUser: true/);
-  assert.match(app, /shouldOfferStop\(busy\)/);
 });
 
 test("OpenAPI stays 0.18.0; v0.51 is documented; no computerPane.ts", () => {

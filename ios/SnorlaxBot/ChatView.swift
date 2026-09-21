@@ -118,10 +118,19 @@ struct ChatView: View {
                                 $0.offset > lastUserIdx && $0.element.isToolLine
                             }
                         }()
+                        let hasFirstToken: Bool = {
+                            guard let liveAssistantIdx else { return false }
+                            let row = visible[liveAssistantIdx]
+                            return WaitingChrome.hasToken(
+                                content: row.content,
+                                attachmentCount: row.attachments.count
+                            )
+                        }()
                         let showWaiting = WaitingChrome.shouldShow(
                             busy: model.isSending,
-                            hasLiveAssistant: liveAssistantIdx != nil,
-                            hasLiveTool: !liveTraces.isEmpty || toolThisTurn
+                            hasFirstToken: hasFirstToken,
+                            hasLiveTool: !liveTraces.isEmpty || toolThisTurn,
+                            hasError: model.errorMessage != nil || model.composerError != nil
                         )
                         let lastLeftIdx = visible.indices.last { index in
                             let message = visible[index]

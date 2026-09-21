@@ -92,8 +92,8 @@ Concrete follow-ups after v0. Filed on GitHub against
   (12px muted Stop at chat-column bottom, above Jump to
   latest; client abort; keep partial LEFT as completed;
   hide when idle; composer stays focused). **v0.51:** waiting
-  ··· until first token (Grok Bot feel; after Send until the
-  first assistant token; hide when the LEFT bubble streams).
+  ··· until first token (LEFT 12px muted pulsing ··· until
+  first token; Stop / error / empty reply dismisses).
   Raw HTML still later.
   Full sandbox computer GUI (browser, VNC, terminal)
   stays later.
@@ -185,8 +185,8 @@ Concrete follow-ups after v0. Filed on GitHub against
   when idle. Composer stays focused. Desktop matches.
   OpenAPI stays 0.18.0. No POST /cancel.
 - **v0.51:** waiting ··· until first token. After Send, show
-  12pt muted waiting ··· on the LEFT until the first
-  assistant token/content. Hide it and show the normal
-  streaming LEFT bubble once tokens arrive. Works with
-  optimistic Send and Stop. Desktop matches. OpenAPI stays
-  0.18.0.
+  12pt muted pulsing ··· on the LEFT (not a tool line, not a
+  bubble) until the first assistant token. First token swaps
+  to the growing LEFT bubble. Stop / error / empty reply
+  dismisses the dots. Works with optimistic Send and Stop.
+  Desktop matches. OpenAPI stays 0.18.0.

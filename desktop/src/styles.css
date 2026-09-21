@@ -1139,10 +1139,6 @@ pre.md-math-fallback.md-math-block {
   align-self: flex-start;
 }
 
-.waiting-word {
-  color: var(--text-muted);
-}
-
 .waiting-dots span {
   display: inline-block;
   color: var(--text-muted);

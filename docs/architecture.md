@@ -589,9 +589,10 @@ idle. Composer stays focused. No POST /cancel. No new HTTP.
 OpenAPI stays 0.18.0. Never reintroduce `computerPane.ts`.
 
 v0.51: waiting ··· until first token. After Send, clients
-show a 12px / 12pt muted waiting ··· on the LEFT until the
-first assistant token/content arrives, then hide it and show
-the normal streaming LEFT bubble. Works with v0.49 optimistic
+show a 12px / 12pt muted pulsing ··· on the LEFT (not a
+tool line, not a bubble) until the first assistant token,
+then the growing LEFT bubble. Stop / error / empty reply
+dismisses the dots. Works with v0.49 optimistic
 user-RIGHT and v0.50 Stop. No new HTTP. OpenAPI stays 0.18.0.
 Never reintroduce `computerPane.ts`.
 

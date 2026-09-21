@@ -131,10 +131,10 @@ show). Click aborts the in-flight stream; stop appending
 tokens; the partial LEFT stays as completed. Hide Stop when
 idle. Composer stays focused. OpenAPI stays 0.18.0.
 v0.51: waiting ··· until first token (Grok Bot feel). After
-Send, a 12px muted waiting ··· sits on the LEFT until the
-first assistant token/content. Hide it and show the normal
-streaming LEFT bubble once tokens arrive. Works with
-optimistic Send and Stop. OpenAPI stays 0.18.0.
+Send, a 12px muted pulsing ··· sits on the LEFT (not a tool
+line, not a bubble) until the first assistant token. First
+token swaps to the growing LEFT bubble. Stop / error /
+empty reply dismisses the dots. OpenAPI stays 0.18.0.
 Assistant LEFT
 `kind=message` is 14px markdown (16/14 headings) in short
 agent bubbles after complete; user-right stays plain (`https://` tappable). Fenced code is full-turn language + Copy at 12px/1.45.

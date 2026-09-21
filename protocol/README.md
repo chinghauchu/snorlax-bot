@@ -240,9 +240,9 @@ stays focused. No POST /cancel. No new routes. OpenAPI stays
 0.18.0.
 
 v0.51 waiting ··· until first token: after Send, clients
-show waiting ··· until the first assistant token/content,
-then hide it and stream the LEFT bubble. No new routes.
-OpenAPI stays 0.18.0.
+show LEFT pulsing ··· until the first assistant token,
+then the growing LEFT bubble. Stop / error / empty reply
+dismiss the dots. No new routes. OpenAPI stays 0.18.0.
 
 A copy is also kept at `runtime/openapi.yaml` and `desktop/openapi.yaml`
 so those trees are self-contained. Do not let the files diverge.

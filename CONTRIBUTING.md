@@ -40,8 +40,8 @@ NVIDIA DGX Spark.
   12px/12pt muted Stop chip at the chat-column bottom — client abort
   that keeps the partial LEFT as completed and keeps the composer
   focused; v0.51 waiting ··· until first token is a 12px/12pt muted
-  LEFT indicator after Send until the first assistant token, then
-  the normal streaming LEFT bubble), a display-only
+  LEFT pulsing ··· after Send until the first assistant token, then
+  the growing LEFT bubble; Stop / error / empty reply dismisses it), a display-only
   Box computer preview (`GET /v1/agents/{id}/computer` JSON; Bearer PNG at
   `/computer/screenshot`; identity pane), desktop Box takeover
   (`POST /computer/session` → 201 `{ sessionId }`; `DELETE .../session` or

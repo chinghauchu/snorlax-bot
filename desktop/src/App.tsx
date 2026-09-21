@@ -125,7 +125,8 @@ import {
 import {
   WAITING_DOT,
   WAITING_LABEL,
-  WAITING_WORD,
+  hasAssistantToken,
+  isEmptyAssistantReply,
   showWaitingLine,
 } from "./waiting";
 import { ComputerPane, ComputerSeamButton } from "./ComputerPane";
@@ -1616,6 +1617,7 @@ export function App() {
         setMessages((prev) => {
           const existing = prev.find((m) => m.id === messageId);
           if (!existing) {
+            if (!delta) return prev;
             return [
               ...prev,
               {
@@ -1649,6 +1651,10 @@ export function App() {
           return;
         }
         if (message) {
+          if (isEmptyAssistantReply(message)) {
+            setMessages((prev) => prev.filter((m) => m.id !== message.id));
+            return;
+          }
           if (isToolLine(message)) {
             setToolTraces((prev) =>
               prev.filter((trace) => trace.id !== message.id),
@@ -2443,10 +2449,14 @@ export function App() {
   const toolThisTurn = visibleMessages.some(
     (message, index) => index > lastUserIdx && isToolLine(message),
   );
+  const liveAssistant = liveAssistantIdx >= 0
+    ? visibleMessages[liveAssistantIdx]
+    : undefined;
   const showWaiting = showWaitingLine({
     busy,
-    hasLiveAssistant: liveAssistantIdx >= 0,
+    hasFirstToken: hasAssistantToken(liveAssistant),
     hasLiveTool: liveTraces.length > 0 || toolThisTurn,
+    hasError: Boolean(composerError),
   });
   const lastLeftIdx = lastCompletedLeftMessageIndex(visibleMessages, {
     busy,
@@ -2859,8 +2869,7 @@ export function App() {
                   </span>
                 </div>
                 <p className="waiting" role="status">
-                  <span className="waiting-word">{WAITING_WORD}</span>{" "}
-                  <span className="waiting-dots" aria-hidden="true">
+                  <span className="waiting-dots">
                     <span>{WAITING_DOT}</span>
                     <span>{WAITING_DOT}</span>
                     <span>{WAITING_DOT}</span>
