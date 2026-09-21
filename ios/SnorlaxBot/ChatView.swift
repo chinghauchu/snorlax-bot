@@ -582,6 +582,9 @@ private struct ComposerBar: View {
                     },
                     onCaretChange: { range in
                         model.noteComposerSelection(range)
+                    },
+                    onEscapeStop: { composing in
+                        model.stopGeneratingFromEscape(composing: composing)
                     }
                 )
                 .frame(minHeight: 22, maxHeight: 120)

@@ -13,6 +13,8 @@ struct ComposerTextView: UIViewRepresentable {
     var onReturnSend: (() -> Void)? = nil
     var onPasteAttachments: (([ComposerPasteboard.Attachment]) -> Void)? = nil
     var onCaretChange: ((NSRange) -> Void)? = nil
+    /// Hardware Esc while generating. `composing` is IME marked text.
+    var onEscapeStop: ((Bool) -> Void)? = nil
 
     func makeCoordinator() -> Coordinator {
         Coordinator(self)
@@ -26,6 +28,9 @@ struct ComposerTextView: UIViewRepresentable {
         }
         view.onPasteAttachments = { [coordinator = context.coordinator] files in
             coordinator.parent.onPasteAttachments?(files)
+        }
+        view.onEscapeStop = { [coordinator = context.coordinator] composing in
+            coordinator.parent.onEscapeStop?(composing)
         }
         view.font = .systemFont(ofSize: 14)
         view.backgroundColor = .clear
@@ -44,6 +49,9 @@ struct ComposerTextView: UIViewRepresentable {
         }
         view.onPasteAttachments = { [coordinator = context.coordinator] files in
             coordinator.parent.onPasteAttachments?(files)
+        }
+        view.onEscapeStop = { [coordinator = context.coordinator] composing in
+            coordinator.parent.onEscapeStop?(composing)
         }
         view.isEditable = !disabled
         view.isUserInteractionEnabled = !disabled
@@ -159,6 +167,24 @@ struct ComposerTextView: UIViewRepresentable {
 final class ComposerUITextView: UITextView {
     var onReturnSend: (() -> Void)?
     var onPasteAttachments: (([ComposerPasteboard.Attachment]) -> Void)?
+    var onEscapeStop: ((Bool) -> Void)?
+
+    override var keyCommands: [UIKeyCommand]? {
+        let escape = UIKeyCommand(
+            title: StopGenerating.label,
+            action: #selector(stopGeneratingFromEscape),
+            input: UIKeyCommand.inputEscape,
+            modifierFlags: []
+        )
+        escape.wantsPriorityOverSystemBehavior = true
+        return (super.keyCommands ?? []) + [escape]
+    }
+
+    @objc private func stopGeneratingFromEscape() {
+        // IME: do not steal Esc while marked text is composing.
+        let composing = markedTextRange != nil
+        onEscapeStop?(composing)
+    }
 
     override func paste(_ sender: Any?) {
         let files = ComposerPasteboard.attachments(from: .general)

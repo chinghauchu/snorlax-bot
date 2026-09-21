@@ -7,6 +7,7 @@ import test from "node:test";
 import {
   STOP_LABEL,
   composerUsableAfterStop,
+  escapeStopsGenerating,
   isAbortError,
   keepPartialOnStop,
   shouldOfferStop,
@@ -180,4 +181,112 @@ test("v0.47 stick, v0.48 multi-bubbles, v0.49 optimistic Send stay wired", () =>
   assert.match(app, /optimisticUser: true/);
   assert.match(app, /insertOptimistic\(/);
   assert.match(app, /shouldBlockSend/);
+});
+
+test("Esc aborts mid-stream like Stop", () => {
+  assert.equal(escapeStopsGenerating({ busy: true }), true);
+  assert.equal(escapeStopsGenerating({ busy: false }), false);
+  assert.equal(shouldOfferStop(true), true);
+  assert.equal(
+    escapeStopsGenerating({ busy: true }),
+    shouldOfferStop(true),
+  );
+
+  assert.match(app, /escapeStopsGenerating/);
+  assert.match(app, /window\.addEventListener\("keydown", onKey\)/);
+  const escStart = app.indexOf("escapeStopsGenerating({");
+  assert.ok(escStart >= 0, "missing escapeStopsGenerating wiring");
+  const escBlock = app.slice(escStart - 400, escStart + 700);
+  assert.match(escBlock, /event\.key !== "Escape"/);
+  assert.match(escBlock, /onStopGenerating\(\)/);
+  assert.match(escBlock, /preventDefault/);
+  assert.doesNotMatch(escBlock, /submitTurn/);
+  assert.doesNotMatch(escBlock, /failOptimistic/);
+  const onStop = app.slice(
+    app.indexOf("function onStopGenerating()"),
+    app.indexOf("useEffect(() => {", app.indexOf("function onStopGenerating()")),
+  );
+  assert.match(onStop, /abortRef\.current\?\.abort\(\)/);
+  assert.doesNotMatch(app, /EscStopIcon/);
+  assert.doesNotMatch(app, /aria-label="Stop generating"/);
+});
+
+test("Esc is ignored during IME composing", () => {
+  assert.equal(
+    escapeStopsGenerating({ busy: true, composing: true }),
+    false,
+  );
+  assert.equal(
+    escapeStopsGenerating({ busy: true, composing: false }),
+    true,
+  );
+  assert.match(app, /isComposerComposing\(event\)/);
+  const escCall = app.slice(
+    app.indexOf("escapeStopsGenerating({"),
+    app.indexOf("})", app.indexOf("escapeStopsGenerating({")) + 2,
+  );
+  assert.match(escCall, /composing:\s*isComposerComposing\(event\)/);
+});
+
+test("Esc is ignored when a widget / approve / connect card is pending", () => {
+  assert.equal(
+    escapeStopsGenerating({ busy: true, pendingWidget: true }),
+    false,
+  );
+  assert.equal(
+    escapeStopsGenerating({ busy: true, pendingApprove: true }),
+    false,
+  );
+  assert.equal(
+    escapeStopsGenerating({ busy: true, pendingConnect: true }),
+    false,
+  );
+  assert.equal(
+    escapeStopsGenerating({
+      busy: true,
+      pendingWidget: false,
+      pendingApprove: false,
+      pendingConnect: false,
+    }),
+    true,
+  );
+  const escCall = app.slice(
+    app.indexOf("escapeStopsGenerating({"),
+    app.indexOf("})", app.indexOf("escapeStopsGenerating({")) + 2,
+  );
+  assert.match(escCall, /pendingWidget:\s*messages\.some\(isPendingWidget\)/);
+  assert.match(escCall, /pendingApprove:\s*messages\.some\(isPendingApprove\)/);
+  assert.match(escCall, /pendingConnect:\s*messages\.some\(isPendingConnect\)/);
+  assert.match(app, /from "\.\/widget"/);
+  assert.match(app, /isPendingWidget/);
+  assert.match(app, /isPendingApprove/);
+  assert.match(app, /isPendingConnect/);
+});
+
+test("OpenAPI stays 0.18.0; v0.53 Esc=Stop is documented; no cancel route", () => {
+  assert.match(openapi, /version: 0\.18\.0/);
+  assert.match(protocol, /version: 0\.18\.0/);
+  assert.match(runtimeOpenapi, /version: 0\.18\.0/);
+  assert.doesNotMatch(openapi, /version:\s*0\.19/);
+  assert.match(openapi, /v0\.53/);
+  assert.match(protocol, /v0\.53/);
+  assert.match(runtimeOpenapi, /v0\.53/);
+  assert.doesNotMatch(openapi, /\/v1\/.*cancel/);
+  assert.doesNotMatch(protocol, /\/v1\/.*cancel/);
+  assert.doesNotMatch(runtimeOpenapi, /\/v1\/.*cancel/);
+  assert.doesNotMatch(stopSrc, /computerPane\.ts/);
+  assert.equal(existsSync(join(here, "computerPane.ts")), false);
+});
+
+test("v0.47–v0.52 fluency stack stays wired with Esc=Stop", () => {
+  assert.match(app, /onSendOrRegenerate/);
+  assert.match(app, /splitAssistantBubbles/);
+  assert.match(app, /optimisticUser: true/);
+  assert.match(app, /insertOptimistic\(/);
+  assert.match(app, /shouldOfferStop/);
+  assert.match(app, /onStopGenerating/);
+  assert.match(app, /showWaitingLine/);
+  assert.match(app, /className="waiting"/);
+  assert.match(app, /showStreamingCaret/);
+  assert.match(app, /className="streaming-caret"/);
 });

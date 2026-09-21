@@ -41,3 +41,23 @@ export function composerUsableAfterStop(busy: boolean): boolean {
 export function shouldRestartAfterStop(): boolean {
   return false;
 }
+
+/**
+ * v0.53: Esc aborts the in-flight stream the same as tapping Stop.
+ * Do not steal Esc while IME is composing, or while a pending
+ * widget / approve / connect card is up (those keep Esc/dismiss).
+ */
+export function escapeStopsGenerating(input: {
+  busy: boolean;
+  composing?: boolean;
+  pendingWidget?: boolean;
+  pendingApprove?: boolean;
+  pendingConnect?: boolean;
+}): boolean {
+  if (!shouldOfferStop(input.busy)) return false;
+  if (input.composing) return false;
+  if (input.pendingWidget || input.pendingApprove || input.pendingConnect) {
+    return false;
+  }
+  return true;
+}

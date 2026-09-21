@@ -70,6 +70,12 @@ On complete / Stop the caret is gone immediately. Waiting ···
 stays pre-first-token only; never both. Reduce Motion: static
 muted caret. Not on tool / widget / approve / connect /
 user-right. OpenAPI stays 0.18.0.
+v0.53: Esc = Stop while generating. While an assistant LEFT
+turn is in flight, hardware Escape (`UIKeyCommand`) aborts
+the client stream — same as tapping Stop. Do not steal Esc
+while IME is composing (`markedTextRange`) or when a pending
+widget / approve / connect card is up. On-screen Stop
+unchanged. OpenAPI stays 0.18.0.
 v0.32: dedicated `kind=approve` LEFT card for mutating shell (not a
 WidgetCard fork). Approve / Deny / ×; long-press copies the command.
 Question widgets
@@ -170,9 +176,10 @@ Output: `SnorlaxBot/Generated/V1Types.swift`. Do not hand-edit that file.
 - `SnorlaxBot/MathView.swift` — v0.46 WKWebView KaTeX (local)
 - `SnorlaxBot/StickToBottom.swift` — v0.47 stick/freeze/Jump to latest
 - `SnorlaxBot/OptimisticSend.swift` — v0.49 optimistic user-RIGHT on Send
-- `SnorlaxBot/StopGenerating.swift` — v0.50 12pt muted Stop (client abort)
+- `SnorlaxBot/StopGenerating.swift` — v0.50 12pt muted Stop (client abort); v0.53 Esc = Stop
 - `SnorlaxBot/Waiting.swift` — v0.51 waiting ··· until first token
 - `SnorlaxBot/StreamingCaret.swift` — v0.52 streaming caret on LEFT bubble
+- `SnorlaxBot/ComposerTextView.swift` — v0.53 UIKeyCommand Escape = Stop
 - `SnorlaxBot/katex.min.js` / `katex.min.css` / `fonts/` — bundled KaTeX
 - `SnorlaxBot/RuntimeClient.swift` — `/v1` + SSE
 - `SnorlaxBot/Generated/V1Types.swift` — OpenAPI models

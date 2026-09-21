@@ -182,14 +182,15 @@ import {
 } from "./optimisticSend";
 import {
   STOP_LABEL,
+  escapeStopsGenerating,
   isAbortError,
   keepPartialOnStop,
   shouldOfferStop,
   shouldRefetchAfterStop,
 } from "./stopGenerating";
-import { catalogInstallBody, isConnect, parsePluginArgs, pluginStatusLabel } from "./connect";
-import { isApprove } from "./approve";
-import { isWidget } from "./widget";
+import { catalogInstallBody, isConnect, isPendingConnect, parsePluginArgs, pluginStatusLabel } from "./connect";
+import { isApprove, isPendingApprove } from "./approve";
+import { isPendingWidget, isWidget } from "./widget";
 import { openOsBrowser } from "./openUrl";
 import type {
   Agent,
@@ -1787,6 +1788,30 @@ export function App() {
     abortRef.current?.abort();
     focusComposer();
   }
+
+  useEffect(() => {
+    const onKey = (event: globalThis.KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      if (mentionOpen || skillOpen) return;
+      if (takeoverOpen) return;
+      if (dictationCancelable(dictation)) return;
+      if (
+        !escapeStopsGenerating({
+          busy,
+          composing: isComposerComposing(event),
+          pendingWidget: messages.some(isPendingWidget),
+          pendingApprove: messages.some(isPendingApprove),
+          pendingConnect: messages.some(isPendingConnect),
+        })
+      ) {
+        return;
+      }
+      event.preventDefault();
+      onStopGenerating();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [busy, messages, mentionOpen, skillOpen, takeoverOpen, dictation]);
 
   async function onSend() {
     if (!session || !active || inFlight.current || sendBlocked) return;
