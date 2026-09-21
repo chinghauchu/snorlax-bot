@@ -1214,6 +1214,11 @@ export interface components {
              *     v0.46 clients render TeX math (inline \( \) and
              *     block $$) on completed LEFT kind=message (invalid
              *     math stays monospace source).
+             *     v0.48 clients display completed LEFT kind=message
+             *     as short multi-bubbles split on blank lines
+             *     (mid-stream stays one bubble; Copy / Speak /
+             *     Regenerates only on the last bubble). Runtime still
+             *     does not split.
              *     widget, connect, tool, approve, and routineName stay. No MCP mix-in.
              */
             content: string;

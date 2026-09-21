@@ -563,6 +563,13 @@ assistant bubble while stuck: 12px muted Jump to latest chip
 Composer focus stays after Send. Desktop + iOS. No new HTTP.
 OpenAPI stays 0.18.0. Never reintroduce `computerPane.ts`.
 
+v0.48: short multi-bubbles on completed LEFT `kind=message`.
+Clients split on blank lines after the stream completes
+(mid-stream stays one bubble). Copy / Speak / Regenerates
+only on the last bubble of that turn. Tool / widget /
+approve / connect and user-right unchanged. No new HTTP.
+OpenAPI stays 0.18.0. Never reintroduce `computerPane.ts`.
+
 ## Inference interface
 
 ```text

@@ -73,7 +73,9 @@ info:
     mermaid as diagrams on completed LEFT kind=message (invalid falls
     back to fence chrome). v0.46 renders TeX math on completed LEFT
     kind=message (inline \( \) and block $$; invalid falls back to
-    monospace source). No new HTTP.
+    monospace source). v0.48 clients display completed LEFT
+    kind=message as short multi-bubbles split on blank lines
+    (mid-stream stays one bubble). No new HTTP.
 
     Images persist and are returned; they are never sent to the model. No mDNS.
 
@@ -924,6 +926,23 @@ info:
     the model. Mac oMLX at `http://127.0.0.1:8000/v1` untouched.
     Never reintroduce computerPane.ts. Leave stale PRs #23 and
     #24 untouched. OpenAPI **0.18.0**.
+
+    v0.48: short multi-bubbles on completed LEFT kind=message.
+    One impl PR covering desktop + iOS. Spec rides this PR.
+    **No second PR.** OpenAPI stays **0.18.0**. Do not bump.
+    No new HTTP routes. Runtime idle. Completed LEFT
+    `kind=message` splits on blank lines into short
+    multi-bubbles (Grok Bot feel). Mid-stream stays one
+    growing bubble until the message completes, then split
+    once. Copy / Speak / Regenerates only on the last bubble
+    of that turn. Tool / widget / approve / connect unchanged.
+    User-right unchanged. Message.content stays a string —
+    clients split for display only. Keep v0.47 stick-to-bottom
+    intact. Out: VNC, extra channels, store, coding-agent, new
+    surfaces. Clients never speak MCP or the model. Mac oMLX
+    at `http://127.0.0.1:8000/v1` untouched. Never reintroduce
+    computerPane.ts. Leave stale PRs #23 and #24 untouched.
+    OpenAPI **0.18.0**.
   license:
     name: Apache-2.0
     identifier: Apache-2.0
@@ -2555,6 +2574,11 @@ components:
             v0.46 clients render TeX math (inline \( \) and
             block $$) on completed LEFT kind=message (invalid
             math stays monospace source).
+            v0.48 clients display completed LEFT kind=message
+            as short multi-bubbles split on blank lines
+            (mid-stream stays one bubble; Copy / Speak /
+            Regenerates only on the last bubble). Runtime still
+            does not split.
             widget, connect, tool, approve, and routineName stay. No MCP mix-in.
         images:
           type: array

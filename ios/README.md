@@ -42,6 +42,10 @@ v0.47: stick-to-bottom while streaming. Within ~64pt of the
 bottom, follow tokens. Scroll up freezes. Send / Regenerates
 snap and re-arm. New assistant bubble while stuck: 12pt muted
 Jump to latest chip. Composer focus stays after Send.
+v0.48: completed LEFT `kind=message` splits on blank lines
+into short multi-bubbles. Mid-stream stays one growing
+bubble. Copy / Speak / Regenerates only on the last bubble
+of that turn. OpenAPI stays 0.18.0.
 v0.32: dedicated `kind=approve` LEFT card for mutating shell (not a
 WidgetCard fork). Approve / Deny / ×; long-press copies the command.
 Question widgets
@@ -135,7 +139,7 @@ Output: `SnorlaxBot/Generated/V1Types.swift`. Do not hand-edit that file.
 - `SnorlaxBot/SettingsSheet.swift` — URL, token, plugins list + Add sheet
 - `SnorlaxBot/ConnectCard.swift` — `kind=connect` LEFT card
 - `SnorlaxBot/ApproveCard.swift` — `kind=approve` LEFT card
-- `SnorlaxBot/AssistantMarkdown.swift` — assistant LEFT markdown
+- `SnorlaxBot/AssistantMarkdown.swift` — assistant LEFT markdown + v0.48 blank-line split
 - `SnorlaxBot/MermaidView.swift` — v0.45 WKWebView mermaid (local)
 - `SnorlaxBot/mermaid.min.js` — bundled official mermaid (IIFE)
 - `SnorlaxBot/MathView.swift` — v0.46 WKWebView KaTeX (local)

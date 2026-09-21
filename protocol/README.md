@@ -220,6 +220,11 @@ when within ~64px of the bottom; scroll-up freezes. Send /
 Regenerates snap and re-arm. Jump to latest chip while stuck.
 No new routes. OpenAPI stays 0.18.0.
 
+v0.48 short multi-bubbles: clients display completed LEFT
+`kind=message` as short bubbles split on blank lines
+(mid-stream stays one bubble). Runtime does not split. No new
+routes. OpenAPI stays 0.18.0.
+
 A copy is also kept at `runtime/openapi.yaml` and `desktop/openapi.yaml`
 so those trees are self-contained. Do not let the files diverge.
 

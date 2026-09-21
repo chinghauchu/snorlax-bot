@@ -38,6 +38,7 @@ Copy / Regenerate / Speak on assistant LEFT `kind=message` (Copy 1:1 and channel
 mermaid diagrams on completed LEFT `kind=message` (fenced `mermaid`; invalid falls back to fence chrome) +
 TeX math on completed LEFT `kind=message` (inline `\( \)` / block `$$`; KaTeX; invalid falls back to monospace source) +
 stick-to-bottom while streaming (follow within ~64px; freeze on scroll-up; Send / Regenerates re-arm; 12px muted Jump to latest) +
+short multi-bubbles on completed LEFT `kind=message` (split on blank lines after the stream completes; Copy / Speak / Regenerates on the last bubble) +
 identity-pane Box computer preview (Bearer PNG) + desktop Box takeover
 (Open / Done; pointer/key in 1280×800) + teach-a-task (Record / Stop /
 Save as skill inside takeover) + skill markdown editor (identity-pane
@@ -245,7 +246,10 @@ piper; no autoplay; OpenAPI stays 0.18.0), and
 v0.45 mermaid diagrams on completed LEFT `kind=message` (official mermaid
 / iOS WKWebView; invalid falls back to fence chrome; OpenAPI stays 0.18.0), and
 v0.46 TeX math on completed LEFT `kind=message` (inline `\( \)` / block `$$`;
-KaTeX; invalid falls back to monospace source; OpenAPI stays 0.18.0).
+KaTeX; invalid falls back to monospace source; OpenAPI stays 0.18.0), and
+v0.48 short multi-bubbles on completed LEFT `kind=message` (split on blank
+lines after the stream completes; Copy / Speak / Regenerates on the last
+bubble; OpenAPI stays 0.18.0).
 Later: full sandbox computer GUI, MCP marketplace catalog,
 Slack/GitHub inbound listeners.
 

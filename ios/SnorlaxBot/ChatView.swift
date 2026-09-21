@@ -796,6 +796,10 @@ private struct MessageBubble: View {
 
     private var isUser: Bool { message.isFromUser }
 
+    private var leftBubbles: [String] {
+        MarkdownSplit.bubbles(in: message.displayContent, completed: completed)
+    }
+
     private var senderAgent: Agent? {
         agents.first(where: { $0.id == message.senderId })
     }
@@ -898,12 +902,25 @@ private struct MessageBubble: View {
             } else {
                 VStack(alignment: .leading, spacing: 6) {
                     userAttachments
-                    if !message.content.isEmpty {
-                        AssistantMarkdown(
-                            text: message.displayContent,
-                            names: agents.filter { !$0.isChannel }.map(\.name),
-                            completed: completed
-                        )
+                    if !leftBubbles.isEmpty {
+                        HStack(alignment: .top, spacing: 0) {
+                            VStack(alignment: .leading, spacing: 4) {
+                                ForEach(Array(leftBubbles.enumerated()), id: \.offset) { _, part in
+                                    AssistantMarkdown(
+                                        text: part,
+                                        names: agents.filter { !$0.isChannel }.map(\.name),
+                                        completed: completed
+                                    )
+                                    .padding(.horizontal, 12)
+                                    .padding(.vertical, 8)
+                                    .background(
+                                        Color(uiColor: .secondarySystemFill),
+                                        in: RoundedRectangle(cornerRadius: 16)
+                                    )
+                                }
+                            }
+                            Spacer(minLength: 48)
+                        }
                     }
                     if showCopy || showSpeak {
                         HStack(spacing: 12) {
