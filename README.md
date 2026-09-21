@@ -288,7 +288,12 @@ immediately; Stop + Esc unchanged; OpenAPI stays 0.18.0), and
 v0.56 compact tool traces (2+ consecutive kind=tool lines
 collapse to one 12px/12pt muted `N tools` + chevron;
 default collapsed; single tool unchanged; widget/approve/
-connect never fold; OpenAPI stays 0.18.0).
+connect never fold; OpenAPI stays 0.18.0), and
+v0.57 mid-stream plaintext (live LEFT kind=message is
+plain text — no live markdown, mermaid, or math; on
+complete / Stop markdown renders once then the blank-line
+split; Copy / Speak / Regenerates still last-bubble-only;
+OpenAPI stays 0.18.0).
 Later: full sandbox computer GUI, MCP marketplace catalog,
 Slack/GitHub inbound listeners.
 

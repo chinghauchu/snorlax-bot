@@ -258,6 +258,11 @@ v0.56: compact tool traces is client-only (2+ consecutive
 kind=tool → `N tools` + chevron; widget/approve/connect
 never fold). Runtime idle. OpenAPI stays 0.18.0.
 
+v0.57: mid-stream plaintext is client-only (live LEFT
+kind=message is plain text; markdown + mermaid + math
+render once on complete / Stop, then the blank-line split).
+Runtime idle. OpenAPI stays 0.18.0.
+
 ## MCP (`mcp.json`)
 
 The runtime is the MCP client. Desktop and iOS never speak MCP. Put

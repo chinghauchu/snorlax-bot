@@ -55,7 +55,9 @@ NVIDIA DGX Spark.
   Stop / error / empty; v0.56 compact tool traces collapse 2+
   consecutive kind=tool lines to one 12px/12pt muted `N tools` +
   chevron, default collapsed, single tool unchanged, widget/approve/
-  connect never fold), a display-only
+  connect never fold; v0.57 mid-stream LEFT kind=message is plaintext
+  until complete / Stop, then markdown (bold/lists/code/links + mermaid
+  + math) renders once and the blank-line split applies), a display-only
   Box computer preview (`GET /v1/agents/{id}/computer` JSON; Bearer PNG at
   `/computer/screenshot`; identity pane), desktop Box takeover
   (`POST /computer/session` → 201 `{ sessionId }`; `DELETE .../session` or

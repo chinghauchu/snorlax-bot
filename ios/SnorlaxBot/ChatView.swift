@@ -1074,11 +1074,15 @@ private struct MessageBubble: View {
                             VStack(alignment: .leading, spacing: AssistantBubbleGap.sameTurn) {
                                 ForEach(Array(leftBubbles.enumerated()), id: \.offset) { offset, part in
                                     HStack(alignment: .lastTextBaseline, spacing: 2) {
-                                        AssistantMarkdown(
-                                            text: part,
-                                            names: agents.filter { !$0.isChannel }.map(\.name),
-                                            completed: completed
-                                        )
+                                        if MidStreamPlaintext.shouldRenderMarkdown(completed: completed) {
+                                            AssistantMarkdown(
+                                                text: part,
+                                                names: agents.filter { !$0.isChannel }.map(\.name),
+                                                completed: completed
+                                            )
+                                        } else {
+                                            MidStreamPlaintextView(text: part)
+                                        }
                                         if showCaret && offset == leftBubbles.count - 1 {
                                             StreamingCaretView()
                                         }

@@ -274,6 +274,12 @@ consecutive kind=tool lines collapse client-side into one
 Default collapsed. Single tool unchanged. widget / approve
 / connect never fold. No new routes. OpenAPI stays 0.18.0.
 
+v0.57 mid-stream plaintext: while a LEFT kind=message is
+mid-stream (growing bubble + caret), clients paint plain
+text only — no live markdown, mermaid, or math. On complete
+or Stop, markdown renders once then the blank-line split.
+No new routes. OpenAPI stays 0.18.0.
+
 A copy is also kept at `runtime/openapi.yaml` and `desktop/openapi.yaml`
 so those trees are self-contained. Do not let the files diverge.
 

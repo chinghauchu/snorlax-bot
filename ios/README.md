@@ -97,6 +97,15 @@ tool paints normally; on the 2nd, swap to collapsed
 `N tools` and bump N. kind=widget / approve / connect
 never fold. Stick-to-bottom / Jump / multi-bubble gap
 unchanged. OpenAPI stays 0.18.0.
+v0.57: mid-stream plaintext. While a LEFT kind=message is
+mid-stream (growing bubble + caret), paint plain text only
+— no live markdown, mermaid, or math. On complete or Stop
+(partial stays completed): render markdown once
+(bold/lists/code/links + mermaid + math), then the
+blank-line multi-bubble split. Copy / Speak / Regenerates
+still only on the last bubble after complete. ··· waiting,
+caret, stick-to-bottom, compact tools unchanged. OpenAPI
+stays 0.18.0.
 v0.32: dedicated `kind=approve` LEFT card for mutating shell (not a
 WidgetCard fork). Approve / Deny / ×; long-press copies the command.
 Question widgets
@@ -205,6 +214,7 @@ Output: `SnorlaxBot/Generated/V1Types.swift`. Do not hand-edit that file.
 - `SnorlaxBot/ComposerTextView.swift` — v0.53 UIKeyCommand Escape = Stop; v0.55 Return does not send while generating
 - `SnorlaxBot/SendMuted.swift` — v0.55 Send muted while generating
 - `SnorlaxBot/CompactToolTraces.swift` — v0.56 compact tool traces (`N tools` + chevron)
+- `SnorlaxBot/MidStreamPlaintext.swift` — v0.57 mid-stream LEFT plaintext until complete / Stop
 - `SnorlaxBot/katex.min.js` / `katex.min.css` / `fonts/` — bundled KaTeX
 - `SnorlaxBot/RuntimeClient.swift` — `/v1` + SSE
 - `SnorlaxBot/Generated/V1Types.swift` — OpenAPI models

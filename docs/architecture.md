@@ -645,6 +645,17 @@ connect never fold into the tool stack. Stick-to-bottom /
 Jump / multi-bubble gap unchanged. No new HTTP. OpenAPI
 stays 0.18.0. Never reintroduce `computerPane.ts`.
 
+v0.57: mid-stream plaintext. While a LEFT kind=message is
+mid-stream (growing bubble + caret): paint plain text only
+— no live markdown, mermaid, or math. On complete or Stop
+(partial stays completed): render markdown once (bold /
+lists / code / links + mermaid + math), then apply the
+existing blank-line multi-bubble split. Copy / Speak /
+Regenerates still only on the last bubble after complete.
+··· waiting, caret, stick-to-bottom, compact tools
+unchanged. No new HTTP. OpenAPI stays 0.18.0. Never
+reintroduce `computerPane.ts`.
+
 ## Inference interface
 
 ```text

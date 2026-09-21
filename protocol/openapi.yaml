@@ -1093,6 +1093,24 @@ info:
     `http://127.0.0.1:8000/v1` untouched. Never reintroduce
     computerPane.ts. Leave stale PRs #23 and #24 untouched.
     OpenAPI **0.18.0**.
+
+    v0.57: mid-stream plaintext. One impl PR covering desktop
+    + iOS. Spec rides this PR. **No second PR.** OpenAPI
+    stays **0.18.0**. Do not bump. No new HTTP routes.
+    Runtime idle. While a LEFT kind=message is mid-stream
+    (growing bubble + caret): paint plain text only — no
+    live markdown, mermaid, or math. On complete or Stop
+    (partial stays completed): render markdown once (bold /
+    lists / code / links + mermaid + math), then apply the
+    existing blank-line multi-bubble split. Copy / Speak /
+    Regenerates still only on the last bubble after complete.
+    ··· waiting, caret, stick-to-bottom, compact tools
+    unchanged. Keep v0.47–v0.56 intact. Out: VNC, extra
+    channels, store, coding-agent, new surfaces. Clients
+    never speak MCP or the model. Mac oMLX at
+    `http://127.0.0.1:8000/v1` untouched. Never reintroduce
+    computerPane.ts. Leave stale PRs #23 and #24 untouched.
+    OpenAPI **0.18.0**.
   license:
     name: Apache-2.0
     identifier: Apache-2.0

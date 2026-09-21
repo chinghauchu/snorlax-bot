@@ -144,6 +144,7 @@ import { ApproveCard } from "./ApproveCard";
 import { ConnectCard } from "./ConnectCard";
 import { HttpsText, MarkdownBody } from "./MarkdownBody";
 import { copyText } from "./markdown";
+import { shouldRenderMarkdown } from "./midStreamPlaintext";
 import {
   assistantBubbleWide,
   splitAssistantBubbles,
@@ -2905,17 +2906,23 @@ export function App() {
                                       : "bubble agent"
                                   }
                                 >
-                                  <MarkdownBody
-                                    text={part}
-                                    knownNames={knownNames}
-                                    completed={completed}
-                                  />
-                                  {showCaret ? (
-                                    <span
-                                      className="streaming-caret"
-                                      aria-hidden="true"
+                                  {shouldRenderMarkdown({ completed }) ? (
+                                    <MarkdownBody
+                                      text={part}
+                                      knownNames={knownNames}
+                                      completed={completed}
                                     />
-                                  ) : null}
+                                  ) : (
+                                    <pre className="assistant-plain">
+                                      {part}
+                                      {showCaret ? (
+                                        <span
+                                          className="streaming-caret"
+                                          aria-hidden="true"
+                                        />
+                                      ) : null}
+                                    </pre>
+                                  )}
                                 </div>
                               );
                             })}
