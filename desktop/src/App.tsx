@@ -122,7 +122,13 @@ import {
   loadInitialRuntimeUrl,
   normalizeRuntimeUrl,
 } from "./runtimeUrl";
-import { showThinkingLine, THINKING_LABEL } from "./thinking";
+import {
+  WAITING_DOT,
+  WAITING_LABEL,
+  hasAssistantToken,
+  isEmptyAssistantReply,
+  showWaitingLine,
+} from "./waiting";
 import { ComputerPane, ComputerSeamButton } from "./ComputerPane";
 import {
   COMPUTER_OPEN_KEY,
@@ -1611,6 +1617,7 @@ export function App() {
         setMessages((prev) => {
           const existing = prev.find((m) => m.id === messageId);
           if (!existing) {
+            if (!delta) return prev;
             return [
               ...prev,
               {
@@ -1644,6 +1651,10 @@ export function App() {
           return;
         }
         if (message) {
+          if (isEmptyAssistantReply(message)) {
+            setMessages((prev) => prev.filter((m) => m.id !== message.id));
+            return;
+          }
           if (isToolLine(message)) {
             setToolTraces((prev) =>
               prev.filter((trace) => trace.id !== message.id),
@@ -2438,10 +2449,14 @@ export function App() {
   const toolThisTurn = visibleMessages.some(
     (message, index) => index > lastUserIdx && isToolLine(message),
   );
-  const showThinking = showThinkingLine({
+  const liveAssistant = liveAssistantIdx >= 0
+    ? visibleMessages[liveAssistantIdx]
+    : undefined;
+  const showWaiting = showWaitingLine({
     busy,
-    hasLiveAssistant: liveAssistantIdx >= 0,
+    hasFirstToken: hasAssistantToken(liveAssistant),
     hasLiveTool: liveTraces.length > 0 || toolThisTurn,
+    hasError: Boolean(composerError),
   });
   const lastLeftIdx = lastCompletedLeftMessageIndex(visibleMessages, {
     busy,
@@ -2836,11 +2851,11 @@ export function App() {
                 ))}
               </article>
             ) : null}
-            {showThinking ? (
+            {showWaiting ? (
               <article
                 className="turn left new-sender"
                 aria-live="polite"
-                aria-label={THINKING_LABEL}
+                aria-label={WAITING_LABEL}
               >
                 <div className="sender-row">
                   <Avatar
@@ -2853,8 +2868,12 @@ export function App() {
                     {active?.name || "Agent"}
                   </span>
                 </div>
-                <p className="thinking" role="status">
-                  <span className="thinking-label">{THINKING_LABEL}</span>
+                <p className="waiting" role="status">
+                  <span className="waiting-dots">
+                    <span>{WAITING_DOT}</span>
+                    <span>{WAITING_DOT}</span>
+                    <span>{WAITING_DOT}</span>
+                  </span>
                 </p>
               </article>
             ) : null}

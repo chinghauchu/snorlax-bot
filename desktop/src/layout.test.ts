@@ -55,19 +55,16 @@ test("tool traces are 12px muted system lines", () => {
   assert.match(trace, /color:\s*var\(--text-muted\)/);
 });
 
-test("thinking line is 12px muted like a tool trace, with a wave and reduced-motion static text", () => {
-  const thinking = block(".thinking");
-  const label = block(".thinking-label");
-  assert.match(thinking, /font-size:\s*12px/);
-  assert.match(thinking, /color:\s*var\(--text-muted\)/);
-  assert.match(label, /color:\s*var\(--text-muted\)/);
-  assert.doesNotMatch(label, /(?:^|[^-])color:\s*transparent\b/);
-  assert.doesNotMatch(label, /-webkit-text-fill-color:\s*transparent\b/);
-  assert.doesNotMatch(css, /\.typing\s*\{/);
-  assert.match(css, /@keyframes\s+thinking-wave/);
+test("waiting line is 12px muted pulsing ···, not a tool line or bubble", () => {
+  const waiting = block(".waiting");
+  assert.match(waiting, /font-size:\s*12px/);
+  assert.match(waiting, /color:\s*var\(--text-muted\)/);
+  assert.doesNotMatch(css, /\.thinking\s*\{/);
+  assert.doesNotMatch(css, /\.waiting-word\s*\{/);
+  assert.match(css, /@keyframes\s+waiting-dot/);
   assert.match(
     css,
-    /prefers-reduced-motion:\s*reduce[\s\S]*\.thinking-label \{[\s\S]*animation:\s*none/,
+    /prefers-reduced-motion:\s*reduce[\s\S]*\.waiting-dots span \{[\s\S]*animation:\s*none/,
   );
 });
 

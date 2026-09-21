@@ -1221,6 +1221,7 @@ final class AppModel {
             if let index = messages.firstIndex(where: { $0.id == id }) {
                 messages[index].content += text
             } else {
+                if text.isEmpty { return }
                 let agent = selectedAgent
                 messages.append(.streamingAssistant(
                     id: id,
@@ -1233,6 +1234,15 @@ final class AppModel {
             }
         case .done(let message):
             if onTimeline, message.replyTo != nil { return }
+            if WaitingChrome.isEmptyAssistantReply(
+                isUser: message.isFromUser,
+                isKindMessage: message.isKindMessage,
+                content: message.content,
+                attachmentCount: message.attachments.count
+            ) {
+                messages.removeAll { $0.id == message.id }
+                return
+            }
             if message.isFromUser {
                 messages = OptimisticSend.absorb(messages, incoming: message)
             } else if let index = messages.firstIndex(where: { $0.id == message.id }) {

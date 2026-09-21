@@ -259,7 +259,11 @@ v0.50 Stop generating mid-stream (12px/12pt muted Stop at the
 chat-column bottom, above Jump to latest; client abort of the
 in-flight stream; stop appending tokens; partial LEFT stays as
 completed; hide Stop when idle; composer stays focused; no
-POST /cancel; OpenAPI stays 0.18.0).
+POST /cancel; OpenAPI stays 0.18.0), and
+v0.51 waiting ··· until first token (LEFT 12px/12pt muted
+pulsing ··· after Send until the first assistant token;
+first token swaps to the growing LEFT bubble; Stop / error /
+empty reply dismisses the dots; OpenAPI stays 0.18.0).
 Later: full sandbox computer GUI, MCP marketplace catalog,
 Slack/GitHub inbound listeners.
 

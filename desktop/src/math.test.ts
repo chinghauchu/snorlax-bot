@@ -133,7 +133,7 @@ test("block math is full-turn width and scrolls; no separate card", () => {
   assert.match(css, /color:\s*var\(--text\)/);
 });
 
-test("tool, widget, connect, approve, thinking, user-right stay non-math", () => {
+test("tool, widget, connect, approve, waiting, user-right stay non-math", () => {
   const userStart = app.indexOf('className="bubble user"');
   const userEnd = app.indexOf("assistant-md", userStart);
   const userBranch = app.slice(
@@ -150,7 +150,7 @@ test("tool, widget, connect, approve, thinking, user-right stay non-math", () =>
   assert.match(app, /<WidgetCard/);
   assert.match(app, /<ConnectCard/);
   assert.match(app, /<ApproveCard/);
-  assert.match(app, /showThinking/);
+  assert.match(app, /showWaiting/);
 });
 
 test("mermaid still works unchanged on LEFT kind=message", () => {

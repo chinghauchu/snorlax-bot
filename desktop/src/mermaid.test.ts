@@ -104,7 +104,7 @@ test("invalid mermaid falls back to fence chrome; never blank", () => {
   assert.match(mermaidSrc, /return null/);
 });
 
-test("tool, widget, connect, approve, thinking, user-right stay non-mermaid", () => {
+test("tool, widget, connect, approve, waiting, user-right stay non-mermaid", () => {
   const userStart = app.indexOf('className="bubble user"');
   const userEnd = app.indexOf("assistant-md", userStart);
   const userBranch = app.slice(
@@ -120,7 +120,7 @@ test("tool, widget, connect, approve, thinking, user-right stay non-mermaid", ()
   assert.match(app, /<WidgetCard/);
   assert.match(app, /<ConnectCard/);
   assert.match(app, /<ApproveCard/);
-  assert.match(app, /showThinking/);
+  assert.match(app, /showWaiting/);
 });
 
 test("Speak treats mermaid fences like other fences", () => {

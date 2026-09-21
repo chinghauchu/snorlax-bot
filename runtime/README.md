@@ -234,6 +234,9 @@ v0.50: Stop generating is a client abort of the in-flight
 SSE (AbortController / SSE disconnect). Runtime idle (no
 POST /cancel). OpenAPI stays 0.18.0.
 
+v0.51: waiting ··· until first token is client-only. Runtime
+idle. OpenAPI stays 0.18.0.
+
 ## MCP (`mcp.json`)
 
 The runtime is the MCP client. Desktop and iOS never speak MCP. Put

@@ -130,6 +130,11 @@ the bottom of the chat column (above Jump to latest if both
 show). Click aborts the in-flight stream; stop appending
 tokens; the partial LEFT stays as completed. Hide Stop when
 idle. Composer stays focused. OpenAPI stays 0.18.0.
+v0.51: waiting ··· until first token (Grok Bot feel). After
+Send, a 12px muted pulsing ··· sits on the LEFT (not a tool
+line, not a bubble) until the first assistant token. First
+token swaps to the growing LEFT bubble. Stop / error /
+empty reply dismisses the dots. OpenAPI stays 0.18.0.
 Assistant LEFT
 `kind=message` is 14px markdown (16/14 headings) in short
 agent bubbles after complete; user-right stays plain (`https://` tappable). Fenced code is full-turn language + Copy at 12px/1.45.
