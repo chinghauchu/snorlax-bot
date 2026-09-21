@@ -38,6 +38,10 @@ chrome. Streaming stays code until complete.
 v0.46: TeX math on completed LEFT `kind=message` (inline `\( \)`
 / block `$$`) renders via WKWebView + bundled KaTeX. Invalid
 falls back to monospace source. Streaming defers until complete.
+v0.47: stick-to-bottom while streaming. Within ~64pt of the
+bottom, follow tokens. Scroll up freezes. Send / Regenerates
+snap and re-arm. New assistant bubble while stuck: 12pt muted
+Jump to latest chip. Composer focus stays after Send.
 v0.32: dedicated `kind=approve` LEFT card for mutating shell (not a
 WidgetCard fork). Approve / Deny / ×; long-press copies the command.
 Question widgets
@@ -135,6 +139,7 @@ Output: `SnorlaxBot/Generated/V1Types.swift`. Do not hand-edit that file.
 - `SnorlaxBot/MermaidView.swift` — v0.45 WKWebView mermaid (local)
 - `SnorlaxBot/mermaid.min.js` — bundled official mermaid (IIFE)
 - `SnorlaxBot/MathView.swift` — v0.46 WKWebView KaTeX (local)
+- `SnorlaxBot/StickToBottom.swift` — v0.47 stick/freeze/Jump to latest
 - `SnorlaxBot/katex.min.js` / `katex.min.css` / `fonts/` — bundled KaTeX
 - `SnorlaxBot/RuntimeClient.swift` — `/v1` + SSE
 - `SnorlaxBot/Generated/V1Types.swift` — OpenAPI models

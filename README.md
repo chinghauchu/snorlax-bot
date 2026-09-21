@@ -37,6 +37,7 @@ composer clipboard paste (Cmd-V / Ctrl-V / paste event of image/file/video → s
 Copy / Regenerate / Speak on assistant LEFT `kind=message` (Copy 1:1 and channel; Regenerate 1:1 latest only; `{ regenerate: true }`; Speak is local piper via `POST /v1/speak`, no autoplay) +
 mermaid diagrams on completed LEFT `kind=message` (fenced `mermaid`; invalid falls back to fence chrome) +
 TeX math on completed LEFT `kind=message` (inline `\( \)` / block `$$`; KaTeX; invalid falls back to monospace source) +
+stick-to-bottom while streaming (follow within ~64px; freeze on scroll-up; Send / Regenerates re-arm; 12px muted Jump to latest) +
 identity-pane Box computer preview (Bearer PNG) + desktop Box takeover
 (Open / Done; pointer/key in 1280×800) + teach-a-task (Record / Stop /
 Save as skill inside takeover) + skill markdown editor (identity-pane

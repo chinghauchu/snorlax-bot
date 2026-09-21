@@ -108,6 +108,11 @@ v0.46: TeX math on completed LEFT `kind=message` (inline `\( \)`
 / block `$$`; KaTeX). Invalid / failed parse falls back to
 monospace source. Streaming defers until complete. Speak treats
 math as plain TeX source. Single `$` is not math.
+v0.47: stick-to-bottom while streaming. Within ~64px of the
+bottom, follow tokens. Scroll up freezes. Send / Regenerates
+snap and re-arm. New assistant bubble while stuck: 12px muted
+Jump to latest chip at the bottom of the chat column. Composer
+focus stays after Send.
 Assistant LEFT
 `kind=message` is 14px markdown (no grey bubble, 16/14 headings); user-right stays plain (`https://` tappable). Fenced code is full-turn language + Copy at 12px/1.45.
 iOS has no file-tree computer pane; the agent sheet shows the same preview.

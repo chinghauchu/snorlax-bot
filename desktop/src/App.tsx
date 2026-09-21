@@ -146,6 +146,19 @@ import {
   showAssistantCopy,
   showAssistantRegenerate,
 } from "./messageActions";
+import {
+  JUMP_TO_LATEST_LABEL,
+  NEAR_BOTTOM_PX,
+  STICK_ARMED,
+  assistantBubbleSignature,
+  isNearBottom,
+  onAssistantActivity,
+  onJumpToLatest,
+  onSendOrRegenerate,
+  onUserScroll,
+  shouldFollowStream,
+  type StickState,
+} from "./stickToBottom";
 import { catalogInstallBody, isConnect, parsePluginArgs, pluginStatusLabel } from "./connect";
 import { isApprove } from "./approve";
 import { isWidget } from "./widget";
@@ -611,6 +624,9 @@ export function App() {
   const [takeoverSessionId, setTakeoverSessionId] = useState<string | null>(null);
 
   const scroller = useRef<HTMLDivElement>(null);
+  const stickRef = useRef<StickState>(STICK_ARMED);
+  const lastAssistantSig = useRef("");
+  const [showJump, setShowJump] = useState(false);
   const composerRef = useRef<HTMLTextAreaElement>(null);
   const composerRootRef = useRef<HTMLElement>(null);
   const skillTypeaheadRef = useRef<HTMLUListElement>(null);
@@ -813,9 +829,65 @@ export function App() {
     return () => window.removeEventListener("keydown", onKey);
   }, [dictation]);
 
-  useEffect(() => {
-    scroller.current?.scrollTo({ top: scroller.current.scrollHeight });
-  }, [messages, busy, toolTraces]);
+  const applyStick = useCallback((next: StickState) => {
+    stickRef.current = next;
+    setShowJump(next.showJump);
+  }, []);
+
+  const snapStick = useCallback(() => {
+    applyStick(onSendOrRegenerate());
+    const el = scroller.current;
+    if (el) el.scrollTop = el.scrollHeight;
+  }, [applyStick]);
+
+  const onTranscriptScroll = useCallback(() => {
+    const el = scroller.current;
+    if (!el) return;
+    applyStick(
+      onUserScroll(
+        stickRef.current,
+        isNearBottom(
+          {
+            scrollTop: el.scrollTop,
+            scrollHeight: el.scrollHeight,
+            clientHeight: el.clientHeight,
+          },
+          NEAR_BOTTOM_PX,
+        ),
+      ),
+    );
+  }, [applyStick]);
+
+  const onJumpLatest = useCallback(() => {
+    applyStick(onJumpToLatest());
+    const el = scroller.current;
+    if (el) el.scrollTop = el.scrollHeight;
+  }, [applyStick]);
+
+  useLayoutEffect(() => {
+    applyStick(onSendOrRegenerate());
+    lastAssistantSig.current = "";
+    const el = scroller.current;
+    if (el) el.scrollTop = el.scrollHeight;
+  }, [activeId, threadId, applyStick]);
+
+  useLayoutEffect(() => {
+    const el = scroller.current;
+    if (el && shouldFollowStream(stickRef.current)) {
+      el.scrollTop = el.scrollHeight;
+    }
+    const visible = active
+      ? messages.filter((message) => isTranscriptVisible(message, active))
+      : messages;
+    const next = assistantBubbleSignature(visible);
+    const updated = onAssistantActivity(
+      stickRef.current,
+      lastAssistantSig.current,
+      next,
+    );
+    lastAssistantSig.current = next;
+    applyStick(updated);
+  }, [messages, busy, toolTraces, active, applyStick]);
 
   useEffect(() => {
     const onPointerDown = (event: PointerEvent) => {
@@ -1651,6 +1723,8 @@ export function App() {
     const chips = pendingAttachments;
     if (!content && chips.length === 0) return;
     if (attachError) return;
+    snapStick();
+    focusComposer();
     setDraft("");
     setComposerError(null);
     setAttachError(null);
@@ -1772,6 +1846,7 @@ export function App() {
 
   async function onRegenerate() {
     if (!session || !active || busy || active.kind === "channel") return;
+    snapStick();
     setComposerError(null);
     setMessages((prev) => dropLastAssistantTurn(prev));
     await submitTurn({
@@ -2427,7 +2502,12 @@ export function App() {
           ) : null}
         </header>
 
-        <div className="transcript" ref={scroller}>
+        <div className="transcript-col">
+        <div
+          className="transcript"
+          ref={scroller}
+          onScroll={onTranscriptScroll}
+        >
           <div className="transcript-inner">
             {!credsReady ? (
               <p className="transcript-line">{MISSING_CREDS}</p>
@@ -2698,6 +2778,16 @@ export function App() {
               </article>
             ) : null}
           </div>
+        </div>
+        {showJump ? (
+          <button
+            type="button"
+            className="jump-latest"
+            onClick={onJumpLatest}
+          >
+            {JUMP_TO_LATEST_LABEL}
+          </button>
+        ) : null}
         </div>
 
         <footer

@@ -27,7 +27,7 @@ Concrete follow-ups after v0. Filed on GitHub against
 
 ## Frontend
 
-- [F1 — Streaming markdown without flicker](https://github.com/chinghauchu/snorlax-bot/issues/6) — **v0.11:** clients render assistant LEFT `kind=message` as 14px markdown (no grey bubble; 16/14 headings); user-right stays plain (`https://` tappable); fenced code full-turn language + Copy at 12px/1.45; inline code 13px / 4px / accent 18%. Content stays a plain string (no new Message fields). **v0.45:** fenced `mermaid` on completed LEFT `kind=message` renders as a diagram (official mermaid / iOS WKWebView; invalid falls back to fence chrome; streaming stays code until complete). **v0.46:** TeX math on completed LEFT `kind=message` (inline `\( \)` / block `$$`; KaTeX; invalid falls back to monospace source; single `$` stays currency). Raw HTML still out of scope.
+- [F1 — Streaming markdown without flicker](https://github.com/chinghauchu/snorlax-bot/issues/6) — **v0.11:** clients render assistant LEFT `kind=message` as 14px markdown (no grey bubble; 16/14 headings); user-right stays plain (`https://` tappable); fenced code full-turn language + Copy at 12px/1.45; inline code 13px / 4px / accent 18%. Content stays a plain string (no new Message fields). **v0.45:** fenced `mermaid` on completed LEFT `kind=message` renders as a diagram (official mermaid / iOS WKWebView; invalid falls back to fence chrome; streaming stays code until complete). **v0.46:** TeX math on completed LEFT `kind=message` (inline `\( \)` / block `$$`; KaTeX; invalid falls back to monospace source; single `$` stays currency). **v0.47:** stick-to-bottom while streaming (~64px slack; freeze on scroll-up; Send / Regenerates snap and re-arm; 12px muted Jump to latest while a new assistant bubble arrives stuck). Raw HTML still out of scope.
 - [F2 — Pairing: local token file and LAN paste](https://github.com/chinghauchu/snorlax-bot/issues/16)
 - [F3 — Edit agent name and instructions in the desktop UI](https://github.com/chinghauchu/snorlax-bot/issues/19) — v0.3 identity pane PATCHes name/title/description/avatar (no `instructions` field)
 - Attachment chips: **v0.25** user-right composer + transcript (paperclip /
@@ -77,9 +77,12 @@ Concrete follow-ups after v0. Filed on GitHub against
   speaking; `POST /v1/speak`; no autoplay).
   **v0.45:** fenced `mermaid` on completed LEFT `kind=message`
   renders as a diagram (same fence chrome; Copy copies source;
-  invalid stays code). **v0.46:** TeX math on completed LEFT
+  invalid stays code).   **v0.46:** TeX math on completed LEFT
   `kind=message` (inline `\( \)` / block `$$`; KaTeX; invalid
   stays monospace source). Raw HTML still later.
+  **v0.47:** stick-to-bottom while streaming (~64px slack;
+  freeze on scroll-up; Send / Regenerates re-arm; 12px muted
+  Jump to latest while stuck). Raw HTML still later.
   Full sandbox computer GUI (browser, VNC, terminal)
   stays later.
 
@@ -146,3 +149,9 @@ Concrete follow-ups after v0. Filed on GitHub against
   Invalid falls back to monospace source. Streaming defers until
   complete. Speak treats math as plain TeX source. Mermaid
   unchanged. OpenAPI stays 0.18.0.
+- **v0.47:** stick-to-bottom while streaming. Within ~64pt of
+  the bottom, follow tokens. Scroll up freezes. Send /
+  Regenerates snap and re-arm. New assistant bubble while
+  stuck: 12pt muted Jump to latest chip at the bottom of the
+  chat column. Composer focus stays after Send. Desktop
+  matches. OpenAPI stays 0.18.0.
