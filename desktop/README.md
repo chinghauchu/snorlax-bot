@@ -192,6 +192,11 @@ Jump to latest chip is visible and nothing is generating,
 window Esc activates Jump — same as clicking the chip.
 While generating, Esc still Stop. Same IME / pending-card
 skips as v0.53. OpenAPI stays 0.18.0.
+v0.61: Copied feedback (Grok Bot feel). On Copy of a
+completed LEFT kind=message, muted 12px Copied appears
+beside Copy for 1.2s. Copy stays in place and clickable.
+No toast. Speak / Regenerate unchanged. OpenAPI stays
+0.18.0.
 Assistant LEFT
 `kind=message` is 14px markdown (16/14 headings) in short
 agent bubbles after complete; user-right stays plain (`https://` tappable). Fenced code is full-turn language + Copy at 12px/1.45.

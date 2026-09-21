@@ -1,7 +1,16 @@
 // SPDX-License-Identifier: Apache-2.0
 import { isUserSender } from "./mentions.ts";
 
-export const MESSAGE_COPY_FEEDBACK_MS = 1500;
+/** v0.61: muted `Copied` beside Copy for 1.2s. Do not replace the Copy label. */
+export const MESSAGE_COPY_FEEDBACK_MS = 1200;
+
+export const COPY_CONTROL_LABEL = "Copy";
+
+export const COPIED_FEEDBACK_LABEL = "Copied";
+
+export function copiedFeedbackLabel(copied: boolean): "Copied" | null {
+  return copied ? COPIED_FEEDBACK_LABEL : null;
+}
 
 export function isLeftKindMessage(message: {
   kind?: string;

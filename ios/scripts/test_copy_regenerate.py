@@ -28,9 +28,12 @@ def test_copy_on_left_kind_message_not_tool_widget_connect() -> None:
     assert "showsCopy" in CHAT
     assert "isKindMessage" in MODELS
     assert "isKindMessage" in CHAT
-    assert "Button(copied ? \"Copied\" : \"Copy\")" in CHAT
+    assert 'Button("Copy")' in CHAT
+    assert 'copied ? "Copied" : "Copy"' not in CHAT
+    assert 'Text("Copied")' in CHAT
     assert "UIPasteboard.general.string = message.content" in CHAT
-    assert "1_500_000_000" in CHAT
+    assert "1_200_000_000" in CHAT
+    assert "1_500_000_000" not in CHAT
     assert ".font(.system(size: 12))" in CHAT
     assert "HStack(spacing: 12)" in CHAT
     assert "isToolLine" in CHAT

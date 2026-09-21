@@ -297,6 +297,12 @@ is visible and nothing is generating, Esc activates Jump
 Stop. Same IME / pending-card skips as v0.53. No new routes.
 OpenAPI stays 0.18.0.
 
+v0.61 Copied feedback: on Copy of a completed LEFT
+kind=message, muted 12px / 12pt Copied appears beside Copy
+for 1.2s. Copy stays in place and clickable. No toast.
+Speak / Regenerate unchanged. No new routes. OpenAPI stays
+0.18.0.
+
 A copy is also kept at `runtime/openapi.yaml` and `desktop/openapi.yaml`
 so those trees are self-contained. Do not let the files diverge.
 

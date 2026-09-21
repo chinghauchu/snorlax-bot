@@ -121,6 +121,10 @@ chip is visible and nothing is generating, hardware Escape
 activates Jump — same as tapping the chip. While
 generating, Esc still Stop. Same IME / pending-card skips
 as v0.53. OpenAPI stays 0.18.0.
+v0.61: Copied feedback. On Copy of a completed LEFT
+kind=message, muted 12pt Copied appears beside Copy for
+1.2s. Copy stays in place and clickable. No toast.
+Speak / Regenerate unchanged. OpenAPI stays 0.18.0.
 v0.32: dedicated `kind=approve` LEFT card for mutating shell (not a
 WidgetCard fork). Approve / Deny / ×; long-press copies the command.
 Question widgets
@@ -202,6 +206,7 @@ python3 ios/scripts/test_ios_send_muted.py
 python3 ios/scripts/test_ios_compact_tools.py
 python3 ios/scripts/test_ios_focus_composer_after_stop.py
 python3 ios/scripts/test_ios_esc_jump.py
+python3 ios/scripts/test_ios_copied_feedback.py
 ```
 
 Output: `SnorlaxBot/Generated/V1Types.swift`. Do not hand-edit that file.
@@ -210,6 +215,7 @@ Output: `SnorlaxBot/Generated/V1Types.swift`. Do not hand-edit that file.
 
 - `SnorlaxBot/SnorlaxBotApp.swift` — entry, theme, accent
 - `SnorlaxBot/ContentView.swift` — iPhone stack / iPad split chrome
+- `SnorlaxBot/ChatView.swift` — transcript; v0.61 Copied beside Copy for 1.2s
 - `SnorlaxBot/AppModel.swift` — roster, chat, settings persistence
 - `SnorlaxBot/Dictation.swift` — v0.43 composer mic helpers + local capture
 - `SnorlaxBot/SkillPicker.swift` — v0.21 1:1 composer `/` trigger + filter
