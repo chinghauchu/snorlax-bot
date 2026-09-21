@@ -121,8 +121,9 @@ def test_reduce_motion_on_static_dots() -> None:
         (b for b in reduce_blocks if ".waiting-dots span" in b), ""
     )
     assert waiting_reduce, "missing desktop Reduce Motion rule for waiting ···"
-    assert "animation: none" in waiting_reduce
-    assert "waiting-dot" not in waiting_reduce[waiting_reduce.find(".waiting-dots span") :]
+    waiting_rule = waiting_reduce[waiting_reduce.find(".waiting-dots span") :]
+    assert "animation: none" in waiting_rule
+    assert "animation: waiting-dot" not in waiting_rule
 
 
 def test_reduce_motion_off_keeps_pulse() -> None:
