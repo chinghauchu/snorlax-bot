@@ -10,6 +10,7 @@ struct ChatView: View {
     @FocusState private var composerFocused: Bool
     @State private var stick = StickToBottom.State.armed
     @State private var lastAssistantSig = ""
+    @State private var expandedToolStacks: Set<String> = []
 
     private var agent: Agent {
         model.visibleAgents.first(where: { $0.id == agentID })
@@ -68,6 +69,7 @@ struct ChatView: View {
         .task(id: agentID) {
             stick = StickToBottom.State.armed
             lastAssistantSig = ""
+            expandedToolStacks = []
             guard hasRealAgent || !model.isConfigured else { return }
             if !(model.selectedAgentID == agentID && model.threadID != nil) {
                 await model.select(agentID, push: false)
@@ -77,7 +79,10 @@ struct ChatView: View {
                 model.wantsComposerFocus = false
             }
         }
-        .onChange(of: model.wantsComposerFocus) { _, wants in
+            .onChange(of: model.threadID) { _, _ in
+                expandedToolStacks = []
+            }
+            .onChange(of: model.wantsComposerFocus) { _, wants in
             guard wants, model.canCompose || model.isSending else { return }
             composerFocused = true
             model.wantsComposerFocus = false
@@ -144,47 +149,80 @@ struct ChatView: View {
                                 && !message.isHandoffRoot
                                 && !inFlight
                         }
+                        let liveAt: Int? = {
+                            guard !liveTraces.isEmpty else { return nil }
+                            if let liveAssistantIdx { return liveAssistantIdx }
+                            return visible.count
+                        }()
+                        let toolStacks = CompactToolTraces.stacks(
+                            messages: visible,
+                            liveTraces: liveTraces,
+                            liveAt: liveAt
+                        )
+                        let livePaint = CompactToolTraces.livePaint(
+                            stacks: toolStacks,
+                            liveTraces: liveTraces,
+                            expanded: expandedToolStacks
+                        )
+                        let showLiveChrome = livePaint.header != nil || !livePaint.lines.isEmpty
                         ForEach(Array(visible.enumerated()), id: \.element.id) { index, message in
-                            transcriptItem(
-                                message,
-                                index: index,
-                                in: visible,
-                                agent: agent,
-                                toolTraces: index == liveAssistantIdx ? liveTraces : [],
-                                showCopy: Self.showsCopy(
-                                    message,
-                                    index: index,
-                                    liveAssistantIdx: liveAssistantIdx,
-                                    sending: model.isSending
-                                ),
-                                showSpeak: Self.showsSpeak(
-                                    message,
-                                    index: index,
-                                    liveAssistantIdx: liveAssistantIdx,
-                                    sending: model.isSending
-                                ),
-                                showRegenerate: Self.showsRegenerate(
-                                    message,
-                                    index: index,
-                                    lastLeftIdx: lastLeftIdx,
-                                    isChannel: agent.isChannel,
-                                    liveAssistantIdx: liveAssistantIdx,
-                                    sending: model.isSending
-                                ),
-                                completed: !(model.isSending && index == liveAssistantIdx),
-                                showCaret: StreamingCaretChrome.shouldShow(
-                                    busy: model.isSending,
-                                    completed: !(model.isSending && index == liveAssistantIdx),
-                                    hasFirstToken: !message.content.isEmpty,
-                                    isUser: message.isFromUser,
-                                    isKindMessage: message.isKindMessage
+                            let toolStack = CompactToolTraces.stack(for: index, in: toolStacks)
+                            let toolCollapsed = toolStack.map {
+                                CompactToolTraces.collapsed(
+                                    expanded: expandedToolStacks,
+                                    stackId: $0.id,
+                                    count: $0.items.count
                                 )
-                            )
-                            .padding(.top, turnSpacing(at: index, in: visible, message: message))
-                            .id(message.id)
+                            } ?? false
+                            if !CompactToolTraces.hidePersisted(
+                                stack: toolStack,
+                                index: index,
+                                collapsed: toolCollapsed
+                            ) {
+                                transcriptItem(
+                                    message,
+                                    index: index,
+                                    in: visible,
+                                    agent: agent,
+                                    toolTraces: index == liveAssistantIdx ? livePaint.lines : [],
+                                    liveHeader: index == liveAssistantIdx ? livePaint.header : nil,
+                                    toolStack: toolStack,
+                                    toolStackCollapsed: toolCollapsed,
+                                    showCopy: Self.showsCopy(
+                                        message,
+                                        index: index,
+                                        liveAssistantIdx: liveAssistantIdx,
+                                        sending: model.isSending
+                                    ),
+                                    showSpeak: Self.showsSpeak(
+                                        message,
+                                        index: index,
+                                        liveAssistantIdx: liveAssistantIdx,
+                                        sending: model.isSending
+                                    ),
+                                    showRegenerate: Self.showsRegenerate(
+                                        message,
+                                        index: index,
+                                        lastLeftIdx: lastLeftIdx,
+                                        isChannel: agent.isChannel,
+                                        liveAssistantIdx: liveAssistantIdx,
+                                        sending: model.isSending
+                                    ),
+                                    completed: !(model.isSending && index == liveAssistantIdx),
+                                    showCaret: StreamingCaretChrome.shouldShow(
+                                        busy: model.isSending,
+                                        completed: !(model.isSending && index == liveAssistantIdx),
+                                        hasFirstToken: !message.content.isEmpty,
+                                        isUser: message.isFromUser,
+                                        isKindMessage: message.isKindMessage
+                                    )
+                                )
+                                .padding(.top, turnSpacing(at: index, in: visible, message: message))
+                                .id(message.id)
+                            }
                         }
-                        if liveAssistantIdx == nil, !liveTraces.isEmpty {
-                            liveToolStreak(agent: agent, traces: liveTraces)
+                        if liveAssistantIdx == nil, showLiveChrome {
+                            liveToolStreak(agent: agent, paint: livePaint)
                         }
                         if showWaiting {
                             waitingStreak(agent: agent)
@@ -286,9 +324,11 @@ struct ChatView: View {
     }
 
     @ViewBuilder
-    private func liveToolStreak(agent: Agent, traces: [LiveToolTrace]) -> some View {
+    private func liveToolStreak(agent: Agent, paint: CompactToolTraces.LivePaint) -> some View {
+        let traces = paint.lines
         let speaker = liveToolSpeaker(agent: agent, traces: traces)
         let speakerName = traces.first?.senderName.flatMap { $0.isEmpty ? nil : $0 }
+            ?? paint.header.map { _ in agent.name }
             ?? speaker.name
         VStack(alignment: .leading, spacing: 4) {
             HStack(spacing: 6) {
@@ -298,6 +338,18 @@ struct ChatView: View {
                     .foregroundStyle(.secondary)
             }
             .padding(.horizontal, 12)
+            if let header = paint.header {
+                ToolStackHeader(
+                    count: header.items.count,
+                    expanded: expandedToolStacks.contains(header.id)
+                ) {
+                    expandedToolStacks = CompactToolTraces.toggle(
+                        expanded: expandedToolStacks,
+                        stackId: header.id
+                    )
+                }
+                .padding(.horizontal, 12)
+            }
             ForEach(traces) { trace in
                 Text(trace.summary)
                     .font(.system(size: 12))
@@ -348,6 +400,9 @@ struct ChatView: View {
         in messages: [Message],
         agent: Agent,
         toolTraces: [LiveToolTrace] = [],
+        liveHeader: CompactToolTraces.Stack? = nil,
+        toolStack: CompactToolTraces.Stack? = nil,
+        toolStackCollapsed: Bool = false,
         showCopy: Bool = false,
         showSpeak: Bool = false,
         showRegenerate: Bool = false,
@@ -365,11 +420,30 @@ struct ChatView: View {
         } else {
             MessageBubble(
                 message: message,
+                messageIndex: index,
                 agents: model.visibleAgents,
                 localPreviews: model.localPreviews[message.id] ?? [],
                 sameSender: !message.isHandoffRoot && !message.hasRoutineKicker && sameSender(at: index, in: messages),
                 threadRoot: agent.isChannel && model.threadID != nil && message.isHandoffRoot,
                 toolTraces: toolTraces,
+                liveHeader: liveHeader,
+                liveHeaderExpanded: liveHeader.map { expandedToolStacks.contains($0.id) } ?? false,
+                onToggleLiveHeader: {
+                    guard let id = liveHeader?.id else { return }
+                    expandedToolStacks = CompactToolTraces.toggle(
+                        expanded: expandedToolStacks,
+                        stackId: id
+                    )
+                },
+                toolStack: toolStack,
+                toolStackCollapsed: toolStackCollapsed,
+                onToggleToolStack: {
+                    guard let id = toolStack?.id else { return }
+                    expandedToolStacks = CompactToolTraces.toggle(
+                        expanded: expandedToolStacks,
+                        stackId: id
+                    )
+                },
                 showCopy: showCopy,
                 showSpeak: showSpeak,
                 showRegenerate: showRegenerate,
@@ -842,11 +916,18 @@ private struct FlowWrap: Layout {
 
 private struct MessageBubble: View {
     let message: Message
+    var messageIndex: Int = 0
     let agents: [Agent]
     var localPreviews: [Data] = []
     var sameSender = false
     var threadRoot = false
     var toolTraces: [LiveToolTrace] = []
+    var liveHeader: CompactToolTraces.Stack? = nil
+    var liveHeaderExpanded = false
+    var onToggleLiveHeader: (() -> Void)? = nil
+    var toolStack: CompactToolTraces.Stack? = nil
+    var toolStackCollapsed = false
+    var onToggleToolStack: (() -> Void)? = nil
     var showCopy = false
     var showSpeak = false
     var showRegenerate = false
@@ -899,6 +980,14 @@ private struct MessageBubble: View {
                 }
                 .padding(.horizontal, 12)
             }
+            if let liveHeader {
+                ToolStackHeader(
+                    count: liveHeader.items.count,
+                    expanded: liveHeaderExpanded,
+                    toggle: { onToggleLiveHeader?() }
+                )
+                .padding(.horizontal, 12)
+            }
             ForEach(toolTraces) { trace in
                 Text(trace.summary)
                     .font(.system(size: 12))
@@ -906,10 +995,25 @@ private struct MessageBubble: View {
                     .padding(.horizontal, 12)
             }
             if message.isToolLine {
-                Text(message.content)
-                    .font(.system(size: 12))
-                    .foregroundStyle(.secondary)
+                if CompactToolTraces.showHeader(stack: toolStack, index: messageIndex),
+                   let toolStack
+                {
+                    ToolStackHeader(
+                        count: toolStack.items.count,
+                        expanded: !toolStackCollapsed,
+                        toggle: { onToggleToolStack?() }
+                    )
                     .padding(.horizontal, 12)
+                }
+                if !(toolStackCollapsed && CompactToolTraces.showHeader(
+                    stack: toolStack,
+                    index: messageIndex
+                )) {
+                    Text(message.content)
+                        .font(.system(size: 12))
+                        .foregroundStyle(.secondary)
+                        .padding(.horizontal, 12)
+                }
             } else if message.isWidget, message.widget != nil {
                 WidgetCardView(message: message)
                     .padding(.horizontal, 12)

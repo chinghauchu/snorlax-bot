@@ -254,6 +254,10 @@ v0.55: Send muted while generating is client-only
 empty; Enter does not send; composer stays editable).
 Runtime idle. OpenAPI stays 0.18.0.
 
+v0.56: compact tool traces is client-only (2+ consecutive
+kind=tool → `N tools` + chevron; widget/approve/connect
+never fold). Runtime idle. OpenAPI stays 0.18.0.
+
 ## MCP (`mcp.json`)
 
 The runtime is the MCP client. Desktop and iOS never speak MCP. Put

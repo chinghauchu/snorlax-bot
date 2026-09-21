@@ -1074,6 +1074,25 @@ info:
     `http://127.0.0.1:8000/v1` untouched. Never reintroduce
     computerPane.ts. Leave stale PRs #23 and #24 untouched.
     OpenAPI **0.18.0**.
+
+    v0.56: compact tool traces. One impl PR covering desktop
+    + iOS. Spec rides this PR. **No second PR.** OpenAPI
+    stays **0.18.0**. Do not bump. No new HTTP routes.
+    Runtime idle. Within one assistant turn, 2+ consecutive
+    kind=tool lines collapse client-side into one 12px /
+    12pt muted `N tools` line with a small chevron. Default
+    collapsed. Tap/click expands to the existing per-tool
+    lines; tap again collapses. Single tool unchanged.
+    Live: first tool paints normally; on the 2nd, swap to
+    collapsed `N tools` and bump N as more tools arrive.
+    kind=widget / approve / connect never fold into the
+    tool stack. Stick-to-bottom / Jump chip / multi-bubble
+    gap unchanged. Keep v0.47–v0.55 intact. Out: VNC, extra
+    channels, store, coding-agent, new surfaces. Clients
+    never speak MCP or the model. Mac oMLX at
+    `http://127.0.0.1:8000/v1` untouched. Never reintroduce
+    computerPane.ts. Leave stale PRs #23 and #24 untouched.
+    OpenAPI **0.18.0**.
   license:
     name: Apache-2.0
     identifier: Apache-2.0

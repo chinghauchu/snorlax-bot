@@ -104,7 +104,10 @@ Concrete follow-ups after v0. Filed on GitHub against
   tool-widget-approve-connect stay 12px/12pt. **v0.55:** Send
   muted while generating (muted+disabled from Send until
   complete / Stop / error / empty; Enter does not send;
-  composer stays editable; re-enables immediately).
+  composer stays editable; re-enables immediately). **v0.56:**
+  compact tool traces (2+ consecutive kind=tool → 12px/12pt
+  muted `N tools` + chevron; default collapsed; single
+  unchanged; widget/approve/connect never fold).
   Raw HTML still later.
   Full sandbox computer GUI (browser, VNC, terminal)
   stays later.
@@ -232,3 +235,13 @@ Concrete follow-ups after v0. Filed on GitHub against
   IME composing still skips Esc=Stop. On complete / Stop /
   error / empty: Send re-enables immediately. Desktop
   matches. OpenAPI stays 0.18.0.
+- **v0.56:** compact tool traces. Within one assistant
+  turn, 2+ consecutive kind=tool lines collapse client-side
+  into one 12pt muted `N tools` line with a small chevron.
+  Default collapsed. Tap expands to the existing per-tool
+  lines; tap again collapses. Single tool unchanged. Live:
+  first tool paints normally; on the 2nd, swap to collapsed
+  `N tools` and bump N. kind=widget / approve / connect
+  never fold into the tool stack. Stick-to-bottom / Jump /
+  multi-bubble gap unchanged. Desktop matches. OpenAPI
+  stays 0.18.0.

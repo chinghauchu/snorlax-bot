@@ -634,6 +634,17 @@ immediately. Pending widget / approve / connect unchanged.
 No new HTTP. OpenAPI stays 0.18.0. Never reintroduce
 `computerPane.ts`.
 
+v0.56: compact tool traces. Within one assistant turn, 2+
+consecutive kind=tool lines collapse client-side into one
+12px / 12pt muted `N tools` line with a small chevron.
+Default collapsed. Tap/click expands to the existing
+per-tool lines; tap again collapses. Single tool unchanged.
+Live: first tool paints normally; on the 2nd, swap to
+collapsed `N tools` and bump N. kind=widget / approve /
+connect never fold into the tool stack. Stick-to-bottom /
+Jump / multi-bubble gap unchanged. No new HTTP. OpenAPI
+stays 0.18.0. Never reintroduce `computerPane.ts`.
+
 ## Inference interface
 
 ```text

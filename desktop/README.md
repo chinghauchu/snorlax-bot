@@ -159,6 +159,15 @@ disabled; Enter does not send. Composer text stays
 editable (draft the next message). Stop + Esc unchanged.
 On complete / Stop / error / empty, Send re-enables
 immediately. OpenAPI stays 0.18.0.
+v0.56: compact tool traces (Grok Bot feel). Within one
+assistant turn, 2+ consecutive kind=tool lines collapse
+to one 12px muted `N tools` line with a small chevron.
+Default collapsed. Click expands to the existing per-tool
+lines; click again collapses. Single tool unchanged. Live:
+first tool paints normally; on the 2nd, swap to collapsed
+`N tools` and bump N. kind=widget / approve / connect
+never fold. Stick-to-bottom / Jump / multi-bubble gap
+unchanged. OpenAPI stays 0.18.0.
 Assistant LEFT
 `kind=message` is 14px markdown (16/14 headings) in short
 agent bubbles after complete; user-right stays plain (`https://` tappable). Fenced code is full-turn language + Copy at 12px/1.45.
