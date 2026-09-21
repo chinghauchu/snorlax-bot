@@ -61,3 +61,19 @@ export function escapeStopsGenerating(input: {
   }
   return true;
 }
+
+/**
+ * v0.59: after Stop or Esc aborts an in-flight turn, return focus to
+ * the composer immediately. Desktop always (default true). iOS passes
+ * whether a hardware keyboard is attached — do not force the software keyboard up.
+ */
+export function shouldFocusComposerAfterAbort(
+  hardwareKeyboardAttached = true,
+): boolean {
+  return Boolean(hardwareKeyboardAttached);
+}
+
+/** Natural complete / error / empty: leave focus alone (do not steal). */
+export function shouldFocusComposerOnSettle(): boolean {
+  return false;
+}

@@ -285,6 +285,12 @@ setting is on, clients paint static muted ··· (no pulse).
 When off, keep the existing pulse. Caret Reduce Motion
 unchanged. No new routes. OpenAPI stays 0.18.0.
 
+v0.59 focus composer after Stop: when Stop or Esc aborts
+an in-flight turn, clients return focus to the composer
+immediately (iOS only with a hardware keyboard). Complete /
+error / empty do not steal focus. No new routes. OpenAPI
+stays 0.18.0.
+
 A copy is also kept at `runtime/openapi.yaml` and `desktop/openapi.yaml`
 so those trees are self-contained. Do not let the files diverge.
 

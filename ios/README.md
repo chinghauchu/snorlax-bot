@@ -111,6 +111,11 @@ setting is on, waiting ··· is static muted (no pulse).
 When off, keep the existing pulse. Streaming caret Reduce
 Motion is already static (v0.52). Appear/dismiss rules for
 ··· unchanged. OpenAPI stays 0.18.0.
+v0.59: focus composer after Stop. When Stop or Esc aborts
+an in-flight assistant turn, return focus to the composer
+immediately — only when a hardware keyboard is attached
+(do not force the software keyboard up). Complete / error /
+empty leave focus alone. OpenAPI stays 0.18.0.
 v0.32: dedicated `kind=approve` LEFT card for mutating shell (not a
 WidgetCard fork). Approve / Deny / ×; long-press copies the command.
 Question widgets
@@ -190,6 +195,7 @@ python3 ios/scripts/test_ios_dictation.py
 python3 ios/scripts/test_ios_stop_generating.py
 python3 ios/scripts/test_ios_send_muted.py
 python3 ios/scripts/test_ios_compact_tools.py
+python3 ios/scripts/test_ios_focus_composer_after_stop.py
 ```
 
 Output: `SnorlaxBot/Generated/V1Types.swift`. Do not hand-edit that file.
@@ -213,7 +219,7 @@ Output: `SnorlaxBot/Generated/V1Types.swift`. Do not hand-edit that file.
 - `SnorlaxBot/MathView.swift` — v0.46 WKWebView KaTeX (local)
 - `SnorlaxBot/StickToBottom.swift` — v0.47 stick/freeze/Jump to latest
 - `SnorlaxBot/OptimisticSend.swift` — v0.49 optimistic user-RIGHT on Send
-- `SnorlaxBot/StopGenerating.swift` — v0.50 12pt muted Stop (client abort); v0.53 Esc = Stop
+- `SnorlaxBot/StopGenerating.swift` — v0.50 12pt muted Stop (client abort); v0.53 Esc = Stop; v0.59 focus composer after Stop (hardware keyboard only)
 - `SnorlaxBot/Waiting.swift` — v0.51 waiting ··· until first token; v0.58 Reduce Motion static ···
 - `SnorlaxBot/StreamingCaret.swift` — v0.52 streaming caret on LEFT bubble
 - `SnorlaxBot/ComposerTextView.swift` — v0.53 UIKeyCommand Escape = Stop; v0.55 Return does not send while generating

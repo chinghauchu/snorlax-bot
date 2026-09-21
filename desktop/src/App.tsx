@@ -186,6 +186,8 @@ import {
   escapeStopsGenerating,
   isAbortError,
   keepPartialOnStop,
+  shouldFocusComposerAfterAbort,
+  shouldFocusComposerOnSettle,
   shouldOfferStop,
   shouldRefetchAfterStop,
 } from "./stopGenerating";
@@ -1797,13 +1799,17 @@ export function App() {
       if (abortRef.current === ac) abortRef.current = null;
       inFlight.current = false;
       setBusy(false);
-      focusComposer();
+      if (shouldFocusComposerOnSettle()) {
+        focusComposer();
+      }
     }
   }
 
   function onStopGenerating() {
     abortRef.current?.abort();
-    focusComposer();
+    if (shouldFocusComposerAfterAbort()) {
+      focusComposer();
+    }
   }
 
   useEffect(() => {
