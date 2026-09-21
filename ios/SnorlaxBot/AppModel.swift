@@ -109,6 +109,7 @@ final class AppModel {
         guard isSending else { return }
         streamEpoch += 1
         streamTask?.cancel()
+        wantsComposerFocus = true
     }
 
     var isAttaching: Bool { attachInFlight > 0 }

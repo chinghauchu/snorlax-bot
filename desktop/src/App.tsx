@@ -174,7 +174,7 @@ import {
   shouldBlockSend,
 } from "./optimisticSend";
 import {
-  STOP_GENERATING_LABEL,
+  STOP_LABEL,
   isAbortError,
   keepPartialOnStop,
   shouldOfferStop,
@@ -1773,6 +1773,7 @@ export function App() {
 
   function onStopGenerating() {
     abortRef.current?.abort();
+    focusComposer();
   }
 
   async function onSend() {
@@ -2859,14 +2860,27 @@ export function App() {
             ) : null}
           </div>
         </div>
-        {showJump ? (
-          <button
-            type="button"
-            className="jump-latest"
-            onClick={onJumpLatest}
-          >
-            {JUMP_TO_LATEST_LABEL}
-          </button>
+        {(shouldOfferStop(busy) || showJump) ? (
+          <div className="transcript-chips">
+            {shouldOfferStop(busy) ? (
+              <button
+                type="button"
+                className="stop-generating"
+                onClick={onStopGenerating}
+              >
+                {STOP_LABEL}
+              </button>
+            ) : null}
+            {showJump ? (
+              <button
+                type="button"
+                className="jump-latest"
+                onClick={onJumpLatest}
+              >
+                {JUMP_TO_LATEST_LABEL}
+              </button>
+            ) : null}
+          </div>
         ) : null}
         </div>
 
@@ -3043,17 +3057,6 @@ export function App() {
                 <span className="dictation-dot" aria-hidden />
               ) : null}
             </button>
-            {shouldOfferStop(busy) ? (
-              <button
-                type="button"
-                className="send stop-generating"
-                aria-label={STOP_GENERATING_LABEL}
-                title={STOP_GENERATING_LABEL}
-                onClick={onStopGenerating}
-              >
-                <StopGeneratingIcon />
-              </button>
-            ) : (
             <button
               type="button"
               className="send"
@@ -3069,7 +3072,6 @@ export function App() {
             >
               <SendIcon />
             </button>
-            )}
           </div>
           {statusHint ? (
             <p className="composer-hint" role="status">
@@ -4575,14 +4577,6 @@ function SendIcon() {
         fill="currentColor"
         d="M2.4 8.75h8.44L7.7 12.9a.75.75 0 0 0 1.1 1.02l5.5-5.9a.75.75 0 0 0 0-1.04l-5.5-5.9A.75.75 0 1 0 7.7 3.1l3.14 3.4H2.4a.75.75 0 0 0 0 1.5Z"
       />
-    </svg>
-  );
-}
-
-function StopGeneratingIcon() {
-  return (
-    <svg width="10" height="10" viewBox="0 0 10 10" aria-hidden>
-      <rect width="10" height="10" rx="1.5" fill="currentColor" />
     </svg>
   );
 }

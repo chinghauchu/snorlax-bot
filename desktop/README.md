@@ -125,10 +125,11 @@ reconcile with the server/turn message (no duplicate). On
 Couldn't send. hint. Regenerates unchanged. OpenAPI stays
 0.18.0.
 v0.50: Stop generating mid-stream (Grok Bot feel). While an
-assistant LEFT turn is streaming, the Send control becomes
-Stop generating. Client abort of the in-flight stream; keep
-the partial LEFT text. Composer usable again; no auto-restart.
-OpenAPI stays 0.18.0.
+assistant LEFT turn is streaming, a 12px muted Stop sits at
+the bottom of the chat column (above Jump to latest if both
+show). Click aborts the in-flight stream; stop appending
+tokens; the partial LEFT stays as completed. Hide Stop when
+idle. Composer stays focused. OpenAPI stays 0.18.0.
 Assistant LEFT
 `kind=message` is 14px markdown (16/14 headings) in short
 agent bubbles after complete; user-right stays plain (`https://` tappable). Fenced code is full-turn language + Copy at 12px/1.45.

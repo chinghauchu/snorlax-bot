@@ -5,8 +5,8 @@
  * Keep the partial LEFT text. No auto-restart. No new HTTP.
  */
 
-/** Composer / a11y copy. Grok Bot feel. */
-export const STOP_GENERATING_LABEL = "Stop generating";
+/** 12px / 12pt muted chip at the bottom of the chat column. */
+export const STOP_LABEL = "Stop";
 
 /** Offer Stop while an assistant turn's stream/request is in flight. */
 export function shouldOfferStop(busy: boolean): boolean {

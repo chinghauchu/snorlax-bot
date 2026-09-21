@@ -5,7 +5,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import test from "node:test";
 import {
-  STOP_GENERATING_LABEL,
+  STOP_LABEL,
   composerUsableAfterStop,
   isAbortError,
   keepPartialOnStop,
@@ -19,6 +19,7 @@ const here = dirname(fileURLToPath(import.meta.url));
 const app = readFileSync(join(here, "App.tsx"), "utf8");
 const api = readFileSync(join(here, "api.ts"), "utf8");
 const stopSrc = readFileSync(join(here, "stopGenerating.ts"), "utf8");
+const css = readFileSync(join(here, "styles.css"), "utf8");
 const openapi = readFileSync(join(here, "..", "openapi.yaml"), "utf8");
 const protocol = readFileSync(
   join(here, "..", "..", "protocol", "openapi.yaml"),
@@ -53,7 +54,7 @@ test("Stop mid-stream keeps the partial LEFT bubble and the user-RIGHT", () => {
   assert.equal(kept[0]?.id, "local-1");
   assert.equal(kept.length, 2);
 
-  assert.equal(STOP_GENERATING_LABEL, "Stop generating");
+  assert.equal(STOP_LABEL, "Stop");
   assert.equal(shouldOfferStop(true), true);
   assert.equal(shouldOfferStop(false), false);
   assert.equal(shouldRefetchAfterStop(), false);
@@ -81,7 +82,7 @@ test("AbortError is the client abort; not a send failure", () => {
 
 test("desktop wires AbortController, keeps partial, re-enables composer", () => {
   assert.match(app, /from "\.\/stopGenerating"/);
-  assert.match(app, /STOP_GENERATING_LABEL/);
+  assert.match(app, /STOP_LABEL/);
   assert.match(app, /shouldOfferStop/);
   assert.match(app, /isAbortError/);
   assert.match(app, /shouldRefetchAfterStop/);
@@ -89,8 +90,6 @@ test("desktop wires AbortController, keeps partial, re-enables composer", () => 
   assert.match(app, /new AbortController\(\)/);
   assert.match(app, /abortRef\.current\?\.abort\(\)/);
   assert.match(app, /onStopGenerating/);
-  assert.match(app, /aria-label=\{STOP_GENERATING_LABEL\}/);
-  assert.match(app, /StopGeneratingIcon/);
   assert.match(api, /signal\?: AbortSignal/);
   assert.match(api, /signal,/);
 
@@ -120,6 +119,7 @@ test("desktop wires AbortController, keeps partial, re-enables composer", () => 
     app.indexOf("async function onSend()"),
   );
   assert.match(stopFn, /abortRef\.current\?\.abort\(\)/);
+  assert.match(stopFn, /focusComposer\(\)/);
   assert.doesNotMatch(stopFn, /onSend\(/);
   assert.doesNotMatch(stopFn, /submitTurn/);
   assert.doesNotMatch(app, /computerPane\.ts/);
@@ -128,6 +128,39 @@ test("desktop wires AbortController, keeps partial, re-enables composer", () => 
   assert.doesNotMatch(stopSrc, /\/v1\/chats\//);
   assert.doesNotMatch(stopSrc, /\/v1\/cancel/);
   assert.doesNotMatch(app, /\/v1\/cancel/);
+});
+
+test("12px muted Stop sits at the bottom of the chat column, above Jump to latest", () => {
+  function block(selector: string): string {
+    const needle = `\n${selector} {`;
+    const idx = css.indexOf(needle);
+    assert.ok(idx >= 0, `missing ${selector}`);
+    const start = css.indexOf("{", idx);
+    const end = css.indexOf("}", start);
+    return css.slice(start, end + 1);
+  }
+
+  const chips = block(".transcript-chips");
+  assert.match(chips, /position:\s*absolute/);
+  assert.match(chips, /bottom:\s*12px/);
+  assert.match(chips, /flex-direction:\s*column/);
+  const stopChip = block(".stop-generating");
+  assert.match(stopChip, /font-size:\s*12px/);
+  assert.match(stopChip, /color:\s*var\(--text-muted\)/);
+
+  const overlay = app.slice(
+    app.indexOf('className="transcript-chips"'),
+    app.indexOf("composerRootRef"),
+  );
+  const stopAt = overlay.indexOf("className=\"stop-generating\"");
+  const jumpAt = overlay.indexOf("className=\"jump-latest\"");
+  assert.ok(stopAt >= 0 && jumpAt > stopAt);
+  assert.match(overlay, /shouldOfferStop\(busy\)/);
+  assert.match(overlay, /\{STOP_LABEL\}/);
+  assert.equal(shouldOfferStop(false), false);
+  assert.doesNotMatch(app, /StopGeneratingIcon/);
+  assert.doesNotMatch(app, /className="send stop-generating"/);
+  assert.match(app, /aria-label="Send"/);
 });
 
 test("OpenAPI stays 0.18.0; v0.50 is documented; no cancel route", () => {

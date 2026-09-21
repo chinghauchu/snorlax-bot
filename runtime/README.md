@@ -231,7 +231,8 @@ the bubble; upload first; block a second Send; Couldn't send.
 on 4xx/5xx). Runtime idle. OpenAPI stays 0.18.0.
 
 v0.50: Stop generating is a client abort of the in-flight
-SSE. Runtime idle (no cancel route). OpenAPI stays 0.18.0.
+SSE (AbortController / SSE disconnect). Runtime idle (no
+POST /cancel). OpenAPI stays 0.18.0.
 
 ## MCP (`mcp.json`)
 

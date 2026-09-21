@@ -5,7 +5,7 @@ import Foundation
 /// v0.50 Stop generating. Client abort of the in-flight stream.
 /// Matches desktop `stopGenerating.ts`. Keep the partial LEFT text.
 enum StopGenerating {
-    static let label = "Stop generating"
+    static let label = "Stop"
 
     static func shouldOffer(busy: Bool) -> Bool {
         busy

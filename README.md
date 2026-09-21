@@ -39,7 +39,7 @@ mermaid diagrams on completed LEFT `kind=message` (fenced `mermaid`; invalid fal
 TeX math on completed LEFT `kind=message` (inline `\( \)` / block `$$`; KaTeX; invalid falls back to monospace source) +
 stick-to-bottom while streaming (follow within ~64px; freeze on scroll-up; Send / Regenerates re-arm; 12px muted Jump to latest) +
 short multi-bubbles on completed LEFT `kind=message` (split on blank lines after the stream completes; Copy / Speak / Regenerates on the last bubble) +
-Stop generating mid-stream (client abort; keep partial LEFT text; composer usable again) +
+Stop generating mid-stream (12px/12pt muted Stop at the chat-column bottom; client abort; keep partial LEFT as completed; composer stays focused) +
 identity-pane Box computer preview (Bearer PNG) + desktop Box takeover
 (Open / Done; pointer/key in 1280×800) + teach-a-task (Record / Stop /
 Save as skill inside takeover) + skill markdown editor (identity-pane
@@ -255,9 +255,11 @@ v0.49 optimistic user-RIGHT bubble on Send (text + chips immediately;
 upload first; block a second Send; reconcile on success; 4xx/5xx restore
 text + chips + muted Couldn't send.; Regenerates unchanged; OpenAPI stays
 0.18.0), and
-v0.50 Stop generating mid-stream (client abort of the in-flight stream;
-keep the partial LEFT text; composer usable again; no auto-restart;
-OpenAPI stays 0.18.0).
+v0.50 Stop generating mid-stream (12px/12pt muted Stop at the
+chat-column bottom, above Jump to latest; client abort of the
+in-flight stream; stop appending tokens; partial LEFT stays as
+completed; hide Stop when idle; composer stays focused; no
+POST /cancel; OpenAPI stays 0.18.0).
 Later: full sandbox computer GUI, MCP marketplace catalog,
 Slack/GitHub inbound listeners.
 

@@ -580,11 +580,13 @@ Regenerates unchanged. No new HTTP. OpenAPI stays 0.18.0.
 Never reintroduce `computerPane.ts`.
 
 v0.50: Stop generating mid-stream. While an assistant LEFT
-turn is streaming, clients offer Stop generating (Grok Bot
-feel). Stop is a client abort of the in-flight stream;
-keep the partial assistant text. After stop, composer is
-usable again; no auto-restart. No new HTTP. OpenAPI stays
-0.18.0. Never reintroduce `computerPane.ts`.
+turn is streaming, clients offer a 12px / 12pt muted Stop
+at the bottom of the chat column (above Jump to latest if
+both show). Click/tap is a client abort of the in-flight
+stream (AbortController / SSE disconnect) — stop appending
+tokens; the partial LEFT stays as completed. Hide Stop when
+idle. Composer stays focused. No POST /cancel. No new HTTP.
+OpenAPI stays 0.18.0. Never reintroduce `computerPane.ts`.
 
 ## Inference interface
 

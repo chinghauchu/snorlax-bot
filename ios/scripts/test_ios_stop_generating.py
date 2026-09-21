@@ -2,9 +2,10 @@
 # SPDX-License-Identifier: Apache-2.0
 """v0.50 iOS Stop generating mid-stream.
 
-While an assistant LEFT turn is streaming, offer Stop generating.
-Stop is a client abort of the in-flight stream; keep the partial
-assistant text. After stop, composer is usable again; no auto-restart.
+While an assistant turn is in flight, offer 12pt muted Stop at the
+bottom of the chat column (above Jump to latest if both show). Stop
+is a client abort of the in-flight stream; keep the partial LEFT
+text as completed. Hide Stop when idle. Composer stays focused.
 No new HTTP. OpenAPI stays 0.18.0. Keep v0.47 stick-to-bottom,
 v0.48 multi-bubbles, v0.49 optimistic Send. Never reintroduce
 computerPane.ts.
@@ -33,8 +34,9 @@ DESKTOP_STOP = (ROOT / "desktop" / "src" / "stopGenerating.ts").read_text(
 )
 DESKTOP_APP = (ROOT / "desktop" / "src" / "App.tsx").read_text(encoding="utf-8")
 DESKTOP_API = (ROOT / "desktop" / "src" / "api.ts").read_text(encoding="utf-8")
+DESKTOP_CSS = (ROOT / "desktop" / "src" / "styles.css").read_text(encoding="utf-8")
 
-LABEL = "Stop generating"
+LABEL = "Stop"
 
 
 def _fn(src: str, name: str) -> str:
@@ -75,6 +77,29 @@ def test_stop_mid_stream_keeps_partial() -> None:
     assert "shouldRefetchAfterStop" in DESKTOP_APP
 
 
+def test_chrome_12pt_muted_stop_above_jump() -> None:
+    assert 'STOP_LABEL = "Stop"' in DESKTOP_STOP
+    overlay = CHAT[CHAT.find("StopGenerating.shouldOffer") :]
+    overlay = overlay[: overlay.find("private func snapToBottom")]
+    stop_at = overlay.find("Button(StopGenerating.label)")
+    jump_at = overlay.find("Button(StickToBottom.jumpLabel)")
+    assert stop_at >= 0 and jump_at > stop_at
+    assert ".font(.system(size: 12))" in overlay
+    assert ".foregroundStyle(.secondary)" in overlay
+    assert "className=\"transcript-chips\"" in DESKTOP_APP
+    assert "className=\"stop-generating\"" in DESKTOP_APP
+    chips_at = DESKTOP_APP.find("className=\"transcript-chips\"")
+    stop_chip = DESKTOP_APP.find("className=\"stop-generating\"", chips_at)
+    jump_chip = DESKTOP_APP.find("className=\"jump-latest\"", chips_at)
+    assert stop_chip > chips_at and jump_chip > stop_chip
+    assert ".stop-generating" in DESKTOP_CSS
+    assert "font-size: 12px" in DESKTOP_CSS[DESKTOP_CSS.find(".stop-generating") :]
+    assert "stop.circle.fill" not in CHAT
+    assert "className=\"send stop-generating\"" not in DESKTOP_APP
+    assert '.accessibilityLabel("Send")' in CHAT
+    assert 'aria-label="Send"' in DESKTOP_APP
+
+
 def test_re_enables_composer_no_restart() -> None:
     assert "static func composerUsable" in STOP
     assert "static func shouldRestart" in STOP
@@ -85,9 +110,9 @@ def test_re_enables_composer_no_restart() -> None:
     stop = _fn(MODEL, "stopGenerating()")
     assert "onSend()" not in stop
     assert "send()" not in stop.split("streamTask", 1)[-1]
+    assert "wantsComposerFocus = true" in stop
     assert "StopGenerating.shouldOffer(busy: model.isSending)" in CHAT
     assert "model.stopGenerating()" in CHAT
-    assert f'accessibilityLabel(model.isSending ? StopGenerating.label : "Send")' in CHAT
     assert "shouldOfferStop" in DESKTOP_APP
     assert "onStopGenerating" in DESKTOP_APP
     assert "abortRef.current?.abort()" in DESKTOP_APP
@@ -96,6 +121,7 @@ def test_re_enables_composer_no_restart() -> None:
         on_stop_start : DESKTOP_APP.find("async function onSend()", on_stop_start)
     ]
     assert "abortRef.current?.abort()" in on_stop
+    assert "focusComposer()" in on_stop
     assert "onSend()" not in on_stop
     assert "submitTurn" not in on_stop
 
@@ -134,11 +160,13 @@ def test_stick_multi_bubbles_optimistic_openapi() -> None:
     assert "optimisticUser: true" in _fn(DESKTOP_APP, "onSend()")
     assert "onSendOrRegenerate" in DESKTOP_APP
     assert "splitAssistantBubbles" in DESKTOP_APP
+    assert "if stick.showJump" in CHAT
 
 
 def main() -> int:
     tests = [
         test_stop_mid_stream_keeps_partial,
+        test_chrome_12pt_muted_stop_above_jump,
         test_re_enables_composer_no_restart,
         test_client_abort_no_new_http,
         test_stick_multi_bubbles_optimistic_openapi,

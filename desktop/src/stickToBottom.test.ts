@@ -158,9 +158,10 @@ test("desktop wires stick/freeze, Send/Regenerate re-arm, Jump chip, composer fo
 });
 
 test("Jump to latest chip is 12px muted at the bottom of the chat column", () => {
+  const chips = block(".transcript-chips");
+  assert.match(chips, /position:\s*absolute/);
+  assert.match(chips, /bottom:\s*12px/);
   const chip = block(".jump-latest");
-  assert.match(chip, /position:\s*absolute/);
-  assert.match(chip, /bottom:\s*12px/);
   assert.match(chip, /font-size:\s*12px/);
   assert.match(chip, /color:\s*var\(--text-muted\)/);
   const col = block(".transcript-col");
