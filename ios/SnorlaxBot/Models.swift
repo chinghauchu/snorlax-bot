@@ -130,7 +130,7 @@ extension Message {
         attachments: [Attachment] = []
     ) -> Message {
         Message(
-            id: "local-\(UUID().uuidString)",
+            id: "\(OptimisticSend.idPrefix)\(UUID().uuidString)",
             agentId: agentId,
             role: .user,
             content: content,
@@ -141,7 +141,8 @@ extension Message {
             senderName: "User",
             senderAvatar: nil,
             hop: 0,
-            mentions: []
+            mentions: [],
+            kind: .message
         )
     }
 

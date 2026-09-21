@@ -249,7 +249,11 @@ v0.46 TeX math on completed LEFT `kind=message` (inline `\( \)` / block `$$`;
 KaTeX; invalid falls back to monospace source; OpenAPI stays 0.18.0), and
 v0.48 short multi-bubbles on completed LEFT `kind=message` (split on blank
 lines after the stream completes; Copy / Speak / Regenerates on the last
-bubble; OpenAPI stays 0.18.0).
+bubble; OpenAPI stays 0.18.0), and
+v0.49 optimistic user-RIGHT bubble on Send (text + chips immediately;
+upload first; block a second Send; reconcile on success; 4xx/5xx restore
+text + chips + muted Couldn't send.; Regenerates unchanged; OpenAPI stays
+0.18.0).
 Later: full sandbox computer GUI, MCP marketplace catalog,
 Slack/GitHub inbound listeners.
 

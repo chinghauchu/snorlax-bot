@@ -226,6 +226,10 @@ v0.48: clients display completed LEFT `kind=message` as short
 multi-bubbles split on blank lines. Runtime idle. OpenAPI
 stays 0.18.0.
 
+v0.49: optimistic user-RIGHT on Send is client-only (chips on
+the bubble; upload first; block a second Send; Couldn't send.
+on 4xx/5xx). Runtime idle. OpenAPI stays 0.18.0.
+
 ## MCP (`mcp.json`)
 
 The runtime is the MCP client. Desktop and iOS never speak MCP. Put
