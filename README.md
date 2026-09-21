@@ -269,7 +269,12 @@ empty reply dismisses the dots; OpenAPI stays 0.18.0), and
 v0.52 streaming caret on the growing LEFT bubble (12px/12pt
 muted blinking caret at the end of mid-stream LEFT text after
 the first token until complete / Stop; never with waiting ···;
-Reduce Motion static; OpenAPI stays 0.18.0).
+Reduce Motion static; OpenAPI stays 0.18.0), and
+v0.53 Esc = Stop while generating (window Esc / iOS
+UIKeyCommand Escape aborts the in-flight stream the same as
+tapping Stop; do not steal Esc during IME or a pending
+widget / approve / connect card; on-screen Stop unchanged;
+no POST /cancel; OpenAPI stays 0.18.0).
 Later: full sandbox computer GUI, MCP marketplace catalog,
 Slack/GitHub inbound listeners.
 

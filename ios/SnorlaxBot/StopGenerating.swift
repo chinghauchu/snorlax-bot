@@ -4,6 +4,7 @@ import Foundation
 
 /// v0.50 Stop generating. Client abort of the in-flight stream.
 /// Matches desktop `stopGenerating.ts`. Keep the partial LEFT text.
+/// v0.53: hardware Esc is the same abort (see `escapeStops`).
 enum StopGenerating {
     static let label = "Stop"
 
@@ -35,5 +36,40 @@ enum StopGenerating {
 
     static func shouldRestart() -> Bool {
         false
+    }
+
+    /// v0.53: hardware Esc aborts the in-flight stream the same as Stop.
+    /// Do not steal Esc while IME is composing, or while a pending
+    /// widget / approve / connect card is up (those keep Esc/dismiss).
+    static func escapeStops(
+        busy: Bool,
+        composing: Bool,
+        pendingWidget: Bool,
+        pendingApprove: Bool,
+        pendingConnect: Bool
+    ) -> Bool {
+        shouldOffer(busy: busy)
+            && !composing
+            && !pendingWidget
+            && !pendingApprove
+            && !pendingConnect
+    }
+
+    static func pendingWidget(in messages: [Message]) -> Bool {
+        messages.contains {
+            $0.isWidget && ($0.widgetStatus == nil || $0.widgetStatus == .pending)
+        }
+    }
+
+    static func pendingApprove(in messages: [Message]) -> Bool {
+        messages.contains {
+            $0.isApprove && ($0.approveStatus == nil || $0.approveStatus == .pending)
+        }
+    }
+
+    static func pendingConnect(in messages: [Message]) -> Bool {
+        messages.contains {
+            $0.isConnect && ($0.connectStatus == nil || $0.connectStatus == .pending)
+        }
     }
 }

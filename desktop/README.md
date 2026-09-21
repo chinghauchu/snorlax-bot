@@ -142,6 +142,11 @@ mid-stream LEFT text. On complete / Stop the caret is gone
 immediately. Waiting ··· stays pre-first-token only; never
 both. Reduce Motion: static muted caret. Not on tool /
 widget / approve / connect / user-right. OpenAPI stays 0.18.0.
+v0.53: Esc = Stop while generating (Grok Bot feel). While an
+assistant LEFT turn is in flight, window Esc aborts the
+in-flight stream — same as tapping Stop. Do not steal Esc
+when IME is composing, or when a pending widget / approve /
+connect card is up. No new chrome. OpenAPI stays 0.18.0.
 Assistant LEFT
 `kind=message` is 14px markdown (16/14 headings) in short
 agent bubbles after complete; user-right stays plain (`https://` tappable). Fenced code is full-turn language + Copy at 12px/1.45.

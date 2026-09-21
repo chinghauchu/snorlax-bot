@@ -606,6 +606,16 @@ widget / approve / connect / user-right. Mid-stream stays
 one bubble. No new HTTP. OpenAPI stays 0.18.0. Never
 reintroduce `computerPane.ts`.
 
+v0.53: Esc = Stop while generating. While an assistant LEFT
+turn is in flight, Esc aborts the client stream — same as
+tapping Stop (partial LEFT stays; multi-bubble split
+applies; caret / waiting ··· dismiss). Do not steal Esc
+when IME is composing, or when a pending widget / approve /
+connect card is up. Desktop: window Esc. iOS: UIKeyCommand
+Escape when a hardware keyboard is attached; on-screen Stop
+unchanged. No new chrome. No new HTTP. OpenAPI stays 0.18.0.
+Never reintroduce `computerPane.ts`.
+
 ## Inference interface
 
 ```text

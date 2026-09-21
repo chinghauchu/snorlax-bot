@@ -112,6 +112,18 @@ final class AppModel {
         wantsComposerFocus = true
     }
 
+    /// Hardware Escape (UIKeyCommand). Same abort as tapping Stop.
+    func stopGeneratingFromEscape(composing: Bool) {
+        guard StopGenerating.escapeStops(
+            busy: isSending,
+            composing: composing,
+            pendingWidget: StopGenerating.pendingWidget(in: messages),
+            pendingApprove: StopGenerating.pendingApprove(in: messages),
+            pendingConnect: StopGenerating.pendingConnect(in: messages)
+        ) else { return }
+        stopGenerating()
+    }
+
     var isAttaching: Bool { attachInFlight > 0 }
 
     var visibleAgents: [Agent] {

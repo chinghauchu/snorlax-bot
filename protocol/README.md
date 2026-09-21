@@ -250,6 +250,12 @@ a 12px/12pt muted blinking caret at the end of the mid-stream
 LEFT text. Never with waiting ···. Reduce Motion static. No
 new routes. OpenAPI stays 0.18.0.
 
+v0.53 Esc = Stop while generating: while an assistant turn
+is in flight, Esc aborts the client stream the same as
+tapping Stop. Do not steal Esc during IME or a pending
+widget / approve / connect card. Desktop window Esc; iOS
+UIKeyCommand Escape. No new routes. OpenAPI stays 0.18.0.
+
 A copy is also kept at `runtime/openapi.yaml` and `desktop/openapi.yaml`
 so those trees are self-contained. Do not let the files diverge.
 

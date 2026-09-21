@@ -72,3 +72,4 @@ jobs:
           python3 ios/scripts/test_ios_stop_generating.py
           python3 ios/scripts/test_ios_waiting.py
           python3 ios/scripts/test_ios_streaming_caret.py
+          python3 ios/scripts/test_ios_esc_stop.py
