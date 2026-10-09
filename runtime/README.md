@@ -289,6 +289,11 @@ v0.63: Jump chip fade is client-only (appear/dismiss 120ms
 opacity fade; Reduce Motion on → instant; click / Esc=Jump
 unchanged). Runtime idle. OpenAPI stays 0.18.0.
 
+v0.68: recall last message is client-only (empty composer
+Up-arrow, or iOS Edit as new message, fills the latest user
+text; Escape or clearing restores empty). Runtime idle.
+OpenAPI stays 0.18.0.
+
 ## MCP (`mcp.json`)
 
 The runtime is the MCP client. Desktop and iOS never speak MCP. Put

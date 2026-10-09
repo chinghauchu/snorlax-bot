@@ -87,3 +87,4 @@ jobs:
           python3 ios/scripts/test_ios_bubble_time.py
           python3 ios/scripts/test_ios_code_block_copy.py
           python3 ios/scripts/test_ios_day_separator.py
+          python3 ios/scripts/test_ios_recall_draft.py

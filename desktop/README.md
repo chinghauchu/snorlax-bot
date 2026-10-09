@@ -226,6 +226,14 @@ muted line marks the local day above the first painted
 row of that day: Today, Yesterday, the weekday when it
 was 2–6 days ago, otherwise the date. Collapsed tool
 lines do not count. No animation. OpenAPI stays 0.18.0.
+v0.68: recall last message (Grok Bot feel). Up-arrow in an
+empty composer (IME idle, no modifier chord) puts the
+user's most recent sent message from this transcript into
+the field as editable text, caret at the end. Escape, or
+clearing the field, restores empty. A composer that already
+has text does not recall. While generating, Esc still Stop.
+Mention / skill menus still own ArrowUp and Esc. OpenAPI
+stays 0.18.0.
 Assistant LEFT
 `kind=message` is 14px markdown (16/14 headings) in short
 agent bubbles after complete; user-right stays plain (`https://` tappable). Fenced code is full-turn language + Copy at 12px/1.45.

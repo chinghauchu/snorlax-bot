@@ -130,6 +130,13 @@ Concrete follow-ups after v0. Filed on GitHub against
   **v0.63:** Jump chip fade (appear/dismiss 120ms opacity fade;
   Reduce Motion on → instant show/hide; click / Esc=Jump
   unchanged).
+  **v0.68:** recall last message. Empty composer Up-arrow
+  (IME idle) puts the user's latest sent message into the
+  composer as an editable draft, caret at the end. Escape
+  or clearing restores empty. Do not recall when the field
+  already has text. Esc still Stop while generating.
+  iOS long-press Edit as new message on that bubble.
+  OpenAPI stays 0.18.0.
   Raw HTML still later.
   Full sandbox computer GUI (browser, VNC, terminal)
   stays later.
@@ -309,3 +316,10 @@ Concrete follow-ups after v0. Filed on GitHub against
   opacity fade. Reduce Motion on → instant show/hide. Click /
   Esc=Jump behavior unchanged. Desktop matches. OpenAPI stays
   0.18.0.
+- **v0.68:** recall last message. Long-press your most
+  recent bubble and choose Edit as new message (the v0.65
+  timestamp row stays non-actionable). That text goes into
+  the composer, caret at the end. Hardware Up-arrow does
+  the same when the composer is empty and IME is idle.
+  Escape or clearing restores empty. While generating, Esc
+  still Stop. Desktop matches. OpenAPI stays 0.18.0.

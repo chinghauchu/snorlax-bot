@@ -168,6 +168,15 @@ struct ChatView: View {
                             expanded: expandedToolStacks
                         )
                         let showLiveChrome = livePaint.header != nil || !livePaint.lines.isEmpty
+                        let recallIdx = RecallDraft.latestIndex(
+                            in: visible.map { message in
+                                RecallDraft.Row(
+                                    fromUser: message.isFromUser,
+                                    kindMessage: message.isKindMessage,
+                                    content: message.content
+                                )
+                            }
+                        )
                         let dayLabels = DaySeparator.labels(
                             rows: visible.enumerated().map { index, message in
                                 let toolStack = CompactToolTraces.stack(for: index, in: toolStacks)
@@ -241,6 +250,7 @@ struct ChatView: View {
                                         sending: model.isSending
                                     ),
                                     completed: !(model.isSending && index == liveAssistantIdx),
+                                    showEditAsNew: index == recallIdx,
                                     showCaret: StreamingCaretChrome.shouldShow(
                                         busy: model.isSending,
                                         completed: !(model.isSending && index == liveAssistantIdx),
@@ -475,6 +485,7 @@ struct ChatView: View {
         showSpeak: Bool = false,
         showRegenerate: Bool = false,
         completed: Bool = true,
+        showEditAsNew: Bool = false,
         showCaret: Bool = false
     ) -> some View {
         let onTimeline = agent.isChannel && model.threadID == nil
@@ -516,6 +527,7 @@ struct ChatView: View {
                 showSpeak: showSpeak,
                 showRegenerate: showRegenerate,
                 completed: completed,
+                showEditAsNew: showEditAsNew,
                 showCaret: showCaret
             ) { jump in
                 Task { await model.openJump(channelId: jump.channelId, threadId: jump.threadId) }
@@ -737,7 +749,12 @@ private struct ComposerBar: View {
                     },
                     onEscapeStop: { composing in
                         model.stopGeneratingFromEscape(composing: composing)
-                        model.jumpToLatestFromEscape(composing: composing, showJump: showJump)
+                        if !model.clearRecallFromEscape(composing: composing) {
+                            model.jumpToLatestFromEscape(composing: composing, showJump: showJump)
+                        }
+                    },
+                    onArrowUpRecall: {
+                        model.recallLastSentFromArrowUp()
                     },
                     sendMuted: SendMuted.whileGenerating(busy: model.isSending)
                 )
@@ -1002,6 +1019,7 @@ private struct MessageBubble: View {
     var showSpeak = false
     var showRegenerate = false
     var completed = true
+    var showEditAsNew = false
     var showCaret = false
     var onJump: ((HandoffRef) -> Void)?
     @Environment(AppModel.self) private var model
@@ -1320,9 +1338,11 @@ private struct MessageBubble: View {
             showSpeak: showSpeak,
             showRegenerate: showRegenerate,
             speaking: model.speakingMessageId == message.id,
+            showEditAsNew: showEditAsNew,
             onCopy: { copyMessageText() },
             onSpeak: { Task { await model.toggleSpeak(message: message) } },
-            onRegenerate: { Task { await model.regenerate() } }
+            onRegenerate: { Task { await model.regenerate() } },
+            onEditAsNew: { model.editAsNewMessage(message.content) }
         )
     }
 
@@ -1349,9 +1369,11 @@ private struct BubbleTimestampMenu: ViewModifier {
     var showSpeak: Bool
     var showRegenerate: Bool
     var speaking: Bool
+    var showEditAsNew: Bool
     let onCopy: () -> Void
     let onSpeak: () -> Void
     let onRegenerate: () -> Void
+    let onEditAsNew: () -> Void
 
     func body(content: Content) -> some View {
         if let stamp {
@@ -1368,6 +1390,9 @@ private struct BubbleTimestampMenu: ViewModifier {
                         if showRegenerate {
                             Button("Regenerate") { onRegenerate() }
                         }
+                        if showEditAsNew {
+                            Button(RecallDraft.editAsNewMessage) { onEditAsNew() }
+                        }
                     } header: {
                         Text(stamp)
                             .font(.system(size: 12))
@@ -1378,7 +1403,14 @@ private struct BubbleTimestampMenu: ViewModifier {
                 content.contextMenu {
                     Button(stamp) {}
                         .disabled(true)
+                    if showEditAsNew {
+                        Button(RecallDraft.editAsNewMessage) { onEditAsNew() }
+                    }
                 }
+            }
+        } else if showEditAsNew {
+            content.contextMenu {
+                Button(RecallDraft.editAsNewMessage) { onEditAsNew() }
             }
         } else {
             content
