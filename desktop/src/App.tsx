@@ -210,7 +210,11 @@ import {
   shouldRefetchAfterStop,
 } from "./stopGenerating";
 import { sendMutedWhileGenerating } from "./sendMuted";
-import { ChatDrafts, type ChatDraftKey } from "./chatDrafts";
+import {
+  ChatDrafts,
+  browserDraftStorage,
+  type ChatDraftKey,
+} from "./chatDrafts";
 import {
   TOOL_STACK_CHEVRON,
   collapsedToolsLabel,
@@ -617,16 +621,18 @@ export function App() {
   const [expandedToolStacks, setExpandedToolStacks] = useState<Set<string>>(
     () => new Set(),
   );
-  const [draft, setDraft] = useState("");
-  const draftRef = useRef(draft);
-  draftRef.current = draft;
-  /** v0.68: composer text came from recalling the latest user message. */
-  const [recallArmed, setRecallArmed] = useState(false);
-  const chatDrafts = useRef(new ChatDrafts());
+  const chatDrafts = useRef(new ChatDrafts(browserDraftStorage()));
   const convoRef = useRef<{ agentId: string | null; threadId: string | null }>({
     agentId: SEED_CHANNEL_ID,
     threadId: null,
   });
+  const [draft, setDraft] = useState(() =>
+    chatDrafts.current.get(SEED_CHANNEL_ID, null),
+  );
+  const draftRef = useRef(draft);
+  draftRef.current = draft;
+  /** v0.68: composer text came from recalling the latest user message. */
+  const [recallArmed, setRecallArmed] = useState(false);
   const [dictation, setDictation] = useState<DictationState>("idle");
   const [speakingId, setSpeakingId] = useState<string | null>(null);
   const speakAudio = useRef<HTMLAudioElement | null>(null);
@@ -995,6 +1001,13 @@ export function App() {
     },
     [placeCaretAtEnd],
   );
+
+  // v0.69: the open chat's unsent text is part of the persisted map.
+  useEffect(() => {
+    const here = convoRef.current;
+    if (!here.agentId) return;
+    chatDrafts.current.set(here.agentId, here.threadId, draft);
+  }, [draft]);
 
   const onJumpLatest = useCallback(() => {
     applyStick(onJumpToLatest());

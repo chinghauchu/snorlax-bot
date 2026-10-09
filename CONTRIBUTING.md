@@ -69,7 +69,9 @@ NVIDIA DGX Spark.
   instant when Reduce Motion is on; v0.68 empty-composer Up-arrow recalls
   the latest user message as an editable draft, Escape or clearing
   restores empty, and iOS adds Edit as new message on that bubble's
-  long-press), a display-only
+  long-press; v0.69 each chat's unsent composer text persists across
+  switches and relaunch in localStorage / UserDefaults, Send clears
+  that chat, and Up-arrow recall still requires an empty composer), a display-only
   Box computer preview (`GET /v1/agents/{id}/computer` JSON; Bearer PNG at
   `/computer/screenshot`; identity pane), desktop Box takeover
   (`POST /computer/session` → 201 `{ sessionId }`; `DELETE .../session` or

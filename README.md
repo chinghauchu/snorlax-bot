@@ -323,7 +323,11 @@ v0.68 recall last message (empty composer Up-arrow, or iOS
 long-press Edit as new message on your latest bubble, puts
 that text in the composer; Escape or clearing restores
 empty; no recall while typing or during IME; Esc still Stop
-while generating; OpenAPI stays 0.18.0).
+while generating; OpenAPI stays 0.18.0), and
+v0.69 per-chat drafts persist (unsent text stays with its
+chat across switches and relaunch; desktop localStorage;
+iOS UserDefaults; Send clears that chat; Up-arrow recall
+only when the composer is empty; OpenAPI stays 0.18.0).
 Later: full sandbox computer GUI, MCP marketplace catalog,
 Slack/GitHub inbound listeners.
 

@@ -137,6 +137,11 @@ Concrete follow-ups after v0. Filed on GitHub against
   already has text. Esc still Stop while generating.
   iOS long-press Edit as new message on that bubble.
   OpenAPI stays 0.18.0.
+  **v0.69:** per-chat drafts persist. Unsent composer text
+  stays with that chat across switches and relaunch (desktop
+  localStorage, iOS UserDefaults). Send clears that chat.
+  Up-arrow recall still requires an empty composer.
+  OpenAPI stays 0.18.0.
   Raw HTML still later.
   Full sandbox computer GUI (browser, VNC, terminal)
   stays later.
@@ -323,3 +328,8 @@ Concrete follow-ups after v0. Filed on GitHub against
   the same when the composer is empty and IME is idle.
   Escape or clearing restores empty. While generating, Esc
   still Stop. Desktop matches. OpenAPI stays 0.18.0.
+- **v0.69:** per-chat drafts persist. Unsent text stays with
+  that chat across switches and relaunch (UserDefaults).
+  Send clears that chat. Up-arrow recall still requires an
+  empty composer. Desktop matches (localStorage). OpenAPI
+  stays 0.18.0.

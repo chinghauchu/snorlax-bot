@@ -294,6 +294,10 @@ Up-arrow, or iOS Edit as new message, fills the latest user
 text; Escape or clearing restores empty). Runtime idle.
 OpenAPI stays 0.18.0.
 
+v0.69: per-chat drafts persist is client-only (unsent text
+stays with its chat across switches and relaunch). Runtime
+idle. OpenAPI stays 0.18.0.
+
 ## MCP (`mcp.json`)
 
 The runtime is the MCP client. Desktop and iOS never speak MCP. Put
