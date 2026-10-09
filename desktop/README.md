@@ -234,6 +234,11 @@ clearing the field, restores empty. A composer that already
 has text does not recall. While generating, Esc still Stop.
 Mention / skill menus still own ArrowUp and Esc. OpenAPI
 stays 0.18.0.
+v0.69: per-chat drafts persist (Grok Bot feel). Unsent
+composer text stays with that chat when you switch away
+and when the app restarts (`localStorage`). Send clears
+that chat's draft. Up-arrow recall still runs only when
+the composer is empty. OpenAPI stays 0.18.0.
 Assistant LEFT
 `kind=message` is 14px markdown (16/14 headings) in short
 agent bubbles after complete; user-right stays plain (`https://` tappable). Fenced code is full-turn language + Copy at 12px/1.45.

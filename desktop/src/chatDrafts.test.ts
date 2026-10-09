@@ -4,7 +4,16 @@ import { existsSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import test from "node:test";
-import { ChatDrafts, chatDraftKey } from "./chatDrafts.ts";
+import { arrowUpRecalls } from "./recallDraft.ts";
+import {
+  CHAT_DRAFTS_KEY,
+  ChatDrafts,
+  browserDraftStorage,
+  chatDraftKey,
+  parseChatDrafts,
+  serializeChatDrafts,
+  type DraftStorage,
+} from "./chatDrafts.ts";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const app = readFileSync(join(here, "App.tsx"), "utf8");
@@ -23,6 +32,19 @@ const runtimeOpenapi = readFileSync(
 
 const PHRASE =
   "v0.64 per-chat composer drafts (switch keeps each chat's unsent text; Send clears; failed Send restores to its own chat; no new HTTP)";
+
+const PERSIST_PHRASE =
+  "v0.69 per-chat drafts persist (unsent text stays with its chat across switches and app restart; desktop local storage; iOS UserDefaults; Send clears; Up-arrow recall only when the composer is empty; no new HTTP)";
+
+class MemoryStorage implements DraftStorage {
+  readonly bag = new Map<string, string>();
+  getItem(key: string): string | null {
+    return this.bag.has(key) ? (this.bag.get(key) ?? null) : null;
+  }
+  setItem(key: string, value: string): void {
+    this.bag.set(key, value);
+  }
+}
 
 function sliceFn(source: string, startMarker: string, endMarker: string): string {
   const start = source.indexOf(startMarker);
@@ -135,9 +157,114 @@ test("same conversation keeps the live text; missing draft is empty", () => {
   assert.equal(fresh, "");
 });
 
+test("restart restores each chat; Send clears only that chat in storage", () => {
+  const memory = new MemoryStorage();
+  const first = new ChatDrafts(memory);
+  first.set("agent-a", null, "hello A");
+  first.set("agent-a", "thread-1", "in the thread");
+  first.set("agent-b", null, "hello B");
+  assert.equal(memory.getItem(CHAT_DRAFTS_KEY)?.includes("hello A"), true);
+
+  const restarted = new ChatDrafts(memory);
+  assert.equal(restarted.get("agent-a", null), "hello A");
+  assert.equal(restarted.get("agent-a", "thread-1"), "in the thread");
+  assert.equal(restarted.get("agent-b", null), "hello B");
+
+  const shown = restarted.swap(
+    { agentId: "agent-a", threadId: null },
+    "hello A edited",
+    { agentId: "agent-b", threadId: null },
+  );
+  assert.equal(shown, "hello B");
+  const afterSwitch = new ChatDrafts(memory);
+  assert.equal(afterSwitch.get("agent-a", null), "hello A edited");
+  assert.equal(afterSwitch.get("agent-b", null), "hello B");
+
+  afterSwitch.clear("agent-a", null);
+  const afterSend = new ChatDrafts(memory);
+  assert.equal(afterSend.get("agent-a", null), "");
+  assert.equal(afterSend.get("agent-a", "thread-1"), "in the thread");
+  assert.equal(afterSend.get("agent-b", null), "hello B");
+
+  afterSend.restore("agent-a", null, "put back");
+  assert.equal(new ChatDrafts(memory).get("agent-a", null), "put back");
+  assert.equal(new ChatDrafts(memory).get("agent-b", null), "hello B");
+});
+
+test("corrupt storage is ignored; a full store does not throw away the draft", () => {
+  assert.equal(parseChatDrafts(null).size, 0);
+  assert.equal(parseChatDrafts("").size, 0);
+  assert.equal(parseChatDrafts("nope").size, 0);
+  assert.equal(parseChatDrafts("[]").size, 0);
+  assert.equal(parseChatDrafts('{"bad":"x"}').size, 0);
+  assert.equal(parseChatDrafts(`{"a\\u0000":""}`).size, 0);
+
+  const round = parseChatDrafts(
+    serializeChatDrafts(
+      new Map([
+        [chatDraftKey("agent-a", null), "hello A"],
+        [chatDraftKey("agent-a", "thread-1"), "thread"],
+      ]),
+    ),
+  );
+  assert.equal(round.get(chatDraftKey("agent-a", null)), "hello A");
+  assert.equal(round.get(chatDraftKey("agent-a", "thread-1")), "thread");
+  assert.equal(CHAT_DRAFTS_KEY, "snorlax.chatDrafts");
+
+  const memory = new MemoryStorage();
+  memory.setItem(CHAT_DRAFTS_KEY, "{");
+  const healed = new ChatDrafts(memory);
+  assert.equal(healed.get("agent-a", null), "");
+  healed.set("agent-a", null, "kept");
+  assert.equal(new ChatDrafts(memory).get("agent-a", null), "kept");
+
+  const boom: DraftStorage = {
+    getItem: () => null,
+    setItem: () => {
+      throw new Error("quota");
+    },
+  };
+  const drafts = new ChatDrafts(boom);
+  drafts.set("agent-a", null, "still here");
+  assert.equal(drafts.get("agent-a", null), "still here");
+  assert.equal(browserDraftStorage(), null);
+});
+
+test("a restored draft blocks Up-arrow recall; an empty composer still recalls", () => {
+  const drafts = new ChatDrafts();
+  drafts.set("agent-a", null, "half written");
+  const back = drafts.swap(
+    { agentId: "agent-b", threadId: null },
+    "",
+    { agentId: "agent-a", threadId: null },
+  );
+  assert.equal(back, "half written");
+  assert.equal(
+    arrowUpRecalls({
+      key: "ArrowUp",
+      composerText: back,
+      composing: false,
+    }),
+    false,
+  );
+  assert.equal(
+    arrowUpRecalls({
+      key: "ArrowUp",
+      composerText: "",
+      composing: false,
+    }),
+    true,
+  );
+});
+
 test("desktop swaps on loadConversation, clears on Send, restores to the origin chat", () => {
   assert.match(app, /from "\.\/chatDrafts"/);
-  assert.match(app, /new ChatDrafts\(\)/);
+  assert.match(app, /new ChatDrafts\(browserDraftStorage\(\)\)/);
+  assert.match(app, /chatDrafts\.current\.get\(SEED_CHANNEL_ID, null\)/);
+  assert.match(
+    app,
+    /\/\/ v0\.69: the open chat's unsent text is part of the persisted map\./,
+  );
 
   const load = sliceFn(
     app,
@@ -150,6 +277,13 @@ test("desktop swaps on loadConversation, clears on Send, restores to the origin 
   assert.doesNotMatch(load, /cancelDictation\(/);
   assert.doesNotMatch(load, /stopSpeaking\(/);
   assert.match(load, /focusComposer\(\)/);
+
+  const move = sliceFn(app, "const moveComposer", "const onJumpLatest");
+  assert.match(move, /setDraft\(nextText\)/);
+  assert.match(move, /setRecallArmed\(false\)/);
+  assert.ok(
+    move.indexOf("setDraft(nextText)") < move.indexOf("setRecallArmed(false)"),
+  );
 
   const create = sliceFn(app, "async function onCreate()", "async function onCreateChannel()");
   assert.match(create, /moveComposer\(agent\.id, null\)/);
@@ -179,15 +313,18 @@ test("desktop swaps on loadConversation, clears on Send, restores to the origin 
   assert.match(roadmap, new RegExp(PHRASE.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
 });
 
-test("OpenAPI stays 0.18.0; drafts are in-memory only; no computerPane.ts", () => {
+test("OpenAPI stays 0.18.0; drafts persist locally; no computerPane.ts", () => {
   assert.match(openapi, /version: 0\.18\.0/);
   assert.match(protocol, /version: 0\.18\.0/);
   assert.match(runtimeOpenapi, /version: 0\.18\.0/);
-  assert.doesNotMatch(src, /localStorage/);
+  assert.doesNotMatch(openapi, /version:\s*0\.19/);
+  assert.match(src, /localStorage/);
+  assert.match(src, /CHAT_DRAFTS_KEY = "snorlax\.chatDrafts"/);
   assert.doesNotMatch(src, /sessionStorage/);
   assert.doesNotMatch(src, /fetch\(/);
   assert.doesNotMatch(src, /\/v1\//);
   assert.doesNotMatch(src, /computerPane\.ts/);
   assert.doesNotMatch(app, /computerPane\.ts/);
   assert.equal(existsSync(join(here, "computerPane.ts")), false);
+  assert.match(roadmap, new RegExp(PERSIST_PHRASE.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
 });

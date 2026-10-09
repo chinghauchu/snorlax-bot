@@ -142,6 +142,11 @@ Up-arrow does the same when the composer is empty and IME
 is idle, and does not steal the caret once the field has
 text. Escape, or clearing the field, restores empty. While
 generating, Esc still Stop. OpenAPI stays 0.18.0.
+v0.69: per-chat drafts persist. Unsent composer text stays
+with that chat when you switch away and when the app
+restarts (UserDefaults). Send clears that chat's draft.
+Up-arrow recall still runs only when the composer is empty.
+OpenAPI stays 0.18.0.
 v0.32: dedicated `kind=approve` LEFT card for mutating shell (not a
 WidgetCard fork). Approve / Deny / ×; long-press copies the command.
 Question widgets
@@ -255,6 +260,7 @@ Output: `SnorlaxBot/Generated/V1Types.swift`. Do not hand-edit that file.
 - `SnorlaxBot/StreamingCaret.swift` — v0.52 streaming caret on LEFT bubble
 - `SnorlaxBot/ComposerTextView.swift` — v0.53 UIKeyCommand Escape = Stop; v0.55 Return does not send while generating; v0.60 Esc = Jump when frozen; v0.68 hardware Up-arrow recalls the latest user message when the composer is empty
 - `SnorlaxBot/RecallDraft.swift` — v0.68 recall the latest user message (Edit as new message; Escape restores empty)
+- `SnorlaxBot/ChatDrafts.swift` — v0.64 / v0.69 per-chat composer drafts (UserDefaults; Send clears)
 - `SnorlaxBot/SendMuted.swift` — v0.55 Send muted while generating
 - `SnorlaxBot/CompactToolTraces.swift` — v0.56 compact tool traces (`N tools` + chevron)
 - `SnorlaxBot/MidStreamPlaintext.swift` — v0.57 mid-stream LEFT plaintext until complete / Stop

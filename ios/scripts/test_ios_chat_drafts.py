@@ -1,17 +1,19 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: Apache-2.0
-"""v0.64 iOS per-chat composer drafts.
+"""v0.64 / v0.69 iOS per-chat composer drafts.
 
 Switching chats keeps each conversation's unsent text (agentId + threadId,
 nil thread = top level). Send clears that conversation's draft. A failed
 Send puts the text back on the conversation it was typed in, not whichever
 chat is open now. Attachments still clear on switch. Dictation / Speak
-cancel as today. In memory for the app session only. No new HTTP. OpenAPI
-stays 0.18.0. Never reintroduce computerPane.ts.
+cancel as today. Drafts persist across relaunch in UserDefaults
+(desktop: localStorage). Up-arrow recall still requires an empty composer.
+No new HTTP. OpenAPI stays 0.18.0. Never reintroduce computerPane.ts.
 """
 
 from __future__ import annotations
 
+import json
 import sys
 from pathlib import Path
 
@@ -32,6 +34,12 @@ PHRASE = (
     "v0.64 per-chat composer drafts (switch keeps each chat's unsent text; "
     "Send clears; failed Send restores to its own chat; no new HTTP)"
 )
+PERSIST_PHRASE = (
+    "v0.69 per-chat drafts persist (unsent text stays with its chat across "
+    "switches and app restart; desktop local storage; iOS UserDefaults; "
+    "Send clears; Up-arrow recall only when the composer is empty; no new HTTP)"
+)
+STORAGE_KEY = "snorlax.chatDrafts"
 
 
 def _fn(src: str, name: str) -> str:
@@ -61,11 +69,60 @@ def _fn(src: str, name: str) -> str:
     return src[start:nxt] if nxt > 0 else src[start:]
 
 
-class Drafts:
-    """Same rules as ChatDrafts.swift / chatDrafts.ts. Session memory only."""
+def _token(agent_id: str, thread_id: str | None) -> str:
+    return f"{agent_id}\0{thread_id or ''}"
 
-    def __init__(self) -> None:
-        self.slots: dict[tuple[str, str | None], str] = {}
+
+def _parse_token(token: str) -> tuple[str, str | None] | None:
+    if "\0" not in token:
+        return None
+    agent_id, _, rest = token.partition("\0")
+    if not agent_id:
+        return None
+    return agent_id, rest or None
+
+
+def _load(raw: str | None) -> dict[tuple[str, str | None], str]:
+    if not raw:
+        return {}
+    try:
+        obj = json.loads(raw)
+    except json.JSONDecodeError:
+        return {}
+    if not isinstance(obj, dict):
+        return {}
+    slots: dict[tuple[str, str | None], str] = {}
+    for token, value in obj.items():
+        if not isinstance(token, str) or not isinstance(value, str) or value == "":
+            continue
+        parsed = _parse_token(token)
+        if parsed is None:
+            continue
+        slots[parsed] = value
+    return slots
+
+
+def _dump(slots: dict[tuple[str, str | None], str]) -> str:
+    blob = {
+        _token(agent_id, thread_id): text
+        for (agent_id, thread_id), text in slots.items()
+        if text
+    }
+    return json.dumps(blob, ensure_ascii=True, separators=(",", ":"))
+
+
+class Drafts:
+    """Same rules as ChatDrafts.swift / chatDrafts.ts, including relaunch."""
+
+    def __init__(self, raw: str | None = None) -> None:
+        self.slots = _load(raw)
+
+    @property
+    def raw(self) -> str:
+        return _dump(self.slots)
+
+    def relaunch(self) -> "Drafts":
+        return Drafts(self.raw)
 
     def get(self, agent_id: str, thread_id: str | None) -> str:
         return self.slots.get((agent_id, thread_id), "")
@@ -162,9 +219,17 @@ def test_ios_load_swaps_and_send_targets_origin() -> None:
 
     adopt = _fn(MODEL, "adoptComposerDraft(")
     assert "chatDrafts.swap(" in adopt
-    assert "fromAgentId: selectedAgentID" in adopt
+    assert "fromAgentId: composerAgentID" in adopt
+    assert "fromThreadId: composerThreadID" in adopt
+    assert "fromAgentId: selectedAgentID" not in adopt
+    assert "suppressDraftPersist = true" in adopt
+    assert adopt.index("suppressDraftPersist = true") < adopt.index("draft = next")
+    assert adopt.index("draft = next") < adopt.index("suppressDraftPersist = false")
+    assert adopt.index("draft = next") < adopt.index("recallArmed = false")
     assert "pendingComposerCaret = next.utf16.count" in adopt
     assert "wantsComposerFocus" not in adopt
+    assert "private func persistOpenDraft()" in MODEL
+    assert "composerAgentID ?? selectedAgentID" in MODEL
 
     select = _fn(MODEL, "select(")
     assert "loadConversation(id, thread: nil, push: push)" in select
@@ -189,18 +254,65 @@ def test_ios_load_swaps_and_send_targets_origin() -> None:
     assert "if (content) setDraft(content)" in DESKTOP_APP
 
 
+def test_persist_across_relaunch_and_recall_stays_empty_only() -> None:
+    drafts = Drafts()
+    drafts.set("agent-a", None, "half written")
+    drafts.set("agent-b", None, "bee")
+    # iPad moves selection to B before adopt. The composer owner is still A.
+    shown = drafts.swap("agent-a", None, "half written", "agent-b", None)
+    assert shown == "bee"
+    assert drafts.get("agent-a", None) == "half written"
+    # A leak would treat the already-updated selection as the source and
+    # keep A's text as B's live draft.
+    leaked = Drafts()
+    leaked.set("agent-b", None, "bee")
+    followed = leaked.swap("agent-b", None, "half written", "agent-b", None)
+    assert followed == "half written"
+
+    revived = drafts.relaunch()
+    assert revived.get("agent-a", None) == "half written"
+    assert revived.get("agent-b", None) == "bee"
+    back = revived.swap("agent-b", None, "bee", "agent-a", None)
+    assert back == "half written"
+    assert back != ""  # recall refused
+    empty = revived.swap("agent-a", None, "half written", "agent-c", None)
+    assert empty == ""  # recall allowed
+
+    revived.clear("agent-a", None)
+    after_send = revived.relaunch()
+    assert after_send.get("agent-a", None) == ""
+    assert after_send.get("agent-b", None) == "bee"
+    after_send.restore("agent-a", None, "put back")
+    assert after_send.relaunch().get("agent-a", None) == "put back"
+
+    assert _load("{") == {}
+    assert _load("[]") == {}
+    assert _load(json.dumps({"bad": "x"})) == {}
+    assert _load(json.dumps({_token("a", None): ""})) == {}
+    assert STORAGE_KEY == "snorlax.chatDrafts"
+    assert f'static let storageKey = "{STORAGE_KEY}"' in DRAFTS
+    assert 'agentId + "\\u{0}"' in DRAFTS
+    assert "UserDefaults" in DRAFTS
+    assert "JSONSerialization" in DRAFTS
+    assert "CHAT_DRAFTS_KEY" in DESKTOP_DRAFTS
+    assert "localStorage" in DESKTOP_DRAFTS
+    assert "browserDraftStorage" in DESKTOP_APP
+    assert "setRecallArmed(false)" in DESKTOP_APP
+    assert "RecallDraft.arrowUpRecalls(composerText: draft" in MODEL
+
+
 def test_openapi_roadmap_ci_no_computer_pane() -> None:
     assert "version: 0.18.0" in OPENAPI
     assert "version: 0.18.0" in RUNTIME_OPENAPI
     assert "version: 0.18.0" in DESKTOP_OPENAPI
+    assert "version: 0.19" not in OPENAPI
     assert PHRASE in ROADMAP
+    assert PERSIST_PHRASE in ROADMAP
     assert "python3 ios/scripts/test_ios_chat_drafts.py" in CI
     assert not DESKTOP_PANE.exists()
     assert "computerPane.ts" not in DRAFTS
     assert "computerPane.ts" not in MODEL
-    assert "UserDefaults" not in DRAFTS
     assert "/v1/" not in DRAFTS
-    assert "localStorage" not in DESKTOP_DRAFTS
     assert "/v1/" not in DESKTOP_DRAFTS
 
 
@@ -209,6 +321,7 @@ def main() -> int:
         test_per_chat_and_thread_keys,
         test_clear_on_send_and_failed_send_restores_origin,
         test_ios_load_swaps_and_send_targets_origin,
+        test_persist_across_relaunch_and_recall_stays_empty_only,
         test_openapi_roadmap_ci_no_computer_pane,
     ]
     failed = 0

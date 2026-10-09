@@ -322,6 +322,12 @@ bubble adds Edit as new message beside the timestamp row;
 hardware Up-arrow matches. No new routes. OpenAPI stays
 0.18.0.
 
+v0.69 per-chat drafts persist: each chat's unsent composer
+text is restored on return and after relaunch (desktop
+localStorage, iOS UserDefaults). Send clears that chat.
+Up-arrow recall still requires an empty composer. No new
+routes. OpenAPI stays 0.18.0.
+
 A copy is also kept at `runtime/openapi.yaml` and `desktop/openapi.yaml`
 so those trees are self-contained. Do not let the files diverge.
 

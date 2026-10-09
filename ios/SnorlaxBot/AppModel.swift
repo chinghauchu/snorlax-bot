@@ -46,6 +46,9 @@ final class AppModel {
                 skillPickerDismissed = false
             }
             recallArmed = RecallDraft.armedAfterEdit(text: draft, wasArmed: recallArmed)
+            if !suppressDraftPersist {
+                persistOpenDraft()
+            }
         }
     }
     /// v0.68: composer text came from recalling the latest user message.
@@ -61,8 +64,13 @@ final class AppModel {
     var stickBump = 0
     private var streamTask: Task<Void, Never>?
     private var streamEpoch = 0
-    /// Unsent composer text per conversation. App session only.
+    /// Unsent composer text per conversation. UserDefaults, per chat.
     private var chatDrafts = ChatDrafts()
+    /// Chat the composer text belongs to. iPad's list binding updates
+    /// `selectedAgentID` before adopt runs, so the draft must not follow it.
+    private var composerAgentID: String?
+    private var composerThreadID: String?
+    private var suppressDraftPersist = false
     var showSettings = false
     var showProfile = false
     var routines: [Routine] = []
@@ -273,17 +281,36 @@ final class AppModel {
 
     /// Save the open draft and show the draft for `agentId` + `threadId`.
     /// Does not change focus. Caret moves to the end of the loaded text.
+    /// The composer owner is independent of `selectedAgentID` (iPad's list
+    /// binding updates selection before this runs). Switching disarms
+    /// recall so a restored draft is not wiped by Escape.
     private func adoptComposerDraft(agentId: String?, threadId: String?) {
         let next = chatDrafts.swap(
-            fromAgentId: selectedAgentID,
-            fromThreadId: threadID,
+            fromAgentId: composerAgentID,
+            fromThreadId: composerThreadID,
             text: draft,
             toAgentId: agentId,
             toThreadId: threadId
         )
+        composerAgentID = agentId
+        composerThreadID = threadId
+        suppressDraftPersist = true
         draft = next
+        suppressDraftPersist = false
         recallArmed = false
         pendingComposerCaret = next.utf16.count
+    }
+
+    /// The open chat's unsent text is part of the persisted map.
+    private func persistOpenDraft() {
+        let agentId = composerAgentID ?? selectedAgentID
+        guard let agentId else { return }
+        let ownedThread = composerAgentID == nil ? threadID : composerThreadID
+        if composerAgentID == nil {
+            composerAgentID = agentId
+            composerThreadID = ownedThread
+        }
+        chatDrafts.set(agentId: agentId, threadId: ownedThread, text: draft)
     }
 
     func loadConversation(_ id: String, thread: String?, push: Bool) async {
