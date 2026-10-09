@@ -1106,6 +1106,7 @@ private struct MessageBubble: View {
                     .padding(.horizontal, 12)
                     .padding(.vertical, 8)
                     .background(Color.accentColor.opacity(0.22), in: RoundedRectangle(cornerRadius: 16))
+                    .modifier(timeMenu)
                 }
                 .padding(.horizontal, 12)
             } else {
@@ -1135,6 +1136,7 @@ private struct MessageBubble: View {
                                         Color(uiColor: .secondarySystemFill),
                                         in: RoundedRectangle(cornerRadius: 16)
                                     )
+                                    .modifier(timeMenu)
                                 }
                             }
                             Spacer(minLength: 48)
@@ -1274,6 +1276,83 @@ private struct MessageBubble: View {
                     .accessibilityLabel(file.name)
                 }
             }
+        }
+    }
+
+    /// v0.65: long-press menu. Streaming bubbles pass a nil stamp so the
+    /// time stays hidden while the caret is up.
+    private var timeMenu: BubbleTimestampMenu {
+        BubbleTimestampMenu(
+            stamp: BubbleTime.label(
+                createdAt: message.createdAt,
+                streaming: !completed
+            ),
+            showCopy: showCopy,
+            showSpeak: showSpeak,
+            showRegenerate: showRegenerate,
+            speaking: model.speakingMessageId == message.id,
+            onCopy: { copyMessageText() },
+            onSpeak: { Task { await model.toggleSpeak(message: message) } },
+            onRegenerate: { Task { await model.regenerate() } }
+        )
+    }
+
+    private func copyMessageText() {
+        UIPasteboard.general.string = message.content
+        copied = true
+        copyPulse += 1
+        let pulse = copyPulse
+        Task {
+            try? await Task.sleep(nanoseconds: 1_200_000_000)
+            if pulse == copyPulse {
+                copied = false
+            }
+        }
+    }
+}
+
+/// v0.65: timestamp is a non-actionable section header. Copy / Speak /
+/// Regenerate stay beside it when those controls already show. A user
+/// bubble with no actions still reveals the time as a disabled row.
+private struct BubbleTimestampMenu: ViewModifier {
+    let stamp: String?
+    var showCopy: Bool
+    var showSpeak: Bool
+    var showRegenerate: Bool
+    var speaking: Bool
+    let onCopy: () -> Void
+    let onSpeak: () -> Void
+    let onRegenerate: () -> Void
+
+    func body(content: Content) -> some View {
+        if let stamp {
+            let hasActions = showCopy || showSpeak || showRegenerate
+            if hasActions {
+                content.contextMenu {
+                    Section {
+                        if showCopy {
+                            Button("Copy") { onCopy() }
+                        }
+                        if showSpeak {
+                            Button(Speak.label(speaking)) { onSpeak() }
+                        }
+                        if showRegenerate {
+                            Button("Regenerate") { onRegenerate() }
+                        }
+                    } header: {
+                        Text(stamp)
+                            .font(.system(size: 12))
+                            .foregroundStyle(.secondary)
+                    }
+                }
+            } else {
+                content.contextMenu {
+                    Button(stamp) {}
+                        .disabled(true)
+                }
+            }
+        } else {
+            content
         }
     }
 }

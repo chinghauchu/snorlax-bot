@@ -205,6 +205,13 @@ v0.63: Jump chip fade (Grok Bot feel). Appear and dismiss
 with a 120ms opacity fade. Reduce Motion on: instant
 show/hide (no fade). Click / Esc=Jump behavior unchanged.
 OpenAPI stays 0.18.0.
+v0.65: bubble timestamps (Grok Bot feel). Each chat bubble
+shows its `createdAt` as local time (`h:mm AM`, with the
+date when it is not today). The 12px muted label appears
+on hover and keyboard focus, fades in 120ms, and is
+instant under Reduce Motion. It stays out of flow, hides
+while that bubble is streaming, and does not cover Copy /
+Regenerate or the caret. OpenAPI stays 0.18.0.
 Assistant LEFT
 `kind=message` is 14px markdown (16/14 headings) in short
 agent bubbles after complete; user-right stays plain (`https://` tappable). Fenced code is full-turn language + Copy at 12px/1.45.

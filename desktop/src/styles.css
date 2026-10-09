@@ -463,6 +463,7 @@ button:disabled {
 }
 
 .bubble {
+  position: relative;
   width: fit-content;
   max-width: 100%;
   min-width: 0;
@@ -471,6 +472,49 @@ button:disabled {
   border-radius: 14px;
   padding: 8px 11px;
   border: 1px solid var(--border);
+}
+
+/* v0.65: out of flow so hover/focus does not shift the bubble, the
+   caret, or Copy / Regenerate. 120ms; keep in lockstep with
+   BUBBLE_TIME_FADE_MS. */
+.bubble-time {
+  position: absolute;
+  z-index: 1;
+  bottom: calc(100% + 2px);
+  left: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1.2;
+  white-space: nowrap;
+  pointer-events: none;
+  user-select: none;
+  opacity: 0;
+  transition: opacity 120ms ease;
+}
+
+.bubble.user > .bubble-time {
+  left: auto;
+  right: 0;
+}
+
+.bubble:hover > .bubble-time {
+  opacity: 1;
+}
+
+.bubble:focus-visible > .bubble-time {
+  opacity: 1;
+}
+
+/* v0.65: Reduce Motion on → instant show (no fade). */
+@media (prefers-reduced-motion: reduce) {
+  .bubble-time {
+    transition: none;
+  }
 }
 
 .bubble.user {
