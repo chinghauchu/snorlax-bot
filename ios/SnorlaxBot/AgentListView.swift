@@ -123,7 +123,7 @@ private struct AgentRow: View {
                 }
             }
             Spacer(minLength: 0)
-            if agent.isChannel, model.unreadChannelIDs.contains(agent.id) {
+            if model.showsUnreadDot(agent) {
                 Circle()
                     .fill(Color.accentColor)
                     .frame(width: 6, height: 6)

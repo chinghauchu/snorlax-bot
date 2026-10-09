@@ -32,12 +32,22 @@ final class AppModel {
     }
 
     var agents: [Agent] = []
-    var selectedAgentID: String?
+    var selectedAgentID: String? {
+        didSet {
+            guard let id = selectedAgentID, id != oldValue else { return }
+            clearReplyUnread(id)
+        }
+    }
     var navigationPath: [String] = []
     var messages: [Message] = []
     var toolTraces: [LiveToolTrace] = []
     var threadID: String?
     var unreadChannelIDs: Set<String> = []
+    /// v0.70 persisted reply-unread roster ids. Handoff dots stay in `unreadChannelIDs`.
+    var replyUnreadIDs: Set<String> = []
+    /// App scene is active. A backgrounded app is not focused on the open chat.
+    var sceneFocused = true
+    private var chatUnread = ChatUnread()
     var lastExtraChannelID: String?
     var localPreviews: [String: [Data]] = [:]
     var draft = "" {
@@ -100,6 +110,7 @@ final class AppModel {
         token = KeychainStore.load()
         theme = AppTheme(rawValue: UserDefaults.standard.string(forKey: Keys.theme) ?? "") ?? .system
         accent = AccentChoice(rawValue: UserDefaults.standard.string(forKey: Keys.accent) ?? "") ?? .teal
+        replyUnreadIDs = chatUnread.snapshot
     }
 
     var isConfigured: Bool {
@@ -327,6 +338,7 @@ final class AppModel {
         if push, navigationPath.last != id {
             navigationPath = [id]
         }
+        clearReplyUnread(id)
         if visibleAgents.first(where: { $0.id == id })?.isChannel == true {
             unreadChannelIDs.remove(id)
             if id != Agent.channelID {
@@ -387,6 +399,8 @@ final class AppModel {
             try await client.deleteAgent(id: agent.id)
             agents.removeAll { $0.id == agent.id }
             unreadChannelIDs.remove(agent.id)
+            _ = chatUnread.retain(Set(agents.map(\.id)))
+            replyUnreadIDs = chatUnread.snapshot
             if lastExtraChannelID == agent.id {
                 lastExtraChannelID = nil
             }
@@ -1363,7 +1377,52 @@ final class AppModel {
         }
     }
 
+    /// v0.70: scene active means the open chat is focused. Inactive marks
+    /// a finished reply unread even on the chat that is on screen.
+    func setSceneFocused(_ focused: Bool) {
+        sceneFocused = focused
+        guard focused, let id = onScreenChatID() else { return }
+        clearReplyUnread(id)
+    }
+
+    func showsUnreadDot(_ agent: Agent) -> Bool {
+        if agent.isChannel, unreadChannelIDs.contains(agent.id) { return true }
+        return replyUnreadIDs.contains(agent.id)
+    }
+
+    private func onScreenChatID() -> String? {
+        ChatUnread.onScreenChatID(
+            pad: UIDevice.current.userInterfaceIdiom == .pad,
+            selectedID: selectedAgentID,
+            navigationLast: navigationPath.last
+        )
+    }
+
+    private func clearReplyUnread(_ id: String) {
+        guard chatUnread.clear(id) else { return }
+        replyUnreadIDs = chatUnread.snapshot
+    }
+
+    private func noteFinishedAssistantReply(chatId: String, message: Message) {
+        let reply = ChatUnread.ReplySnapshot(
+            fromUser: message.isFromUser,
+            kindMessage: message.isKindMessage,
+            hasToken: !message.content.isEmpty || !message.attachments.isEmpty
+        )
+        guard ChatUnread.isFinishedAssistantReply(reply) else { return }
+        guard ChatUnread.replyMarksUnread(
+            chatId: chatId,
+            openChatId: onScreenChatID(),
+            focused: sceneFocused
+        ) else { return }
+        guard chatUnread.mark(chatId) else { return }
+        replyUnreadIDs = chatUnread.snapshot
+    }
+
     private func handle(_ event: RuntimeClient.StreamEvent, agentId: String) {
+        if case .done(let message) = event {
+            noteFinishedAssistantReply(chatId: agentId, message: message)
+        }
         guard selectedAgentID == agentId else { return }
         let onTimeline = selectedAgent?.isChannel == true && threadID == nil
         switch event {

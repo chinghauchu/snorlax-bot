@@ -239,6 +239,13 @@ composer text stays with that chat when you switch away
 and when the app restarts (`localStorage`). Send clears
 that chat's draft. Up-arrow recall still runs only when
 the composer is empty. OpenAPI stays 0.18.0.
+v0.70: unread chat dot (Grok Bot feel). When an assistant
+reply finishes in a chat that is not open, or while the
+window is not focused, that sidebar row shows a 6px accent
+dot. Opening the chat clears it. Coming back to a focused
+window while that chat is already on screen clears it too.
+The dots stay in `localStorage` across a restart. OpenAPI
+stays 0.18.0.
 Assistant LEFT
 `kind=message` is 14px markdown (16/14 headings) in short
 agent bubbles after complete; user-right stays plain (`https://` tappable). Fenced code is full-turn language + Copy at 12px/1.45.

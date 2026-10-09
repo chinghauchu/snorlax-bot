@@ -216,6 +216,13 @@ import {
   type ChatDraftKey,
 } from "./chatDrafts";
 import {
+  ChatUnread,
+  browserUnreadStorage,
+  isFinishedAssistantReply,
+  replyMarksUnread,
+  windowIsFocused,
+} from "./chatUnread";
+import {
   TOOL_STACK_CHEVRON,
   collapsedToolsLabel,
   compactToolStacks,
@@ -610,6 +617,11 @@ export function App() {
   const [activeId, setActiveId] = useState<string | null>(SEED_CHANNEL_ID);
   const [threadId, setThreadId] = useState<string | null>(null);
   const [unreadIds, setUnreadIds] = useState<Set<string>>(() => new Set());
+  const chatUnread = useRef(new ChatUnread(browserUnreadStorage()));
+  const [replyUnreadIds, setReplyUnreadIds] = useState<Set<string>>(() =>
+    chatUnread.current.snapshot(),
+  );
+  const windowFocusedRef = useRef(true);
   const [createMenuOpen, setCreateMenuOpen] = useState(false);
   const [createChannelOpen, setCreateChannelOpen] = useState(false);
   const [channelNameDraft, setChannelNameDraft] = useState("New channel");
@@ -1009,6 +1021,49 @@ export function App() {
     chatDrafts.current.set(here.agentId, here.threadId, draft);
   }, [draft]);
 
+  function publishReplyUnread() {
+    setReplyUnreadIds(chatUnread.current.snapshot());
+  }
+
+  /** v0.70: a finished assistant reply the user is not looking at. */
+  function noteReplyUnread(chatId: string) {
+    if (
+      !replyMarksUnread({
+        chatId,
+        openChatId: convoRef.current.agentId,
+        focused: windowFocusedRef.current,
+      })
+    ) {
+      return;
+    }
+    if (!chatUnread.current.mark(chatId)) return;
+    publishReplyUnread();
+  }
+
+  function clearReplyUnread(chatId: string | null) {
+    if (!chatId) return;
+    if (!chatUnread.current.clear(chatId)) return;
+    publishReplyUnread();
+  }
+
+  useEffect(() => {
+    const syncFocus = () => {
+      const focused = windowIsFocused(document);
+      windowFocusedRef.current = focused;
+      if (!focused) return;
+      clearReplyUnread(convoRef.current.agentId);
+    };
+    syncFocus();
+    window.addEventListener("focus", syncFocus);
+    window.addEventListener("blur", syncFocus);
+    document.addEventListener("visibilitychange", syncFocus);
+    return () => {
+      window.removeEventListener("focus", syncFocus);
+      window.removeEventListener("blur", syncFocus);
+      document.removeEventListener("visibilitychange", syncFocus);
+    };
+  }, []);
+
   const onJumpLatest = useCallback(() => {
     applyStick(onJumpToLatest());
     const el = scroller.current;
@@ -1209,6 +1264,7 @@ export function App() {
 
   async function loadConversation(id: string, thread: string | null) {
     moveComposer(id, thread);
+    clearReplyUnread(id);
     setActiveId(id);
     setThreadId(thread);
     setExpandedToolStacks(new Set());
@@ -1699,14 +1755,20 @@ export function App() {
         const keep = new Set(roster.map((row) => row.id));
         return new Set([...prev].filter((id) => keep.has(id)));
       });
+      const rosterIds = new Set(roster.map((row) => row.id));
+      chatUnread.current.retain(rosterIds);
       if (activeId === doomed.id) {
         const next = nextRosterSelection(roster, doomed.id, activeId);
+        if (next) chatUnread.current.clear(next);
         moveComposer(next, null);
         setActiveId(next);
         setThreadId(null);
         setProfileOpen(false);
         setProfileEditing(false);
+        publishReplyUnread();
         setMessages(next ? await listMessages(session, next) : []);
+      } else {
+        publishReplyUnread();
       }
     } catch (err) {
       setLoadError(describeError(err));
@@ -1744,6 +1806,7 @@ export function App() {
       setBusy(true);
     }
     const content = opts.content;
+    const streamChatId = active.id;
     const images = opts.images ?? [];
     const localImages = opts.localImages ?? [];
     const mentionIds = opts.mentionIds ?? [];
@@ -1793,6 +1856,9 @@ export function App() {
         });
       },
       onDone(message) {
+        if (message && isFinishedAssistantReply(message)) {
+          noteReplyUnread(streamChatId);
+        }
         if (
           message &&
           active.kind === "channel" &&
@@ -2872,7 +2938,7 @@ export function App() {
                     <span className="row-title">{rosterSubtitle(agent)}</span>
                   ) : null}
                 </span>
-                {agent.kind === "channel" && unreadIds.has(agent.id) ? (
+                {unreadIds.has(agent.id) || replyUnreadIds.has(agent.id) ? (
                   <span className="unread-dot" aria-label="Unread" />
                 ) : null}
               </button>
