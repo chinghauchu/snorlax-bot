@@ -58,6 +58,8 @@ final class AppModel {
     var stickBump = 0
     private var streamTask: Task<Void, Never>?
     private var streamEpoch = 0
+    /// Unsent composer text per conversation. App session only.
+    private var chatDrafts = ChatDrafts()
     var showSettings = false
     var showProfile = false
     var routines: [Routine] = []
@@ -170,6 +172,7 @@ final class AppModel {
             agents = []
             plugins = []
             pluginCatalog = []
+            adoptComposerDraft(agentId: Agent.channelID, threadId: nil)
             selectedAgentID = Agent.channelID
             messages = []
             localPreviews = [:]
@@ -186,6 +189,7 @@ final class AppModel {
                 await select(next.id, push: true)
                 wantsComposerFocus = true
             } else {
+                adoptComposerDraft(agentId: nil, threadId: nil)
                 selectedAgentID = nil
                 messages = []
                 navigationPath = []
@@ -213,12 +217,27 @@ final class AppModel {
         await loadConversation(id, thread: nil, push: false)
     }
 
+    /// Save the open draft and show the draft for `agentId` + `threadId`.
+    /// Does not change focus. Caret moves to the end of the loaded text.
+    private func adoptComposerDraft(agentId: String?, threadId: String?) {
+        let next = chatDrafts.swap(
+            fromAgentId: selectedAgentID,
+            fromThreadId: threadID,
+            text: draft,
+            toAgentId: agentId,
+            toThreadId: threadId
+        )
+        draft = next
+        pendingComposerCaret = next.utf16.count
+    }
+
     func loadConversation(_ id: String, thread: String?, push: Bool) async {
         if selectedAgentID != id || threadID != thread {
             showProfile = false
             cancelDictation()
             stopSpeaking()
         }
+        adoptComposerDraft(agentId: id, threadId: thread)
         selectedAgentID = id
         threadID = thread
         attachError = nil
@@ -300,6 +319,7 @@ final class AppModel {
                 ) {
                     await select(next.id, push: true)
                 } else {
+                    adoptComposerDraft(agentId: nil, threadId: nil)
                     selectedAgentID = nil
                     messages = []
                     navigationPath = []
@@ -820,6 +840,9 @@ final class AppModel {
             }
         }
         let mentionIDs = mentionIDs(in: content)
+        let originAgentID = agent.id
+        let originThreadID = threadID
+        chatDrafts.clear(agentId: originAgentID, threadId: originThreadID)
         draft = ""
         pendingComposerCaret = 0
         pickedMentions = [:]
@@ -887,8 +910,13 @@ final class AppModel {
                     let failed = OptimisticSend.fail(messages, id: user.id)
                     messages = failed.messages
                     localPreviews[user.id] = nil
-                    draft = content
-                    pendingComposerCaret = content.utf16.count
+                    if !content.isEmpty {
+                        chatDrafts.restore(agentId: originAgentID, threadId: originThreadID, text: content)
+                        if selectedAgentID == originAgentID && threadID == originThreadID {
+                            draft = content
+                            pendingComposerCaret = content.utf16.count
+                        }
+                    }
                     pendingAttachments = chips
                     composerError = failed.hint
                 } else {

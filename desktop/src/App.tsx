@@ -201,6 +201,7 @@ import {
   shouldRefetchAfterStop,
 } from "./stopGenerating";
 import { sendMutedWhileGenerating } from "./sendMuted";
+import { ChatDrafts, type ChatDraftKey } from "./chatDrafts";
 import {
   TOOL_STACK_CHEVRON,
   collapsedToolsLabel,
@@ -603,6 +604,13 @@ export function App() {
     () => new Set(),
   );
   const [draft, setDraft] = useState("");
+  const draftRef = useRef(draft);
+  draftRef.current = draft;
+  const chatDrafts = useRef(new ChatDrafts());
+  const convoRef = useRef<{ agentId: string | null; threadId: string | null }>({
+    agentId: SEED_CHANNEL_ID,
+    threadId: null,
+  });
   const [dictation, setDictation] = useState<DictationState>("idle");
   const [speakingId, setSpeakingId] = useState<string | null>(null);
   const speakAudio = useRef<HTMLAudioElement | null>(null);
@@ -933,6 +941,44 @@ export function App() {
     requestAnimationFrame(() => composerRef.current?.focus());
   }, []);
 
+  const placeCaretAtEnd = useCallback(() => {
+    requestAnimationFrame(() => {
+      const node = composerRef.current;
+      if (!node) return;
+      const end = node.value.length;
+      node.setSelectionRange(end, end);
+      resizeComposer(node.value.length === 0);
+    });
+  }, []);
+
+  /** Save the open draft and show the draft for the conversation being opened. */
+  const moveComposer = useCallback(
+    (nextId: string | null, nextThread: string | null) => {
+      const from = convoRef.current;
+      const text = draftRef.current;
+      const fromKey =
+        from.agentId === null
+          ? null
+          : { agentId: from.agentId, threadId: from.threadId };
+      let nextText = "";
+      if (nextId) {
+        nextText = chatDrafts.current.swap(fromKey, text, {
+          agentId: nextId,
+          threadId: nextThread,
+        });
+      } else if (fromKey) {
+        chatDrafts.current.set(fromKey.agentId, fromKey.threadId, text);
+      }
+      convoRef.current = { agentId: nextId, threadId: nextThread };
+      draftRef.current = nextText;
+      setDraft(nextText);
+      setMentionOpen(false);
+      setSkillOpen(false);
+      placeCaretAtEnd();
+    },
+    [placeCaretAtEnd],
+  );
+
   const onJumpLatest = useCallback(() => {
     applyStick(onJumpToLatest());
     const el = scroller.current;
@@ -1033,34 +1079,40 @@ export function App() {
         const roster = await listAgents(next);
         setAgents(roster);
         const preferred = fallbackRosterSelection(roster);
+        moveComposer(preferred, null);
         setActiveId(preferred);
+        setThreadId(null);
         if (preferred) {
-          setThreadId(null);
           setMessages(await listMessages(next, preferred));
           focusComposer();
+          placeCaretAtEnd();
         } else {
           setMessages([]);
         }
       } catch (err) {
         setAgents([]);
+        moveComposer(null, null);
         setActiveId(null);
+        setThreadId(null);
         setMessages([]);
         setLoadError(describeError(err));
       }
     },
-    [focusComposer],
+    [focusComposer, moveComposer, placeCaretAtEnd],
   );
 
   useEffect(() => {
     if (!session) {
       setAgents([PLACEHOLDER_CHANNEL, PLACEHOLDER_SEED]);
+      moveComposer(SEED_CHANNEL_ID, null);
       setActiveId(SEED_CHANNEL_ID);
+      setThreadId(null);
       setMessages([]);
       setLoadError(null);
       return;
     }
     void loadRoster(session);
-  }, [session, loadRoster]);
+  }, [session, loadRoster, moveComposer]);
 
   useEffect(() => {
     if (!session || !skillAgentId) {
@@ -1126,6 +1178,7 @@ export function App() {
   }, [session, settingsOpen]);
 
   async function loadConversation(id: string, thread: string | null) {
+    moveComposer(id, thread);
     setActiveId(id);
     setThreadId(thread);
     setExpandedToolStacks(new Set());
@@ -1168,6 +1221,7 @@ export function App() {
       setComposerError(describeError(err));
     }
     focusComposer();
+    placeCaretAtEnd();
   }
 
   async function selectAgent(id: string) {
@@ -1192,6 +1246,7 @@ export function App() {
     try {
       const agent = await createAgent(session, "New agent");
       setAgents((prev) => [...prev, agent]);
+      moveComposer(agent.id, null);
       setActiveId(agent.id);
       setThreadId(null);
       setMessages([]);
@@ -1199,6 +1254,7 @@ export function App() {
       setProfileOpen(false);
       setProfileEditing(false);
       focusComposer();
+      placeCaretAtEnd();
     } catch (err) {
       setLoadError(describeError(err));
     }
@@ -1222,6 +1278,7 @@ export function App() {
       setCreateMenuOpen(false);
       setChannelNameDraft("New channel");
       setChannelMemberDraft([]);
+      moveComposer(channel.id, null);
       setActiveId(channel.id);
       setThreadId(null);
       setMessages([]);
@@ -1229,6 +1286,7 @@ export function App() {
       setProfileOpen(false);
       setProfileEditing(false);
       focusComposer();
+      placeCaretAtEnd();
     } catch (err) {
       setLoadError(describeError(err));
     }
@@ -1613,6 +1671,7 @@ export function App() {
       });
       if (activeId === doomed.id) {
         const next = nextRosterSelection(roster, doomed.id, activeId);
+        moveComposer(next, null);
         setActiveId(next);
         setThreadId(null);
         setProfileOpen(false);
@@ -1632,6 +1691,7 @@ export function App() {
     mentionIds?: string[];
     optimisticUser?: boolean;
     restoreAttachments?: PendingAttachment[];
+    draftOrigin?: ChatDraftKey;
     extra?: {
       widgetReply?: { id: string; values?: string[]; dismissed?: boolean };
       connectReply?: { id?: string; dismissed?: boolean };
@@ -1807,7 +1867,23 @@ export function App() {
         const status = err instanceof ApiError ? err.status : 0;
         if (status === 0 || isHttpSendFailure(status)) {
           setMessages((prev) => failOptimistic(prev, userMsg!.id).messages);
-          if (content) setDraft(content);
+          const origin = opts.draftOrigin;
+          if (origin && content) {
+            chatDrafts.current.restore(
+              origin.agentId,
+              origin.threadId,
+              content,
+            );
+            const here = convoRef.current;
+            if (
+              here.agentId === origin.agentId &&
+              here.threadId === origin.threadId
+            ) {
+              draftRef.current = content;
+              if (content) setDraft(content);
+              placeCaretAtEnd();
+            }
+          } else if (content) setDraft(content);
           if (opts.restoreAttachments?.length) {
             setPendingAttachments(opts.restoreAttachments);
           }
@@ -1895,10 +1971,16 @@ export function App() {
     const chips = pendingAttachments;
     if (!content && chips.length === 0) return;
     if (attachError) return;
+    const origin: ChatDraftKey = {
+      agentId: active.id,
+      threadId,
+    };
     inFlight.current = true;
     setBusy(true);
     snapStick();
     focusComposer();
+    chatDrafts.current.clear(origin.agentId, origin.threadId);
+    draftRef.current = "";
     setDraft("");
     setComposerError(null);
     setAttachError(null);
@@ -1916,6 +1998,7 @@ export function App() {
       mentionIds: mentionIdsInText(content, pickedMentions.current),
       optimisticUser: true,
       restoreAttachments: chips,
+      draftOrigin: origin,
       extra: { attachmentIds: chips.map((row) => row.id) },
       holdBusy: true,
     });
@@ -3256,6 +3339,7 @@ export function App() {
                   active ? `Message ${active.name}` : "Message"
                 }
                 onChange={(e) => {
+                  draftRef.current = e.target.value;
                   setDraft(e.target.value);
                   syncComposerTriggers(e.target.value, e.target.selectionStart);
                   resizeComposer();
