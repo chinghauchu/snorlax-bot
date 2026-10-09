@@ -149,6 +149,7 @@ import {
   assistantBubbleWide,
   splitAssistantBubbles,
 } from "./assistantBubbles";
+import { bubbleTimeLabel } from "./bubbleTime";
 import {
   COPY_CONTROL_LABEL,
   copiedFeedbackLabel,
@@ -417,6 +418,11 @@ function AgentRoutineRow({
       </label>
     </div>
   );
+}
+
+function BubbleStamp({ label }: { label: string | null }) {
+  if (!label) return null;
+  return <span className="bubble-time">{label}</span>;
 }
 
 function MessageActions({
@@ -2838,6 +2844,10 @@ export function App() {
                 ];
                 const jump = visibleJump(message, agents);
                 const completed = !(busy && index === liveAssistantIdx);
+                const bubbleStamp = bubbleTimeLabel(
+                  message.createdAt,
+                  !completed,
+                );
                 const leftBubbles = splitAssistantBubbles(
                   displayBody(message.content, message.senderName),
                   completed,
@@ -3000,7 +3010,11 @@ export function App() {
                         onDeny={(id) => void denyApprove(id)}
                       />
                     ) : mine ? (
-                      <div className="bubble user">
+                      <div
+                        className="bubble user"
+                        tabIndex={bubbleStamp ? 0 : undefined}
+                      >
+                        <BubbleStamp label={bubbleStamp} />
                         <MessageAttachmentChrome
                           message={message}
                           session={session}
@@ -3047,7 +3061,9 @@ export function App() {
                                       ? "bubble agent wide"
                                       : "bubble agent"
                                   }
+                                  tabIndex={bubbleStamp ? 0 : undefined}
                                 >
+                                  <BubbleStamp label={bubbleStamp} />
                                   {shouldRenderMarkdown({ completed }) ? (
                                     <MarkdownBody
                                       text={part}
