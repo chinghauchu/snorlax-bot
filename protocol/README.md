@@ -314,6 +314,14 @@ opacity fade. Reduce Motion on → instant show/hide. Click /
 Esc=Jump behavior unchanged. No new routes. OpenAPI stays
 0.18.0.
 
+v0.68 recall last message: empty composer Up-arrow (IME
+idle) puts the user's latest sent message into the
+composer as an editable draft, caret at the end. Escape or
+clearing the field restores empty. iOS long-press on that
+bubble adds Edit as new message beside the timestamp row;
+hardware Up-arrow matches. No new routes. OpenAPI stays
+0.18.0.
+
 A copy is also kept at `runtime/openapi.yaml` and `desktop/openapi.yaml`
 so those trees are self-contained. Do not let the files diverge.
 

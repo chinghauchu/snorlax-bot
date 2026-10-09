@@ -134,6 +134,14 @@ v0.63: Jump chip fade. Appear and dismiss with a 120ms
 opacity fade. Reduce Motion on: instant show/hide (no
 fade). Click / Esc=Jump behavior unchanged. OpenAPI stays
 0.18.0.
+v0.68: recall last message. Long-press your own most recent
+bubble and choose Edit as new message (added beside the
+v0.65 timestamp row; the time stays non-actionable). That
+text lands in the composer, caret at the end. Hardware
+Up-arrow does the same when the composer is empty and IME
+is idle, and does not steal the caret once the field has
+text. Escape, or clearing the field, restores empty. While
+generating, Esc still Stop. OpenAPI stays 0.18.0.
 v0.32: dedicated `kind=approve` LEFT card for mutating shell (not a
 WidgetCard fork). Approve / Deny / ×; long-press copies the command.
 Question widgets
@@ -245,7 +253,8 @@ Output: `SnorlaxBot/Generated/V1Types.swift`. Do not hand-edit that file.
 - `SnorlaxBot/StopGenerating.swift` — v0.50 12pt muted Stop (client abort); v0.53 Esc = Stop; v0.59 focus composer after Stop (hardware keyboard only); v0.62 Jump reuses that focus helper
 - `SnorlaxBot/Waiting.swift` — v0.51 waiting ··· until first token; v0.58 Reduce Motion static ···
 - `SnorlaxBot/StreamingCaret.swift` — v0.52 streaming caret on LEFT bubble
-- `SnorlaxBot/ComposerTextView.swift` — v0.53 UIKeyCommand Escape = Stop; v0.55 Return does not send while generating; v0.60 Esc = Jump when frozen
+- `SnorlaxBot/ComposerTextView.swift` — v0.53 UIKeyCommand Escape = Stop; v0.55 Return does not send while generating; v0.60 Esc = Jump when frozen; v0.68 hardware Up-arrow recalls the latest user message when the composer is empty
+- `SnorlaxBot/RecallDraft.swift` — v0.68 recall the latest user message (Edit as new message; Escape restores empty)
 - `SnorlaxBot/SendMuted.swift` — v0.55 Send muted while generating
 - `SnorlaxBot/CompactToolTraces.swift` — v0.56 compact tool traces (`N tools` + chevron)
 - `SnorlaxBot/MidStreamPlaintext.swift` — v0.57 mid-stream LEFT plaintext until complete / Stop

@@ -120,6 +120,12 @@ import {
   rosterRefreshTool,
 } from "./composerKeys";
 import {
+  arrowUpRecalls,
+  escapeClearsRecall,
+  latestUserMessageText,
+  recallArmedAfterEdit,
+} from "./recallDraft";
+import {
   loadInitialRuntimeUrl,
   normalizeRuntimeUrl,
 } from "./runtimeUrl";
@@ -614,6 +620,8 @@ export function App() {
   const [draft, setDraft] = useState("");
   const draftRef = useRef(draft);
   draftRef.current = draft;
+  /** v0.68: composer text came from recalling the latest user message. */
+  const [recallArmed, setRecallArmed] = useState(false);
   const chatDrafts = useRef(new ChatDrafts());
   const convoRef = useRef<{ agentId: string | null; threadId: string | null }>({
     agentId: SEED_CHANNEL_ID,
@@ -980,6 +988,7 @@ export function App() {
       convoRef.current = { agentId: nextId, threadId: nextThread };
       draftRef.current = nextText;
       setDraft(nextText);
+      setRecallArmed(false);
       setMentionOpen(false);
       setSkillOpen(false);
       placeCaretAtEnd();
@@ -1936,6 +1945,30 @@ export function App() {
     }
   }
 
+  function transcriptRows() {
+    return active
+      ? messages.filter((message) => isTranscriptVisible(message, active))
+      : messages;
+  }
+
+  /** v0.68: put the latest user message in the composer, caret at the end. */
+  function fillRecalledDraft(text: string) {
+    pendingCaret.current = text.length;
+    draftRef.current = text;
+    setDraft(text);
+    setRecallArmed(true);
+    syncComposerTriggers(text, text.length);
+  }
+
+  /** Escape, or a later empty field, leaves the composer empty. */
+  function clearRecalledDraft() {
+    pendingCaret.current = 0;
+    draftRef.current = "";
+    setDraft("");
+    setRecallArmed(false);
+    syncComposerTriggers("", 0);
+  }
+
   useEffect(() => {
     const onKey = (event: globalThis.KeyboardEvent) => {
       if (event.key !== "Escape") return;
@@ -1956,6 +1989,20 @@ export function App() {
         return;
       }
       if (
+        escapeClearsRecall({
+          armed: recallArmed,
+          composing: isComposerComposing(event),
+          busy,
+          pendingWidget: messages.some(isPendingWidget),
+          pendingApprove: messages.some(isPendingApprove),
+          pendingConnect: messages.some(isPendingConnect),
+        })
+      ) {
+        event.preventDefault();
+        clearRecalledDraft();
+        return;
+      }
+      if (
         escapeJumpsToLatest({
           showJump,
           busy,
@@ -1971,7 +2018,17 @@ export function App() {
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [busy, messages, mentionOpen, skillOpen, takeoverOpen, dictation, showJump, onJumpLatest]);
+  }, [
+    busy,
+    messages,
+    mentionOpen,
+    skillOpen,
+    takeoverOpen,
+    dictation,
+    showJump,
+    onJumpLatest,
+    recallArmed,
+  ]);
 
   async function onSend() {
     if (!session || !active || inFlight.current || sendBlocked) return;
@@ -1990,6 +2047,7 @@ export function App() {
     chatDrafts.current.clear(origin.agentId, origin.threadId);
     draftRef.current = "";
     setDraft("");
+    setRecallArmed(false);
     setComposerError(null);
     setAttachError(null);
     setPendingAttachments([]);
@@ -2322,6 +2380,40 @@ export function App() {
     if (event.key === "Escape" && dictationCancelable(dictation)) {
       event.preventDefault();
       cancelDictation();
+      return;
+    }
+    if (
+      arrowUpRecalls({
+        key: event.key,
+        composerText: draft,
+        composing: isComposerComposing(event),
+        altKey: event.altKey,
+        metaKey: event.metaKey,
+        ctrlKey: event.ctrlKey,
+        shiftKey: event.shiftKey,
+      })
+    ) {
+      const text = latestUserMessageText(transcriptRows());
+      if (text != null) {
+        event.preventDefault();
+        fillRecalledDraft(text);
+      }
+      return;
+    }
+    if (
+      event.key === "Escape" &&
+      escapeClearsRecall({
+        armed: recallArmed,
+        composing: isComposerComposing(event),
+        busy,
+        pendingWidget: messages.some(isPendingWidget),
+        pendingApprove: messages.some(isPendingApprove),
+        pendingConnect: messages.some(isPendingConnect),
+      })
+    ) {
+      event.preventDefault();
+      event.stopPropagation();
+      clearRecalledDraft();
       return;
     }
     if (sendMutedWhileGenerating(busy)) {
@@ -3386,9 +3478,11 @@ export function App() {
                   active ? `Message ${active.name}` : "Message"
                 }
                 onChange={(e) => {
-                  draftRef.current = e.target.value;
-                  setDraft(e.target.value);
-                  syncComposerTriggers(e.target.value, e.target.selectionStart);
+                  const value = e.target.value;
+                  draftRef.current = value;
+                  setDraft(value);
+                  setRecallArmed((armed) => recallArmedAfterEdit(value, armed));
+                  syncComposerTriggers(value, e.target.selectionStart);
                   resizeComposer();
                   syncComposerScroll();
                 }}

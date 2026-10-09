@@ -45,8 +45,11 @@ final class AppModel {
             if SkillPicker.query(in: draft) == nil {
                 skillPickerDismissed = false
             }
+            recallArmed = RecallDraft.armedAfterEdit(text: draft, wasArmed: recallArmed)
         }
     }
+    /// v0.68: composer text came from recalling the latest user message.
+    var recallArmed = false
     var pendingAttachments: [PendingChatAttachment] = []
     var attachError: String?
     var attachInFlight = 0
@@ -153,6 +156,57 @@ final class AppModel {
         }
     }
 
+    /// v0.68: hardware Up-arrow. Empty composer only; IME is filtered by the field.
+    func recallLastSentFromArrowUp() {
+        guard !computerTakeoverOpen else { return }
+        guard RecallDraft.arrowUpRecalls(composerText: draft, composing: false) else { return }
+        guard let text = latestRecallableUserText() else { return }
+        draft = text
+        recallArmed = true
+        pendingComposerCaret = (text as NSString).length
+    }
+
+    /// v0.68: long-press "Edit as new message" on the latest user bubble.
+    func editAsNewMessage(_ text: String) {
+        guard !computerTakeoverOpen else { return }
+        guard !text.isEmpty else { return }
+        draft = text
+        recallArmed = true
+        pendingComposerCaret = (text as NSString).length
+        wantsComposerFocus = true
+    }
+
+    /// Escape restores a recalled draft to empty. Stop / pending cards win.
+    /// Returns true when this Escape was consumed.
+    @discardableResult
+    func clearRecallFromEscape(composing: Bool) -> Bool {
+        guard !computerTakeoverOpen else { return false }
+        guard RecallDraft.escapeClears(
+            armed: recallArmed,
+            composing: composing,
+            busy: isSending,
+            pendingWidget: StopGenerating.pendingWidget(in: messages),
+            pendingApprove: StopGenerating.pendingApprove(in: messages),
+            pendingConnect: StopGenerating.pendingConnect(in: messages)
+        ) else { return false }
+        draft = ""
+        recallArmed = false
+        pendingComposerCaret = 0
+        return true
+    }
+
+    private func latestRecallableUserText() -> String? {
+        guard let agent = selectedAgent else { return nil }
+        let rows = visibleMessages(for: agent).map {
+            RecallDraft.Row(
+                fromUser: $0.isFromUser,
+                kindMessage: $0.isKindMessage,
+                content: $0.content
+            )
+        }
+        return RecallDraft.latestText(in: rows)
+    }
+
     var isAttaching: Bool { attachInFlight > 0 }
 
     var visibleAgents: [Agent] {
@@ -228,6 +282,7 @@ final class AppModel {
             toThreadId: threadId
         )
         draft = next
+        recallArmed = false
         pendingComposerCaret = next.utf16.count
     }
 

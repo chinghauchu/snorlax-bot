@@ -15,8 +15,11 @@ struct ComposerTextView: UIViewRepresentable {
     var onCaretChange: ((NSRange) -> Void)? = nil
     /// Hardware Esc: Stop while generating (v0.53), Jump when frozen (v0.60).
     /// v0.62: Jump then returns focus to the composer (hardware keyboard).
+    /// v0.68: an armed recall consumes Esc first (restore empty) when idle.
     /// `composing` is IME marked text.
     var onEscapeStop: ((Bool) -> Void)? = nil
+    /// v0.68: hardware Up-arrow recalls the latest user message when empty.
+    var onArrowUpRecall: (() -> Void)? = nil
     /// v0.55: hardware Return does not send while an assistant turn is in flight.
     var sendMuted: Bool = false
 
@@ -35,6 +38,9 @@ struct ComposerTextView: UIViewRepresentable {
         }
         view.onEscapeStop = { [coordinator = context.coordinator] composing in
             coordinator.parent.onEscapeStop?(composing)
+        }
+        view.onArrowUpRecall = { [coordinator = context.coordinator] in
+            coordinator.parent.onArrowUpRecall?()
         }
         view.sendMuted = sendMuted
         view.font = .systemFont(ofSize: 14)
@@ -57,6 +63,9 @@ struct ComposerTextView: UIViewRepresentable {
         }
         view.onEscapeStop = { [coordinator = context.coordinator] composing in
             coordinator.parent.onEscapeStop?(composing)
+        }
+        view.onArrowUpRecall = { [coordinator = context.coordinator] in
+            coordinator.parent.onArrowUpRecall?()
         }
         view.sendMuted = sendMuted
         view.isEditable = !disabled
@@ -174,6 +183,7 @@ final class ComposerUITextView: UITextView {
     var onReturnSend: (() -> Void)?
     var onPasteAttachments: (([ComposerPasteboard.Attachment]) -> Void)?
     var onEscapeStop: ((Bool) -> Void)?
+    var onArrowUpRecall: (() -> Void)?
     var sendMuted = false
 
     override var keyCommands: [UIKeyCommand]? {
@@ -184,13 +194,30 @@ final class ComposerUITextView: UITextView {
             modifierFlags: []
         )
         escape.wantsPriorityOverSystemBehavior = true
-        return (super.keyCommands ?? []) + [escape]
+        var commands = (super.keyCommands ?? []) + [escape]
+        // Up-arrow moves the caret once the field has text. Recall only when empty.
+        if text.isEmpty && markedTextRange == nil {
+            let up = UIKeyCommand(
+                title: RecallDraft.editAsNewMessage,
+                action: #selector(recallFromArrowUp),
+                input: UIKeyCommand.inputUpArrow,
+                modifierFlags: []
+            )
+            up.wantsPriorityOverSystemBehavior = true
+            commands.append(up)
+        }
+        return commands
     }
 
     @objc private func stopGeneratingFromEscape() {
         // IME: do not steal Esc while marked text is composing.
         let composing = markedTextRange != nil
         onEscapeStop?(composing)
+    }
+
+    @objc private func recallFromArrowUp() {
+        if markedTextRange != nil || !text.isEmpty { return }
+        onArrowUpRecall?()
     }
 
     override func paste(_ sender: Any?) {
@@ -216,6 +243,19 @@ final class ComposerUITextView: UITextView {
     override func pressesBegan(_ presses: Set<UIPress>, with event: UIPressesEvent?) {
         for press in presses {
             guard let key = press.key else { continue }
+            if key.keyCode == .keyboardUpArrow {
+                let mods = key.modifierFlags
+                let chord = mods.contains(.command)
+                    || mods.contains(.alternate)
+                    || mods.contains(.control)
+                    || mods.contains(.shift)
+                if markedTextRange != nil || !text.isEmpty || chord {
+                    super.pressesBegan(presses, with: event)
+                    return
+                }
+                onArrowUpRecall?()
+                return
+            }
             if key.keyCode == .keyboardReturn || key.keyCode == .keyboardReturnOrEnter {
                 if markedTextRange != nil {
                     super.pressesBegan(presses, with: event)

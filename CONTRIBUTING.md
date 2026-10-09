@@ -66,7 +66,10 @@ NVIDIA DGX Spark.
   for 1.2s without replacing the Copy label or a toast; v0.62 Jump (chip
   or Esc) returns focus to the composer — desktop always, iOS hardware
   keyboard only; v0.63 Jump chip appear/dismiss is a 120ms opacity fade,
-  instant when Reduce Motion is on), a display-only
+  instant when Reduce Motion is on; v0.68 empty-composer Up-arrow recalls
+  the latest user message as an editable draft, Escape or clearing
+  restores empty, and iOS adds Edit as new message on that bubble's
+  long-press), a display-only
   Box computer preview (`GET /v1/agents/{id}/computer` JSON; Bearer PNG at
   `/computer/screenshot`; identity pane), desktop Box takeover
   (`POST /computer/session` → 201 `{ sessionId }`; `DELETE .../session` or
