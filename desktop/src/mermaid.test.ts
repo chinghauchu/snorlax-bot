@@ -81,7 +81,7 @@ test("non-mermaid fences keep language + Copy + mono body", () => {
   assert.match(pre, /overflow-x:\s*auto/);
   assert.match(copy, /font-size:\s*12px/);
   assert.match(body, /className="md-copy"/);
-  assert.match(body, />\s*Copy\s*</);
+  assert.match(body, /codeBlockCopyLabel\(copied\)/);
   assert.match(body, /FenceChrome/);
   assert.doesNotMatch(body, /rehype-raw/);
 });

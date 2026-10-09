@@ -146,7 +146,8 @@ test("fenced code is full-turn 8px, elevated, language + Copy, 12px/1.45", () =>
   assert.match(pre, /font-family:\s*ui-monospace/);
   assert.match(copy, /font-size:\s*12px/);
   assert.match(body, /className="md-copy"/);
-  assert.match(body, />\s*Copy\s*</);
+  assert.match(body, /codeBlockCopyLabel\(copied\)/);
+  assert.match(body, /showCodeBlockCopy\(completed\)/);
   assert.match(body, /md-fence-lang/);
   assert.match(body, /fenceLanguage/);
 });

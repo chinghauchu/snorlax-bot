@@ -17,9 +17,9 @@ struct AssistantMarkdown: View {
                     MarkdownRun(source: source, names: names, completed: completed)
                 case .code(let language, let source):
                     if completed && MarkdownSplit.isMermaidLanguage(language) {
-                        MermaidFence(language: language, source: source)
+                        MermaidFence(language: language, source: source, completed: completed)
                     } else {
-                        CodeFence(language: language, source: source)
+                        CodeFence(language: language, source: source, completed: completed)
                     }
                 case .blockMath(let source, let raw, let closed):
                     if completed && closed {
@@ -37,13 +37,14 @@ struct AssistantMarkdown: View {
 private struct MermaidFence: View {
     let language: String
     let source: String
+    var completed: Bool = true
     @Environment(\.colorScheme) private var colorScheme
     @State private var failed = false
     @State private var size = CGSize(width: 1, height: 1)
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            FenceBar(language: language, source: source)
+            FenceBar(language: language, source: source, completed: completed)
             if failed {
                 FenceSource(source: source)
             } else {
@@ -81,10 +82,11 @@ private struct MermaidFence: View {
 private struct CodeFence: View {
     let language: String
     let source: String
+    var completed: Bool = true
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            FenceBar(language: language, source: source)
+            FenceBar(language: language, source: source, completed: completed)
             FenceSource(source: source)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -103,6 +105,10 @@ private struct CodeFence: View {
 private struct FenceBar: View {
     let language: String
     let source: String
+    var completed: Bool = true
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var copied = false
+    @State private var pulse = 0
 
     var body: some View {
         HStack {
@@ -110,11 +116,25 @@ private struct FenceBar: View {
                 .font(.system(size: 12))
                 .foregroundStyle(.secondary)
             Spacer(minLength: 0)
-            Button("Copy") {
-                UIPasteboard.general.string = source
+            if CodeBlockCopy.showsCopy(completed: completed) {
+                Button(CodeBlockCopy.label(copied: copied)) {
+                    UIPasteboard.general.string = CodeBlockCopy.clipboardText(source)
+                    copied = true
+                    pulse += 1
+                    let ticket = pulse
+                    Task {
+                        try? await Task.sleep(nanoseconds: CodeBlockCopy.feedbackNanoseconds)
+                        if ticket == pulse {
+                            copied = false
+                        }
+                    }
+                }
+                .font(.system(size: 12))
+                .foregroundStyle(.secondary)
+                .buttonStyle(.plain)
+                .accessibilityLabel(CodeBlockCopy.accessibilityLabel(copied: copied))
+                .animation(CodeBlockCopy.animation(reduceMotion: reduceMotion), value: copied)
             }
-            .font(.system(size: 12))
-            .foregroundStyle(.secondary)
         }
         .padding(.horizontal, 10)
         .padding(.top, 6)

@@ -757,11 +757,28 @@ pre.md-math-fallback.md-math-block {
 }
 
 .md-copy {
+  margin-left: auto;
   font-size: 12px;
   color: var(--text-muted);
   background: none;
   border: none;
   padding: 0;
+  cursor: pointer;
+  transition: none;
+  animation: none;
+}
+
+.md-copy:focus-visible {
+  outline: 1px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* v0.66: Reduce Motion on → no animation (the confirmation is a label swap). */
+@media (prefers-reduced-motion: reduce) {
+  .md-copy {
+    transition: none;
+    animation: none;
+  }
 }
 
 .mention {

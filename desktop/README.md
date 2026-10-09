@@ -212,6 +212,14 @@ on hover and keyboard focus, fades in 120ms, and is
 instant under Reduce Motion. It stays out of flow, hides
 while that bubble is streaming, and does not cover Copy /
 Regenerate or the caret. OpenAPI stays 0.18.0.
+v0.66: fenced code block Copy (Grok Bot feel). The existing
+top-right Copy on a fenced code block copies that block's
+code only (no fences, no language tag), then reads Copied
+for 1.5s and reverts to Copy. Hidden while that message is
+still streaming. No animation, including under Reduce
+Motion. Desktop button is keyboard focusable with the
+accessible name Copy code. Message-level Copy is unchanged.
+OpenAPI stays 0.18.0.
 Assistant LEFT
 `kind=message` is 14px markdown (16/14 headings) in short
 agent bubbles after complete; user-right stays plain (`https://` tappable). Fenced code is full-turn language + Copy at 12px/1.45.

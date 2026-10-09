@@ -56,7 +56,8 @@ def test_mermaid_on_left_kind_message() -> None:
 
 def test_non_mermaid_fences_unchanged() -> None:
     assert "struct CodeFence" in MARKDOWN
-    assert 'Button("Copy")' in MARKDOWN
+    assert "CodeBlockCopy.label(copied: copied)" in MARKDOWN
+    assert "CodeBlockCopy.clipboardText(source)" in MARKDOWN
     assert "ScrollView(.horizontal" in MARKDOWN
     assert ".font(.system(size: 12, design: .monospaced))" in MARKDOWN
     assert "cornerRadius: 8" in MARKDOWN
