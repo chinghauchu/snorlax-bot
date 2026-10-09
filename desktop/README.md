@@ -220,6 +220,12 @@ still streaming. No animation, including under Reduce
 Motion. Desktop button is keyboard focusable with the
 accessible name Copy code. Message-level Copy is unchanged.
 OpenAPI stays 0.18.0.
+v0.67: day separators (Grok Bot feel). Jump to latest is
+already shipped. While you read earlier messages, a 12px
+muted line marks the local day above the first painted
+row of that day: Today, Yesterday, the weekday when it
+was 2–6 days ago, otherwise the date. Collapsed tool
+lines do not count. No animation. OpenAPI stays 0.18.0.
 Assistant LEFT
 `kind=message` is 14px markdown (16/14 headings) in short
 agent bubbles after complete; user-right stays plain (`https://` tappable). Fenced code is full-turn language + Copy at 12px/1.45.

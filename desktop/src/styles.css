@@ -394,6 +394,17 @@ button:disabled {
   font-size: 13px;
 }
 
+/* v0.67: day line while reading earlier messages. No animation. */
+.day-separator {
+  align-self: stretch;
+  margin: 12px 0 0;
+  padding: 0;
+  color: var(--text-muted);
+  font-size: 12px;
+  line-height: 1.3;
+  text-align: center;
+}
+
 .turn {
   display: flex;
   flex-direction: column;

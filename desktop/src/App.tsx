@@ -2,6 +2,7 @@ import {
   ClipboardEvent,
   DragEvent,
   FormEvent,
+  Fragment,
   KeyboardEvent,
   MouseEvent,
   useCallback,
@@ -150,6 +151,7 @@ import {
   splitAssistantBubbles,
 } from "./assistantBubbles";
 import { bubbleTimeLabel } from "./bubbleTime";
+import { daySeparatorLabels } from "./daySeparator";
 import {
   COPY_CONTROL_LABEL,
   copiedFeedbackLabel,
@@ -2680,6 +2682,22 @@ export function App() {
   );
   const showLiveChrome =
     livePaint.header != null || livePaint.lines.length > 0;
+  const dayLabels = daySeparatorLabels(
+    visibleMessages.map((message, index) => {
+      const toolStack = stackForMessageIndex(toolStacks, index);
+      const collapsed = toolStack
+        ? stackCollapsed(
+            expandedToolStacks,
+            toolStack.id,
+            toolStack.items.length,
+          )
+        : false;
+      return {
+        createdAt: message.createdAt,
+        hidden: hidePersistedTool(toolStack, index, collapsed),
+      };
+    }),
+  );
 
   return (
     <div className={computerOpen ? "app computer-open" : "app computer-collapsed"}>
@@ -2831,6 +2849,7 @@ export function App() {
                 ) {
                   return null;
                 }
+                const dayLabel = dayLabels[index];
                 const prev = visibleMessages[index - 1];
                 const mine = isUserSender(message.senderId, message.role);
                 const sameSender =
@@ -2862,8 +2881,13 @@ export function App() {
                   !message.replyTo;
                 if (timelineHandoff && active) {
                   return (
+                    <Fragment key={message.id}>
+                    {dayLabel ? (
+                      <p className="day-separator" role="heading" aria-level={2}>
+                        {dayLabel}
+                      </p>
+                    ) : null}
                     <button
-                      key={message.id}
                       type="button"
                       className="handoff-row"
                       onClick={() => void openJump(active.id, message.id)}
@@ -2893,11 +2917,17 @@ export function App() {
                         </span>
                       </span>
                     </button>
+                    </Fragment>
                   );
                 }
                 return (
+                  <Fragment key={message.id}>
+                  {dayLabel ? (
+                    <p className="day-separator" role="heading" aria-level={2}>
+                      {dayLabel}
+                    </p>
+                  ) : null}
                   <article
-                    key={message.id}
                     className={`turn ${mine ? "right" : "left"}${sameSender && !threadRoot ? " same-sender" : " new-sender"}`}
                   >
                     {!mine && !sameSender ? (
@@ -3120,6 +3150,7 @@ export function App() {
                       </button>
                     ) : null}
                   </article>
+                  </Fragment>
                 );
               })
             )}
