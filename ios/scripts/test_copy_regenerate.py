@@ -42,7 +42,8 @@ def test_copy_on_left_kind_message_not_tool_widget_connect() -> None:
     assert "isApprove" in CHAT
     assert "isFromUser" in CHAT
     assert "AssistantMarkdown" in MARKDOWN
-    assert 'Button("Copy")' in MARKDOWN
+    assert "CodeBlockCopy" in MARKDOWN
+    assert "CodeBlockCopy.clipboardText(source)" in MARKDOWN
 
 
 def test_regenerate_last_one_to_one_only() -> None:

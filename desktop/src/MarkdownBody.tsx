@@ -4,11 +4,19 @@ import {
   cloneElement,
   isValidElement,
   useEffect,
+  useRef,
   useState,
   type MouseEvent,
   type ReactNode,
 } from "react";
 import Markdown from "react-markdown";
+import {
+  CODE_BLOCK_COPY_MS,
+  codeBlockClipboardText,
+  codeBlockCopyAriaLabel,
+  codeBlockCopyLabel,
+  showCodeBlockCopy,
+} from "./codeBlockCopy";
 import {
   copyText,
   fenceLanguage,
@@ -121,17 +129,23 @@ function CodeFence({
 }) {
   const { text, language } = fenceFromChildren(children);
   if (shouldRenderMermaid({ language, completed })) {
-    return <MermaidFence language={language} source={text} />;
+    return (
+      <MermaidFence language={language} source={text} completed={completed} />
+    );
   }
-  return <FenceChrome language={language} source={text} />;
+  return (
+    <FenceChrome language={language} source={text} completed={completed} />
+  );
 }
 
 function MermaidFence({
   language,
   source,
+  completed,
 }: {
   language: string;
   source: string;
+  completed: boolean;
 }) {
   const [svg, setSvg] = useState<string | null>(null);
   useEffect(() => {
@@ -145,11 +159,13 @@ function MermaidFence({
     };
   }, [source]);
   if (!svg) {
-    return <FenceChrome language={language} source={source} />;
+    return (
+      <FenceChrome language={language} source={source} completed={completed} />
+    );
   }
   return (
     <div className="md-fence">
-      <FenceBar language={language} source={source} />
+      <FenceBar language={language} source={source} completed={completed} />
       <div
         className="md-mermaid-body"
         // mermaid securityLevel=strict; official SVG only
@@ -162,13 +178,15 @@ function MermaidFence({
 function FenceChrome({
   language,
   source,
+  completed,
 }: {
   language: string;
   source: string;
+  completed: boolean;
 }) {
   return (
     <div className="md-fence">
-      <FenceBar language={language} source={source} />
+      <FenceBar language={language} source={source} completed={completed} />
       <pre className="md-fence-body">
         <code>{source}</code>
       </pre>
@@ -176,17 +194,57 @@ function FenceChrome({
   );
 }
 
-function FenceBar({ language, source }: { language: string; source: string }) {
+function FenceBar({
+  language,
+  source,
+  completed,
+}: {
+  language: string;
+  source: string;
+  completed: boolean;
+}) {
+  const [copied, setCopied] = useState(false);
+  const timer = useRef<ReturnType<typeof window.setTimeout> | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (timer.current != null) window.clearTimeout(timer.current);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (completed) return;
+    setCopied(false);
+    if (timer.current != null) {
+      window.clearTimeout(timer.current);
+      timer.current = null;
+    }
+  }, [completed]);
+
+  function onCopy() {
+    void copyText(codeBlockClipboardText(source));
+    setCopied(true);
+    if (timer.current != null) window.clearTimeout(timer.current);
+    timer.current = window.setTimeout(() => {
+      setCopied(false);
+      timer.current = null;
+    }, CODE_BLOCK_COPY_MS);
+  }
+
   return (
     <div className="md-fence-bar">
       <span className="md-fence-lang">{language}</span>
-      <button
-        type="button"
-        className="md-copy"
-        onClick={() => void copyText(source)}
-      >
-        Copy
-      </button>
+      {showCodeBlockCopy(completed) ? (
+        <button
+          type="button"
+          className="md-copy"
+          aria-label={codeBlockCopyAriaLabel(copied)}
+          aria-live="polite"
+          onClick={onCopy}
+        >
+          {codeBlockCopyLabel(copied)}
+        </button>
+      ) : null}
     </div>
   );
 }
