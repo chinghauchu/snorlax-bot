@@ -152,6 +152,13 @@ a chat that is not on screen, or while the app is inactive,
 that row shows a 6pt accent dot. Opening the chat clears it.
 The list is not an open chat; the pushed chat is. The dots
 stay in UserDefaults across a restart. OpenAPI stays 0.18.0.
+v0.71: in-chat find. The chat toolbar magnifying glass opens
+a search field over messages already loaded. User, assistant,
+and handoff rows that do not match are hidden. Matches
+highlight. Enter and the down button move to the next match;
+Shift-Enter and the up button move to the previous. The bar
+shows n of m. Esc closes the field and clears highlights.
+OpenAPI stays 0.18.0.
 v0.32: dedicated `kind=approve` LEFT card for mutating shell (not a
 WidgetCard fork). Approve / Deny / ×; long-press copies the command.
 Question widgets
@@ -267,6 +274,7 @@ Output: `SnorlaxBot/Generated/V1Types.swift`. Do not hand-edit that file.
 - `SnorlaxBot/RecallDraft.swift` — v0.68 recall the latest user message (Edit as new message; Escape restores empty)
 - `SnorlaxBot/ChatDrafts.swift` — v0.64 / v0.69 per-chat composer drafts (UserDefaults; Send clears)
 - `SnorlaxBot/ChatUnread.swift` — v0.70 unread dot on a sidebar row (UserDefaults; opening the chat clears it)
+- `SnorlaxBot/ChatFind.swift` — v0.71 in-chat find (loaded messages only; filter + highlight; no HTTP)
 - `SnorlaxBot/SendMuted.swift` — v0.55 Send muted while generating
 - `SnorlaxBot/CompactToolTraces.swift` — v0.56 compact tool traces (`N tools` + chevron)
 - `SnorlaxBot/MidStreamPlaintext.swift` — v0.57 mid-stream LEFT plaintext until complete / Stop

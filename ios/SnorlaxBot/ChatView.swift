@@ -14,6 +14,10 @@ struct ChatView: View {
     @State private var expandedToolStacks: Set<String> = []
     @State private var jumpPaint = StickToBottom.JumpChipPaint.hidden
     @State private var jumpPaintGeneration = 0
+    @State private var findOpen = false
+    @State private var findQuery = ""
+    @State private var findIndex = 0
+    @FocusState private var findFieldFocused: Bool
 
     private var agent: Agent {
         model.visibleAgents.first(where: { $0.id == agentID })
@@ -24,11 +28,36 @@ struct ChatView: View {
 
     var body: some View {
         @Bindable var model = model
+        let hits = loadedFindHits
+        let safeFindIndex = hits.isEmpty ? -1 : min(max(findIndex, 0), hits.count - 1)
+        let activeHit = safeFindIndex >= 0 ? hits[safeFindIndex] : nil
         VStack(spacing: 0) {
+            if findOpen {
+                findBar(index: safeFindIndex, total: hits.count)
+            }
             transcript
             Divider()
-            ComposerBar(agentName: agent.name, isChannel: agent.isChannel, focused: $composerFocused, showJump: stick.showJump)
+            ComposerBar(
+                agentName: agent.name,
+                isChannel: agent.isChannel,
+                focused: $composerFocused,
+                showJump: stick.showJump,
+                onEscapeFind: {
+                    guard findOpen else { return false }
+                    closeFind()
+                    return true
+                }
+            )
         }
+        .environment(
+            \.chatFind,
+            ChatFindSession(
+                query: findOpen ? findQuery : "",
+                activeRowId: activeHit?.rowId ?? "",
+                activeStart: activeHit?.start ?? -1,
+                activeEnd: activeHit?.end ?? -1
+            )
+        )
         .navigationTitle(agent.name)
         .navigationBarTitleDisplayMode(.inline)
         .navigationBarBackButtonHidden(model.threadID != nil && agent.isChannel)
@@ -42,6 +71,19 @@ struct ChatView: View {
                     }
                     .accessibilityLabel("Back to timeline")
                 }
+            }
+            ToolbarItem(placement: .topBarTrailing) {
+                Button {
+                    if findOpen {
+                        closeFind()
+                    } else {
+                        openFind()
+                    }
+                } label: {
+                    Image(systemName: findOpen ? "magnifyingglass.circle.fill" : "magnifyingglass")
+                }
+                .accessibilityLabel(ChatFind.inputLabel)
+                .keyboardShortcut("f", modifiers: .command)
             }
             ToolbarItem(placement: .principal) {
                 if hasRealAgent {
@@ -73,6 +115,7 @@ struct ChatView: View {
             stick = StickToBottom.State.armed
             lastAssistantSig = ""
             expandedToolStacks = []
+            closeFind()
             guard hasRealAgent || !model.isConfigured else { return }
             if !(model.selectedAgentID == agentID && model.threadID != nil) {
                 await model.select(agentID, push: false)
@@ -84,12 +127,187 @@ struct ChatView: View {
         }
             .onChange(of: model.threadID) { _, _ in
                 expandedToolStacks = []
+                closeFind()
             }
             .onChange(of: model.wantsComposerFocus) { _, wants in
             guard wants, model.canCompose || model.isSending else { return }
             composerFocused = true
             model.wantsComposerFocus = false
         }
+    }
+
+    private func openFind() {
+        findOpen = true
+        findFieldFocused = true
+    }
+
+    private func closeFind() {
+        findOpen = false
+        findQuery = ""
+        findIndex = 0
+        findFieldFocused = false
+    }
+
+    private func findBar(index: Int, total: Int) -> some View {
+        HStack(spacing: 6) {
+            TextField(ChatFind.placeholder, text: $findQuery)
+                .textFieldStyle(.plain)
+                .font(.system(size: 12))
+                .accessibilityLabel(ChatFind.inputLabel)
+                .focused($findFieldFocused)
+                .onSubmit { moveFind(1) }
+                .onKeyPress(phases: .down) { press in
+                    if press.key == .escape {
+                        closeFind()
+                        return .handled
+                    }
+                    if press.key == .return, press.modifiers.contains(.shift) {
+                        moveFind(-1)
+                        return .handled
+                    }
+                    return .ignored
+                }
+            Text(ChatFind.countLabel(index: index, total: total))
+                .font(.system(size: 12))
+                .foregroundStyle(.secondary)
+                .monospacedDigit()
+                .accessibilityLabel(ChatFind.countLabel(index: index, total: total))
+            Button {
+                moveFind(-1)
+            } label: {
+                Image(systemName: "chevron.up")
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel(ChatFind.previousLabel)
+            Button {
+                moveFind(1)
+            } label: {
+                Image(systemName: "chevron.down")
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel(ChatFind.nextLabel)
+            Button {
+                closeFind()
+            } label: {
+                Image(systemName: "xmark")
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel(ChatFind.closeLabel)
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 6)
+        .background(Color(uiColor: .secondarySystemBackground))
+    }
+
+    private func moveFind(_ direction: Int) {
+        let hits = loadedFindHits
+        let base = hits.isEmpty ? -1 : min(findIndex, hits.count - 1)
+        findIndex = ChatFind.step(index: base, total: hits.count, direction: direction)
+    }
+
+    private func scrollFind(_ proxy: ScrollViewProxy, index: Int) {
+        let hits = loadedFindHits
+        guard !hits.isEmpty else { return }
+        let safe = min(max(index, 0), hits.count - 1)
+        proxy.scrollTo(ChatFind.scrollID(hits[safe].rowId), anchor: .center)
+    }
+
+    private func findTexts(_ message: Message, completed: Bool) -> [String] {
+        if message.isHandoffRoot {
+            return [message.userAsk ?? message.content]
+        }
+        if message.isFromUser {
+            return [message.displayContent]
+        }
+        if message.isToolLine {
+            return [message.content]
+        }
+        if message.isKindMessage {
+            return MarkdownSplit.bubbles(in: message.displayContent, completed: completed)
+        }
+        return []
+    }
+
+    private func findOmits(_ message: Message, completed: Bool) -> Bool {
+        guard findOpen else { return false }
+        return ChatFind.omits(
+            searchable: message.isKindMessage || message.isHandoffRoot,
+            texts: findTexts(message, completed: completed),
+            query: findQuery
+        )
+    }
+
+    private var loadedFindHits: [ChatFind.Hit] {
+        guard findOpen, ChatFind.queryActive(findQuery) else { return [] }
+        return ChatFind.hits(rows: loadedFindRows, query: findQuery)
+    }
+
+    private var loadedFindRows: [ChatFind.Row] {
+        let visible = model.visibleMessages(for: agent)
+        let persistedToolIds = Set(visible.filter(\.isToolLine).map(\.id))
+        let liveTraces = model.toolTraces.filter { !persistedToolIds.contains($0.id) }
+        let lastUserIdx = visible.lastIndex(where: \.isFromUser)
+        let liveAssistantIdx = visible.indices.first { index in
+            guard let lastUserIdx else { return false }
+            let message = visible[index]
+            return index > lastUserIdx
+                && message.role == .assistant
+                && !message.isHandoffRoot
+                && !message.isToolLine
+                && !message.isWidget
+                && !message.isConnect
+                && !message.isApprove
+        }
+        let liveAt: Int? = {
+            guard !liveTraces.isEmpty else { return nil }
+            if let liveAssistantIdx { return liveAssistantIdx }
+            return visible.count
+        }()
+        let toolStacks = CompactToolTraces.stacks(
+            messages: visible,
+            liveTraces: liveTraces,
+            liveAt: liveAt
+        )
+        let livePaint = CompactToolTraces.livePaint(
+            stacks: toolStacks,
+            liveTraces: liveTraces,
+            expanded: expandedToolStacks
+        )
+        var rows: [ChatFind.Row] = []
+        for (index, message) in visible.enumerated() {
+            let toolStack = CompactToolTraces.stack(for: index, in: toolStacks)
+            let collapsed = toolStack.map {
+                CompactToolTraces.collapsed(
+                    expanded: expandedToolStacks,
+                    stackId: $0.id,
+                    count: $0.items.count
+                )
+            } ?? false
+            if CompactToolTraces.hidePersisted(
+                stack: toolStack,
+                index: index,
+                collapsed: collapsed
+            ) || message.isWidget || message.isConnect || message.isApprove {
+                continue
+            }
+            let completed = !(model.isSending && index == liveAssistantIdx)
+            let texts = findTexts(message, completed: completed)
+            if message.isToolLine || message.isFromUser || message.isHandoffRoot {
+                if let text = texts.first, !text.isEmpty {
+                    rows.append(ChatFind.Row(id: message.id, text: text))
+                }
+                continue
+            }
+            if message.isKindMessage {
+                for (offset, text) in texts.enumerated() where !text.isEmpty {
+                    rows.append(ChatFind.Row(id: "\(message.id)#\(offset)", text: text))
+                }
+            }
+        }
+        for trace in livePaint.lines where !trace.summary.isEmpty {
+            rows.append(ChatFind.Row(id: "live:\(trace.id)", text: trace.summary))
+        }
+        return rows
     }
 
     private var transcript: some View {
@@ -187,13 +405,14 @@ struct ChatView: View {
                                         count: $0.items.count
                                     )
                                 } ?? false
+                                let completed = !(model.isSending && index == liveAssistantIdx)
                                 return DaySeparator.Row(
                                     createdAt: message.createdAt,
                                     hidden: CompactToolTraces.hidePersisted(
                                         stack: toolStack,
                                         index: index,
                                         collapsed: collapsed
-                                    )
+                                    ) || findOmits(message, completed: completed)
                                 )
                             }
                         )
@@ -206,11 +425,12 @@ struct ChatView: View {
                                     count: $0.items.count
                                 )
                             } ?? false
+                            let rowCompleted = !(model.isSending && index == liveAssistantIdx)
                             if !CompactToolTraces.hidePersisted(
                                 stack: toolStack,
                                 index: index,
                                 collapsed: toolCollapsed
-                            ) {
+                            ), !findOmits(message, completed: rowCompleted) {
                                 if let dayLabel = dayLabels[index] {
                                     Text(dayLabel)
                                         .font(.system(size: 12))
@@ -270,6 +490,14 @@ struct ChatView: View {
                             waitingStreak(agent: agent)
                         }
                     }
+                    if findOpen, ChatFind.queryActive(findQuery), loadedFindHits.isEmpty {
+                        Text(ChatFind.emptyLabel)
+                            .font(.system(size: 12))
+                            .foregroundStyle(.secondary)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(.horizontal, 16)
+                            .padding(.top, 12)
+                    }
                     Color.clear.frame(height: 1).id("bottom")
                 }
                 .padding(.vertical, 8)
@@ -297,6 +525,13 @@ struct ChatView: View {
             }
             .onChange(of: model.isSending) { _, _ in
                 followStream(proxy)
+            }
+            .onChange(of: findQuery) { _, _ in
+                findIndex = 0
+                scrollFind(proxy, index: 0)
+            }
+            .onChange(of: findIndex) { _, index in
+                scrollFind(proxy, index: index)
             }
             .onChange(of: stick.showJump) { _, shown in
                 applyJumpChipPaint(shown: shown)
@@ -429,10 +664,11 @@ struct ChatView: View {
                 .padding(.horizontal, 12)
             }
             ForEach(traces) { trace in
-                Text(trace.summary)
+                FindHighlighted(text: trace.summary, rowId: "live:\(trace.id)")
                     .font(.system(size: 12))
                     .foregroundStyle(.secondary)
                     .padding(.horizontal, 12)
+                    .id("live:\(trace.id)")
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -612,6 +848,7 @@ private struct ComposerBar: View {
     var isChannel: Bool
     var focused: FocusState<Bool>.Binding
     var showJump = false
+    var onEscapeFind: () -> Bool = { false }
     @Environment(AppModel.self) private var model
     @State private var pickerItem: PhotosPickerItem?
     @State private var attachMenu = false
@@ -748,6 +985,7 @@ private struct ComposerBar: View {
                         model.noteComposerSelection(range)
                     },
                     onEscapeStop: { composing in
+                        if !composing && onEscapeFind() { return }
                         model.stopGeneratingFromEscape(composing: composing)
                         if !model.clearRecallFromEscape(composing: composing) {
                             model.jumpToLatestFromEscape(composing: composing, showJump: showJump)
@@ -1023,11 +1261,22 @@ private struct MessageBubble: View {
     var showCaret = false
     var onJump: ((HandoffRef) -> Void)?
     @Environment(AppModel.self) private var model
+    @Environment(\.chatFind) private var find
     @State private var shareURL: URL?
     @State private var copied = false
     @State private var copyPulse = 0
 
     private var isUser: Bool { message.isFromUser }
+
+    private func findStroke(_ rowId: String) -> some View {
+        RoundedRectangle(cornerRadius: 16)
+            .stroke(
+                find.activeRowId == rowId && ChatFind.queryActive(find.query)
+                    ? Color.accentColor
+                    : Color.clear,
+                lineWidth: 1
+            )
+    }
 
     private var leftBubbles: [String] {
         MarkdownSplit.bubbles(in: message.displayContent, completed: completed)
@@ -1078,10 +1327,11 @@ private struct MessageBubble: View {
                 .padding(.horizontal, 12)
             }
             ForEach(toolTraces) { trace in
-                Text(trace.summary)
+                FindHighlighted(text: trace.summary, rowId: "live:\(trace.id)")
                     .font(.system(size: 12))
                     .foregroundStyle(.secondary)
                     .padding(.horizontal, 12)
+                    .id("live:\(trace.id)")
             }
             if message.isToolLine {
                 if CompactToolTraces.showHeader(stack: toolStack, index: messageIndex),
@@ -1098,7 +1348,7 @@ private struct MessageBubble: View {
                     stack: toolStack,
                     index: messageIndex
                 )) {
-                    Text(message.content)
+                    FindHighlighted(text: message.content, rowId: message.id)
                         .font(.system(size: 12))
                         .foregroundStyle(.secondary)
                         .padding(.horizontal, 12)
@@ -1118,7 +1368,10 @@ private struct MessageBubble: View {
                         Text("from \(message.senderName)")
                             .font(.system(size: 12))
                             .foregroundStyle(.secondary)
-                        Text(message.userAsk ?? message.content)
+                        FindHighlighted(
+                            text: message.userAsk ?? message.content,
+                            rowId: message.id
+                        )
                             .font(.system(size: 14))
                             .textSelection(.enabled)
                         if let brief = message.brief, !brief.isEmpty {
@@ -1143,7 +1396,12 @@ private struct MessageBubble: View {
                     VStack(alignment: .leading, spacing: 6) {
                         userAttachments
                         if !message.content.isEmpty {
-                            MentionLabel(text: message.displayContent, names: agents.filter { !$0.isChannel }.map(\.name), links: true)
+                            MentionLabel(
+                                text: message.displayContent,
+                                names: agents.filter { !$0.isChannel }.map(\.name),
+                                links: true,
+                                findRowId: message.id
+                            )
                                 .font(.system(size: 14))
                                 .textSelection(.enabled)
                                 .frame(minWidth: 0, alignment: .leading)
@@ -1153,6 +1411,7 @@ private struct MessageBubble: View {
                     .padding(.horizontal, 12)
                     .padding(.vertical, 8)
                     .background(Color.accentColor.opacity(0.22), in: RoundedRectangle(cornerRadius: 16))
+                    .overlay(findStroke(message.id))
                     .modifier(timeMenu)
                 }
                 .padding(.horizontal, 12)
@@ -1171,7 +1430,10 @@ private struct MessageBubble: View {
                                                 completed: completed
                                             )
                                         } else {
-                                            MidStreamPlaintextView(text: part)
+                                            MidStreamPlaintextView(
+                                                text: part,
+                                                rowId: "\(message.id)#\(offset)"
+                                            )
                                         }
                                         if showCaret && offset == leftBubbles.count - 1 {
                                             StreamingCaretView()
@@ -1183,6 +1445,7 @@ private struct MessageBubble: View {
                                         Color(uiColor: .secondarySystemFill),
                                         in: RoundedRectangle(cornerRadius: 16)
                                     )
+                                    .overlay(findStroke("\(message.id)#\(offset)"))
                                     .modifier(timeMenu)
                                 }
                             }
@@ -1459,9 +1722,12 @@ private struct HandoffTimelineRow: View {
                 Text("from \(message.senderName)")
                     .font(.system(size: 12))
                     .foregroundStyle(.secondary)
-                Text(message.userAsk ?? message.content)
+                FindHighlighted(
+                    text: message.userAsk ?? message.content,
+                    rowId: message.id,
+                    lineLimit: 1
+                )
                     .font(.system(size: 13))
-                    .lineLimit(1)
                 Text(repliesLabel(message.replyCount ?? 0))
                     .font(.system(size: 12))
                     .foregroundStyle(.secondary)

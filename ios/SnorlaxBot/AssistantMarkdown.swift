@@ -143,10 +143,11 @@ private struct FenceBar: View {
 
 private struct FenceSource: View {
     let source: String
+    @Environment(\.chatFind) private var find
 
     var body: some View {
         ScrollView(.horizontal, showsIndicators: true) {
-            Text(source)
+            Text(ChatFind.paint(AttributedString(source), query: find.query))
                 .font(.system(size: 12, design: .monospaced))
                 .lineSpacing(12 * 0.45)
                 .textSelection(.enabled)
@@ -234,6 +235,7 @@ private struct MarkdownRun: View {
     let names: [String]
     var completed: Bool = true
     @Environment(\.openURL) private var openURL
+    @Environment(\.chatFind) private var find
 
     var body: some View {
         let pieces = MarkdownSplit.splitInlineMath(source)
@@ -299,7 +301,7 @@ private struct MarkdownRun: View {
         styleInlineCode(&parsed)
         dropUnsafeLinks(&parsed)
         highlightMentions(&parsed)
-        return parsed
+        return ChatFind.paint(parsed, query: find.query)
     }
 
     private func styleHeadings(_ parsed: inout AttributedString) {

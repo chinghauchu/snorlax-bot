@@ -15,13 +15,13 @@ enum MidStreamPlaintext {
 
 struct MidStreamPlaintextView: View {
     let text: String
+    var rowId: String = ""
 
     var body: some View {
-        Text(text)
+        FindHighlighted(text: text, rowId: rowId)
             .font(.system(size: 14))
             .textSelection(.enabled)
             .multilineTextAlignment(.leading)
-            .lineLimit(nil)
             .fixedSize(horizontal: false, vertical: true)
             .frame(minWidth: 0, maxWidth: .infinity, alignment: .leading)
     }

@@ -89,3 +89,4 @@ jobs:
           python3 ios/scripts/test_ios_day_separator.py
           python3 ios/scripts/test_ios_recall_draft.py
           python3 ios/scripts/test_ios_chat_unread.py
+          python3 ios/scripts/test_ios_chat_find.py

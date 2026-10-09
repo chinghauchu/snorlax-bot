@@ -184,7 +184,9 @@ struct MentionLabel: View {
     let text: String
     let names: [String]
     var links = false
+    var findRowId: String = ""
     @Environment(\.openURL) private var openURL
+    @Environment(\.chatFind) private var find
 
     var body: some View {
         Text(wrapping(attributed))
@@ -227,7 +229,13 @@ struct MentionLabel: View {
         if output.characters.isEmpty {
             appendPlain(text, to: &output)
         }
-        return output
+        let active = find.activeRowId == findRowId
+        return ChatFind.paint(
+            output,
+            query: find.query,
+            activeStart: active ? find.activeStart : -1,
+            activeEnd: active ? find.activeEnd : -1
+        )
     }
 
     private func wrapping(_ text: AttributedString) -> AttributedString {

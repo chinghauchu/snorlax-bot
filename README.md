@@ -332,7 +332,13 @@ v0.70 unread chat dot (a 6px accent dot on a sidebar row
 when an assistant reply finishes in a chat that is not open,
 or while the app/window is not focused; opening that chat
 clears it; the dots stay after a restart; OpenAPI stays
-0.18.0).
+0.18.0), and
+v0.71 in-chat find (Cmd/Ctrl-F in an open chat shows a find
+bar over the loaded transcript; matches highlight;
+Enter/Shift-Enter and up/down jump between them; n of m;
+Esc closes and clears highlights; iOS search filters and
+highlights those loaded messages; no new HTTP; OpenAPI
+stays 0.18.0).
 Later: full sandbox computer GUI, MCP marketplace catalog,
 Slack/GitHub inbound listeners.
 

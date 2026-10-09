@@ -335,6 +335,13 @@ Opening the chat clears it. The set is local (desktop
 localStorage, iOS UserDefaults) and survives relaunch. No new
 routes. OpenAPI stays 0.18.0.
 
+v0.71 in-chat find: Cmd/Ctrl-F (desktop) or the chat search
+control (iOS) highlights matches in messages already loaded.
+Enter/Shift-Enter and up/down move between them. n of m.
+Esc closes and clears highlights. iOS also hides user,
+assistant, and handoff rows that do not match. No new
+routes. OpenAPI stays 0.18.0.
+
 A copy is also kept at `runtime/openapi.yaml` and `desktop/openapi.yaml`
 so those trees are self-contained. Do not let the files diverge.
 
