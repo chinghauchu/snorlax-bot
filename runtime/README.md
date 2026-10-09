@@ -298,6 +298,10 @@ v0.69: per-chat drafts persist is client-only (unsent text
 stays with its chat across switches and relaunch). Runtime
 idle. OpenAPI stays 0.18.0.
 
+v0.70: unread chat dot is client-only (a sidebar dot when an
+assistant reply finishes off that chat; local persistence).
+Runtime idle. OpenAPI stays 0.18.0.
+
 ## MCP (`mcp.json`)
 
 The runtime is the MCP client. Desktop and iOS never speak MCP. Put

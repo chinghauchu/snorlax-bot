@@ -328,6 +328,13 @@ localStorage, iOS UserDefaults). Send clears that chat.
 Up-arrow recall still requires an empty composer. No new
 routes. OpenAPI stays 0.18.0.
 
+v0.70 unread chat dot: when a non-empty assistant reply
+finishes in a chat that is not open, or while the app/window
+is not focused, that sidebar row shows a 6px accent dot.
+Opening the chat clears it. The set is local (desktop
+localStorage, iOS UserDefaults) and survives relaunch. No new
+routes. OpenAPI stays 0.18.0.
+
 A copy is also kept at `runtime/openapi.yaml` and `desktop/openapi.yaml`
 so those trees are self-contained. Do not let the files diverge.
 

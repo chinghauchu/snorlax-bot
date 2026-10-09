@@ -142,6 +142,11 @@ Concrete follow-ups after v0. Filed on GitHub against
   localStorage, iOS UserDefaults). Send clears that chat.
   Up-arrow recall still requires an empty composer.
   OpenAPI stays 0.18.0.
+  **v0.70:** unread chat dot. A non-empty assistant reply
+  that finishes in a chat that is not open, or while the
+  app/window is not focused, puts a 6px accent dot on that
+  sidebar row. Opening the chat clears it. The set persists
+  locally. OpenAPI stays 0.18.0.
   Raw HTML still later.
   Full sandbox computer GUI (browser, VNC, terminal)
   stays later.
@@ -333,3 +338,9 @@ Concrete follow-ups after v0. Filed on GitHub against
   Send clears that chat. Up-arrow recall still requires an
   empty composer. Desktop matches (localStorage). OpenAPI
   stays 0.18.0.
+- **v0.70:** unread chat dot. A non-empty assistant reply
+  that finishes off-screen, or while the app is inactive,
+  puts a 6pt accent dot on that row. Opening the chat clears
+  it. The list is not an open chat. UserDefaults keeps the
+  dots across relaunch. Desktop matches (localStorage).
+  OpenAPI stays 0.18.0.

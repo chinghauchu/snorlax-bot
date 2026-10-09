@@ -33,7 +33,11 @@ struct ContentView: View {
             Text(model.errorMessage ?? "")
         }
         .task { await model.bootstrap() }
+        .onAppear {
+            model.setSceneFocused(scenePhase == .active)
+        }
         .onChange(of: scenePhase) { _, phase in
+            model.setSceneFocused(phase == .active)
             if phase == .active {
                 Task { await model.handleSceneActive() }
             }

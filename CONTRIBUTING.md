@@ -71,7 +71,11 @@ NVIDIA DGX Spark.
   restores empty, and iOS adds Edit as new message on that bubble's
   long-press; v0.69 each chat's unsent composer text persists across
   switches and relaunch in localStorage / UserDefaults, Send clears
-  that chat, and Up-arrow recall still requires an empty composer), a display-only
+  that chat, and Up-arrow recall still requires an empty composer;
+  v0.70 a sidebar row shows a 6px accent unread dot when an assistant
+  reply finishes in a chat that is not open or while the app/window
+  is not focused, opening that chat clears it, and the set persists
+  in localStorage / UserDefaults), a display-only
   Box computer preview (`GET /v1/agents/{id}/computer` JSON; Bearer PNG at
   `/computer/screenshot`; identity pane), desktop Box takeover
   (`POST /computer/session` → 201 `{ sessionId }`; `DELETE .../session` or
