@@ -168,6 +168,26 @@ struct ChatView: View {
                             expanded: expandedToolStacks
                         )
                         let showLiveChrome = livePaint.header != nil || !livePaint.lines.isEmpty
+                        let dayLabels = DaySeparator.labels(
+                            rows: visible.enumerated().map { index, message in
+                                let toolStack = CompactToolTraces.stack(for: index, in: toolStacks)
+                                let collapsed = toolStack.map {
+                                    CompactToolTraces.collapsed(
+                                        expanded: expandedToolStacks,
+                                        stackId: $0.id,
+                                        count: $0.items.count
+                                    )
+                                } ?? false
+                                return DaySeparator.Row(
+                                    createdAt: message.createdAt,
+                                    hidden: CompactToolTraces.hidePersisted(
+                                        stack: toolStack,
+                                        index: index,
+                                        collapsed: collapsed
+                                    )
+                                )
+                            }
+                        )
                         ForEach(Array(visible.enumerated()), id: \.element.id) { index, message in
                             let toolStack = CompactToolTraces.stack(for: index, in: toolStacks)
                             let toolCollapsed = toolStack.map {
@@ -182,6 +202,15 @@ struct ChatView: View {
                                 index: index,
                                 collapsed: toolCollapsed
                             ) {
+                                if let dayLabel = dayLabels[index] {
+                                    Text(dayLabel)
+                                        .font(.system(size: 12))
+                                        .foregroundStyle(.secondary)
+                                        .frame(maxWidth: .infinity, alignment: .center)
+                                        .multilineTextAlignment(.center)
+                                        .padding(.top, 12)
+                                        .accessibilityAddTraits(.isHeader)
+                                }
                                 transcriptItem(
                                     message,
                                     index: index,
