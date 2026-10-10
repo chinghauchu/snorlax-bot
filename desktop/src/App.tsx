@@ -150,6 +150,20 @@ import { WidgetCard } from "./WidgetCard";
 import { ApproveCard } from "./ApproveCard";
 import { ConnectCard } from "./ConnectCard";
 import { HttpsText, MarkdownBody } from "./MarkdownBody";
+import { FindQueryProvider, FindText, useFindQuery } from "./FindText";
+import {
+  FIND_CLOSE_LABEL,
+  FIND_INPUT_LABEL,
+  FIND_NEXT_LABEL,
+  FIND_PLACEHOLDER,
+  FIND_PREV_LABEL,
+  escapeClosesFind,
+  findCountLabel,
+  findHits,
+  isFindChord,
+  stepFindIndex,
+  transcriptFindRows,
+} from "./chatFind";
 import { copyText } from "./markdown";
 import { shouldRenderMarkdown } from "./midStreamPlaintext";
 import {
@@ -731,8 +745,12 @@ export function App() {
   const [workspaceTick, setWorkspaceTick] = useState(0);
   const [takeoverId, setTakeoverId] = useState<string | null>(null);
   const [takeoverSessionId, setTakeoverSessionId] = useState<string | null>(null);
+  const [findOpen, setFindOpen] = useState(false);
+  const [findQuery, setFindQuery] = useState("");
+  const [findIndex, setFindIndex] = useState(0);
 
   const scroller = useRef<HTMLDivElement>(null);
+  const findInputRef = useRef<HTMLInputElement>(null);
   const stickRef = useRef<StickState>(STICK_ARMED);
   const lastAssistantSig = useRef("");
   const [showJump, setShowJump] = useState(false);
@@ -1683,6 +1701,27 @@ export function App() {
     return () => window.removeEventListener("keydown", onKey);
   }, [active, session]);
 
+  useEffect(() => {
+    const onKey = (event: globalThis.KeyboardEvent) => {
+      if (!isFindChord(event)) return;
+      if (!active || takeoverOpen || settingsOpen || profileOpen) return;
+      event.preventDefault();
+      setFindOpen(true);
+      requestAnimationFrame(() => {
+        findInputRef.current?.focus();
+        findInputRef.current?.select();
+      });
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [active, takeoverOpen, settingsOpen, profileOpen]);
+
+  useEffect(() => {
+    setFindOpen(false);
+    setFindQuery("");
+    setFindIndex(0);
+  }, [activeId, threadId]);
+
   async function saveProfile(event: FormEvent) {
     event.preventDefault();
     if (!session || !active) return;
@@ -2024,6 +2063,12 @@ export function App() {
     }
   }
 
+  function closeFind() {
+    setFindOpen(false);
+    setFindQuery("");
+    setFindIndex(0);
+  }
+
   function transcriptRows() {
     return active
       ? messages.filter((message) => isTranscriptVisible(message, active))
@@ -2054,6 +2099,16 @@ export function App() {
       if (mentionOpen || skillOpen) return;
       if (takeoverOpen) return;
       if (dictationCancelable(dictation)) return;
+      if (
+        escapeClosesFind({
+          open: findOpen,
+          composing: isComposerComposing(event),
+        })
+      ) {
+        event.preventDefault();
+        closeFind();
+        return;
+      }
       if (
         escapeStopsGenerating({
           busy,
@@ -2107,6 +2162,7 @@ export function App() {
     showJump,
     onJumpLatest,
     recallArmed,
+    findOpen,
   ]);
 
   async function onSend() {
@@ -2869,6 +2925,115 @@ export function App() {
       };
     }),
   );
+  const findQueryShown = findOpen ? findQuery : "";
+  const findRows = transcriptFindRows([
+    ...visibleMessages.map((message, index) => {
+      const toolStack = stackForMessageIndex(toolStacks, index);
+      const collapsed = toolStack
+        ? stackCollapsed(
+            expandedToolStacks,
+            toolStack.id,
+            toolStack.items.length,
+          )
+        : false;
+      const hidden = hidePersistedTool(toolStack, index, collapsed);
+      const completed = !(busy && index === liveAssistantIdx);
+      const body = displayBody(message.content, message.senderName);
+      const handoff = isHandoffRoot(message);
+      const tool = isToolLine(message);
+      const user = isUserSender(message.senderId, message.role);
+      const skip =
+        !handoff &&
+        (isWidget(message) || isApprove(message) || isConnect(message));
+      let texts: string[] = [];
+      if (tool) texts = [message.content ?? ""];
+      else if (handoff) texts = [message.userAsk || message.content || ""];
+      else if (user) texts = [body];
+      else if (!skip) texts = splitAssistantBubbles(body, completed);
+      return {
+        id: message.id,
+        texts,
+        hidden,
+        skip,
+        single: tool || handoff || user,
+      };
+    }),
+    ...livePaint.lines.map((trace) => ({
+      id: `live:${trace.id}`,
+      texts: [trace.summary],
+      single: true,
+    })),
+  ]);
+  const findHitList = findHits(findRows, findQueryShown);
+  const findHitKey = findHitList
+    .map((hit) => `${hit.rowId}:${hit.start}:${hit.end}`)
+    .join("|");
+  const findSafeIndex =
+    findHitList.length === 0
+      ? -1
+      : Math.min(findIndex, findHitList.length - 1);
+  const activeFindHit =
+    findSafeIndex >= 0 ? findHitList[findSafeIndex] : null;
+
+  function rangeFor(rowId: string) {
+    if (!activeFindHit || activeFindHit.rowId !== rowId) return null;
+    return { start: activeFindHit.start, end: activeFindHit.end };
+  }
+
+  function findRowActive(rowId: string) {
+    return activeFindHit?.rowId === rowId ? "true" : undefined;
+  }
+
+  useEffect(() => {
+    if (!findOpen) return;
+    const frame = requestAnimationFrame(() => {
+      findInputRef.current?.focus();
+      findInputRef.current?.select();
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [findOpen]);
+
+  useEffect(() => {
+    if (!findOpen) return;
+    const onKey = (event: globalThis.KeyboardEvent) => {
+      if (event.key !== "Enter") return;
+      if (isComposerComposing(event)) return;
+      const target = event.target;
+      if (target instanceof HTMLTextAreaElement) return;
+      if (
+        target instanceof HTMLInputElement &&
+        target !== findInputRef.current
+      ) {
+        return;
+      }
+      event.preventDefault();
+      setFindIndex((current) => {
+        const total = findHitList.length;
+        const base = total === 0 ? -1 : Math.min(current, total - 1);
+        return stepFindIndex(base, total, event.shiftKey ? -1 : 1);
+      });
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [findOpen, findHitKey, findHitList]);
+
+  useLayoutEffect(() => {
+    if (!findOpen || !activeFindHit) return;
+    const root = scroller.current;
+    if (!root) return;
+    const mark = root.querySelector("mark.find-hit.active");
+    const row = root.querySelector(
+      `[data-find-row="${CSS.escape(activeFindHit.rowId)}"]`,
+    );
+    const target = mark ?? row;
+    target?.scrollIntoView({ block: "nearest", inline: "nearest" });
+  }, [
+    findOpen,
+    findSafeIndex,
+    activeFindHit?.rowId,
+    activeFindHit?.start,
+    findQueryShown,
+  ]);
 
   return (
     <div className={computerOpen ? "app computer-open" : "app computer-collapsed"}>
@@ -2991,11 +3156,69 @@ export function App() {
         </header>
 
         <div className="transcript-col">
+        {findOpen ? (
+          <div className="find-bar-wrap">
+            <div className="find-bar" role="search">
+              <input
+                ref={findInputRef}
+                aria-label={FIND_INPUT_LABEL}
+                placeholder={FIND_PLACEHOLDER}
+                value={findQuery}
+                onChange={(event) => {
+                  setFindQuery(event.target.value);
+                  setFindIndex(0);
+                }}
+              />
+              <span className="find-count" aria-live="polite">
+                {findCountLabel(findSafeIndex, findHitList.length)}
+              </span>
+              <button
+                type="button"
+                className="find-nav"
+                aria-label={FIND_PREV_LABEL}
+                onClick={() =>
+                  setFindIndex((current) => {
+                    const total = findHitList.length;
+                    const base =
+                      total === 0 ? -1 : Math.min(current, total - 1);
+                    return stepFindIndex(base, total, -1);
+                  })
+                }
+              >
+                ↑
+              </button>
+              <button
+                type="button"
+                className="find-nav"
+                aria-label={FIND_NEXT_LABEL}
+                onClick={() =>
+                  setFindIndex((current) => {
+                    const total = findHitList.length;
+                    const base =
+                      total === 0 ? -1 : Math.min(current, total - 1);
+                    return stepFindIndex(base, total, 1);
+                  })
+                }
+              >
+                ↓
+              </button>
+              <button
+                type="button"
+                className="find-nav"
+                aria-label={FIND_CLOSE_LABEL}
+                onClick={closeFind}
+              >
+                ×
+              </button>
+            </div>
+          </div>
+        ) : null}
         <div
           className="transcript"
           ref={scroller}
           onScroll={onTranscriptScroll}
         >
+          <FindQueryProvider query={findQueryShown}>
           <div className="transcript-inner">
             {!credsReady ? (
               <p className="transcript-line">{MISSING_CREDS}</p>
@@ -3080,8 +3303,15 @@ export function App() {
                         <span className="handoff-from">
                           {fromLabel(message.senderName || "Agent")}
                         </span>
-                        <span className="handoff-ask">
-                          {message.userAsk || message.content}
+                        <span
+                          className="handoff-ask"
+                          data-find-row={message.id}
+                          data-find-active-row={findRowActive(message.id)}
+                        >
+                          <FindText
+                            text={message.userAsk || message.content}
+                            active={rangeFor(message.id)}
+                          />
                         </span>
                         <span className="handoff-replies">
                           {repliesLabel(message.replyCount ?? 0)}
@@ -3142,8 +3372,18 @@ export function App() {
                               />
                             ) : null}
                             {livePaint.lines.map((trace) => (
-                              <p key={trace.id} className="tool-trace">
-                                {trace.summary}
+                              <p
+                                key={trace.id}
+                                className="tool-trace"
+                                data-find-row={`live:${trace.id}`}
+                                data-find-active-row={findRowActive(
+                                  `live:${trace.id}`,
+                                )}
+                              >
+                                <FindText
+                                  text={trace.summary}
+                                  active={rangeFor(`live:${trace.id}`)}
+                                />
                               </p>
                             ))}
                           </>
@@ -3154,8 +3394,15 @@ export function App() {
                         <p className="handoff-from">
                           {fromLabel(message.senderName || "Agent")}
                         </p>
-                        <pre className="handoff-card-ask">
-                          {message.userAsk || message.content}
+                        <pre
+                          className="handoff-card-ask"
+                          data-find-row={message.id}
+                          data-find-active-row={findRowActive(message.id)}
+                        >
+                          <FindText
+                            text={message.userAsk || message.content}
+                            active={rangeFor(message.id)}
+                          />
                         </pre>
                         {message.brief ? (
                           <details className="handoff-context">
@@ -3179,7 +3426,16 @@ export function App() {
                         ) : null}
                         {toolStackIsCollapsed &&
                         showStackHeader(toolStack, index) ? null : (
-                          <p className="tool-trace">{message.content}</p>
+                          <p
+                            className="tool-trace"
+                            data-find-row={message.id}
+                            data-find-active-row={findRowActive(message.id)}
+                          >
+                            <FindText
+                              text={message.content}
+                              active={rangeFor(message.id)}
+                            />
+                          </p>
                         )}
                       </>
                     ) : isWidget(message) && message.widget ? (
@@ -3213,6 +3469,8 @@ export function App() {
                     ) : mine ? (
                       <div
                         className="bubble user"
+                        data-find-row={message.id}
+                        data-find-active-row={findRowActive(message.id)}
                         tabIndex={bubbleStamp ? 0 : undefined}
                       >
                         <BubbleStamp label={bubbleStamp} />
@@ -3230,6 +3488,7 @@ export function App() {
                               )}
                               knownNames={knownNames}
                               links
+                              activeRange={rangeFor(message.id)}
                             />
                           </pre>
                         ) : null}
@@ -3254,6 +3513,7 @@ export function App() {
                                   kind: message.kind,
                                   isUser: mine,
                                 });
+                              const bubbleRowId = `${message.id}:${bubbleIdx}`;
                               return (
                                 <div
                                   key={`${message.id}-${bubbleIdx}`}
@@ -3262,6 +3522,8 @@ export function App() {
                                       ? "bubble agent wide"
                                       : "bubble agent"
                                   }
+                                  data-find-row={bubbleRowId}
+                                  data-find-active-row={findRowActive(bubbleRowId)}
                                   tabIndex={bubbleStamp ? 0 : undefined}
                                 >
                                   <BubbleStamp label={bubbleStamp} />
@@ -3273,7 +3535,10 @@ export function App() {
                                     />
                                   ) : (
                                     <pre className="assistant-plain">
-                                      {part}
+                                      <FindText
+                                        text={part}
+                                        active={rangeFor(bubbleRowId)}
+                                      />
                                       {showCaret ? (
                                         <span
                                           className="streaming-caret"
@@ -3360,8 +3625,16 @@ export function App() {
                   />
                 ) : null}
                 {livePaint.lines.map((trace) => (
-                  <p key={trace.id} className="tool-trace">
-                    {trace.summary}
+                  <p
+                    key={trace.id}
+                    className="tool-trace"
+                    data-find-row={`live:${trace.id}`}
+                    data-find-active-row={findRowActive(`live:${trace.id}`)}
+                  >
+                    <FindText
+                      text={trace.summary}
+                      active={rangeFor(`live:${trace.id}`)}
+                    />
                   </p>
                 ))}
               </article>
@@ -3393,6 +3666,7 @@ export function App() {
               </article>
             ) : null}
           </div>
+          </FindQueryProvider>
         </div>
         {(shouldOfferStop(busy) || showJump || jumpPaint.mounted) ? (
           <div className="transcript-chips">
@@ -4798,27 +5072,59 @@ function MentionText({
   knownNames,
   chips = false,
   links = false,
+  activeRange = null,
 }: {
   text: string;
   knownNames: string[];
   chips?: boolean;
   links?: boolean;
+  activeRange?: { start: number; end: number } | null;
 }) {
+  const findQuery = useFindQuery();
   const pieces = splitMentions(text, knownNames);
-  if (pieces.length === 0) return text ? <>{text}</> : null;
+  if (pieces.length === 0) {
+    return text ? (
+      <FindText text={text} query={findQuery} active={activeRange} />
+    ) : null;
+  }
+  let offset = 0;
   return (
     <>
-      {pieces.map((piece, index) =>
-        piece.type === "mention" && piece.resolved ? (
-          <span key={index} className={chips ? "mention-chip" : "mention"}>
-            {piece.value}
-          </span>
-        ) : links ? (
-          <HttpsText key={index} text={piece.value} />
-        ) : (
-          <span key={index}>{piece.value}</span>
-        ),
-      )}
+      {pieces.map((piece, index) => {
+        const start = offset;
+        offset += piece.value.length;
+        const local =
+          activeRange &&
+          activeRange.start >= start &&
+          activeRange.start < start + piece.value.length
+            ? {
+                start: activeRange.start - start,
+                end:
+                  Math.min(activeRange.end, start + piece.value.length) - start,
+              }
+            : null;
+        const body = (
+          <FindText text={piece.value} query={findQuery} active={local} />
+        );
+        if (piece.type === "mention" && piece.resolved) {
+          return (
+            <span key={index} className={chips ? "mention-chip" : "mention"}>
+              {body}
+            </span>
+          );
+        }
+        if (links) {
+          return (
+            <HttpsText
+              key={index}
+              text={piece.value}
+              findQuery={findQuery}
+              active={local}
+            />
+          );
+        }
+        return <span key={index}>{body}</span>;
+      })}
     </>
   );
 }

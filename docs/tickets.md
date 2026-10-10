@@ -147,6 +147,12 @@ Concrete follow-ups after v0. Filed on GitHub against
   app/window is not focused, puts a 6px accent dot on that
   sidebar row. Opening the chat clears it. The set persists
   locally. OpenAPI stays 0.18.0.
+  **v0.71:** in-chat find. Cmd/Ctrl-F in an open chat shows
+  a find bar over the loaded transcript. Matches highlight.
+  Enter/Shift-Enter and the up/down buttons jump between
+  them, with an n of m count. Esc closes and clears
+  highlights. iOS search filters and highlights those same
+  loaded messages. No new HTTP. OpenAPI stays 0.18.0.
   Raw HTML still later.
   Full sandbox computer GUI (browser, VNC, terminal)
   stays later.
@@ -344,3 +350,11 @@ Concrete follow-ups after v0. Filed on GitHub against
   it. The list is not an open chat. UserDefaults keeps the
   dots across relaunch. Desktop matches (localStorage).
   OpenAPI stays 0.18.0.
+- **v0.71:** in-chat find. A search control in the chat
+  filters user, assistant, and handoff messages already
+  loaded and highlights matches. Up/down and Enter /
+  Shift-Enter move between matches, with an n of m count.
+  Esc closes and clears highlights. Tool, widget, approve,
+  and connect rows stay. Desktop matches (Cmd/Ctrl-F find
+  bar; it highlights without hiding messages). OpenAPI
+  stays 0.18.0.

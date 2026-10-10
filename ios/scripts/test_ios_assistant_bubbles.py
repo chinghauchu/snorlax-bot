@@ -47,7 +47,7 @@ def test_split_on_blank_lines_and_mid_stream_single() -> None:
 def test_actions_only_on_last_bubble() -> None:
     bubbles_for = CHAT.find("ForEach(Array(leftBubbles.enumerated())")
     assert bubbles_for > 0
-    chunk = CHAT[bubbles_for : bubbles_for + 1800]
+    chunk = CHAT[bubbles_for : bubbles_for + 3200]
     actions = chunk.find("if showCopy || showSpeak")
     assert actions > 0
     for_each = chunk[:actions]
@@ -62,8 +62,9 @@ def test_actions_only_on_last_bubble() -> None:
 
 
 def test_tool_widget_user_right_and_stick_unchanged() -> None:
-    user_idx = CHAT.find("MentionLabel(text: message.displayContent")
+    user_idx = CHAT.find("MentionLabel(")
     assert user_idx > 0
+    assert "text: message.displayContent" in CHAT[user_idx : user_idx + 240]
     user_slice = CHAT[user_idx : user_idx + 400]
     assert "MarkdownSplit.bubbles" not in user_slice
     assert "AssistantMarkdown" not in user_slice

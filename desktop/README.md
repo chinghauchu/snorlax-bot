@@ -246,6 +246,12 @@ dot. Opening the chat clears it. Coming back to a focused
 window while that chat is already on screen clears it too.
 The dots stay in `localStorage` across a restart. OpenAPI
 stays 0.18.0.
+v0.71: in-chat find (Grok Bot feel). Cmd-F or Ctrl-F in an
+open chat shows a small find bar. It highlights matches in
+the transcript already loaded. Enter and the down button
+move to the next match; Shift-Enter and the up button move
+to the previous. The bar shows n of m. Esc closes the bar
+and clears the highlights. OpenAPI stays 0.18.0.
 Assistant LEFT
 `kind=message` is 14px markdown (16/14 headings) in short
 agent bubbles after complete; user-right stays plain (`https://` tappable). Fenced code is full-turn language + Copy at 12px/1.45.
