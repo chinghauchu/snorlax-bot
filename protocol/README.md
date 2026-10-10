@@ -348,6 +348,13 @@ Arrow keys and Enter switch. Esc closes. iOS pull-down
 search on the chat list narrows the same names. No new
 routes. OpenAPI stays 0.18.0.
 
+v0.73 keyboard shortcuts: desktop Cmd/Ctrl-/ or ? outside a
+text field opens an overlay of the chat shortcuts that
+already exist. Esc or a click outside closes it. iOS
+Gestures & shortcuts sheet lists long-press actions and
+hardware-keyboard shortcuts. No new routes. OpenAPI stays
+0.18.0.
+
 A copy is also kept at `runtime/openapi.yaml` and `desktop/openapi.yaml`
 so those trees are self-contained. Do not let the files diverge.
 

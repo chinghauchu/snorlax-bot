@@ -375,6 +375,64 @@ mark.find-hit.active {
   background: rgba(109, 139, 255, 0.72);
 }
 
+/* v0.73: keyboard shortcuts already wired in chat. */
+.shortcuts-backdrop {
+  position: absolute;
+  inset: 0;
+  z-index: 40;
+  background: rgba(0, 0, 0, 0.35);
+  display: flex;
+  justify-content: center;
+  padding-top: 72px;
+}
+
+.shortcuts-overlay {
+  width: min(420px, calc(100% - 32px));
+  max-height: min(480px, calc(100% - 120px));
+  overflow: auto;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  box-shadow: var(--shadow);
+  padding: 14px 14px 8px;
+}
+
+.shortcuts-overlay:focus {
+  outline: none;
+}
+
+.shortcuts-overlay h2 {
+  margin: 0 0 8px;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.shortcuts-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.shortcuts-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  min-height: 28px;
+  border-top: 1px solid var(--border);
+}
+
+.shortcuts-action {
+  font-size: 13px;
+  color: var(--text);
+}
+
+.shortcuts-keys {
+  flex: none;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
 /* v0.72: quick chat switcher over the loaded roster. */
 .switch-backdrop {
   position: absolute;

@@ -343,7 +343,12 @@ v0.72 quick chat switcher (Cmd/Ctrl-K opens a small overlay
 that fuzzy-filters existing agents and chats by name; arrow
 keys and Enter switch to that chat; Esc closes; iOS search
 field on the chat list narrows chats by name; no new HTTP;
-OpenAPI stays 0.18.0).
+OpenAPI stays 0.18.0), and
+v0.73 keyboard shortcuts (Cmd/Ctrl-/ or ? outside a text field
+opens a small overlay of the chat shortcuts that already exist;
+Esc or a click outside closes it; iOS Gestures & shortcuts
+sheet on the chat screen lists long-press actions and
+hardware-keyboard shortcuts; no new HTTP; OpenAPI stays 0.18.0).
 Later: full sandbox computer GUI, MCP marketplace catalog,
 Slack/GitHub inbound listeners.
 
