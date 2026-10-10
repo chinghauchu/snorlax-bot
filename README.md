@@ -348,7 +348,14 @@ v0.73 keyboard shortcuts (Cmd/Ctrl-/ or ? outside a text field
 opens a small overlay of the chat shortcuts that already exist;
 Esc or a click outside closes it; iOS Gestures & shortcuts
 sheet on the chat screen lists long-press actions and
-hardware-keyboard shortcuts; no new HTTP; OpenAPI stays 0.18.0).
+hardware-keyboard shortcuts; no new HTTP; OpenAPI stays 0.18.0), and
+v0.74 per-chat reading place (switching away remembers if you
+were at the latest messages or parked on an earlier one;
+coming back restores that place; within ~64px of the bottom
+still opens at the latest; a new reply while you were away
+shows Jump to latest; Send, Regenerate, and Jump still snap
+to the bottom; session memory only; no new HTTP; OpenAPI
+stays 0.18.0).
 Later: full sandbox computer GUI, MCP marketplace catalog,
 Slack/GitHub inbound listeners.
 

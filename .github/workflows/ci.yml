@@ -92,3 +92,4 @@ jobs:
           python3 ios/scripts/test_ios_chat_find.py
           python3 ios/scripts/test_ios_chat_switcher.py
           python3 ios/scripts/test_ios_chat_shortcuts.py
+          python3 ios/scripts/test_ios_reading_place.py

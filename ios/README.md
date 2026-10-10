@@ -169,6 +169,13 @@ Regenerate, the time, Edit as new message, copy an approve
 command) and hardware-keyboard shortcuts that already exist
 (Return, Shift-Return, Esc, Up-arrow, Cmd-F). OpenAPI stays
 0.18.0.
+v0.74: per-chat reading place. Leaving a chat remembers if
+you were at the latest messages or parked on an earlier
+one. Coming back scrolls to that message. Within ~64pt of
+the bottom, the chat still opens at the latest. A new reply
+while you were away shows Jump to latest. Send, Regenerate,
+and Jump still snap to the bottom. The place lasts for the
+session only. OpenAPI stays 0.18.0.
 v0.32: dedicated `kind=approve` LEFT card for mutating shell (not a
 WidgetCard fork). Approve / Deny / ×; long-press copies the command.
 Question widgets
@@ -287,6 +294,7 @@ Output: `SnorlaxBot/Generated/V1Types.swift`. Do not hand-edit that file.
 - `SnorlaxBot/ChatFind.swift` — v0.71 in-chat find (loaded messages only; filter + highlight; no HTTP)
 - `SnorlaxBot/ChatSwitcher.swift` — v0.72 quick chat switcher (chat-list name filter; no HTTP)
 - `SnorlaxBot/ChatShortcuts.swift` — v0.73 Gestures & shortcuts sheet (long-press actions and hardware keys; no HTTP)
+- `SnorlaxBot/ReadingPlace.swift` — v0.74 per-chat reading place (session memory; coming back restores a parked message; no HTTP)
 - `SnorlaxBot/SendMuted.swift` — v0.55 Send muted while generating
 - `SnorlaxBot/CompactToolTraces.swift` — v0.56 compact tool traces (`N tools` + chevron)
 - `SnorlaxBot/MidStreamPlaintext.swift` — v0.57 mid-stream LEFT plaintext until complete / Stop

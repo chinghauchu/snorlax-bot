@@ -314,6 +314,10 @@ v0.73: keyboard shortcuts help is client-only (desktop
 overlay; iOS Gestures & shortcuts sheet). Runtime idle.
 OpenAPI stays 0.18.0.
 
+v0.74: per-chat reading place is client-only (desktop and
+iOS remember a parked message for the session). Runtime
+idle. OpenAPI stays 0.18.0.
+
 ## MCP (`mcp.json`)
 
 The runtime is the MCP client. Desktop and iOS never speak MCP. Put

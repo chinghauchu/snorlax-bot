@@ -87,7 +87,12 @@ NVIDIA DGX Spark.
   of the chat shortcuts that already exist, Esc or a click
   outside closes it, and the iOS chat screen opens a Gestures
   & shortcuts sheet of long-press actions and hardware-keyboard
-  shortcuts), a display-only
+  shortcuts; v0.74 switching away remembers if you were at
+  the latest messages or parked on an earlier one, coming
+  back restores that place, within ~64px of the bottom the
+  chat still opens at the latest, a new reply while you were
+  away shows Jump to latest, and Send, Regenerate, and Jump
+  still snap to the bottom), a display-only
   Box computer preview (`GET /v1/agents/{id}/computer` JSON; Bearer PNG at
   `/computer/screenshot`; identity pane), desktop Box takeover
   (`POST /computer/session` → 201 `{ sessionId }`; `DELETE .../session` or

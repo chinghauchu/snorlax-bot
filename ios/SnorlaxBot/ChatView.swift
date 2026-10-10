@@ -18,6 +18,9 @@ struct ChatView: View {
     @State private var findQuery = ""
     @State private var findIndex = 0
     @State private var shortcutsOpen = false
+    @State private var readingOffsetY: CGFloat = 0
+    @State private var readingNearBottom = true
+    @State private var readingFrames: [ReadingPlace.Frame] = []
     @FocusState private var findFieldFocused: Bool
 
     private var agent: Agent {
@@ -491,6 +494,7 @@ struct ChatView: View {
                                         isKindMessage: message.isKindMessage
                                     )
                                 )
+                                .readingAnchor(message.id)
                                 .padding(.top, turnSpacing(at: index, in: visible, message: message))
                                 .id(message.id)
                             }
@@ -513,6 +517,7 @@ struct ChatView: View {
                     Color.clear.frame(height: 1).id("bottom")
                 }
                 .padding(.vertical, 8)
+                .coordinateSpace(name: ReadingPlace.coordinateSpace)
             }
             .onScrollGeometryChange(for: Bool.self) { geo in
                 StickToBottom.isNearBottom(
@@ -521,21 +526,53 @@ struct ChatView: View {
                     offsetY: geo.contentOffset.y
                 )
             } action: { _, nearBottom in
+                readingNearBottom = nearBottom
                 stick = StickToBottom.onUserScroll(state: stick, nearBottom: nearBottom)
+                publishReadingPlace(nearBottom: nearBottom)
+            }
+            .onScrollGeometryChange(for: CGFloat.self) { geo in
+                geo.contentOffset.y
+            } action: { _, offset in
+                readingOffsetY = offset
+                publishReadingPlace(offsetY: offset)
+            }
+            .onPreferenceChange(ReadingFramesKey.self) { frames in
+                readingFrames = frames
+                publishReadingPlace(frames: frames)
+            }
+            .onAppear {
+                _ = applyPendingRestore(proxy)
+            }
+            .onDisappear {
+                publishReadingPlace()
+            }
+            .onChange(of: agentID) { _, _ in
+                closeFind()
+            }
+            .onChange(of: model.threadID) { _, _ in
+                closeFind()
             }
             .onChange(of: model.stickBump) { _, _ in
                 snapToBottom(proxy)
             }
+            .onChange(of: model.readingTranscriptToken) { _, _ in
+                if applyPendingRestore(proxy) { return }
+                followStream(proxy)
+            }
             .onChange(of: model.messages.count) { _, _ in
+                if model.pendingReadingKey != nil { return }
                 followStream(proxy)
             }
             .onChange(of: model.messages.last?.content) { _, _ in
+                if model.pendingReadingKey != nil { return }
                 followStream(proxy)
             }
             .onChange(of: model.toolTraces.count) { _, _ in
+                if model.pendingReadingKey != nil { return }
                 followStream(proxy)
             }
             .onChange(of: model.isSending) { _, _ in
+                if model.pendingReadingKey != nil { return }
                 followStream(proxy)
             }
             .onChange(of: findQuery) { _, _ in
@@ -627,6 +664,52 @@ struct ChatView: View {
             guard gen == jumpPaintGeneration else { return }
             jumpPaint = .hidden
         }
+    }
+
+    private func publishReadingPlace(
+        nearBottom: Bool? = nil,
+        offsetY: CGFloat? = nil,
+        frames: [ReadingPlace.Frame]? = nil
+    ) {
+        guard hasRealAgent else { return }
+        let near = nearBottom ?? readingNearBottom
+        let offset = offsetY ?? readingOffsetY
+        let rows = frames ?? readingFrames
+        let anchor = ReadingPlace.topVisibleAnchor(rows: rows, viewportTop: offset)
+        let tail = model.visibleMessages(for: agent).last?.id
+        model.noteReadingPlace(
+            agentId: agentID,
+            threadId: model.threadID,
+            nearBottom: near,
+            anchorId: anchor,
+            tailId: tail
+        )
+    }
+
+    /// Park on the saved message, or open at the latest. Returns true when
+    /// this transcript was the switch being restored.
+    private func applyPendingRestore(_ proxy: ScrollViewProxy) -> Bool {
+        guard let key = model.pendingReadingKey else { return false }
+        guard key == ReadingPlace.key(agentId: agentID, threadId: model.threadID) else {
+            return false
+        }
+        let visible = model.visibleMessages(for: agent)
+        let ids = visible.map(\.id)
+        let saved = model.readingPlace(for: key)
+        let mode = ReadingPlace.restore(saved: saved, anchorIds: ids)
+        let grew = mode == .anchor && ReadingPlace.tailGrew(saved: saved, tailId: ids.last)
+        stick = ReadingPlace.stick(mode: mode, tailGrew: grew)
+        lastAssistantSig = StickToBottom.signature(messages: visible)
+        model.consumeReadingRestore()
+        if mode == .anchor, let anchor = saved?.anchorId {
+            proxy.scrollTo(anchor, anchor: .top)
+            DispatchQueue.main.async {
+                proxy.scrollTo(anchor, anchor: .top)
+            }
+        } else {
+            proxy.scrollTo("bottom", anchor: .bottom)
+        }
+        return true
     }
 
     private func snapToBottom(_ proxy: ScrollViewProxy) {

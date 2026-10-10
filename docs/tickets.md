@@ -165,6 +165,13 @@ Concrete follow-ups after v0. Filed on GitHub against
   Gestures & shortcuts sheet on the chat screen lists
   long-press actions and hardware-keyboard shortcuts. No
   new HTTP. OpenAPI stays 0.18.0.
+  **v0.74:** per-chat reading place. Switching away remembers
+  if you were at the latest messages or parked on an earlier
+  one. Coming back restores that place. Within ~64px of the
+  bottom, the chat still opens at the latest. A new reply
+  while you were away shows Jump to latest. Send, Regenerate,
+  and Jump still snap to the bottom. Session memory only. No
+  new HTTP. OpenAPI stays 0.18.0.
   Raw HTML still later.
   Full sandbox computer GUI (browser, VNC, terminal)
   stays later.
@@ -383,3 +390,10 @@ Concrete follow-ups after v0. Filed on GitHub against
   (Esc, Up-arrow, Cmd-F) plus hardware Return. Desktop
   matches (Cmd/Ctrl-/ or ? outside a text field). OpenAPI
   stays 0.18.0.
+- **v0.74:** per-chat reading place. Leaving a chat remembers
+  if you were at the latest messages or parked on an earlier
+  one. Coming back scrolls to that message. Within ~64pt of
+  the bottom, the chat still opens at the latest. A new reply
+  while you were away shows Jump to latest. Send, Regenerate,
+  and Jump still snap to the bottom. Session memory only.
+  Desktop matches. OpenAPI stays 0.18.0.

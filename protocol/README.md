@@ -355,6 +355,14 @@ Gestures & shortcuts sheet lists long-press actions and
 hardware-keyboard shortcuts. No new routes. OpenAPI stays
 0.18.0.
 
+v0.74 per-chat reading place: switching away remembers if
+you were at the latest messages or parked on an earlier
+one. Coming back restores that place. Within ~64px of the
+bottom, the chat still opens at the latest. A new reply
+while you were away shows Jump to latest. Send, Regenerate,
+and Jump still snap to the bottom. Session memory only. No
+new routes. OpenAPI stays 0.18.0.
+
 A copy is also kept at `runtime/openapi.yaml` and `desktop/openapi.yaml`
 so those trees are self-contained. Do not let the files diverge.
 
