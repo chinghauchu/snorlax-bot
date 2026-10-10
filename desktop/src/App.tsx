@@ -190,6 +190,17 @@ import {
 import { bubbleTimeLabel } from "./bubbleTime";
 import { daySeparatorLabels } from "./daySeparator";
 import {
+  anchorScrollTop,
+  captureReadingPlace,
+  readingNearBottom,
+  readingPlaceKey,
+  readingRestore,
+  readingTailGrew,
+  stickForReadingRestore,
+  topVisibleAnchor,
+  type ReadingPlace,
+} from "./readingPlace";
+import {
   COPY_CONTROL_LABEL,
   copiedFeedbackLabel,
   dropLastAssistantTurn,
@@ -658,6 +669,13 @@ export function App() {
   const [channelNameDraft, setChannelNameDraft] = useState("New channel");
   const [channelMemberDraft, setChannelMemberDraft] = useState<string[]>([]);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const messagesRef = useRef(messages);
+  messagesRef.current = messages;
+  /** v0.74: session reading place per chat. Not persisted. */
+  const readingPlaces = useRef(new Map<string, ReadingPlace>());
+  const pendingRestore = useRef<{ key: string; gen: number } | null>(null);
+  const transcriptGenRef = useRef(0);
+  const [transcriptGen, setTranscriptGen] = useState(0);
   const [toolTraces, setToolTraces] = useState<
     { id: string; summary: string; senderId?: string; senderName?: string }[]
   >([]);
@@ -995,6 +1013,44 @@ export function App() {
     if (el) el.scrollTop = el.scrollHeight;
   }, [applyStick]);
 
+  const captureOpenReadingPlace = useCallback(() => {
+    if (pendingRestore.current) return;
+    const here = convoRef.current;
+    if (!here.agentId) return;
+    const el = scroller.current;
+    const near = readingNearBottom(
+      el
+        ? {
+            scrollTop: el.scrollTop,
+            scrollHeight: el.scrollHeight,
+            clientHeight: el.clientHeight,
+          }
+        : null,
+    );
+    const viewportTop = el ? el.getBoundingClientRect().top : 0;
+    const rows = el
+      ? [...el.querySelectorAll<HTMLElement>("[data-reading-id]")].map(
+          (node) => {
+            const box = node.getBoundingClientRect();
+            return {
+              id: node.dataset.readingId ?? "",
+              top: box.top,
+              bottom: box.bottom,
+            };
+          },
+        )
+      : [];
+    const tail = messagesRef.current.at(-1)?.id ?? null;
+    readingPlaces.current.set(
+      readingPlaceKey(here.agentId, here.threadId),
+      captureReadingPlace({
+        nearBottom: near,
+        anchorId: near ? null : topVisibleAnchor(rows, viewportTop),
+        tailId: tail,
+      }),
+    );
+  }, []);
+
   const onTranscriptScroll = useCallback(() => {
     const el = scroller.current;
     if (!el) return;
@@ -1011,7 +1067,8 @@ export function App() {
         ),
       ),
     );
-  }, [applyStick]);
+    captureOpenReadingPlace();
+  }, [applyStick, captureOpenReadingPlace]);
 
   const focusComposer = useCallback(() => {
     requestAnimationFrame(() => composerRef.current?.focus());
@@ -1030,6 +1087,7 @@ export function App() {
   /** Save the open draft and show the draft for the conversation being opened. */
   const moveComposer = useCallback(
     (nextId: string | null, nextThread: string | null) => {
+      captureOpenReadingPlace();
       const from = convoRef.current;
       const text = draftRef.current;
       const fromKey =
@@ -1053,7 +1111,7 @@ export function App() {
       setSkillOpen(false);
       placeCaretAtEnd();
     },
-    [placeCaretAtEnd],
+    [captureOpenReadingPlace, placeCaretAtEnd],
   );
 
   // v0.69: the open chat's unsent text is part of the persisted map.
@@ -1135,6 +1193,9 @@ export function App() {
   }, [showJump]);
 
   useLayoutEffect(() => {
+    const key = activeId ? readingPlaceKey(activeId, threadId) : null;
+    const pending = pendingRestore.current;
+    if (pending && pending.key === key) return;
     applyStick(onSendOrRegenerate());
     lastAssistantSig.current = "";
     const el = scroller.current;
@@ -1142,13 +1203,52 @@ export function App() {
   }, [activeId, threadId, applyStick]);
 
   useLayoutEffect(() => {
+    const here = convoRef.current;
+    const key = here.agentId
+      ? readingPlaceKey(here.agentId, here.threadId)
+      : null;
+    const pending = pendingRestore.current;
+    const visible = active
+      ? messages.filter((message) => isTranscriptVisible(message, active))
+      : messages;
+    if (pending && key && pending.key === key) {
+      if (pending.gen !== transcriptGen) return;
+      pendingRestore.current = null;
+      const el = scroller.current;
+      const ids = el
+        ? [...el.querySelectorAll<HTMLElement>("[data-reading-id]")]
+            .map((node) => node.dataset.readingId ?? "")
+            .filter((id) => id.length > 0)
+        : [];
+      const saved = readingPlaces.current.get(key) ?? null;
+      const mode = readingRestore(saved, ids);
+      const tail = messagesRef.current.at(-1)?.id ?? null;
+      const grew = mode === "anchor" && readingTailGrew(saved, tail);
+      applyStick(stickForReadingRestore(mode, grew));
+      if (el) {
+        const anchorId = mode === "anchor" ? saved?.anchorId : null;
+        const node = anchorId
+          ? el.querySelector<HTMLElement>(
+              `[data-reading-id="${CSS.escape(anchorId)}"]`,
+            )
+          : null;
+        if (node) {
+          el.scrollTop = anchorScrollTop(
+            node.getBoundingClientRect().top,
+            el.getBoundingClientRect().top,
+            el.scrollTop,
+          );
+        } else {
+          el.scrollTop = el.scrollHeight;
+        }
+      }
+      lastAssistantSig.current = assistantBubbleSignature(visible);
+      return;
+    }
     const el = scroller.current;
     if (el && shouldFollowStream(stickRef.current)) {
       el.scrollTop = el.scrollHeight;
     }
-    const visible = active
-      ? messages.filter((message) => isTranscriptVisible(message, active))
-      : messages;
     const next = assistantBubbleSignature(visible);
     const updated = onAssistantActivity(
       stickRef.current,
@@ -1157,7 +1257,7 @@ export function App() {
     );
     lastAssistantSig.current = next;
     applyStick(updated);
-  }, [messages, busy, toolTraces, active, applyStick]);
+  }, [messages, busy, toolTraces, active, applyStick, transcriptGen]);
 
   useEffect(() => {
     const onPointerDown = (event: PointerEvent) => {
@@ -1306,6 +1406,12 @@ export function App() {
 
   async function loadConversation(id: string, thread: string | null) {
     moveComposer(id, thread);
+    const gen = transcriptGenRef.current + 1;
+    transcriptGenRef.current = gen;
+    pendingRestore.current = { key: readingPlaceKey(id, thread), gen };
+    setFindOpen(false);
+    setFindQuery("");
+    setFindIndex(0);
     clearReplyUnread(id);
     setActiveId(id);
     setThreadId(thread);
@@ -1332,22 +1438,26 @@ export function App() {
         return next;
       });
     }
+    let rows: ChatMessage[] = [];
     if (!session) {
-      setMessages([]);
+      if (transcriptGenRef.current !== gen) return;
+      setMessages(rows);
+      setTranscriptGen(gen);
       return;
     }
     try {
-      setMessages(
-        await listMessages(
-          session,
-          id,
-          thread ? { threadId: thread } : undefined,
-        ),
+      rows = await listMessages(
+        session,
+        id,
+        thread ? { threadId: thread } : undefined,
       );
     } catch (err) {
-      setMessages([]);
+      rows = [];
       setComposerError(describeError(err));
     }
+    if (transcriptGenRef.current !== gen) return;
+    setMessages(rows);
+    setTranscriptGen(gen);
     focusComposer();
     placeCaretAtEnd();
   }
@@ -3472,13 +3582,19 @@ export function App() {
                   return (
                     <Fragment key={message.id}>
                     {dayLabel ? (
-                      <p className="day-separator" role="heading" aria-level={2}>
+                      <p
+                        className="day-separator"
+                        role="heading"
+                        aria-level={2}
+                        data-reading-id={`day:${message.id}`}
+                      >
                         {dayLabel}
                       </p>
                     ) : null}
                     <button
                       type="button"
                       className="handoff-row"
+                      data-reading-id={message.id}
                       onClick={() => void openJump(active.id, message.id)}
                     >
                       <Avatar
@@ -3519,12 +3635,18 @@ export function App() {
                 return (
                   <Fragment key={message.id}>
                   {dayLabel ? (
-                    <p className="day-separator" role="heading" aria-level={2}>
+                    <p
+                      className="day-separator"
+                      role="heading"
+                      aria-level={2}
+                      data-reading-id={`day:${message.id}`}
+                    >
                       {dayLabel}
                     </p>
                   ) : null}
                   <article
                     className={`turn ${mine ? "right" : "left"}${sameSender && !threadRoot ? " same-sender" : " new-sender"}`}
+                    data-reading-id={message.id}
                   >
                     {!mine && !sameSender ? (
                       <div className="sender-row">

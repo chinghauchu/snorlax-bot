@@ -72,6 +72,13 @@ final class AppModel {
     var wantsComposerFocus = false
     /// Bumped on Send / Regenerate so the transcript snaps and re-arms stick.
     var stickBump = 0
+    /// v0.74: session reading place per chat. Not persisted.
+    private var readingPlaces: [String: ReadingPlace.Place] = [:]
+    var pendingReadingKey: String?
+    private(set) var readingTranscriptToken = 0
+    private var readingLoadGeneration = 0
+    /// True from the start of a chat switch until that transcript is restored.
+    private var readingPublishLocked = false
     private var streamTask: Task<Void, Never>?
     private var streamEpoch = 0
     /// Unsent composer text per conversation. UserDefaults, per chat.
@@ -324,7 +331,36 @@ final class AppModel {
         chatDrafts.set(agentId: agentId, threadId: ownedThread, text: draft)
     }
 
+    /// Latest scroll position for the open chat. Ignored while a switch is in flight.
+    func noteReadingPlace(
+        agentId: String,
+        threadId: String?,
+        nearBottom: Bool,
+        anchorId: String?,
+        tailId: String?
+    ) {
+        if readingPublishLocked || pendingReadingKey != nil { return }
+        let key = ReadingPlace.key(agentId: agentId, threadId: threadId)
+        readingPlaces[key] = ReadingPlace.capture(
+            nearBottom: nearBottom,
+            anchorId: anchorId,
+            tailId: tailId
+        )
+    }
+
+    func readingPlace(for key: String) -> ReadingPlace.Place? {
+        readingPlaces[key]
+    }
+
+    func consumeReadingRestore() {
+        pendingReadingKey = nil
+        readingPublishLocked = false
+    }
+
     func loadConversation(_ id: String, thread: String?, push: Bool) async {
+        readingPublishLocked = true
+        let generation = readingLoadGeneration + 1
+        readingLoadGeneration = generation
         if selectedAgentID != id || threadID != thread {
             showProfile = false
             cancelDictation()
@@ -345,19 +381,24 @@ final class AppModel {
                 lastExtraChannelID = id
             }
         }
-        guard isConfigured, let client else {
-            messages = []
+        let rows: [Message]
+        if isConfigured, let client {
+            do {
+                rows = try await client.listMessages(agentId: id, threadId: thread)
+                prunePreviews()
+            } catch {
+                errorMessage = error.localizedDescription
+                rows = []
+            }
+        } else {
+            rows = []
             localPreviews = [:]
             composerSkills = []
-            return
         }
-        do {
-            messages = try await client.listMessages(agentId: id, threadId: thread)
-            prunePreviews()
-        } catch {
-            errorMessage = error.localizedDescription
-            messages = []
-        }
+        guard generation == readingLoadGeneration else { return }
+        messages = rows
+        pendingReadingKey = ReadingPlace.key(agentId: id, threadId: thread)
+        readingTranscriptToken += 1
         await loadComposerSkills()
     }
 

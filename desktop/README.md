@@ -262,6 +262,13 @@ opens a small overlay of the chat shortcuts that already
 exist. ? does the same when focus is not in a text field.
 Esc or a click outside closes it, and that Esc does not
 Stop, close find, or close the switcher. OpenAPI stays 0.18.0.
+v0.74: per-chat reading place (Grok Bot feel). Switching
+away remembers if you were at the latest messages or parked
+on an earlier one. Coming back restores that place. Within
+~64px of the bottom, the chat still opens at the latest. A
+new reply while you were away shows Jump to latest. Send,
+Regenerate, and Jump still snap to the bottom. The place
+lasts for the session only. OpenAPI stays 0.18.0.
 Assistant LEFT
 `kind=message` is 14px markdown (16/14 headings) in short
 agent bubbles after complete; user-right stays plain (`https://` tappable). Fenced code is full-turn language + Copy at 12px/1.45.
