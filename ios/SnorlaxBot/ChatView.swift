@@ -17,6 +17,7 @@ struct ChatView: View {
     @State private var findOpen = false
     @State private var findQuery = ""
     @State private var findIndex = 0
+    @State private var shortcutsOpen = false
     @FocusState private var findFieldFocused: Bool
 
     private var agent: Agent {
@@ -74,6 +75,14 @@ struct ChatView: View {
             }
             ToolbarItem(placement: .topBarTrailing) {
                 Button {
+                    shortcutsOpen = true
+                } label: {
+                    Image(systemName: "questionmark.circle")
+                }
+                .accessibilityLabel(ChatShortcuts.title)
+            }
+            ToolbarItem(placement: .topBarTrailing) {
+                Button {
                     if findOpen {
                         closeFind()
                     } else {
@@ -110,6 +119,9 @@ struct ChatView: View {
             if hasRealAgent {
                 ProfileSheet(agent: agent)
             }
+        }
+        .sheet(isPresented: $shortcutsOpen) {
+            ChatShortcutsSheet()
         }
         .task(id: agentID) {
             stick = StickToBottom.State.armed

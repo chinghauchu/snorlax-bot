@@ -158,6 +158,13 @@ Concrete follow-ups after v0. Filed on GitHub against
   name. Arrow keys and Enter switch to that chat. Esc
   closes. iOS search field on the chat list narrows chats
   by name. No new HTTP. OpenAPI stays 0.18.0.
+  **v0.73:** keyboard shortcuts. Cmd/Ctrl-/ or ? outside a
+  text field opens a small overlay of the chat shortcuts
+  that already exist. Esc or a click outside closes it and
+  does not Stop, close find, or close the switcher. iOS
+  Gestures & shortcuts sheet on the chat screen lists
+  long-press actions and hardware-keyboard shortcuts. No
+  new HTTP. OpenAPI stays 0.18.0.
   Raw HTML still later.
   Full sandbox computer GUI (browser, VNC, terminal)
   stays later.
@@ -368,3 +375,11 @@ Concrete follow-ups after v0. Filed on GitHub against
   name. No matches reads No chats. Desktop matches
   (Cmd/Ctrl-K overlay; arrows and Enter switch; Esc
   closes). OpenAPI stays 0.18.0.
+- **v0.73:** keyboard shortcuts. The chat screen opens a
+  Gestures & shortcuts sheet. It lists long-press actions
+  (Copy, Speak, Regenerate, the time, Edit as new message,
+  copy an approve command) and hardware-keyboard shortcuts
+  already wired with UIKeyCommand or .keyboardShortcut
+  (Esc, Up-arrow, Cmd-F) plus hardware Return. Desktop
+  matches (Cmd/Ctrl-/ or ? outside a text field). OpenAPI
+  stays 0.18.0.

@@ -174,6 +174,13 @@ import {
   isSwitchChord,
   stepSwitchIndex,
 } from "./chatSwitcher";
+import {
+  CHAT_SHORTCUTS,
+  SHORTCUTS_TITLE,
+  escapeClosesShortcuts,
+  isShortcutsChord,
+  isShortcutsQuestion,
+} from "./chatShortcuts";
 import { copyText } from "./markdown";
 import { shouldRenderMarkdown } from "./midStreamPlaintext";
 import {
@@ -761,10 +768,13 @@ export function App() {
   const [switchOpen, setSwitchOpen] = useState(false);
   const [switchQuery, setSwitchQuery] = useState("");
   const [switchIndex, setSwitchIndex] = useState(0);
+  const [shortcutsOpen, setShortcutsOpen] = useState(false);
 
   const scroller = useRef<HTMLDivElement>(null);
   const findInputRef = useRef<HTMLInputElement>(null);
   const switchInputRef = useRef<HTMLInputElement>(null);
+  const shortcutsRef = useRef<HTMLDivElement>(null);
+  const shortcutsReturnFocus = useRef<HTMLElement | null>(null);
   const stickRef = useRef<StickState>(STICK_ARMED);
   const lastAssistantSig = useRef("");
   const [showJump, setShowJump] = useState(false);
@@ -1742,6 +1752,15 @@ export function App() {
     pendingDelete != null ||
     dictationCancelable(dictation);
 
+  const shortcutsBlocked = switcherBlocked;
+
+  const closeShortcuts = useCallback(() => {
+    setShortcutsOpen(false);
+    const back = shortcutsReturnFocus.current;
+    shortcutsReturnFocus.current = null;
+    if (back?.isConnected) back.focus();
+  }, []);
+
   useEffect(() => {
     const onKey = (event: globalThis.KeyboardEvent) => {
       if (!isSwitchChord(event)) return;
@@ -1761,6 +1780,35 @@ export function App() {
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [switcherBlocked, switchOpen, agents, activeId]);
+
+  useEffect(() => {
+    const onShortcutsChord = (event: globalThis.KeyboardEvent) => {
+      if (isComposerComposing(event)) return;
+      const chord = isShortcutsChord(event);
+      const question = isShortcutsQuestion(event, event.target);
+      if (!chord && !question) return;
+      if (shortcutsBlocked) return;
+      event.preventDefault();
+      if (shortcutsOpen) {
+        closeShortcuts();
+        return;
+      }
+      const activeEl = document.activeElement;
+      shortcutsReturnFocus.current =
+        activeEl instanceof HTMLElement ? activeEl : null;
+      setShortcutsOpen(true);
+    };
+    window.addEventListener("keydown", onShortcutsChord);
+    return () => window.removeEventListener("keydown", onShortcutsChord);
+  }, [shortcutsBlocked, shortcutsOpen, closeShortcuts]);
+
+  useEffect(() => {
+    if (!shortcutsOpen) return;
+    const frame = requestAnimationFrame(() => {
+      shortcutsRef.current?.focus();
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [shortcutsOpen]);
 
   useEffect(() => {
     setFindOpen(false);
@@ -2233,6 +2281,27 @@ export function App() {
     findOpen,
     switchOpen,
   ]);
+
+  useEffect(() => {
+    if (!shortcutsOpen) return;
+    const onShortcutsEsc = (event: globalThis.KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      if (
+        !escapeClosesShortcuts({
+          open: true,
+          composing: isComposerComposing(event),
+        })
+      ) {
+        return;
+      }
+      event.preventDefault();
+      event.stopPropagation();
+      event.stopImmediatePropagation();
+      closeShortcuts();
+    };
+    window.addEventListener("keydown", onShortcutsEsc, true);
+    return () => window.removeEventListener("keydown", onShortcutsEsc, true);
+  }, [shortcutsOpen, closeShortcuts]);
 
   async function onSend() {
     if (!session || !active || inFlight.current || sendBlocked) return;
@@ -5146,6 +5215,32 @@ export function App() {
                 </button>
               </div>
             </div>
+          </div>
+        </div>
+      ) : null}
+      {shortcutsOpen ? (
+        <div
+          className="shortcuts-backdrop"
+          onMouseDown={() => closeShortcuts()}
+        >
+          <div
+            ref={shortcutsRef}
+            className="shortcuts-overlay"
+            role="dialog"
+            aria-modal="true"
+            aria-label={SHORTCUTS_TITLE}
+            tabIndex={-1}
+            onMouseDown={(event) => event.stopPropagation()}
+          >
+            <h2>{SHORTCUTS_TITLE}</h2>
+            <ul className="shortcuts-list">
+              {CHAT_SHORTCUTS.map((row) => (
+                <li key={row.id} className="shortcuts-row">
+                  <span className="shortcuts-action">{row.action}</span>
+                  <span className="shortcuts-keys">{row.keys}</span>
+                </li>
+              ))}
+            </ul>
           </div>
         </div>
       ) : null}

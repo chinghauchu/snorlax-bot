@@ -257,6 +257,11 @@ opens a small overlay over the roster already loaded. Typing
 fuzzy-filters agents and channels by name. Arrow keys move
 the highlight. Enter switches to that chat. Esc closes
 without switching. OpenAPI stays 0.18.0.
+v0.73: keyboard shortcuts (Grok Bot feel). Cmd-/ or Ctrl-/
+opens a small overlay of the chat shortcuts that already
+exist. ? does the same when focus is not in a text field.
+Esc or a click outside closes it, and that Esc does not
+Stop, close find, or close the switcher. OpenAPI stays 0.18.0.
 Assistant LEFT
 `kind=message` is 14px markdown (16/14 headings) in short
 agent bubbles after complete; user-right stays plain (`https://` tappable). Fenced code is full-turn language + Copy at 12px/1.45.
