@@ -91,8 +91,9 @@ def test_mid_stream_unchanged_user_right_unchanged() -> None:
     user_new = _block(DESKTOP_CSS, ".turn.new-sender")
     assert "margin-top: 4px" in user_same
     assert "margin-top: 16px" in user_new
-    user_idx = CHAT.find("MentionLabel(text: message.displayContent")
+    user_idx = CHAT.find("MentionLabel(")
     assert user_idx > 0
+    assert "text: message.displayContent" in CHAT[user_idx : user_idx + 240]
     user_slice = CHAT[user_idx : user_idx + 400]
     assert "MarkdownSplit.bubbles" not in user_slice
     assert "AssistantMarkdown" not in user_slice

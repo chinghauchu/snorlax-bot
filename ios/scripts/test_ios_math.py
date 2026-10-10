@@ -83,8 +83,9 @@ def test_invalid_falls_back_and_streaming_defers() -> None:
 
 def test_tool_widget_user_right_unchanged() -> None:
     assert "MentionLabel" in CHAT
-    user_idx = CHAT.find("MentionLabel(text: message.displayContent")
+    user_idx = CHAT.find("MentionLabel(")
     assert user_idx > 0
+    assert "text: message.displayContent" in CHAT[user_idx : user_idx + 240]
     user_slice = CHAT[user_idx : user_idx + 400]
     assert "AssistantMarkdown" not in user_slice
     assert "MathBlock" not in user_slice

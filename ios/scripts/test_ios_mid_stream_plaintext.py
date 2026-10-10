@@ -81,7 +81,9 @@ def test_mid_stream_is_plaintext_no_markdown_mermaid_math() -> None:
     desktop = _fn(DESKTOP, "shouldRenderMarkdown")
     assert "return opts.completed" in desktop
     assert "MidStreamPlaintext.shouldRenderMarkdown(completed: completed)" in CHAT
-    assert "MidStreamPlaintextView(text: part)" in CHAT
+    plain = CHAT.find("MidStreamPlaintextView(")
+    assert plain > 0
+    assert "text: part" in CHAT[plain : plain + 200]
     assert "shouldRenderMarkdown({ completed })" in DESKTOP_APP
     assert 'className="assistant-plain"' in DESKTOP_APP
     live = CHAT[
