@@ -153,6 +153,11 @@ Concrete follow-ups after v0. Filed on GitHub against
   them, with an n of m count. Esc closes and clears
   highlights. iOS search filters and highlights those same
   loaded messages. No new HTTP. OpenAPI stays 0.18.0.
+  **v0.72:** quick chat switcher. Cmd/Ctrl-K opens a small
+  overlay that fuzzy-filters existing agents and chats by
+  name. Arrow keys and Enter switch to that chat. Esc
+  closes. iOS search field on the chat list narrows chats
+  by name. No new HTTP. OpenAPI stays 0.18.0.
   Raw HTML still later.
   Full sandbox computer GUI (browser, VNC, terminal)
   stays later.
@@ -358,3 +363,8 @@ Concrete follow-ups after v0. Filed on GitHub against
   and connect rows stay. Desktop matches (Cmd/Ctrl-F find
   bar; it highlights without hiding messages). OpenAPI
   stays 0.18.0.
+- **v0.72:** quick chat switcher. Pull down on the chat
+  list and the search field narrows agents and channels by
+  name. No matches reads No chats. Desktop matches
+  (Cmd/Ctrl-K overlay; arrows and Enter switch; Esc
+  closes). OpenAPI stays 0.18.0.

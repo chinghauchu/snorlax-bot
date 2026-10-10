@@ -252,6 +252,11 @@ the transcript already loaded. Enter and the down button
 move to the next match; Shift-Enter and the up button move
 to the previous. The bar shows n of m. Esc closes the bar
 and clears the highlights. OpenAPI stays 0.18.0.
+v0.72: quick chat switcher (Grok Bot feel). Cmd-K or Ctrl-K
+opens a small overlay over the roster already loaded. Typing
+fuzzy-filters agents and channels by name. Arrow keys move
+the highlight. Enter switches to that chat. Esc closes
+without switching. OpenAPI stays 0.18.0.
 Assistant LEFT
 `kind=message` is 14px markdown (16/14 headings) in short
 agent bubbles after complete; user-right stays plain (`https://` tappable). Fenced code is full-turn language + Copy at 12px/1.45.

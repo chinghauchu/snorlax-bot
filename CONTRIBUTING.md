@@ -79,7 +79,10 @@ NVIDIA DGX Spark.
   shows a find bar over the loaded transcript, highlights matches,
   Enter/Shift-Enter and up/down jump between them with an n of m
   count, Esc closes and clears highlights, and iOS search filters
-  and highlights those same loaded messages), a display-only
+  and highlights those same loaded messages; v0.72 Cmd/Ctrl-K opens
+  a small overlay that fuzzy-filters existing agents and chats by
+  name, arrow keys and Enter switch to that chat, Esc closes, and
+  the iOS chat list search field narrows chats by name), a display-only
   Box computer preview (`GET /v1/agents/{id}/computer` JSON; Bearer PNG at
   `/computer/screenshot`; identity pane), desktop Box takeover
   (`POST /computer/session` → 201 `{ sessionId }`; `DELETE .../session` or

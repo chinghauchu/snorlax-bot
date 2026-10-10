@@ -342,6 +342,12 @@ Esc closes and clears highlights. iOS also hides user,
 assistant, and handoff rows that do not match. No new
 routes. OpenAPI stays 0.18.0.
 
+v0.72 quick chat switcher: Cmd/Ctrl-K (desktop) opens a
+small overlay that fuzzy-filters the loaded roster by name.
+Arrow keys and Enter switch. Esc closes. iOS pull-down
+search on the chat list narrows the same names. No new
+routes. OpenAPI stays 0.18.0.
+
 A copy is also kept at `runtime/openapi.yaml` and `desktop/openapi.yaml`
 so those trees are self-contained. Do not let the files diverge.
 

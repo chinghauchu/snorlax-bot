@@ -338,7 +338,12 @@ bar over the loaded transcript; matches highlight;
 Enter/Shift-Enter and up/down jump between them; n of m;
 Esc closes and clears highlights; iOS search filters and
 highlights those loaded messages; no new HTTP; OpenAPI
-stays 0.18.0).
+stays 0.18.0), and
+v0.72 quick chat switcher (Cmd/Ctrl-K opens a small overlay
+that fuzzy-filters existing agents and chats by name; arrow
+keys and Enter switch to that chat; Esc closes; iOS search
+field on the chat list narrows chats by name; no new HTTP;
+OpenAPI stays 0.18.0).
 Later: full sandbox computer GUI, MCP marketplace catalog,
 Slack/GitHub inbound listeners.
 

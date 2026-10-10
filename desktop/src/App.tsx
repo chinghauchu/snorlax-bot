@@ -164,6 +164,16 @@ import {
   stepFindIndex,
   transcriptFindRows,
 } from "./chatFind";
+import {
+  SWITCH_EMPTY_LABEL,
+  SWITCH_INPUT_LABEL,
+  SWITCH_PLACEHOLDER,
+  clampSwitchIndex,
+  escapeClosesSwitcher,
+  filterChats,
+  isSwitchChord,
+  stepSwitchIndex,
+} from "./chatSwitcher";
 import { copyText } from "./markdown";
 import { shouldRenderMarkdown } from "./midStreamPlaintext";
 import {
@@ -748,9 +758,13 @@ export function App() {
   const [findOpen, setFindOpen] = useState(false);
   const [findQuery, setFindQuery] = useState("");
   const [findIndex, setFindIndex] = useState(0);
+  const [switchOpen, setSwitchOpen] = useState(false);
+  const [switchQuery, setSwitchQuery] = useState("");
+  const [switchIndex, setSwitchIndex] = useState(0);
 
   const scroller = useRef<HTMLDivElement>(null);
   const findInputRef = useRef<HTMLInputElement>(null);
+  const switchInputRef = useRef<HTMLInputElement>(null);
   const stickRef = useRef<StickState>(STICK_ARMED);
   const lastAssistantSig = useRef("");
   const [showJump, setShowJump] = useState(false);
@@ -1716,6 +1730,38 @@ export function App() {
     return () => window.removeEventListener("keydown", onKey);
   }, [active, takeoverOpen, settingsOpen, profileOpen]);
 
+  const switcherBlocked =
+    takeoverOpen ||
+    settingsOpen ||
+    profileOpen ||
+    createChannelOpen ||
+    skillEditOpen ||
+    skillAddOpen ||
+    pluginAddOpen ||
+    routineAddOpen ||
+    pendingDelete != null ||
+    dictationCancelable(dictation);
+
+  useEffect(() => {
+    const onKey = (event: globalThis.KeyboardEvent) => {
+      if (!isSwitchChord(event)) return;
+      if (isComposerComposing(event)) return;
+      if (switcherBlocked) return;
+      event.preventDefault();
+      if (!switchOpen) {
+        setSwitchQuery("");
+        const idx = agents.findIndex((agent) => agent.id === activeId);
+        setSwitchIndex(idx >= 0 ? idx : 0);
+        setSwitchOpen(true);
+      } else {
+        switchInputRef.current?.focus();
+        switchInputRef.current?.select();
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [switcherBlocked, switchOpen, agents, activeId]);
+
   useEffect(() => {
     setFindOpen(false);
     setFindQuery("");
@@ -2069,6 +2115,18 @@ export function App() {
     setFindIndex(0);
   }
 
+  function closeSwitcher() {
+    setSwitchOpen(false);
+    setSwitchQuery("");
+    setSwitchIndex(0);
+    focusComposer();
+  }
+
+  function pickSwitcher(id: string) {
+    closeSwitcher();
+    if (id !== activeId) void selectAgent(id);
+  }
+
   function transcriptRows() {
     return active
       ? messages.filter((message) => isTranscriptVisible(message, active))
@@ -2096,6 +2154,16 @@ export function App() {
   useEffect(() => {
     const onKey = (event: globalThis.KeyboardEvent) => {
       if (event.key !== "Escape") return;
+      if (
+        escapeClosesSwitcher({
+          open: switchOpen,
+          composing: isComposerComposing(event),
+        })
+      ) {
+        event.preventDefault();
+        closeSwitcher();
+        return;
+      }
       if (mentionOpen || skillOpen) return;
       if (takeoverOpen) return;
       if (dictationCancelable(dictation)) return;
@@ -2163,6 +2231,7 @@ export function App() {
     onJumpLatest,
     recallArmed,
     findOpen,
+    switchOpen,
   ]);
 
   async function onSend() {
@@ -3034,6 +3103,63 @@ export function App() {
     activeFindHit?.start,
     findQueryShown,
   ]);
+
+  const switchHits = filterChats(
+    agents.map((agent) => ({ id: agent.id, name: agent.name })),
+    switchOpen ? switchQuery : "",
+  );
+  const switchSafeIndex = clampSwitchIndex(switchIndex, switchHits.length);
+  const activeSwitch =
+    switchSafeIndex >= 0 ? switchHits[switchSafeIndex] : null;
+
+  useEffect(() => {
+    if (!switchOpen) return;
+    const frame = requestAnimationFrame(() => {
+      switchInputRef.current?.focus();
+      switchInputRef.current?.select();
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [switchOpen]);
+
+  useEffect(() => {
+    if (!switchOpen) return;
+    const onSwitcherKey = (event: globalThis.KeyboardEvent) => {
+      if (isComposerComposing(event)) return;
+      if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+        event.preventDefault();
+        event.stopPropagation();
+        const direction = event.key === "ArrowDown" ? 1 : -1;
+        setSwitchIndex((current) =>
+          stepSwitchIndex(
+            clampSwitchIndex(current, switchHits.length),
+            switchHits.length,
+            direction,
+          ),
+        );
+        return;
+      }
+      if (event.key === "Enter") {
+        event.preventDefault();
+        event.stopPropagation();
+        const row =
+          switchHits[clampSwitchIndex(switchIndex, switchHits.length)];
+        if (row) {
+          closeSwitcher();
+          if (row.id !== activeId) void selectAgent(row.id);
+        }
+      }
+    };
+    window.addEventListener("keydown", onSwitcherKey, true);
+    return () => window.removeEventListener("keydown", onSwitcherKey, true);
+  }, [switchOpen, switchIndex, switchHits, activeId]);
+
+  useLayoutEffect(() => {
+    if (!switchOpen || !activeSwitch) return;
+    const row = document.querySelector(
+      `[data-switch-id="${CSS.escape(activeSwitch.id)}"]`,
+    );
+    row?.scrollIntoView({ block: "nearest" });
+  }, [switchOpen, switchSafeIndex, activeSwitch?.id, switchQuery]);
 
   return (
     <div className={computerOpen ? "app computer-open" : "app computer-collapsed"}>
@@ -5020,6 +5146,70 @@ export function App() {
                 </button>
               </div>
             </div>
+          </div>
+        </div>
+      ) : null}
+      {switchOpen ? (
+        <div
+          className="switch-backdrop"
+          onMouseDown={() => closeSwitcher()}
+        >
+          <div
+            className="switch-overlay"
+            role="dialog"
+            aria-label={SWITCH_INPUT_LABEL}
+            onMouseDown={(event) => event.stopPropagation()}
+          >
+            <input
+              ref={switchInputRef}
+              role="combobox"
+              aria-label={SWITCH_INPUT_LABEL}
+              aria-expanded="true"
+              aria-controls="chat-switch-list"
+              aria-autocomplete="list"
+              aria-activedescendant={
+                activeSwitch ? `chat-switch-${activeSwitch.id}` : undefined
+              }
+              placeholder={SWITCH_PLACEHOLDER}
+              value={switchQuery}
+              onChange={(event) => {
+                setSwitchQuery(event.target.value);
+                setSwitchIndex(0);
+              }}
+            />
+            <ul
+              id="chat-switch-list"
+              className="switch-list"
+              role="listbox"
+              aria-label={SWITCH_INPUT_LABEL}
+            >
+              {switchHits.length === 0 ? (
+                <li className="switch-empty">{SWITCH_EMPTY_LABEL}</li>
+              ) : (
+                switchHits.map((chat, index) => {
+                  const agent = agents.find((row) => row.id === chat.id);
+                  const active = index === switchSafeIndex;
+                  return (
+                    <li key={chat.id} role="presentation">
+                      <button
+                        type="button"
+                        id={`chat-switch-${chat.id}`}
+                        data-switch-id={chat.id}
+                        role="option"
+                        aria-selected={active}
+                        className={active ? "switch-option active" : "switch-option"}
+                        onClick={() => pickSwitcher(chat.id)}
+                      >
+                        <span className="switch-name">{chat.name}</span>
+                        {agent && rosterSubtitle(agent) ? (
+                          <span className="switch-kind">{rosterSubtitle(agent)}</span>
+                        ) : null}
+                      </button>
+                    </li>
+                  );
+                })
+              )}
+            </ul>
           </div>
         </div>
       ) : null}
