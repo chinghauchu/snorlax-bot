@@ -5,9 +5,21 @@ struct AgentListView: View {
     @Environment(AppModel.self) private var model
     @State private var pendingDelete: Agent?
     @State private var showCreateChannel = false
+    @State private var chatQuery = ""
+
+    private var listedAgents: [Agent] {
+        let chats = model.visibleAgents.map {
+            ChatSwitcher.Chat(id: $0.id, name: $0.name)
+        }
+        let ids = ChatSwitcher.filter(chats, query: chatQuery).map(\.id)
+        let byID = Dictionary(uniqueKeysWithValues: model.visibleAgents.map { ($0.id, $0) })
+        return ids.compactMap { byID[$0] }
+    }
 
     var body: some View {
         styledList
+            .searchable(text: $chatQuery, prompt: ChatSwitcher.placeholder)
+            .accessibilityInputLabels([ChatSwitcher.inputLabel])
             .toolbar {
                 ToolbarItem(placement: .primaryAction) {
                     Menu {
@@ -67,7 +79,14 @@ struct AgentListView: View {
 
     @ViewBuilder
     private var rows: some View {
-        ForEach(model.visibleAgents) { agent in
+        if ChatSwitcher.queryActive(chatQuery), listedAgents.isEmpty {
+            Text(ChatSwitcher.emptyLabel)
+                .font(.system(size: 12))
+                .foregroundStyle(.secondary)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .accessibilityLabel(ChatSwitcher.emptyLabel)
+        }
+        ForEach(listedAgents) { agent in
             row(for: agent)
                 .tag(agent.id)
                 .listRowInsets(EdgeInsets(top: 0, leading: 16, bottom: 0, trailing: 16))

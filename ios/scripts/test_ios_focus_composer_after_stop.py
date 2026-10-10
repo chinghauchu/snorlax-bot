@@ -98,7 +98,7 @@ def test_esc_focuses_composer() -> None:
     assert "UIKeyCommand.inputEscape" in COMPOSER
     assert "model.stopGeneratingFromEscape(composing: composing)" in CHAT
     esc_at = DESKTOP_APP.find("escapeStopsGenerating({")
-    esc_block = DESKTOP_APP[esc_at - 400 : esc_at + 700]
+    esc_block = DESKTOP_APP[esc_at - 1400 : esc_at + 700]
     assert "onStopGenerating()" in esc_block
     assert 'event.key !== "Escape"' in esc_block
     desktop_stop = _fn(DESKTOP_APP, "onStopGenerating()")

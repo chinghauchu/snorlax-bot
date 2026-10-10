@@ -306,6 +306,10 @@ v0.71: in-chat find is client-only (a find bar over the
 loaded transcript; iOS filters and highlights the same
 messages). Runtime idle. OpenAPI stays 0.18.0.
 
+v0.72: quick chat switcher is client-only (Cmd/Ctrl-K
+overlay on desktop; iOS chat-list name filter). Runtime
+idle. OpenAPI stays 0.18.0.
+
 ## MCP (`mcp.json`)
 
 The runtime is the MCP client. Desktop and iOS never speak MCP. Put

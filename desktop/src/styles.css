@@ -375,6 +375,93 @@ mark.find-hit.active {
   background: rgba(109, 139, 255, 0.72);
 }
 
+/* v0.72: quick chat switcher over the loaded roster. */
+.switch-backdrop {
+  position: absolute;
+  inset: 0;
+  z-index: 30;
+  background: rgba(0, 0, 0, 0.35);
+  display: flex;
+  justify-content: center;
+  padding-top: 72px;
+}
+
+.switch-overlay {
+  width: min(360px, calc(100% - 32px));
+  max-height: min(420px, calc(100% - 120px));
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  box-shadow: var(--shadow);
+  overflow: hidden;
+}
+
+.switch-overlay input {
+  height: 36px;
+  flex: none;
+  border: 0;
+  border-bottom: 1px solid var(--border);
+  background: transparent;
+  padding: 0 12px;
+  font-size: 13px;
+  outline: none;
+  color: var(--text);
+}
+
+.switch-list {
+  list-style: none;
+  margin: 0;
+  padding: 4px;
+  overflow: auto;
+}
+
+.switch-option {
+  width: 100%;
+  height: 36px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 8px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  text-align: left;
+  font-size: 13px;
+  color: var(--text);
+}
+
+.switch-option:hover:not(.active) {
+  background: var(--bg-hover);
+}
+
+.switch-option.active {
+  background: color-mix(in srgb, var(--accent) 28%, transparent);
+  box-shadow: inset 2px 0 0 var(--accent);
+}
+
+.switch-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+
+.switch-kind {
+  margin-left: auto;
+  flex: none;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.switch-empty {
+  padding: 12px 8px;
+  font-size: 12px;
+  color: var(--text-muted);
+  text-align: center;
+}
+
 [data-find-active-row="true"] {
   box-shadow: inset 0 0 0 1px var(--accent);
 }

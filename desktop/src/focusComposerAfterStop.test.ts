@@ -60,7 +60,7 @@ test("Esc abort returns focus to the composer immediately", () => {
 
   const escStart = app.indexOf("escapeStopsGenerating({");
   assert.ok(escStart >= 0, "missing escapeStopsGenerating wiring");
-  const escBlock = app.slice(escStart - 400, escStart + 700);
+  const escBlock = app.slice(escStart - 1400, escStart + 700);
   assert.match(escBlock, /event\.key !== "Escape"/);
   assert.match(escBlock, /onStopGenerating\(\)/);
   assert.doesNotMatch(escBlock, /submitTurn/);
