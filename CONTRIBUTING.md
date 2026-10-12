@@ -101,7 +101,13 @@ NVIDIA DGX Spark.
   arrived since you last viewed that chat, it stays put
   while the chat is open, Send or coming back with nothing
   new clears it, and your own bubbles and collapsed tool
-  lines do not anchor it), a display-only
+  lines do not anchor it; v0.77 when one or more chats
+  carry the unread dot, the desktop window title reads
+  (2) Snorlax-Bot and the dock or taskbar badge shows that
+  count where Tauri supports it, both clear when nothing
+  is unread, the iOS chat list title shows the same count,
+  and the app icon badge shows it only when badge
+  permission is already granted), a display-only
   Box computer preview (`GET /v1/agents/{id}/computer` JSON; Bearer PNG at
   `/computer/screenshot`; identity pane), desktop Box takeover
   (`POST /computer/session` → 201 `{ sessionId }`; `DELETE .../session` or

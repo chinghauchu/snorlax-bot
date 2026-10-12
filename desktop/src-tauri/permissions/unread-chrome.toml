@@ -1,0 +1,4 @@
+[[permission]]
+identifier = "allow-set-unread-chrome"
+description = "Set the window title and dock or taskbar badge from the unread reply count."
+commands.allow = ["set_unread_chrome"]

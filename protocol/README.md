@@ -373,6 +373,13 @@ above the first assistant reply since you last viewed that
 chat. Desktop localStorage and iOS UserDefaults keep the
 last-seen id. No new routes. OpenAPI stays 0.18.0.
 
+v0.77 unread count outside the chat list: the desktop window
+title and, where Tauri supports it, the dock or taskbar badge
+show how many chats carry the unread dot. The iOS chat list
+title matches. The app icon badge updates only when badge
+permission is already granted. No new routes. OpenAPI stays
+0.18.0.
+
 A copy is also kept at `runtime/openapi.yaml` and `desktop/openapi.yaml`
 so those trees are self-contained. Do not let the files diverge.
 

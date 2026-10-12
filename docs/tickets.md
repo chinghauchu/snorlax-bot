@@ -186,6 +186,14 @@ Concrete follow-ups after v0. Filed on GitHub against
   Send. Your own bubbles and collapsed tool lines do not
   anchor it. A day separator stays above the line. The
   last-seen id is local. No new HTTP. OpenAPI stays 0.18.0.
+  **v0.77:** unread count outside the chat list. When one
+  or more chats carry the unread dot, the desktop window
+  title reads (2) Snorlax-Bot and the dock or taskbar badge
+  shows that count where Tauri supports it. Both clear when
+  nothing is unread. The iOS chat list title shows the same
+  count. The app icon badge shows it only when badge
+  permission is already granted. No new HTTP. OpenAPI stays
+  0.18.0.
   Raw HTML still later.
   Full sandbox computer GUI (browser, VNC, terminal)
   stays later.
@@ -425,3 +433,10 @@ Concrete follow-ups after v0. Filed on GitHub against
   do not anchor it. A day separator stays above the line.
   UserDefaults keeps the last-seen id. Desktop matches
   (localStorage). OpenAPI stays 0.18.0.
+- **v0.77:** unread count outside the chat list. The chat
+  list title reads (2) Snorlax-Bot when that many chats
+  carry the unread dot. The app icon badge shows the same
+  count only when badge permission is already granted.
+  Asking on first launch would prompt, so the app does not
+  ask. Desktop matches (window title and dock or taskbar
+  badge where Tauri supports a count). OpenAPI stays 0.18.0.

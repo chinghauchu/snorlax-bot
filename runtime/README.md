@@ -326,6 +326,10 @@ v0.76: the New messages divider is client-only (desktop and
 iOS draw a muted line from a local last-seen id). Runtime
 idle. OpenAPI stays 0.18.0.
 
+v0.77: the unread count outside the chat list is client-only
+(window title, dock or taskbar badge, iOS chat list title).
+Runtime idle. OpenAPI stays 0.18.0.
+
 ## MCP (`mcp.json`)
 
 The runtime is the MCP client. Desktop and iOS never speak MCP. Put

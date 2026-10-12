@@ -264,6 +264,7 @@ import {
   replyMarksUnread,
   windowIsFocused,
 } from "./chatUnread";
+import { applyUnreadChrome, unreadChrome } from "./unreadOutside";
 import {
   ChatLastSeen,
   NEW_MESSAGES_LABEL,
@@ -688,6 +689,10 @@ export function App() {
   const [replyUnreadIds, setReplyUnreadIds] = useState<Set<string>>(() =>
     chatUnread.current.snapshot(),
   );
+  // v0.77: title and dock / taskbar badge follow the unread-dot set.
+  useEffect(() => {
+    void applyUnreadChrome(unreadChrome(replyUnreadIds));
+  }, [replyUnreadIds]);
   const windowFocusedRef = useRef(true);
   /** v0.76: last seen message id per chat. localStorage. */
   const chatLastSeen = useRef(new ChatLastSeen(browserLastSeenStorage()));
