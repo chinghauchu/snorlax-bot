@@ -187,6 +187,7 @@ import {
   assistantBubbleWide,
   splitAssistantBubbles,
 } from "./assistantBubbles";
+import { LongMessageBody } from "./LongMessageBody";
 import { bubbleTimeLabel } from "./bubbleTime";
 import { daySeparatorLabels } from "./daySeparator";
 import {
@@ -4369,26 +4370,34 @@ export function App() {
                                   tabIndex={bubbleStamp ? 0 : undefined}
                                 >
                                   <BubbleStamp label={bubbleStamp} />
-                                  {shouldRenderMarkdown({ completed }) ? (
-                                    <MarkdownBody
-                                      text={part}
-                                      knownNames={knownNames}
-                                      completed={completed}
-                                    />
-                                  ) : (
-                                    <pre className="assistant-plain">
-                                      <FindText
+                                  <LongMessageBody
+                                    completed={completed}
+                                    text={part}
+                                    activeFind={
+                                      findRowActive(bubbleRowId) === "true"
+                                    }
+                                  >
+                                    {shouldRenderMarkdown({ completed }) ? (
+                                      <MarkdownBody
                                         text={part}
-                                        active={rangeFor(bubbleRowId)}
+                                        knownNames={knownNames}
+                                        completed={completed}
                                       />
-                                      {showCaret ? (
-                                        <span
-                                          className="streaming-caret"
-                                          aria-hidden="true"
+                                    ) : (
+                                      <pre className="assistant-plain">
+                                        <FindText
+                                          text={part}
+                                          active={rangeFor(bubbleRowId)}
                                         />
-                                      ) : null}
-                                    </pre>
-                                  )}
+                                        {showCaret ? (
+                                          <span
+                                            className="streaming-caret"
+                                            aria-hidden="true"
+                                          />
+                                        ) : null}
+                                      </pre>
+                                    )}
+                                  </LongMessageBody>
                                 </div>
                               );
                             })}

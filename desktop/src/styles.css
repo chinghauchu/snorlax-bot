@@ -824,6 +824,44 @@ mark.find-hit.active {
   min-width: 0;
 }
 
+/* v0.81: completed LEFT bubbles taller than about 14 lines. 160ms
+   max-height; keep in lockstep with LONG_MESSAGE_EXPAND_MS. */
+.long-message {
+  max-width: 100%;
+  min-width: 0;
+  overflow: hidden;
+  transition: max-height 160ms ease;
+}
+
+.long-message-body {
+  max-width: 100%;
+  min-width: 0;
+}
+
+.long-message-toggle {
+  display: block;
+  margin: 6px 0 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1.2;
+  color: var(--text-muted);
+  cursor: pointer;
+  text-align: left;
+}
+
+.long-message-toggle:hover {
+  color: var(--accent);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .long-message {
+    transition: none;
+  }
+}
+
 .bubble pre {
   margin: 0;
   white-space: pre-wrap;
