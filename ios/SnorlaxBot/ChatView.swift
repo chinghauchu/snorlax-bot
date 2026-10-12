@@ -18,6 +18,11 @@ struct ChatView: View {
     @State private var findQuery = ""
     @State private var findIndex = 0
     @State private var shortcutsOpen = false
+    @State private var lightbox: ImageLightbox.Target?
+    @State private var lightboxFrame: ImageLightbox.Target?
+    @State private var lightboxPaint = ImageLightbox.Paint.hidden
+    @State private var lightboxGeneration = 0
+    @FocusState private var lightboxCloseFocused: Bool
     @State private var readingOffsetY: CGFloat = 0
     @State private var readingNearBottom = true
     @State private var readingFrames: [ReadingPlace.Frame] = []
@@ -126,7 +131,19 @@ struct ChatView: View {
         .sheet(isPresented: $shortcutsOpen) {
             ChatShortcutsSheet()
         }
+        .overlay {
+            if lightboxPaint.mounted, let frame = lightboxFrame {
+                ImageLightboxOverlay(
+                    target: frame,
+                    shown: lightboxPaint.shown,
+                    reduceMotion: reduceMotion,
+                    closeFocused: $lightboxCloseFocused,
+                    onClose: { closeLightbox() }
+                )
+            }
+        }
         .task(id: agentID) {
+            dismissLightboxImmediately()
             stick = StickToBottom.State.armed
             lastAssistantSig = ""
             expandedToolStacks = []
@@ -141,6 +158,7 @@ struct ChatView: View {
             }
         }
             .onChange(of: model.threadID) { _, _ in
+                dismissLightboxImmediately()
                 expandedToolStacks = []
                 closeFind()
             }
@@ -161,6 +179,48 @@ struct ChatView: View {
         findQuery = ""
         findIndex = 0
         findFieldFocused = false
+    }
+
+    private func openLightbox(_ target: ImageLightbox.Target) {
+        lightboxFrame = target
+        lightbox = target
+        composerFocused = false
+        lightboxGeneration += 1
+        let generation = lightboxGeneration
+        lightboxPaint = ImageLightbox.appear(reduceMotion: reduceMotion)
+        guard !reduceMotion else { return }
+        DispatchQueue.main.async {
+            guard generation == lightboxGeneration else { return }
+            lightboxPaint = ImageLightbox.shown()
+        }
+    }
+
+    private func closeLightbox() {
+        guard lightbox != nil else { return }
+        lightbox = nil
+        lightboxGeneration += 1
+        let generation = lightboxGeneration
+        let next = ImageLightbox.dismiss(reduceMotion: reduceMotion)
+        lightboxPaint = next
+        if !next.mounted {
+            lightboxFrame = nil
+            return
+        }
+        let delay = ImageLightbox.fadeSeconds(reduceMotion: reduceMotion)
+        guard delay > 0 else { return }
+        DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
+            guard generation == lightboxGeneration else { return }
+            lightboxPaint = .hidden
+            lightboxFrame = nil
+        }
+    }
+
+    /// Leave the chat: drop the overlay immediately, with no fade.
+    private func dismissLightboxImmediately() {
+        lightbox = nil
+        lightboxFrame = nil
+        lightboxPaint = .hidden
+        lightboxGeneration += 1
     }
 
     private func findBar(index: Int, total: Int) -> some View {
@@ -862,7 +922,10 @@ struct ChatView: View {
                 showRegenerate: showRegenerate,
                 completed: completed,
                 showEditAsNew: showEditAsNew,
-                showCaret: showCaret
+                showCaret: showCaret,
+                onOpenImage: { target in
+                    openLightbox(target)
+                }
             ) { jump in
                 Task { await model.openJump(channelId: jump.channelId, threadId: jump.threadId) }
             }
@@ -1084,6 +1147,10 @@ private struct ComposerBar: View {
                         model.noteComposerSelection(range)
                     },
                     onEscapeStop: { composing in
+                        if ImageLightbox.escapeCloses(open: lightbox != nil, composing: composing) {
+                            closeLightbox()
+                            return
+                        }
                         if dropTarget {
                             dropTarget = false
                             return
@@ -1388,6 +1455,7 @@ private struct MessageBubble: View {
     var completed = true
     var showEditAsNew = false
     var showCaret = false
+    var onOpenImage: (ImageLightbox.Target) -> Void = { _ in }
     var onJump: ((HandoffRef) -> Void)?
     @Environment(AppModel.self) private var model
     @Environment(\.chatFind) private var find
@@ -1692,7 +1760,7 @@ private struct MessageBubble: View {
     @ViewBuilder
     private var userAttachments: some View {
         let atts = message.userRightAttachments
-        let images = atts.filter { $0.kind == .image }
+        let images = atts.filter { ImageLightbox.isImage($0.kind) }
         let videos = atts.filter { $0.kind == .video }
         let files = atts.filter { $0.kind == .file }
         if images.isEmpty && videos.isEmpty && files.isEmpty && localPreviews.isEmpty {
@@ -1700,22 +1768,48 @@ private struct MessageBubble: View {
         } else {
             VStack(alignment: .leading, spacing: 6) {
                 ForEach(images) { image in
-                    RemoteImage(urlString: image.url, mime: "image/*")
-                        .frame(maxWidth: 220, maxHeight: 160)
-                        .clipShape(RoundedRectangle(cornerRadius: 8))
+                    Button {
+                        onOpenImage(
+                            ImageLightbox.Target(
+                                id: image.id,
+                                url: image.url,
+                                name: image.name,
+                                local: nil
+                            )
+                        )
+                    } label: {
+                        RemoteImage(urlString: image.url, mime: "image/*")
+                            .frame(maxWidth: 220, maxHeight: 160)
+                            .clipShape(RoundedRectangle(cornerRadius: 8))
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel(ImageLightbox.label(for: image.name))
                 }
                 ForEach(videos) { video in
                     RemoteVideo(urlString: video.url)
                         .frame(width: 220, height: 160)
                 }
                 if images.isEmpty && videos.isEmpty {
-                    ForEach(Array(localPreviews.enumerated()), id: \.offset) { _, data in
+                    ForEach(Array(localPreviews.enumerated()), id: \.offset) { offset, data in
                         if let image = UIImage(data: data) {
-                            Image(uiImage: image)
-                                .resizable()
-                                .scaledToFit()
-                                .frame(maxWidth: 220, maxHeight: 160)
-                                .clipShape(RoundedRectangle(cornerRadius: 8))
+                            Button {
+                                onOpenImage(
+                                    ImageLightbox.Target(
+                                        id: "local-\(message.id)-\(offset)",
+                                        url: "",
+                                        name: ImageLightbox.label,
+                                        local: data
+                                    )
+                                )
+                            } label: {
+                                Image(uiImage: image)
+                                    .resizable()
+                                    .scaledToFit()
+                                    .frame(maxWidth: 220, maxHeight: 160)
+                                    .clipShape(RoundedRectangle(cornerRadius: 8))
+                            }
+                            .buttonStyle(.plain)
+                            .accessibilityLabel(ImageLightbox.label)
                         }
                     }
                 }
