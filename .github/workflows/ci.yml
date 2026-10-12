@@ -98,3 +98,4 @@ jobs:
           python3 ios/scripts/test_ios_unread_outside.py
           python3 ios/scripts/test_ios_failed_send.py
           python3 ios/scripts/test_ios_image_lightbox.py
+          python3 ios/scripts/test_ios_last_message_preview.py

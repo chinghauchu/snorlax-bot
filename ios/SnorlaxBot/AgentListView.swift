@@ -140,6 +140,13 @@ private struct AgentRow: View {
                         .foregroundStyle(.secondary)
                         .lineLimit(1)
                 }
+                if let preview = model.chatPreviews[agent.id], !preview.isEmpty {
+                    Text(preview)
+                        .font(.system(size: 12))
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                        .truncationMode(.tail)
+                }
             }
             Spacer(minLength: 0)
             if model.showsUnreadDot(agent) {
@@ -149,7 +156,7 @@ private struct AgentRow: View {
                     .accessibilityLabel("Unread")
             }
         }
-        .frame(height: 44)
+        .frame(minHeight: 44, alignment: .center)
         .contentShape(Rectangle())
     }
 }
