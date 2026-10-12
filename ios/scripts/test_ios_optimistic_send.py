@@ -96,19 +96,21 @@ def test_failure_restore_and_couldnt_send() -> None:
     assert "static func isHttpSendFailure" in OPT
     send = _fn(MODEL, "send()")
     assert "OptimisticSend.isHttpSendFailure(status)" in send
-    assert "OptimisticSend.fail(messages, id: user.id)" in send
-    assert "draft = content" in send
-    assert "pendingAttachments = chips" in send
-    assert "composerError = failed.hint" in send
+    assert "noteFailedSend(" in send
+    assert "FailedSend.isPreReplyFailure" in send
+    assert "draft = content" not in send
+    assert "composerError = failed.hint" not in send
+    assert "OptimisticSend.fail" not in send
     assert "OptimisticSend.composerHint(error:" in CHAT
     assert ".font(.system(size: 12))" in CHAT
     assert ".foregroundStyle(.secondary)" in CHAT
-    assert "failOptimistic(" in DESKTOP_APP
+    assert "rememberFailedSend(" in DESKTOP_APP
+    assert "failOptimistic(" not in DESKTOP_APP
     assert "isHttpSendFailure" in DESKTOP_APP
-    assert "if (content) setDraft(content)" in DESKTOP_APP
-    assert "COULDNT_SEND" in DESKTOP_APP
+    assert "if (content) setDraft(content)" not in DESKTOP_APP
     assert "composerSendHint" in DESKTOP_APP
     assert 'className="composer-hint"' in DESKTOP_APP
+    assert 'className="failed-send"' in DESKTOP_APP
 
 
 def test_upload_first_block_second_send_regenerate_unchanged() -> None:

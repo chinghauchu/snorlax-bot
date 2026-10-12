@@ -96,3 +96,4 @@ jobs:
           python3 ios/scripts/test_ios_chat_drop.py
           python3 ios/scripts/test_ios_new_messages.py
           python3 ios/scripts/test_ios_unread_outside.py
+          python3 ios/scripts/test_ios_failed_send.py

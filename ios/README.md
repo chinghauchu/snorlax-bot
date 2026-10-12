@@ -192,6 +192,11 @@ unread dot, and Snorlax-Bot when none do. The app icon
 badge shows the same count only when badge permission is
 already granted. Asking on first launch would prompt, so
 the app does not ask. OpenAPI stays 0.18.0.
+v0.78: retry a failed send. When Send fails because the
+network or runtime is down, or an error arrives before any
+reply, the user bubble stays in the transcript, muted, with
+Couldn't send · Retry. Tap Retry, or long-press Retry /
+Remove. Nothing retries on its own. OpenAPI stays 0.18.0.
 v0.32: dedicated `kind=approve` LEFT card for mutating shell (not a
 WidgetCard fork). Approve / Deny / ×; long-press copies the command.
 Question widgets
@@ -314,6 +319,7 @@ Output: `SnorlaxBot/Generated/V1Types.swift`. Do not hand-edit that file.
 - `SnorlaxBot/ChatDrop.swift` — v0.75 drop files or images onto the composer (same pending chips; no HTTP)
 - `SnorlaxBot/NewMessages.swift` — v0.76 New messages divider (UserDefaults last-seen id; no HTTP)
 - `SnorlaxBot/UnreadOutside.swift` — v0.77 unread count on the chat list title (icon badge only when already allowed; no HTTP)
+- `SnorlaxBot/FailedSend.swift` — v0.78 retry a failed send (muted bubble; Couldn't send · Retry; no HTTP)
 - `SnorlaxBot/SendMuted.swift` — v0.55 Send muted while generating
 - `SnorlaxBot/CompactToolTraces.swift` — v0.56 compact tool traces (`N tools` + chevron)
 - `SnorlaxBot/MidStreamPlaintext.swift` — v0.57 mid-stream LEFT plaintext until complete / Stop

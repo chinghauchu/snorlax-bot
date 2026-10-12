@@ -231,16 +231,28 @@ import {
   type StickState,
 } from "./stickToBottom";
 import {
-  COULDNT_SEND,
   absorbServerUser,
   composerSendHint,
-  failOptimistic,
   insertOptimistic,
   isHttpSendFailure,
   optimisticUserMessage,
   reconcileOptimistic,
   shouldBlockSend,
 } from "./optimisticSend";
+import {
+  FAILED_SEND_COULDNT,
+  FAILED_SEND_REMOVE,
+  FAILED_SEND_RETRY,
+  dismissFailedSend,
+  failedSendsForChat,
+  isPreReplyStreamFailure,
+  markFailedSend,
+  orphanUserId,
+  paintFailedSends,
+  replyStarted,
+  retryBlocked,
+  type FailedSend,
+} from "./failedSend";
 import {
   STOP_LABEL,
   escapeStopsGenerating,
@@ -709,6 +721,10 @@ export function App() {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const messagesRef = useRef(messages);
   messagesRef.current = messages;
+  const [failedSends, setFailedSends] = useState<FailedSend<ChatMessage>[]>([]);
+  const failedSendsRef = useRef(failedSends);
+  failedSendsRef.current = failedSends;
+  const hiddenOrphans = useRef(new Set<string>());
   /** v0.74: session reading place per chat. Not persisted. */
   const readingPlaces = useRef(new Map<string, ReadingPlace>());
   const pendingRestore = useRef<{ key: string; gen: number } | null>(null);
@@ -1445,7 +1461,9 @@ export function App() {
         setThreadId(null);
         const epoch = beginNewMessagesLoad(preferred, null);
         if (preferred) {
-          setMessages(await listMessages(next, preferred));
+          setMessages(
+            commitTranscript(await listMessages(next, preferred), preferred, null),
+          );
           focusComposer();
           placeCaretAtEnd();
         } else {
@@ -1481,6 +1499,9 @@ export function App() {
       moveComposer(SEED_CHANNEL_ID, null);
       setActiveId(SEED_CHANNEL_ID);
       setThreadId(null);
+      failedSendsRef.current = [];
+      setFailedSends([]);
+      hiddenOrphans.current = new Set();
       setMessages([]);
       setLoadError(null);
       return;
@@ -1589,7 +1610,7 @@ export function App() {
     let rows: ChatMessage[] = [];
     if (!session) {
       if (transcriptGenRef.current !== gen) return;
-      setMessages(rows);
+      setMessages(commitTranscript(rows, id, thread));
       setTranscriptGen(gen);
       finishNewMessagesLoad(epoch);
       return;
@@ -1605,7 +1626,7 @@ export function App() {
       setComposerError(describeError(err));
     }
     if (transcriptGenRef.current !== gen) return;
-    setMessages(rows);
+    setMessages(commitTranscript(rows, id, thread));
     setTranscriptGen(gen);
     finishNewMessagesLoad(epoch);
     focusComposer();
@@ -2162,7 +2183,16 @@ export function App() {
         publishReplyUnread();
         const epoch = beginNewMessagesLoad(next, null);
         try {
-          setMessages(next ? await listMessages(session, next) : []);
+          const keptFailed = failedSendsRef.current.filter(
+            (row) => row.agentId !== doomed.id,
+          );
+          failedSendsRef.current = keptFailed;
+          setFailedSends(keptFailed);
+          setMessages(
+            next
+              ? commitTranscript(await listMessages(session, next), next, null)
+              : [],
+          );
         } finally {
           finishNewMessagesLoad(epoch);
         }
@@ -2174,6 +2204,80 @@ export function App() {
     }
   }
 
+  function commitTranscript(
+    listed: ChatMessage[],
+    agentId: string | null,
+    thread: string | null,
+  ): ChatMessage[] {
+    if (!agentId) return listed;
+    return paintFailedSends(
+      listed,
+      failedSendsForChat(failedSendsRef.current, agentId, thread),
+      hiddenOrphans.current,
+    );
+  }
+
+  function rememberFailedSend(
+    message: ChatMessage,
+    origin: { agentId: string; threadId: string | null },
+    content: string,
+    attachmentIds: string[],
+    mentionIds: string[],
+    orphanServerId: string | null,
+  ) {
+    if (orphanServerId) hiddenOrphans.current.add(orphanServerId);
+    const next = markFailedSend(failedSendsRef.current, {
+      id: message.id,
+      agentId: origin.agentId,
+      threadId: origin.threadId,
+      content,
+      attachmentIds,
+      mentionIds,
+      message,
+      orphanServerId,
+    });
+    failedSendsRef.current = next;
+    setFailedSends(next);
+    const here = convoRef.current;
+    if (
+      here.agentId === origin.agentId &&
+      here.threadId === origin.threadId &&
+      !messagesRef.current.some((row) => row.id === message.id)
+    ) {
+      setMessages((prev) =>
+        prev.some((row) => row.id === message.id) ? prev : [...prev, message],
+      );
+    }
+  }
+
+  function releasePendingPreviews(rows: PendingAttachment[] | undefined) {
+    if (!rows) return;
+    for (const row of rows) {
+      if (row.previewUrl) URL.revokeObjectURL(row.previewUrl);
+    }
+  }
+
+  async function lookupOrphanUser(
+    agentId: string,
+    thread: string | null,
+    beforeIds: ReadonlySet<string>,
+    content: string,
+  ): Promise<string | null> {
+    if (!session) return null;
+    try {
+      const listed = await listMessages(
+        session,
+        agentId,
+        thread ? { threadId: thread } : undefined,
+      );
+      return orphanUserId(beforeIds, listed, content, (row) =>
+        isUserSender(row.senderId, row.role),
+      );
+    } catch {
+      return null;
+    }
+  }
+
   async function submitTurn(opts: {
     content: string;
     images?: ImageIn[];
@@ -2181,6 +2285,7 @@ export function App() {
     attachments?: ChatMessage["attachments"];
     mentionIds?: string[];
     optimisticUser?: boolean;
+    reuseOptimisticId?: string;
     restoreAttachments?: PendingAttachment[];
     draftOrigin?: ChatDraftKey;
     extra?: {
@@ -2212,20 +2317,39 @@ export function App() {
     const extra = opts.extra;
     let openedPluginId: string | null = null;
     let userMsg: ChatMessage | null = null;
+    let sawReply = false;
+    let streamError: string | null = null;
+    const beforeIds = new Set(messagesRef.current.map((row) => row.id));
+    const originAgent = opts.draftOrigin?.agentId ?? streamChatId;
+    const originThread = opts.draftOrigin
+      ? opts.draftOrigin.threadId
+      : active.kind === "channel"
+        ? threadId
+        : null;
+    const attachmentIds =
+      extra?.attachmentIds ??
+      (opts.attachments ?? []).map((row) => row.id);
     const ac = new AbortController();
     abortRef.current = ac;
     if (opts.optimisticUser) {
       userMsg = optimisticUserMessage({
+        id: opts.reuseOptimisticId,
         agentId: active.id,
         content,
         images: localImages,
         attachments: opts.attachments ?? [],
       });
-      setMessages((prev) => insertOptimistic(prev, userMsg!));
+      setMessages((prev) => {
+        if (prev.some((row) => row.id === userMsg!.id)) {
+          return prev.map((row) => (row.id === userMsg!.id ? userMsg! : row));
+        }
+        return insertOptimistic(prev, userMsg!);
+      });
     }
     setToolTraces([]);
     const handlers: StreamHandlers = {
       onDelta(messageId, delta, sender) {
+        if (replyStarted({ delta })) sawReply = true;
         if (active.kind === "channel" && !threadId) return;
         setMessages((prev) => {
           const existing = prev.find((m) => m.id === messageId);
@@ -2255,6 +2379,20 @@ export function App() {
         });
       },
       onDone(message) {
+        if (
+          message &&
+          replyStarted({
+            isUser: isUserSender(message.senderId, message.role),
+            isTool: isToolLine(message),
+            isCard:
+              message.kind === "widget" ||
+              message.kind === "connect" ||
+              message.kind === "approve",
+            content: message.content,
+          })
+        ) {
+          sawReply = true;
+        }
         if (message && isFinishedAssistantReply(message)) {
           noteReplyUnread(streamChatId);
         }
@@ -2289,9 +2427,14 @@ export function App() {
         }
       },
       onError(code, message) {
+        if (userMsg && !sawReply) {
+          streamError = message || code;
+          return;
+        }
         setComposerError(`${code}: ${message}`);
       },
       onTool(trace) {
+        if (replyStarted({ isTool: true })) sawReply = true;
         if (active.kind === "channel" && !threadId) return;
         setToolTraces((prev) => {
           const without = prev.filter((item) => item.id !== trace.id);
@@ -2324,6 +2467,27 @@ export function App() {
         extra,
         ac.signal,
       );
+      if (
+        userMsg &&
+        isPreReplyStreamFailure({ sawReply, error: streamError })
+      ) {
+        const orphan = await lookupOrphanUser(
+          originAgent,
+          originThread,
+          beforeIds,
+          content,
+        );
+        rememberFailedSend(
+          userMsg,
+          { agentId: originAgent, threadId: originThread },
+          content,
+          attachmentIds,
+          mentionIds,
+          orphan,
+        );
+        releasePendingPreviews(opts.restoreAttachments);
+        return;
+      }
       if (openedPluginId) {
         await waitUntilPluginConnected(session, openedPluginId);
         await refreshPlugins();
@@ -2333,8 +2497,13 @@ export function App() {
         active.id,
         active.kind === "channel" && threadId ? { threadId } : undefined,
       );
+      const viewThread = active.kind === "channel" ? threadId : null;
       setMessages(
-        userMsg ? reconcileOptimistic([], userMsg.id, listed) : listed,
+        commitTranscript(
+          userMsg ? reconcileOptimistic([], userMsg.id, listed) : listed,
+          active.id,
+          viewThread,
+        ),
       );
       setToolTraces([]);
       if (active.kind !== "channel") {
@@ -2346,11 +2515,7 @@ export function App() {
         }
       }
       pickedMentions.current.clear();
-      if (opts.restoreAttachments) {
-        for (const row of opts.restoreAttachments) {
-          if (row.previewUrl) URL.revokeObjectURL(row.previewUrl);
-        }
-      }
+      releasePendingPreviews(opts.restoreAttachments);
     } catch (err) {
       if (isAbortError(err) || ac.signal.aborted) {
         if (!shouldRefetchAfterStop()) {
@@ -2361,28 +2526,24 @@ export function App() {
       if (userMsg) {
         const status = err instanceof ApiError ? err.status : 0;
         if (status === 0 || isHttpSendFailure(status)) {
-          setMessages((prev) => failOptimistic(prev, userMsg!.id).messages);
-          const origin = opts.draftOrigin;
-          if (origin && content) {
-            chatDrafts.current.restore(
-              origin.agentId,
-              origin.threadId,
+          let orphan: string | null = null;
+          if (status === 0 || status >= 500) {
+            orphan = await lookupOrphanUser(
+              originAgent,
+              originThread,
+              beforeIds,
               content,
             );
-            const here = convoRef.current;
-            if (
-              here.agentId === origin.agentId &&
-              here.threadId === origin.threadId
-            ) {
-              draftRef.current = content;
-              if (content) setDraft(content);
-              placeCaretAtEnd();
-            }
-          } else if (content) setDraft(content);
-          if (opts.restoreAttachments?.length) {
-            setPendingAttachments(opts.restoreAttachments);
           }
-          setComposerError(COULDNT_SEND);
+          rememberFailedSend(
+            userMsg,
+            { agentId: originAgent, threadId: originThread },
+            content,
+            attachmentIds,
+            mentionIds,
+            orphan,
+          );
+          releasePendingPreviews(opts.restoreAttachments);
         } else {
           setComposerError(describeError(err));
         }
@@ -2401,7 +2562,8 @@ export function App() {
             active.id,
             active.kind === "channel" && threadId ? { threadId } : undefined,
           );
-          setMessages(listed);
+          const viewThread = active.kind === "channel" ? threadId : null;
+          setMessages(commitTranscript(listed, active.id, viewThread));
         } catch {
           /* keep local transcript */
         }
@@ -2414,6 +2576,49 @@ export function App() {
         focusComposer();
       }
     }
+  }
+
+  function dismissFailed(id: string) {
+    const row = failedSendsRef.current.find((item) => item.id === id);
+    if (row?.orphanServerId) hiddenOrphans.current.add(row.orphanServerId);
+    const next = dismissFailedSend(failedSendsRef.current, id);
+    failedSendsRef.current = next;
+    setFailedSends(next);
+    setMessages((prev) => prev.filter((item) => item.id !== id));
+  }
+
+  async function retryFailedSend(id: string) {
+    if (!session || !active || inFlight.current || retryBlocked(busy) || sendBlocked) {
+      return;
+    }
+    const row = failedSendsRef.current.find((item) => item.id === id);
+    if (!row) return;
+    if (row.agentId !== active.id || row.threadId !== threadId) return;
+    if (row.orphanServerId) hiddenOrphans.current.add(row.orphanServerId);
+    const next = dismissFailedSend(failedSendsRef.current, id);
+    failedSendsRef.current = next;
+    setFailedSends(next);
+    inFlight.current = true;
+    setBusy(true);
+    newMessagesPlace.current = clearNewMessages(newMessagesPlace.current);
+    watchingNewMessages.current = true;
+    setDividerAnchorId(null);
+    snapStick();
+    focusComposer();
+    await submitTurn({
+      content: row.content,
+      attachments: row.message.attachments,
+      mentionIds: row.mentionIds,
+      optimisticUser: true,
+      reuseOptimisticId: row.id,
+      draftOrigin: { agentId: row.agentId, threadId: row.threadId },
+      extra: {
+        attachmentIds: row.attachmentIds.length
+          ? row.attachmentIds
+          : undefined,
+      },
+      holdBusy: true,
+    });
   }
 
   function onStopGenerating() {
@@ -3959,6 +4164,11 @@ export function App() {
                     ) : mine ? (
                       <div
                         className="bubble user"
+                        data-failed={
+                          failedSends.some((row) => row.id === message.id)
+                            ? "true"
+                            : undefined
+                        }
                         data-find-row={message.id}
                         data-find-active-row={findRowActive(message.id)}
                         tabIndex={bubbleStamp ? 0 : undefined}
@@ -4063,6 +4273,29 @@ export function App() {
                         ) : null}
                       </div>
                     )}
+                    {mine && failedSends.some((row) => row.id === message.id) ? (
+                      <p className="failed-send" role="status">
+                        <span>{FAILED_SEND_COULDNT}</span>
+                        <span aria-hidden="true"> · </span>
+                        <button
+                          type="button"
+                          className="failed-send-retry"
+                          disabled={retryBlocked(busy)}
+                          onClick={() => void retryFailedSend(message.id)}
+                        >
+                          {FAILED_SEND_RETRY}
+                        </button>
+                        <span aria-hidden="true"> · </span>
+                        <button
+                          type="button"
+                          className="failed-send-remove"
+                          aria-label={FAILED_SEND_REMOVE}
+                          onClick={() => dismissFailed(message.id)}
+                        >
+                          {FAILED_SEND_REMOVE}
+                        </button>
+                      </p>
+                    ) : null}
                     {mine && jump ? (
                       <button
                         type="button"

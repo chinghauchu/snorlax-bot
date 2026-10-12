@@ -297,16 +297,11 @@ test("desktop swaps on loadConversation, clears on Send, restores to the origin 
   assert.match(send, /setDraft\(""\)/);
   assert.ok(send.indexOf("chatDrafts.current.clear") < send.indexOf('setDraft("")'));
 
-  const fail = sliceFn(app, "if (userMsg)", "setComposerError(COULDNT_SEND)");
-  assert.match(fail, /chatDrafts\.current\.restore\(/);
-  assert.match(fail, /opts\.draftOrigin/);
-  assert.match(fail, /convoRef\.current/);
-  assert.match(fail, /if \(content\) setDraft\(content\)/);
-  assert.ok(
-    fail.indexOf("here.agentId === origin.agentId") <
-      fail.indexOf("if (content) setDraft(content)"),
-  );
-  assert.match(fail, /setPendingAttachments\(opts\.restoreAttachments\)/);
+  const fail = sliceFn(app, "if (userMsg)", "setComposerError(describeError(err))");
+  assert.match(fail, /rememberFailedSend\(/);
+  assert.doesNotMatch(fail, /chatDrafts\.current\.restore\(/);
+  assert.doesNotMatch(fail, /setDraft\(content\)/);
+  assert.doesNotMatch(fail, /setPendingAttachments\(opts\.restoreAttachments\)/);
 
   assert.match(app, /aria-label="Back to timeline"[\s\S]*loadConversation\(active\.id, null\)/);
   assert.match(pkg, /chatDrafts\.test\.ts/);

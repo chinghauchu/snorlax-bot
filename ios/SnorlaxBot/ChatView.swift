@@ -1541,6 +1541,10 @@ private struct MessageBubble: View {
                     .padding(.vertical, 8)
                     .background(Color.accentColor.opacity(0.22), in: RoundedRectangle(cornerRadius: 16))
                     .overlay(findStroke(message.id))
+                    .opacity(model.failedSend(id: message.id) == nil ? 1 : 0.55)
+                    .transaction { transaction in
+                        transaction.animation = nil
+                    }
                     .modifier(timeMenu)
                 }
                 .padding(.horizontal, 12)
@@ -1630,6 +1634,30 @@ private struct MessageBubble: View {
                         }
                     }
                 }
+                .padding(.horizontal, 12)
+            }
+            if isUser, model.failedSend(id: message.id) != nil {
+                HStack(spacing: 0) {
+                    Text(FailedSend.couldnt)
+                        .accessibilityLabel(FailedSend.line)
+                    Text(" · ")
+                        .accessibilityHidden(true)
+                    Button(FailedSend.retry) {
+                        Task { await model.retryFailedSend(id: message.id) }
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(FailedSend.retryBlocked(busy: model.isSending))
+                    .foregroundStyle(Color.accentColor)
+                    Text(" · ")
+                        .accessibilityHidden(true)
+                    Button(FailedSend.remove) {
+                        model.dismissFailedSend(id: message.id)
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel(FailedSend.remove)
+                }
+                .font(.system(size: 12))
+                .foregroundStyle(.secondary)
                 .padding(.horizontal, 12)
             }
             if isUser, let jump = message.visibleJump(in: agents) {
@@ -1731,10 +1759,14 @@ private struct MessageBubble: View {
             showRegenerate: showRegenerate,
             speaking: model.speakingMessageId == message.id,
             showEditAsNew: showEditAsNew,
+            showFailedSend: model.failedSend(id: message.id) != nil,
+            retryDisabled: FailedSend.retryBlocked(busy: model.isSending),
             onCopy: { copyMessageText() },
             onSpeak: { Task { await model.toggleSpeak(message: message) } },
             onRegenerate: { Task { await model.regenerate() } },
-            onEditAsNew: { model.editAsNewMessage(message.content) }
+            onEditAsNew: { model.editAsNewMessage(message.content) },
+            onRetry: { Task { await model.retryFailedSend(id: message.id) } },
+            onRemove: { model.dismissFailedSend(id: message.id) }
         )
     }
 
@@ -1762,14 +1794,27 @@ private struct BubbleTimestampMenu: ViewModifier {
     var showRegenerate: Bool
     var speaking: Bool
     var showEditAsNew: Bool
+    var showFailedSend: Bool = false
+    var retryDisabled: Bool = false
     let onCopy: () -> Void
     let onSpeak: () -> Void
     let onRegenerate: () -> Void
     let onEditAsNew: () -> Void
+    var onRetry: () -> Void = {}
+    var onRemove: () -> Void = {}
+
+    @ViewBuilder
+    private var failedSendActions: some View {
+        if showFailedSend {
+            Button(FailedSend.retry) { onRetry() }
+                .disabled(retryDisabled)
+            Button(FailedSend.remove) { onRemove() }
+        }
+    }
 
     func body(content: Content) -> some View {
         if let stamp {
-            let hasActions = showCopy || showSpeak || showRegenerate
+            let hasActions = showCopy || showSpeak || showRegenerate || showFailedSend || showEditAsNew
             if hasActions {
                 content.contextMenu {
                     Section {
@@ -1785,6 +1830,7 @@ private struct BubbleTimestampMenu: ViewModifier {
                         if showEditAsNew {
                             Button(RecallDraft.editAsNewMessage) { onEditAsNew() }
                         }
+                        failedSendActions
                     } header: {
                         Text(stamp)
                             .font(.system(size: 12))
@@ -1795,14 +1841,14 @@ private struct BubbleTimestampMenu: ViewModifier {
                 content.contextMenu {
                     Button(stamp) {}
                         .disabled(true)
-                    if showEditAsNew {
-                        Button(RecallDraft.editAsNewMessage) { onEditAsNew() }
-                    }
                 }
             }
-        } else if showEditAsNew {
+        } else if showFailedSend || showEditAsNew {
             content.contextMenu {
-                Button(RecallDraft.editAsNewMessage) { onEditAsNew() }
+                if showEditAsNew {
+                    Button(RecallDraft.editAsNewMessage) { onEditAsNew() }
+                }
+                failedSendActions
             }
         } else {
             content

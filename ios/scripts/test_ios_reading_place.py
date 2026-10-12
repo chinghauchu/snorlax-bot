@@ -132,7 +132,7 @@ def test_chat_restores_and_send_still_snaps() -> None:
     end = MODEL.index("func createAgent", start)
     load = MODEL[start:end]
     assert load.index("readingPublishLocked = true") < load.index("selectedAgentID = id")
-    assert load.index("messages = rows") < load.index("readingTranscriptToken += 1")
+    assert load.index("messages = showListed(rows") < load.index("readingTranscriptToken += 1")
     assert "readingPlaces[key] = ReadingPlace.capture" in MODEL
     assert "func consumeReadingRestore" in MODEL
     assert "stickBump += 1" in MODEL

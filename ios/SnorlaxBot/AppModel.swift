@@ -4,6 +4,51 @@ import Observation
 import SwiftUI
 import UIKit
 
+/// Stream flags for one Send. Mutated from the SSE callback so a
+/// pre-reply error is visible when the request returns. No timer.
+private final class SendWatch: @unchecked Sendable {
+    var sawReply = false
+    var streamError: String?
+    let beforeIDs: Set<String>
+
+    init(beforeIDs: Set<String>) {
+        self.beforeIDs = beforeIDs
+    }
+
+    func observe(_ event: RuntimeClient.StreamEvent) {
+        switch event {
+        case .delta(_, let text, _, _, _):
+            if FailedSend.replyStarted(
+                delta: text,
+                isUser: false,
+                isTool: false,
+                isCard: false,
+                content: ""
+            ) {
+                sawReply = true
+            }
+        case .tool:
+            sawReply = true
+        case .done(let saved):
+            if FailedSend.replyStarted(
+                delta: nil,
+                isUser: saved.isFromUser,
+                isTool: saved.isToolLine,
+                isCard: saved.isWidget || saved.isConnect || saved.isApprove,
+                content: saved.content
+            ) {
+                sawReply = true
+            }
+        case .error(let message):
+            if !sawReply {
+                streamError = message
+            }
+        default:
+            break
+        }
+    }
+}
+
 @MainActor
 @Observable
 final class AppModel {
@@ -76,6 +121,10 @@ final class AppModel {
     var attachError: String?
     var attachInFlight = 0
     var isSending = false
+    /// v0.78 failed Sends for this session. Not persisted. No HTTP.
+    var failedSends: [FailedSendRecord] = []
+    var hiddenOrphanIDs: Set<String> = []
+    private var retryOverride: FailedSendRecord?
     var errorMessage: String?
     var composerError: String?
     var wantsComposerFocus = false
@@ -413,7 +462,7 @@ final class AppModel {
         )
         newMessagesAnchorID = nil
         newMessagesReturning = true
-        messages = rows
+        messages = showListed(rows, agentId: id, threadId: thread)
         newMessagesReturning = false
         pendingReadingKey = ReadingPlace.key(agentId: id, threadId: thread)
         readingTranscriptToken += 1
@@ -979,15 +1028,25 @@ final class AppModel {
         dictation = .idle
     }
 
+    func retryFailedSend(id: String) async {
+        guard !FailedSend.retryBlocked(busy: isSending) else { return }
+        guard !isAttaching else { return }
+        guard let row = failedSends.first(where: { $0.id == id }) else { return }
+        guard let agent = selectedAgent, row.agentId == agent.id, row.threadId == threadID else { return }
+        retryOverride = row
+        await send()
+    }
+
     func send() async {
+        let retry = retryOverride
+        retryOverride = nil
         cancelDictation()
         dictationEpoch += 1
         guard let client, let agent = selectedAgent else { return }
         guard !isSending, !isAttaching else { return }
-        let content = draft.trimmingCharacters(in: .whitespacesAndNewlines)
-        let chips = pendingAttachments
-        guard !content.isEmpty || !chips.isEmpty else { return }
-        guard attachError == nil else { return }
+        if let retry {
+            guard retry.agentId == agent.id, retry.threadId == threadID else { return }
+        }
         isSending = true
         defer {
             isSending = false
@@ -995,34 +1054,64 @@ final class AppModel {
                 wantsComposerFocus = true
             }
         }
-        let mentionIDs = mentionIDs(in: content)
+
+        let content: String
+        let chips: [PendingChatAttachment]
+        let mentionIDs: [String]
+        let user: Message
         let originAgentID = agent.id
         let originThreadID = threadID
-        chatDrafts.clear(agentId: originAgentID, threadId: originThreadID)
-        draft = ""
-        pendingComposerCaret = 0
-        pickedMentions = [:]
-        pendingAttachments = []
-        attachError = nil
-        composerError = nil
+        if let retry {
+            content = retry.content
+            mentionIDs = retry.mentionIds
+            chips = retry.message.attachments.map {
+                PendingChatAttachment(
+                    id: $0.id,
+                    kind: $0.kind,
+                    name: $0.name,
+                    url: $0.url,
+                    size: $0.size,
+                    previewData: nil,
+                    posterImage: nil
+                )
+            }
+            user = retry.message
+            if let orphan = retry.orphanServerId {
+                hiddenOrphanIDs.insert(orphan)
+            }
+            failedSends = FailedSend.dismiss(failedSends, id: retry.id)
+        } else {
+            content = draft.trimmingCharacters(in: .whitespacesAndNewlines)
+            chips = pendingAttachments
+            guard !content.isEmpty || !chips.isEmpty else { return }
+            guard attachError == nil else { return }
+            mentionIDs = self.mentionIDs(in: content)
+            chatDrafts.clear(agentId: originAgentID, threadId: originThreadID)
+            draft = ""
+            pendingComposerCaret = 0
+            pickedMentions = [:]
+            pendingAttachments = []
+            attachError = nil
+            composerError = nil
+            user = Message.optimisticUser(
+                agentId: agent.id,
+                content: content,
+                attachments: chips.map(\.asAttachment)
+            )
+            let previews = chips.compactMap(\.previewData)
+            if !previews.isEmpty {
+                localPreviews[user.id] = previews
+            }
+            messages = OptimisticSend.insert(messages, user)
+        }
         wantsComposerFocus = true
         stickBump += 1
         newMessagesPlace = NewMessages.clear(newMessagesPlace)
         newMessagesAnchorID = nil
         watchingNewMessages = true
-
-        let user = Message.optimisticUser(
-            agentId: agent.id,
-            content: content,
-            attachments: chips.map(\.asAttachment)
-        )
-        let previews = chips.compactMap(\.previewData)
-        if !previews.isEmpty {
-            localPreviews[user.id] = previews
-        }
-        messages = OptimisticSend.insert(messages, user)
         toolTraces = []
 
+        let watch = SendWatch(beforeIDs: Set(messages.map(\.id)))
         let epoch = streamEpoch
         let work = Task { @MainActor in
             do {
@@ -1031,19 +1120,50 @@ final class AppModel {
                     content: content,
                     images: [],
                     mentions: mentionIDs,
-                    replyTo: agent.isChannel ? threadID : nil,
+                    replyTo: agent.isChannel ? originThreadID : nil,
                     channelId: agent.isChannel ? nil : lastExtraChannelID,
                     attachmentIds: chips.map(\.id)
                 ) { [weak self] event in
+                    watch.observe(event)
+                    if watch.streamError != nil, !watch.sawReply, case .error = event {
+                        return
+                    }
                     Task { @MainActor in
                         guard let self, self.streamEpoch == epoch else { return }
                         self.handle(event, agentId: agent.id)
                     }
                 }
                 if Task.isCancelled || self.streamEpoch != epoch { return }
+                if FailedSend.isPreReplyFailure(sawReply: watch.sawReply, error: watch.streamError) {
+                    var orphan: String?
+                    if let listed = try? await client.listMessages(
+                        agentId: originAgentID,
+                        threadId: originThreadID
+                    ) {
+                        orphan = FailedSend.orphanUserID(
+                            before: watch.beforeIDs,
+                            listed: listed,
+                            content: content
+                        )
+                    }
+                    noteFailedSend(
+                        user: user,
+                        agentId: originAgentID,
+                        threadId: originThreadID,
+                        content: content,
+                        chips: chips,
+                        mentionIDs: mentionIDs,
+                        orphan: orphan
+                    )
+                    return
+                }
                 if selectedAgentID == agent.id {
                     let listed = try await client.listMessages(agentId: agent.id, threadId: threadID)
-                    messages = OptimisticSend.reconcile(listed: listed)
+                    messages = showListed(
+                        OptimisticSend.reconcile(listed: listed),
+                        agentId: agent.id,
+                        threadId: threadID
+                    )
                     toolTraces = []
                     prunePreviews()
                     if !agent.isChannel {
@@ -1066,18 +1186,28 @@ final class AppModel {
                     status = 0
                 }
                 if status == 0 || OptimisticSend.isHttpSendFailure(status) {
-                    let failed = OptimisticSend.fail(messages, id: user.id)
-                    messages = failed.messages
-                    localPreviews[user.id] = nil
-                    if !content.isEmpty {
-                        chatDrafts.restore(agentId: originAgentID, threadId: originThreadID, text: content)
-                        if selectedAgentID == originAgentID && threadID == originThreadID {
-                            draft = content
-                            pendingComposerCaret = content.utf16.count
+                    var orphan: String?
+                    if status == 0 || status >= 500 {
+                        if let listed = try? await client.listMessages(
+                            agentId: originAgentID,
+                            threadId: originThreadID
+                        ) {
+                            orphan = FailedSend.orphanUserID(
+                                before: watch.beforeIDs,
+                                listed: listed,
+                                content: content
+                            )
                         }
                     }
-                    pendingAttachments = chips
-                    composerError = failed.hint
+                    noteFailedSend(
+                        user: user,
+                        agentId: originAgentID,
+                        threadId: originThreadID,
+                        content: content,
+                        chips: chips,
+                        mentionIDs: mentionIDs,
+                        orphan: orphan
+                    )
                 } else {
                     errorMessage = error.localizedDescription
                 }
@@ -1087,6 +1217,63 @@ final class AppModel {
         await work.value
         streamTask = nil
     }
+
+    func dismissFailedSend(id: String) {
+        guard let row = failedSends.first(where: { $0.id == id }) else { return }
+        if let orphan = row.orphanServerId {
+            hiddenOrphanIDs.insert(orphan)
+        }
+        failedSends = FailedSend.dismiss(failedSends, id: id)
+        messages.removeAll { $0.id == id }
+        localPreviews[id] = nil
+    }
+
+    func failedSend(id: String) -> FailedSendRecord? {
+        failedSends.first { $0.id == id }
+    }
+
+    private func showListed(
+        _ listed: [Message],
+        agentId: String,
+        threadId: String?
+    ) -> [Message] {
+        FailedSend.paint(
+            listed: listed,
+            failed: FailedSend.forChat(failedSends, agentId: agentId, threadId: threadId),
+            hidden: hiddenOrphanIDs
+        )
+    }
+
+    private func noteFailedSend(
+        user: Message,
+        agentId: String,
+        threadId: String?,
+        content: String,
+        chips: [PendingChatAttachment],
+        mentionIDs: [String],
+        orphan: String?
+    ) {
+        if let orphan {
+            hiddenOrphanIDs.insert(orphan)
+        }
+        let record = FailedSendRecord(
+            id: user.id,
+            agentId: agentId,
+            threadId: threadId,
+            content: content,
+            attachmentIds: chips.map(\.id),
+            mentionIds: mentionIDs,
+            message: user,
+            orphanServerId: orphan
+        )
+        failedSends = FailedSend.mark(failedSends, record)
+        if selectedAgentID == agentId && self.threadID == threadId {
+            if !messages.contains(where: { $0.id == user.id }) {
+                messages.append(user)
+            }
+        }
+    }
+
 
     func answerWidget(id: String, values: [String]) async {
         await streamAnswer(widgetReply: WidgetReply(id: id, values: values))
@@ -1285,7 +1472,11 @@ final class AppModel {
                 }
                 if Task.isCancelled || self.streamEpoch != epoch { return }
                 if selectedAgentID == agent.id {
-                    messages = try await client.listMessages(agentId: agent.id, threadId: threadID)
+                    messages = showListed(
+                        try await client.listMessages(agentId: agent.id, threadId: threadID),
+                        agentId: agent.id,
+                        threadId: threadID
+                    )
                     toolTraces = []
                     prunePreviews()
                 }
@@ -1365,7 +1556,11 @@ final class AppModel {
                 }
                 if Task.isCancelled || self.streamEpoch != epoch { return }
                 if selectedAgentID == agent.id {
-                    messages = try await client.listMessages(agentId: agent.id, threadId: threadID)
+                    messages = showListed(
+                        try await client.listMessages(agentId: agent.id, threadId: threadID),
+                        agentId: agent.id,
+                        threadId: threadID
+                    )
                     toolTraces = []
                     prunePreviews()
                 }
@@ -1394,7 +1589,7 @@ final class AppModel {
         do {
             let rows = try await client.listMessages(agentId: id, threadId: threadID)
             newMessagesReturning = true
-            messages = rows
+            messages = showListed(rows, agentId: id, threadId: threadID)
             newMessagesReturning = false
             prunePreviews()
         } catch {

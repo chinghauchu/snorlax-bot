@@ -330,6 +330,10 @@ v0.77: the unread count outside the chat list is client-only
 (window title, dock or taskbar badge, iOS chat list title).
 Runtime idle. OpenAPI stays 0.18.0.
 
+v0.78: retry a failed send is client-only (the failed user
+bubble stays, with Couldn't send · Retry). Runtime idle.
+OpenAPI stays 0.18.0.
+
 ## MCP (`mcp.json`)
 
 The runtime is the MCP client. Desktop and iOS never speak MCP. Put

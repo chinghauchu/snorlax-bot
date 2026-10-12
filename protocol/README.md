@@ -380,6 +380,11 @@ title matches. The app icon badge updates only when badge
 permission is already granted. No new routes. OpenAPI stays
 0.18.0.
 
+v0.78 retry a failed send: a failed user bubble stays in the
+transcript, muted, with Couldn't send · Retry. Retry resends
+the same text and attachments. No new routes. OpenAPI stays
+0.18.0.
+
 A copy is also kept at `runtime/openapi.yaml` and `desktop/openapi.yaml`
 so those trees are self-contained. Do not let the files diverge.
 

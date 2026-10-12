@@ -243,15 +243,14 @@ def test_ios_load_swaps_and_send_targets_origin() -> None:
     send = _fn(MODEL, "send()")
     assert "chatDrafts.clear(agentId: originAgentID, threadId: originThreadID)" in send
     assert send.index("chatDrafts.clear") < send.index('draft = ""')
-    assert "chatDrafts.restore(agentId: originAgentID, threadId: originThreadID, text: content)" in send
-    assert "selectedAgentID == originAgentID && threadID == originThreadID" in send
-    assert "draft = content" in send
-    assert send.index("selectedAgentID == originAgentID") < send.index("draft = content")
-    assert "pendingAttachments = chips" in send
+    assert "chatDrafts.restore" not in send
+    assert "draft = content" not in send
+    assert "noteFailedSend(" in send
     assert "moveComposer" in DESKTOP_APP
     assert "chatDrafts.current.clear" in DESKTOP_APP
-    assert "chatDrafts.current.restore" in DESKTOP_APP
-    assert "if (content) setDraft(content)" in DESKTOP_APP
+    assert "rememberFailedSend(" in DESKTOP_APP
+    assert "chatDrafts.current.restore" not in DESKTOP_APP
+    assert "if (content) setDraft(content)" not in DESKTOP_APP
 
 
 def test_persist_across_relaunch_and_recall_stays_empty_only() -> None:

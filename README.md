@@ -375,7 +375,14 @@ chats carry the unread dot, the desktop window title reads
 count where Tauri supports it; both clear when nothing is
 unread; the iOS chat list title shows the same count; the
 app icon badge shows it only when badge permission is
-already granted; no new HTTP; OpenAPI stays 0.18.0).
+already granted; no new HTTP; OpenAPI stays 0.18.0), and
+v0.78 retry a failed send (when a Send fails because the
+network or runtime is down, or an inference_unavailable error
+arrives before any reply, the user bubble stays in the
+transcript, muted, with Couldn't send · Retry; Retry sends
+the same text and attachments again; Remove dismisses it;
+no auto-retry; iOS also offers Retry on long-press; no new
+HTTP; OpenAPI stays 0.18.0).
 Later: full sandbox computer GUI, MCP marketplace catalog,
 Slack/GitHub inbound listeners.
 
