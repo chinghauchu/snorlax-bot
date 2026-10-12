@@ -274,6 +274,14 @@ files over the open chat shows a muted Drop files to attach
 overlay. Dropping adds pending chips the same way as the
 paperclip. Esc or dragging away clears the overlay. A text
 selection does not. Nothing is sent. OpenAPI stays 0.18.0.
+v0.76: New messages divider (Grok Bot feel). Opening a chat
+that received an assistant reply while it was closed, or
+while the window was unfocused, shows a thin muted New
+messages line above the first of those replies. The line
+stays put while you read. Coming back with nothing new, or
+Send, clears it. Your own bubbles and collapsed tool lines
+do not anchor it. A day separator stays above the line.
+OpenAPI stays 0.18.0.
 Assistant LEFT
 `kind=message` is 14px markdown (16/14 headings) in short
 agent bubbles after complete; user-right stays plain (`https://` tappable). Fenced code is full-turn language + Copy at 12px/1.45.

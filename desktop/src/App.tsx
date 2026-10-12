@@ -265,6 +265,17 @@ import {
   windowIsFocused,
 } from "./chatUnread";
 import {
+  ChatLastSeen,
+  NEW_MESSAGES_LABEL,
+  anchorsNewMessages,
+  browserLastSeenStorage,
+  clearNewMessages,
+  freshNewMessagesPlace,
+  lastSeenKey,
+  placeNewMessages,
+  type NewMessagesPlace,
+} from "./newMessages";
+import {
   TOOL_STACK_CHEVRON,
   collapsedToolsLabel,
   compactToolStacks,
@@ -639,6 +650,15 @@ function SettingsMemoryRow({
   );
 }
 
+function NewMessagesDivider({ show }: { show: boolean }) {
+  if (!show) return null;
+  return (
+    <p className="new-messages" role="separator">
+      {NEW_MESSAGES_LABEL}
+    </p>
+  );
+}
+
 export function App() {
   const [urlInput, setUrlInput] = useState(initialUrl);
   const [tokenInput, setTokenInput] = useState(initialToken);
@@ -669,6 +689,14 @@ export function App() {
     chatUnread.current.snapshot(),
   );
   const windowFocusedRef = useRef(true);
+  /** v0.76: last seen message id per chat. localStorage. */
+  const chatLastSeen = useRef(new ChatLastSeen(browserLastSeenStorage()));
+  const newMessagesPlace = useRef<NewMessagesPlace>(freshNewMessagesPlace());
+  const watchingNewMessages = useRef(false);
+  const dividerEpoch = useRef(0);
+  const dividerReadyEpoch = useRef(0);
+  const [dividerTick, setDividerTick] = useState(0);
+  const [dividerAnchorId, setDividerAnchorId] = useState<string | null>(null);
   const [createMenuOpen, setCreateMenuOpen] = useState(false);
   const [createChannelOpen, setCreateChannelOpen] = useState(false);
   const [channelNameDraft, setChannelNameDraft] = useState("New channel");
@@ -1178,9 +1206,17 @@ export function App() {
   useEffect(() => {
     const syncFocus = () => {
       const focused = windowIsFocused(document);
+      const was = windowFocusedRef.current;
       windowFocusedRef.current = focused;
-      if (!focused) return;
+      if (!focused) {
+        watchingNewMessages.current = false;
+        return;
+      }
       clearReplyUnread(convoRef.current.agentId);
+      if (!was) {
+        watchingNewMessages.current = false;
+        setDividerTick((n) => n + 1);
+      }
     };
     syncFocus();
     window.addEventListener("focus", syncFocus);
@@ -1192,6 +1228,70 @@ export function App() {
       document.removeEventListener("visibilitychange", syncFocus);
     };
   }, []);
+
+  const beginNewMessagesLoad = useCallback(
+    (id: string | null, thread: string | null) => {
+      const epoch = dividerEpoch.current + 1;
+      dividerEpoch.current = epoch;
+      watchingNewMessages.current = false;
+      newMessagesPlace.current = {
+        key: id ? lastSeenKey(id, thread) : null,
+        placed: false,
+        anchorId: null,
+      };
+      setDividerAnchorId(null);
+      return epoch;
+    },
+    [],
+  );
+
+  const finishNewMessagesLoad = useCallback((epoch: number) => {
+    if (dividerEpoch.current !== epoch) return;
+    dividerReadyEpoch.current = epoch;
+    setDividerTick(epoch);
+  }, []);
+
+  useLayoutEffect(() => {
+    const id = convoRef.current.agentId;
+    if (!id) {
+      setDividerAnchorId((prev) => (prev === null ? prev : null));
+      return;
+    }
+    if (dividerReadyEpoch.current !== dividerEpoch.current) return;
+    if (!windowFocusedRef.current) {
+      watchingNewMessages.current = false;
+      return;
+    }
+    const thread = convoRef.current.threadId;
+    if (!watchingNewMessages.current) {
+      const here = activeRef.current;
+      const rows = messagesRef.current.map((message) => ({
+        id: message.id,
+        anchor: anchorsNewMessages({
+          role: message.role,
+          senderId: message.senderId,
+          kind: message.kind,
+          content: message.content,
+          attachments: message.attachments,
+          visible: here ? isTranscriptVisible(message, here) : true,
+        }),
+      }));
+      const next = placeNewMessages({
+        place: newMessagesPlace.current,
+        key: lastSeenKey(id, thread),
+        rows,
+        lastSeenId: chatLastSeen.current.get(id, thread),
+        returning: true,
+      });
+      newMessagesPlace.current = next;
+      setDividerAnchorId((prev) =>
+        prev === next.anchorId ? prev : next.anchorId,
+      );
+      watchingNewMessages.current = true;
+    }
+    const tail = messagesRef.current.at(-1)?.id;
+    if (tail) chatLastSeen.current.see(id, thread, tail);
+  }, [messages, dividerTick, activeId, threadId]);
 
   const onJumpLatest = useCallback(() => {
     applyStick(onJumpToLatest());
@@ -1338,6 +1438,7 @@ export function App() {
         moveComposer(preferred, null);
         setActiveId(preferred);
         setThreadId(null);
+        const epoch = beginNewMessagesLoad(preferred, null);
         if (preferred) {
           setMessages(await listMessages(next, preferred));
           focusComposer();
@@ -1345,20 +1446,32 @@ export function App() {
         } else {
           setMessages([]);
         }
+        finishNewMessagesLoad(epoch);
       } catch (err) {
         setAgents([]);
         moveComposer(null, null);
         setActiveId(null);
         setThreadId(null);
+        const epoch = beginNewMessagesLoad(null, null);
         setMessages([]);
+        finishNewMessagesLoad(epoch);
         setLoadError(describeError(err));
       }
     },
-    [focusComposer, moveComposer, placeCaretAtEnd],
+    [
+      beginNewMessagesLoad,
+      finishNewMessagesLoad,
+      focusComposer,
+      moveComposer,
+      placeCaretAtEnd,
+    ],
   );
 
   useEffect(() => {
     if (!session) {
+      watchingNewMessages.current = false;
+      newMessagesPlace.current = freshNewMessagesPlace();
+      setDividerAnchorId(null);
       setAgents([PLACEHOLDER_CHANNEL, PLACEHOLDER_SEED]);
       moveComposer(SEED_CHANNEL_ID, null);
       setActiveId(SEED_CHANNEL_ID);
@@ -1435,6 +1548,7 @@ export function App() {
 
   async function loadConversation(id: string, thread: string | null) {
     moveComposer(id, thread);
+    const epoch = beginNewMessagesLoad(id, thread);
     const gen = transcriptGenRef.current + 1;
     transcriptGenRef.current = gen;
     pendingRestore.current = { key: readingPlaceKey(id, thread), gen };
@@ -1472,6 +1586,7 @@ export function App() {
       if (transcriptGenRef.current !== gen) return;
       setMessages(rows);
       setTranscriptGen(gen);
+      finishNewMessagesLoad(epoch);
       return;
     }
     try {
@@ -1487,6 +1602,7 @@ export function App() {
     if (transcriptGenRef.current !== gen) return;
     setMessages(rows);
     setTranscriptGen(gen);
+    finishNewMessagesLoad(epoch);
     focusComposer();
     placeCaretAtEnd();
   }
@@ -2029,6 +2145,7 @@ export function App() {
       });
       const rosterIds = new Set(roster.map((row) => row.id));
       chatUnread.current.retain(rosterIds);
+      chatLastSeen.current.retain(rosterIds);
       if (activeId === doomed.id) {
         const next = nextRosterSelection(roster, doomed.id, activeId);
         if (next) chatUnread.current.clear(next);
@@ -2038,7 +2155,12 @@ export function App() {
         setProfileOpen(false);
         setProfileEditing(false);
         publishReplyUnread();
-        setMessages(next ? await listMessages(session, next) : []);
+        const epoch = beginNewMessagesLoad(next, null);
+        try {
+          setMessages(next ? await listMessages(session, next) : []);
+        } finally {
+          finishNewMessagesLoad(epoch);
+        }
       } else {
         publishReplyUnread();
       }
@@ -2454,6 +2576,9 @@ export function App() {
     };
     inFlight.current = true;
     setBusy(true);
+    newMessagesPlace.current = clearNewMessages(newMessagesPlace.current);
+    watchingNewMessages.current = true;
+    setDividerAnchorId(null);
     snapStick();
     focusComposer();
     chatDrafts.current.clear(origin.agentId, origin.threadId);
@@ -3632,6 +3757,7 @@ export function App() {
                         {dayLabel}
                       </p>
                     ) : null}
+                    <NewMessagesDivider show={message.id === dividerAnchorId} />
                     <button
                       type="button"
                       className="handoff-row"
@@ -3685,6 +3811,7 @@ export function App() {
                       {dayLabel}
                     </p>
                   ) : null}
+                  <NewMessagesDivider show={message.id === dividerAnchorId} />
                   <article
                     className={`turn ${mine ? "right" : "left"}${sameSender && !threadRoot ? " same-sender" : " new-sender"}`}
                     data-reading-id={message.id}

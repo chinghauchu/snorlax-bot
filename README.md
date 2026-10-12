@@ -360,7 +360,15 @@ v0.75 drag files onto the chat (dragging files over the open
 chat shows Drop files to attach; drop adds pending chips like
 the paperclip; Esc or dragging away clears it; text drags do
 not; iOS drop on the composer adds the same chips; nothing
-auto-sends; no new HTTP; OpenAPI stays 0.18.0).
+auto-sends; no new HTTP; OpenAPI stays 0.18.0), and
+v0.76 New messages divider (a thin muted New messages line
+above the first assistant reply that arrived since you last
+viewed that chat; the same not-open or unfocused condition as
+the unread dot; it stays put while the chat is open; Send or
+coming back with nothing new clears it; your own bubbles and
+collapsed tool lines do not anchor it; a day separator stays
+above it; desktop local storage; iOS UserDefaults; no
+animation; no new HTTP; OpenAPI stays 0.18.0).
 Later: full sandbox computer GUI, MCP marketplace catalog,
 Slack/GitHub inbound listeners.
 

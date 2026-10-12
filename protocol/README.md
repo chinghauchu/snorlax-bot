@@ -368,6 +368,11 @@ attach over the open chat; drop adds pending chips. iOS drop
 on the composer does the same. Text drags do not. Nothing
 sends. No new routes. OpenAPI stays 0.18.0.
 
+v0.76 New messages divider: a thin muted New messages line
+above the first assistant reply since you last viewed that
+chat. Desktop localStorage and iOS UserDefaults keep the
+last-seen id. No new routes. OpenAPI stays 0.18.0.
+
 A copy is also kept at `runtime/openapi.yaml` and `desktop/openapi.yaml`
 so those trees are self-contained. Do not let the files diverge.
 

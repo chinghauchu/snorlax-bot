@@ -636,6 +636,27 @@ mark.find-hit.active {
   text-align: center;
 }
 
+/* v0.76: New messages. Static rule; Reduce Motion has nothing to shorten. */
+.new-messages {
+  align-self: stretch;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 12px 0 0;
+  padding: 0;
+  color: var(--text-muted);
+  font-size: 12px;
+  line-height: 1.3;
+}
+
+.new-messages::before,
+.new-messages::after {
+  content: "";
+  flex: 1 1 auto;
+  height: 1px;
+  background: var(--border);
+}
+
 .turn {
   display: flex;
   flex-direction: column;

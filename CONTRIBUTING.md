@@ -96,7 +96,12 @@ NVIDIA DGX Spark.
   open chat shows Drop files to attach, drop adds pending
   chips like the paperclip, Esc or dragging away clears it,
   text drags do not, and an iOS drop on the composer adds
-  the same chips without sending), a display-only
+  the same chips without sending; v0.76 a thin muted New
+  messages line sits above the first assistant reply that
+  arrived since you last viewed that chat, it stays put
+  while the chat is open, Send or coming back with nothing
+  new clears it, and your own bubbles and collapsed tool
+  lines do not anchor it), a display-only
   Box computer preview (`GET /v1/agents/{id}/computer` JSON; Bearer PNG at
   `/computer/screenshot`; identity pane), desktop Box takeover
   (`POST /computer/session` → 201 `{ sessionId }`; `DELETE .../session` or

@@ -178,6 +178,14 @@ Concrete follow-ups after v0. Filed on GitHub against
   overlay. A text selection does not. iOS drop on the composer
   adds the same chips. Nothing auto-sends. No new HTTP.
   OpenAPI stays 0.18.0.
+  **v0.76:** New messages divider. Opening a chat that got
+  an assistant reply while it was closed or the window was
+  unfocused shows a thin muted New messages line above the
+  first of those replies. It stays put while you read, and
+  clears when you come back with nothing new or when you
+  Send. Your own bubbles and collapsed tool lines do not
+  anchor it. A day separator stays above the line. The
+  last-seen id is local. No new HTTP. OpenAPI stays 0.18.0.
   Raw HTML still later.
   Full sandbox computer GUI (browser, VNC, terminal)
   stays later.
@@ -408,3 +416,12 @@ Concrete follow-ups after v0. Filed on GitHub against
   selection does not. Nothing is sent. Desktop matches (muted
   Drop files to attach over the open chat). OpenAPI stays
   0.18.0.
+- **v0.76:** New messages divider. Opening a chat that got
+  an assistant reply while you were away, or while the app
+  was inactive, shows a thin muted New messages line above
+  the first of those replies. It stays put while the chat is
+  open, and clears when you come back with nothing new or
+  when you Send. Your own bubbles and collapsed tool lines
+  do not anchor it. A day separator stays above the line.
+  UserDefaults keeps the last-seen id. Desktop matches
+  (localStorage). OpenAPI stays 0.18.0.
