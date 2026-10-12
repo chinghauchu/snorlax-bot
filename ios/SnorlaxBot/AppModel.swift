@@ -85,8 +85,13 @@ final class AppModel {
     }
     var navigationPath: [String] = []
     var messages: [Message] = [] {
-        didSet { syncNewMessages(returning: newMessagesReturning) }
+        didSet {
+            syncNewMessages(returning: newMessagesReturning)
+            noteChatPreview()
+        }
     }
+    /// v0.80: last preview line per chat, from transcripts already in memory.
+    var chatPreviews: [String: String] = [:]
     /// v0.76: message id the New messages line sits above. Nil hides it.
     var newMessagesAnchorID: String?
     var toolTraces: [LiveToolTrace] = []
@@ -308,6 +313,7 @@ final class AppModel {
     func bootstrap() async {
         guard isConfigured, let client else {
             agents = []
+            retainChatPreviews()
             plugins = []
             pluginCatalog = []
             adoptComposerDraft(agentId: Agent.channelID, threadId: nil)
@@ -321,6 +327,7 @@ final class AppModel {
         do {
             let roster = try await client.listAgents()
             agents = roster
+            retainChatPreviews()
             plugins = (try? await client.listPlugins()) ?? []
             pluginCatalog = (try? await client.listPluginCatalog()) ?? []
             if let next = Agent.fallbackRosterSelection(in: roster) {
@@ -506,6 +513,7 @@ final class AppModel {
         do {
             try await client.deleteAgent(id: agent.id)
             agents.removeAll { $0.id == agent.id }
+            retainChatPreviews()
             unreadChannelIDs.remove(agent.id)
             _ = chatUnread.retain(Set(agents.map(\.id)))
             _ = chatLastSeen.retain(Set(agents.map(\.id)))
@@ -1130,7 +1138,11 @@ final class AppModel {
                     }
                     Task { @MainActor in
                         guard let self, self.streamEpoch == epoch else { return }
-                        self.handle(event, agentId: agent.id)
+                        self.handle(
+                            event,
+                            agentId: agent.id,
+                            mainTranscript: originThreadID == nil
+                        )
                     }
                 }
                 if Task.isCancelled || self.streamEpoch != epoch { return }
@@ -1467,7 +1479,7 @@ final class AppModel {
                 ) { [weak self] event in
                     Task { @MainActor in
                         guard let self, self.streamEpoch == epoch else { return }
-                        self.handle(event, agentId: agent.id)
+                        self.handle(event, agentId: agent.id, mainTranscript: true)
                     }
                 }
                 if Task.isCancelled || self.streamEpoch != epoch { return }
@@ -1537,6 +1549,7 @@ final class AppModel {
         isSending = true
         defer { isSending = false }
         let epoch = streamEpoch
+        let mainTranscript = threadID == nil
         let work = Task { @MainActor in
             do {
                 try await client.sendMessage(
@@ -1551,7 +1564,11 @@ final class AppModel {
                 ) { [weak self] event in
                     Task { @MainActor in
                         guard let self, self.streamEpoch == epoch else { return }
-                        self.handle(event, agentId: agent.id)
+                        self.handle(
+                            event,
+                            agentId: agent.id,
+                            mainTranscript: mainTranscript
+                        )
                     }
                 }
                 if Task.isCancelled || self.streamEpoch != epoch { return }
@@ -1602,6 +1619,7 @@ final class AppModel {
         guard let client, isConfigured else { return }
         do {
             agents = try await client.listAgents()
+            retainChatPreviews()
         } catch {
             /* keep current roster */
         }
@@ -1730,6 +1748,44 @@ final class AppModel {
         return message.isFromUser || message.senderId == agent.id
     }
 
+    /// v0.80: snapshot the open main transcript. A thread does not replace the channel row.
+    private func noteChatPreview() {
+        guard let id = selectedAgentID, !id.isEmpty else { return }
+        guard LastMessagePreview.snapshotMainTranscript(threadID) else { return }
+        guard LastMessagePreview.owns(chatId: id, messages: messages) else { return }
+        storeChatPreview(chatId: id, messages: messages)
+    }
+
+    /// A finished message the client already has, even if that chat is no longer open.
+    private func noteFinishedPreview(chatId: String, message: Message) {
+        guard !chatId.isEmpty else { return }
+        guard let line = LastMessagePreview.line(from: [message]) else { return }
+        if LastMessagePreview.isPreferred(message.kind) {
+            if chatPreviews[chatId] != line {
+                chatPreviews[chatId] = line
+            }
+            return
+        }
+        if chatPreviews[chatId] == nil {
+            chatPreviews[chatId] = line
+        }
+    }
+
+    private func storeChatPreview(chatId: String, messages: [Message]) {
+        if let line = LastMessagePreview.line(from: messages) {
+            if chatPreviews[chatId] != line {
+                chatPreviews[chatId] = line
+            }
+        } else if chatPreviews[chatId] != nil {
+            chatPreviews.removeValue(forKey: chatId)
+        }
+    }
+
+    private func retainChatPreviews() {
+        let ids = Set(agents.map(\.id))
+        chatPreviews = chatPreviews.filter { ids.contains($0.key) }
+    }
+
     private func noteFinishedAssistantReply(chatId: String, message: Message) {
         let reply = ChatUnread.ReplySnapshot(
             fromUser: message.isFromUser,
@@ -1746,9 +1802,15 @@ final class AppModel {
         publishReplyUnread()
     }
 
-    private func handle(_ event: RuntimeClient.StreamEvent, agentId: String) {
+    private func handle(_ event: RuntimeClient.StreamEvent, agentId: String, mainTranscript: Bool) {
         if case .done(let message) = event {
             noteFinishedAssistantReply(chatId: agentId, message: message)
+            if mainTranscript {
+                let channel = agents.first(where: { $0.id == agentId })?.isChannel == true
+                if !(channel && message.replyTo != nil) {
+                    noteFinishedPreview(chatId: agentId, message: message)
+                }
+            }
         }
         guard selectedAgentID == agentId else { return }
         let onTimeline = selectedAgent?.isChannel == true && threadID == nil
