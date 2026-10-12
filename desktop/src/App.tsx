@@ -299,6 +299,11 @@ import {
   type PendingAttachment,
 } from "./attachments";
 import {
+  DROP_FILES_LABEL,
+  dragCarriesFiles,
+  escapeClearsFileDrop,
+} from "./chatDrop";
+import {
   ERR_TRANSCRIBE,
   HINT_MIC_OFF,
   HINT_NO_SPEECH,
@@ -705,6 +710,9 @@ export function App() {
   const [attachError, setAttachError] = useState<string | null>(null);
   const [attachInFlight, setAttachInFlight] = useState(0);
   const [dropTarget, setDropTarget] = useState(false);
+  const dropTargetRef = useRef(false);
+  const dropHoldRef = useRef(false);
+  dropTargetRef.current = dropTarget;
   const [busy, setBusy] = useState(false);
   const inFlight = useRef(false);
   const abortRef = useRef<AbortController | null>(null);
@@ -1001,6 +1009,27 @@ export function App() {
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [dictation]);
+
+  useEffect(() => {
+    const onKey = (event: globalThis.KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      if (!escapeClearsFileDrop(dropTargetRef.current)) return;
+      dropHoldRef.current = true;
+      setDropTarget(false);
+      event.stopPropagation();
+      event.stopImmediatePropagation();
+    };
+    const onDragEnd = () => {
+      dropHoldRef.current = false;
+      setDropTarget(false);
+    };
+    window.addEventListener("keydown", onKey, true);
+    window.addEventListener("dragend", onDragEnd);
+    return () => {
+      window.removeEventListener("keydown", onKey, true);
+      window.removeEventListener("dragend", onDragEnd);
+    };
+  }, []);
 
   const applyStick = useCallback((next: StickState) => {
     stickRef.current = next;
@@ -3021,21 +3050,27 @@ export function App() {
     if (fileRef.current) fileRef.current.value = "";
   }
 
-  function onComposerDragOver(event: DragEvent<HTMLElement>) {
+  function onChatDragOver(event: DragEvent<HTMLElement>) {
+    if (!dragCarriesFiles(event.dataTransfer?.types)) return;
     event.preventDefault();
     event.dataTransfer.dropEffect = "copy";
+    if (dropHoldRef.current) return;
+    if (!session || !active) return;
     setDropTarget(true);
   }
 
-  function onComposerDragLeave(event: DragEvent<HTMLElement>) {
+  function onChatDragLeave(event: DragEvent<HTMLElement>) {
     const next = event.relatedTarget;
     if (next instanceof Node && event.currentTarget.contains(next)) return;
+    dropHoldRef.current = false;
     setDropTarget(false);
   }
 
-  async function onComposerDrop(event: DragEvent<HTMLElement>) {
-    event.preventDefault();
+  async function onChatDrop(event: DragEvent<HTMLElement>) {
+    dropHoldRef.current = false;
     setDropTarget(false);
+    if (!dragCarriesFiles(event.dataTransfer?.types)) return;
+    event.preventDefault();
     const files = Array.from(event.dataTransfer.files);
     for (const file of files) {
       await addPendingFile(file);
@@ -3425,7 +3460,13 @@ export function App() {
         </button>
       </aside>
 
-      <main className="chat">
+      <main
+        className="chat"
+        onDragEnter={onChatDragOver}
+        onDragOver={onChatDragOver}
+        onDragLeave={onChatDragLeave}
+        onDrop={(event) => void onChatDrop(event)}
+      >
         <header className="chat-head">
           {active ? (
             <>
@@ -4013,12 +4054,8 @@ export function App() {
         <footer
           ref={composerRootRef}
           tabIndex={-1}
-          className={`composer${dropTarget ? " drop-target" : ""}`}
+          className="composer"
           aria-hidden={takeoverOpen || undefined}
-          onDragOver={onComposerDragOver}
-          onDragEnter={onComposerDragOver}
-          onDragLeave={onComposerDragLeave}
-          onDrop={(event) => void onComposerDrop(event)}
           onPaste={(event) => void onComposerPaste(event)}
           onKeyDown={onComposerBarKey}
           onMouseDown={(event) => {
@@ -4492,6 +4529,11 @@ export function App() {
           onDone={() => void closeTakeover()}
         />
       ) : null}
+        {dropTarget ? (
+          <div className="chat-drop-overlay" role="status">
+            {DROP_FILES_LABEL}
+          </div>
+        ) : null}
       </main>
 
       <ComputerPane

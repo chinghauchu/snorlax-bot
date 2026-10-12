@@ -176,6 +176,9 @@ the bottom, the chat still opens at the latest. A new reply
 while you were away shows Jump to latest. Send, Regenerate,
 and Jump still snap to the bottom. The place lasts for the
 session only. OpenAPI stays 0.18.0.
+v0.75: drag files onto the composer. Dropping files or
+images adds the same pending chips as the paperclip. A text
+selection does not. Nothing is sent. OpenAPI stays 0.18.0.
 v0.32: dedicated `kind=approve` LEFT card for mutating shell (not a
 WidgetCard fork). Approve / Deny / ×; long-press copies the command.
 Question widgets
@@ -295,6 +298,7 @@ Output: `SnorlaxBot/Generated/V1Types.swift`. Do not hand-edit that file.
 - `SnorlaxBot/ChatSwitcher.swift` — v0.72 quick chat switcher (chat-list name filter; no HTTP)
 - `SnorlaxBot/ChatShortcuts.swift` — v0.73 Gestures & shortcuts sheet (long-press actions and hardware keys; no HTTP)
 - `SnorlaxBot/ReadingPlace.swift` — v0.74 per-chat reading place (session memory; coming back restores a parked message; no HTTP)
+- `SnorlaxBot/ChatDrop.swift` — v0.75 drop files or images onto the composer (same pending chips; no HTTP)
 - `SnorlaxBot/SendMuted.swift` — v0.55 Send muted while generating
 - `SnorlaxBot/CompactToolTraces.swift` — v0.56 compact tool traces (`N tools` + chevron)
 - `SnorlaxBot/MidStreamPlaintext.swift` — v0.57 mid-stream LEFT plaintext until complete / Stop
