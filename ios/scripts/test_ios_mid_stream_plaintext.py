@@ -133,13 +133,17 @@ def test_complete_or_stop_renders_markdown_then_split() -> None:
 def test_actions_only_on_last_bubble_after_complete() -> None:
     bubbles_for = CHAT.find("ForEach(Array(leftBubbles.enumerated())")
     assert bubbles_for > 0
-    chunk = CHAT[bubbles_for : bubbles_for + 2200]
-    actions = chunk.find("if showCopy || showSpeak")
-    assert actions > 0
-    for_each = chunk[:actions]
+    # v0.81 wraps each bubble in LongMessageBody (Show more / Show less).
+    # That chrome sits inside the ForEach. Copy / Speak / Regenerate stay
+    # after it, on the last bubble once the turn is complete.
+    actions = CHAT.find("if showCopy || showSpeak", bubbles_for)
+    assert actions > bubbles_for
+    for_each = CHAT[bubbles_for:actions]
+    assert "LongMessageBody(" in for_each
     assert "Button(copied" not in for_each
     assert 'Button("Regenerate")' not in for_each
     assert "Speak.label" not in for_each
+    assert 'Button("Copy")' not in for_each
     md = DESKTOP_APP[
         DESKTOP_APP.find('className="assistant-md"') : DESKTOP_APP.find(
             'className="assistant-md"'
