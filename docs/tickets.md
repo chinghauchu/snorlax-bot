@@ -194,6 +194,13 @@ Concrete follow-ups after v0. Filed on GitHub against
   count. The app icon badge shows it only when badge
   permission is already granted. No new HTTP. OpenAPI stays
   0.18.0.
+  **v0.78:** retry a failed send. When Send fails because the
+  network or runtime is down, or an inference_unavailable error
+  arrives before any reply, the user bubble stays in the
+  transcript, muted, with Couldn't send · Retry. Retry sends
+  the same text and attachments again. Remove dismisses it.
+  Nothing retries on its own. iOS also offers Retry on
+  long-press. No new HTTP. OpenAPI stays 0.18.0.
   Raw HTML still later.
   Full sandbox computer GUI (browser, VNC, terminal)
   stays later.
@@ -440,3 +447,8 @@ Concrete follow-ups after v0. Filed on GitHub against
   Asking on first launch would prompt, so the app does not
   ask. Desktop matches (window title and dock or taskbar
   badge where Tauri supports a count). OpenAPI stays 0.18.0.
+- **v0.78:** retry a failed send. When Send fails, the user
+  bubble stays muted with Couldn't send · Retry. Tap Retry, or
+  long-press Retry / Remove. Retry sends the same text and
+  attachments again. Nothing retries on its own. Desktop
+  matches. OpenAPI stays 0.18.0.

@@ -4,8 +4,8 @@
  * v0.64 / v0.69: per-chat composer drafts.
  * Keyed by agentId + threadId (`null` thread = top-level timeline).
  * Desktop persists the map in localStorage (`snorlax.chatDrafts`).
- * Send clears that chat. A failed Send writes back onto the chat
- * the text was typed in. No HTTP.
+ * Send clears that chat. v0.78 keeps a failed Send on the transcript
+ * (Retry) instead of writing it back into the composer. No HTTP.
  * Keep in lockstep with `ios/SnorlaxBot/ChatDrafts.swift`.
  */
 

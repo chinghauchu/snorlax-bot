@@ -287,6 +287,12 @@ When one or more chats carry the unread dot, the window
 title reads (2) Snorlax-Bot and the dock or taskbar badge
 shows that count where Tauri supports it. Both clear when
 nothing is unread. OpenAPI stays 0.18.0.
+v0.78: retry a failed send (Grok Bot feel). When Send fails
+because the network or runtime is down, or an error arrives
+before any reply, the user bubble stays in the transcript,
+muted, with Couldn't send · Retry. Retry sends the same text
+and attachments again. Remove dismisses it. Nothing retries
+on its own. OpenAPI stays 0.18.0.
 Assistant LEFT
 `kind=message` is 14px markdown (16/14 headings) in short
 agent bubbles after complete; user-right stays plain (`https://` tappable). Fenced code is full-turn language + Copy at 12px/1.45.

@@ -3007,6 +3007,50 @@ legend {
   cursor: pointer;
 }
 
+/* v0.78: failed Send stays in the transcript. Opacity is instant
+   (no fade) so Reduce Motion does not animate the bubble or the line. */
+.bubble.user[data-failed] {
+  opacity: 0.55;
+}
+
+.failed-send {
+  margin: 4px 2px 0;
+  padding: 0;
+  display: flex;
+  align-items: baseline;
+  justify-content: flex-end;
+  align-self: flex-end;
+  color: var(--text-muted);
+  font-size: 12px;
+  line-height: 1.3;
+  white-space: nowrap;
+}
+
+.failed-send button {
+  border: 0;
+  background: transparent;
+  padding: 0;
+  font-size: 12px;
+  line-height: 1.3;
+  color: var(--text-muted);
+}
+
+.failed-send button.failed-send-retry {
+  color: var(--accent);
+}
+
+.failed-send button:hover:not(:disabled) {
+  color: var(--text);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .bubble.user[data-failed],
+  .failed-send,
+  .failed-send button {
+    transition: none;
+  }
+}
+
 .jump-line:hover {
   background: transparent;
   color: var(--text);

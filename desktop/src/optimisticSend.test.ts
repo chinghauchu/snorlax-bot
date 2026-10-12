@@ -131,14 +131,15 @@ test("failure removes the optimistic bubble, restores composer text, Couldn’t 
   assert.equal(isHttpSendFailure(0), false);
 });
 
-test("desktop wires insert, reconcile, failure restore, muted 12px Couldn’t send", () => {
+test("desktop wires insert, reconcile, and a muted failed bubble with Retry", () => {
   assert.match(app, /from "\.\/optimisticSend"/);
+  assert.match(app, /from "\.\/failedSend"/);
   assert.match(app, /optimisticUserMessage\(/);
   assert.match(app, /insertOptimistic\(/);
   assert.match(app, /reconcileOptimistic\(/);
   assert.match(app, /absorbServerUser\(/);
-  assert.match(app, /failOptimistic\(/);
-  assert.match(app, /COULDNT_SEND/);
+  assert.match(app, /rememberFailedSend\(/);
+  assert.doesNotMatch(app, /failOptimistic\(/);
   assert.match(app, /composerSendHint/);
   assert.match(app, /onSend\(\) \{[\s\S]*optimisticUser: true/);
   assert.match(app, /onSend\(\) \{[\s\S]*attachments: chips/);
@@ -147,7 +148,7 @@ test("desktop wires insert, reconcile, failure restore, muted 12px Couldn’t se
   assert.match(app, /onSend\(\) \{[\s\S]*focusComposer\(\)/);
   assert.match(app, /const fieldDisabled = !credsReady \|\| takeoverOpen/);
   assert.match(app, /<textarea[\s\S]*disabled=\{fieldDisabled\}/);
-  assert.match(app, /if \(content\) setDraft\(content\)/);
+  assert.doesNotMatch(app, /if \(content\) setDraft\(content\)/);
   assert.match(app, /restoreAttachments/);
   assert.match(app, /isHttpSendFailure/);
   assert.match(app, /shouldBlockSend/);
@@ -155,6 +156,7 @@ test("desktop wires insert, reconcile, failure restore, muted 12px Couldn’t se
   assert.match(app, /attachInFlight/);
   assert.match(app, /statusHint/);
   assert.match(app, /className="composer-hint"/);
+  assert.match(app, /className="failed-send"/);
   assert.match(app, /role="status"/);
   assert.doesNotMatch(app, /onRegenerate\(\) \{[\s\S]*optimisticUser: true/);
   assert.match(app, /onRegenerate\(\) \{[\s\S]*regeneratePostBody\(\)/);

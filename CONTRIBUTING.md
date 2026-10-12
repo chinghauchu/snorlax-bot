@@ -107,7 +107,13 @@ NVIDIA DGX Spark.
   count where Tauri supports it, both clear when nothing
   is unread, the iOS chat list title shows the same count,
   and the app icon badge shows it only when badge
-  permission is already granted), a display-only
+  permission is already granted; v0.78 when a Send fails
+  because the network or runtime is down, or an
+  inference_unavailable error arrives before any reply, the
+  user bubble stays in the transcript, muted, with Couldn't
+  send · Retry, Retry sends the same text and attachments
+  again, Remove dismisses it, and nothing retries on its
+  own), a display-only
   Box computer preview (`GET /v1/agents/{id}/computer` JSON; Bearer PNG at
   `/computer/screenshot`; identity pane), desktop Box takeover
   (`POST /computer/session` → 201 `{ sessionId }`; `DELETE .../session` or

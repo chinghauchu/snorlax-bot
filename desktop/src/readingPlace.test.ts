@@ -215,7 +215,8 @@ test("OpenAPI stays 0.18.0; iOS restores the same way; no computerPane.ts", () =
       load.indexOf("selectedAgentID = id"),
   );
   assert.ok(
-    load.indexOf("messages = rows") < load.indexOf("readingTranscriptToken += 1"),
+    load.indexOf("messages = showListed(rows") <
+      load.indexOf("readingTranscriptToken += 1"),
   );
   assert.match(model, /readingPlaces\[key\] = ReadingPlace\.capture/);
   assert.doesNotMatch(model, /UserDefaults\.standard\.set\(reading/);

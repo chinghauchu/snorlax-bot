@@ -33,6 +33,11 @@ enum ChatShortcuts {
             action: RecallDraft.editAsNewMessage
         ),
         Row(
+            id: "retry",
+            keys: "Long-press a failed send",
+            action: "Retry or Remove"
+        ),
+        Row(
             id: "approve",
             keys: "Long-press an approve command",
             action: "Copy the command"
