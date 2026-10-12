@@ -322,6 +322,10 @@ v0.75: drag files onto the chat is client-only (desktop
 overlay; iOS composer drop; existing upload route). Runtime
 idle. OpenAPI stays 0.18.0.
 
+v0.76: the New messages divider is client-only (desktop and
+iOS draw a muted line from a local last-seen id). Runtime
+idle. OpenAPI stays 0.18.0.
+
 ## MCP (`mcp.json`)
 
 The runtime is the MCP client. Desktop and iOS never speak MCP. Put

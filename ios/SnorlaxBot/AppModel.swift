@@ -39,7 +39,11 @@ final class AppModel {
         }
     }
     var navigationPath: [String] = []
-    var messages: [Message] = []
+    var messages: [Message] = [] {
+        didSet { syncNewMessages(returning: newMessagesReturning) }
+    }
+    /// v0.76: message id the New messages line sits above. Nil hides it.
+    var newMessagesAnchorID: String?
     var toolTraces: [LiveToolTrace] = []
     var threadID: String?
     var unreadChannelIDs: Set<String> = []
@@ -48,6 +52,11 @@ final class AppModel {
     /// App scene is active. A backgrounded app is not focused on the open chat.
     var sceneFocused = true
     private var chatUnread = ChatUnread()
+    /// v0.76: last seen message id per chat. UserDefaults.
+    private var chatLastSeen = ChatLastSeen()
+    private var newMessagesPlace = NewMessages.Place.fresh
+    private var watchingNewMessages = false
+    private var newMessagesReturning = false
     var lastExtraChannelID: String?
     var localPreviews: [String: [Data]] = [:]
     var draft = "" {
@@ -396,7 +405,16 @@ final class AppModel {
             composerSkills = []
         }
         guard generation == readingLoadGeneration else { return }
+        watchingNewMessages = false
+        newMessagesPlace = NewMessages.Place(
+            key: ChatLastSeen.token(agentId: id, threadId: thread),
+            placed: false,
+            anchorId: nil
+        )
+        newMessagesAnchorID = nil
+        newMessagesReturning = true
         messages = rows
+        newMessagesReturning = false
         pendingReadingKey = ReadingPlace.key(agentId: id, threadId: thread)
         readingTranscriptToken += 1
         await loadComposerSkills()
@@ -441,6 +459,7 @@ final class AppModel {
             agents.removeAll { $0.id == agent.id }
             unreadChannelIDs.remove(agent.id)
             _ = chatUnread.retain(Set(agents.map(\.id)))
+            _ = chatLastSeen.retain(Set(agents.map(\.id)))
             replyUnreadIDs = chatUnread.snapshot
             if lastExtraChannelID == agent.id {
                 lastExtraChannelID = nil
@@ -988,6 +1007,9 @@ final class AppModel {
         composerError = nil
         wantsComposerFocus = true
         stickBump += 1
+        newMessagesPlace = NewMessages.clear(newMessagesPlace)
+        newMessagesAnchorID = nil
+        watchingNewMessages = true
 
         let user = Message.optimisticUser(
             agentId: agent.id,
@@ -1370,9 +1392,13 @@ final class AppModel {
     func refreshMessages() async {
         guard let client, let id = selectedAgentID, isConfigured else { return }
         do {
-            messages = try await client.listMessages(agentId: id, threadId: threadID)
+            let rows = try await client.listMessages(agentId: id, threadId: threadID)
+            newMessagesReturning = true
+            messages = rows
+            newMessagesReturning = false
             prunePreviews()
         } catch {
+            newMessagesReturning = false
             errorMessage = error.localizedDescription
         }
     }
@@ -1421,9 +1447,18 @@ final class AppModel {
     /// v0.70: scene active means the open chat is focused. Inactive marks
     /// a finished reply unread even on the chat that is on screen.
     func setSceneFocused(_ focused: Bool) {
+        let was = sceneFocused
         sceneFocused = focused
-        guard focused, let id = onScreenChatID() else { return }
+        guard focused else {
+            watchingNewMessages = false
+            return
+        }
+        guard let id = onScreenChatID() else { return }
         clearReplyUnread(id)
+        if !was {
+            watchingNewMessages = false
+            syncNewMessages(returning: true)
+        }
     }
 
     func showsUnreadDot(_ agent: Agent) -> Bool {
@@ -1442,6 +1477,54 @@ final class AppModel {
     private func clearReplyUnread(_ id: String) {
         guard chatUnread.clear(id) else { return }
         replyUnreadIDs = chatUnread.snapshot
+    }
+
+    /// v0.76: open or return computes the line once. Watching advances
+    /// last seen and leaves the line where it is. Unfocused or off-screen
+    /// freezes last seen, the same condition as the unread dot.
+    private func syncNewMessages(returning: Bool) {
+        guard let id = onScreenChatID() else {
+            watchingNewMessages = false
+            return
+        }
+        guard sceneFocused else {
+            watchingNewMessages = false
+            return
+        }
+        let key = ChatLastSeen.token(agentId: id, threadId: threadID)
+        if returning || !newMessagesPlace.placed || newMessagesPlace.key != key {
+            let agent = selectedAgent
+            let rows = messages.map { message in
+                NewMessages.Row(
+                    id: message.id,
+                    anchor: NewMessages.anchors(
+                        fromUser: message.isFromUser,
+                        kindMessage: message.isKindMessage,
+                        hasToken: !message.content.isEmpty || !message.attachments.isEmpty,
+                        collapsedTool: message.isToolLine,
+                        visible: agent.map { Self.messageVisible($0, message) } ?? true
+                    )
+                )
+            }
+            let next = NewMessages.place(
+                place: newMessagesPlace,
+                key: key,
+                rows: rows,
+                lastSeenId: chatLastSeen.messageID(agentId: id, threadId: threadID),
+                returning: true
+            )
+            newMessagesPlace = next
+            newMessagesAnchorID = next.anchorId
+        }
+        watchingNewMessages = true
+        if let tail = messages.last?.id, !tail.isEmpty {
+            chatLastSeen.see(agentId: id, threadId: threadID, messageId: tail)
+        }
+    }
+
+    private static func messageVisible(_ agent: Agent, _ message: Message) -> Bool {
+        if agent.isChannel { return true }
+        return message.isFromUser || message.senderId == agent.id
     }
 
     private func noteFinishedAssistantReply(chatId: String, message: Message) {

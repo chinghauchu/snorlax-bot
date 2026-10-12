@@ -455,6 +455,9 @@ struct ChatView: View {
                                         .padding(.top, 12)
                                         .accessibilityAddTraits(.isHeader)
                                 }
+                                if message.id == model.newMessagesAnchorID {
+                                    NewMessagesDivider()
+                                }
                                 transcriptItem(
                                     message,
                                     index: index,
