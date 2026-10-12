@@ -2,5 +2,5 @@
   "identifier": "default",
   "description": "Default Snorlax-Bot window capabilities",
   "windows": ["main"],
-  "permissions": ["core:default", "allow-open-url"]
+  "permissions": ["core:default", "allow-open-url", "allow-set-unread-chrome"]
 }

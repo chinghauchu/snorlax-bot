@@ -368,7 +368,14 @@ the unread dot; it stays put while the chat is open; Send or
 coming back with nothing new clears it; your own bubbles and
 collapsed tool lines do not anchor it; a day separator stays
 above it; desktop local storage; iOS UserDefaults; no
-animation; no new HTTP; OpenAPI stays 0.18.0).
+animation; no new HTTP; OpenAPI stays 0.18.0), and
+v0.77 unread count outside the chat list (when one or more
+chats carry the unread dot, the desktop window title reads
+(2) Snorlax-Bot and the dock or taskbar badge shows that
+count where Tauri supports it; both clear when nothing is
+unread; the iOS chat list title shows the same count; the
+app icon badge shows it only when badge permission is
+already granted; no new HTTP; OpenAPI stays 0.18.0).
 Later: full sandbox computer GUI, MCP marketplace catalog,
 Slack/GitHub inbound listeners.
 

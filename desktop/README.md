@@ -282,6 +282,11 @@ stays put while you read. Coming back with nothing new, or
 Send, clears it. Your own bubbles and collapsed tool lines
 do not anchor it. A day separator stays above the line.
 OpenAPI stays 0.18.0.
+v0.77: unread count outside the chat list (Grok Bot feel).
+When one or more chats carry the unread dot, the window
+title reads (2) Snorlax-Bot and the dock or taskbar badge
+shows that count where Tauri supports it. Both clear when
+nothing is unread. OpenAPI stays 0.18.0.
 Assistant LEFT
 `kind=message` is 14px markdown (16/14 headings) in short
 agent bubbles after complete; user-right stays plain (`https://` tappable). Fenced code is full-turn language + Copy at 12px/1.45.

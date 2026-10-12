@@ -126,7 +126,7 @@ final class AppModel {
         token = KeychainStore.load()
         theme = AppTheme(rawValue: UserDefaults.standard.string(forKey: Keys.theme) ?? "") ?? .system
         accent = AccentChoice(rawValue: UserDefaults.standard.string(forKey: Keys.accent) ?? "") ?? .teal
-        replyUnreadIDs = chatUnread.snapshot
+        publishReplyUnread()
     }
 
     var isConfigured: Bool {
@@ -460,7 +460,7 @@ final class AppModel {
             unreadChannelIDs.remove(agent.id)
             _ = chatUnread.retain(Set(agents.map(\.id)))
             _ = chatLastSeen.retain(Set(agents.map(\.id)))
-            replyUnreadIDs = chatUnread.snapshot
+            publishReplyUnread()
             if lastExtraChannelID == agent.id {
                 lastExtraChannelID = nil
             }
@@ -1476,7 +1476,15 @@ final class AppModel {
 
     private func clearReplyUnread(_ id: String) {
         guard chatUnread.clear(id) else { return }
+        publishReplyUnread()
+    }
+
+    /// v0.77: the chat-list title reads this set. The icon badge
+    /// follows only when badge permission is already granted.
+    private func publishReplyUnread() {
         replyUnreadIDs = chatUnread.snapshot
+        let count = UnreadOutside.count(replyUnreadIDs)
+        Task { await UnreadOutside.applyIconBadge(count: count) }
     }
 
     /// v0.76: open or return computes the line once. Watching advances
@@ -1540,7 +1548,7 @@ final class AppModel {
             focused: sceneFocused
         ) else { return }
         guard chatUnread.mark(chatId) else { return }
-        replyUnreadIDs = chatUnread.snapshot
+        publishReplyUnread()
     }
 
     private func handle(_ event: RuntimeClient.StreamEvent, agentId: String) {

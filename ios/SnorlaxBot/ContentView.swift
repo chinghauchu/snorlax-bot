@@ -70,7 +70,7 @@ private struct iPhoneRoot: View {
         @Bindable var model = model
         NavigationStack(path: $model.navigationPath) {
             AgentListView()
-                .navigationTitle("Snorlax-Bot")
+                .navigationTitle(UnreadOutside.title(count: UnreadOutside.count(model.replyUnreadIDs)))
                 .navigationBarTitleDisplayMode(.large)
                 .navigationDestination(for: String.self) { id in
                     ChatView(agentID: id)
@@ -86,7 +86,7 @@ private struct iPadRoot: View {
         @Bindable var model = model
         NavigationSplitView {
             AgentListView()
-                .navigationTitle("Snorlax-Bot")
+                .navigationTitle(UnreadOutside.title(count: UnreadOutside.count(model.replyUnreadIDs)))
                 .navigationBarTitleDisplayMode(.large)
                 .navigationSplitViewColumnWidth(min: 220, ideal: 256, max: 320)
         } detail: {
