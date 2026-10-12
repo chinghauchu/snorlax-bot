@@ -949,6 +949,7 @@ private struct ComposerBar: View {
     @State private var attachMenu = false
     @State private var showPhotos = false
     @State private var showFiles = false
+    @State private var dropTarget = false
 
     private var mentionQuery: String? {
         let draft = model.draft
@@ -1080,6 +1081,10 @@ private struct ComposerBar: View {
                         model.noteComposerSelection(range)
                     },
                     onEscapeStop: { composing in
+                        if dropTarget {
+                            dropTarget = false
+                            return
+                        }
                         if !composing && onEscapeFind() { return }
                         model.stopGeneratingFromEscape(composing: composing)
                         if !model.clearRecallFromEscape(composing: composing) {
@@ -1162,6 +1167,32 @@ private struct ComposerBar: View {
         .onChange(of: pickerItem) { _, item in
             guard let item else { return }
             Task { await loadPhoto(item) }
+        }
+        .overlay {
+            if dropTarget {
+                Text(ChatDrop.label)
+                    .font(.system(size: 13))
+                    .foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity, minHeight: 44)
+                    .background(Color(uiColor: .secondarySystemBackground).opacity(0.92))
+                    .allowsHitTesting(false)
+                    .accessibilityLabel(ChatDrop.label)
+            }
+        }
+        // SwiftUI onDrop installs a UIDropInteraction on the composer.
+        .onDrop(of: ChatDrop.types, isTargeted: $dropTarget) { providers in
+            guard ChatDrop.accepts(providers: providers) else { return false }
+            Task { @MainActor in
+                for provider in providers {
+                    guard let payload = await ChatDrop.load(provider) else { continue }
+                    await model.addPendingFile(
+                        name: payload.name,
+                        mime: payload.mime,
+                        data: payload.data
+                    )
+                }
+            }
+            return true
         }
         .onDisappear {
             model.cancelDictation()

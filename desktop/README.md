@@ -269,6 +269,11 @@ on an earlier one. Coming back restores that place. Within
 new reply while you were away shows Jump to latest. Send,
 Regenerate, and Jump still snap to the bottom. The place
 lasts for the session only. OpenAPI stays 0.18.0.
+v0.75: drag files onto the chat (Grok Bot feel). Dragging
+files over the open chat shows a muted Drop files to attach
+overlay. Dropping adds pending chips the same way as the
+paperclip. Esc or dragging away clears the overlay. A text
+selection does not. Nothing is sent. OpenAPI stays 0.18.0.
 Assistant LEFT
 `kind=message` is 14px markdown (16/14 headings) in short
 agent bubbles after complete; user-right stays plain (`https://` tappable). Fenced code is full-turn language + Copy at 12px/1.45.

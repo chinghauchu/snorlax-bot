@@ -92,7 +92,11 @@ NVIDIA DGX Spark.
   back restores that place, within ~64px of the bottom the
   chat still opens at the latest, a new reply while you were
   away shows Jump to latest, and Send, Regenerate, and Jump
-  still snap to the bottom), a display-only
+  still snap to the bottom; v0.75 dragging files over the
+  open chat shows Drop files to attach, drop adds pending
+  chips like the paperclip, Esc or dragging away clears it,
+  text drags do not, and an iOS drop on the composer adds
+  the same chips without sending), a display-only
   Box computer preview (`GET /v1/agents/{id}/computer` JSON; Bearer PNG at
   `/computer/screenshot`; identity pane), desktop Box takeover
   (`POST /computer/session` → 201 `{ sessionId }`; `DELETE .../session` or

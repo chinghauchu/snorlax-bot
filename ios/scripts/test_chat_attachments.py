@@ -113,7 +113,12 @@ def test_left_streak_reuses_user_right_chrome() -> None:
     assert "userAttachments" not in tool_block
     connect_block = CHAT[CHAT.find("message.isConnect") : CHAT.find("} else if threadRoot")]
     assert "userAttachments" not in connect_block
-    assert "onDrop" not in CHAT
+    # v0.75: one drop, on the composer. Transcript rows stay undroppable.
+    transcript = CHAT[: CHAT.find("private struct ComposerBar")]
+    composer = CHAT[CHAT.find("private struct ComposerBar") : CHAT.find("private struct FlowWrap")]
+    assert "onDrop" not in transcript
+    assert composer.count(".onDrop(") == 1
+    assert ".onDrop(of: ChatDrop.types" in composer
     assert "agentPicker" not in CHAT
 
 

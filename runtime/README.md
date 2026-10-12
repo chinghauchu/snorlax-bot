@@ -318,6 +318,10 @@ v0.74: per-chat reading place is client-only (desktop and
 iOS remember a parked message for the session). Runtime
 idle. OpenAPI stays 0.18.0.
 
+v0.75: drag files onto the chat is client-only (desktop
+overlay; iOS composer drop; existing upload route). Runtime
+idle. OpenAPI stays 0.18.0.
+
 ## MCP (`mcp.json`)
 
 The runtime is the MCP client. Desktop and iOS never speak MCP. Put

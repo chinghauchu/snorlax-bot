@@ -172,6 +172,12 @@ Concrete follow-ups after v0. Filed on GitHub against
   while you were away shows Jump to latest. Send, Regenerate,
   and Jump still snap to the bottom. Session memory only. No
   new HTTP. OpenAPI stays 0.18.0.
+  **v0.75:** drag files onto the chat. Dragging files over
+  the open chat shows Drop files to attach. Drop adds pending
+  chips like the paperclip. Esc or dragging away clears the
+  overlay. A text selection does not. iOS drop on the composer
+  adds the same chips. Nothing auto-sends. No new HTTP.
+  OpenAPI stays 0.18.0.
   Raw HTML still later.
   Full sandbox computer GUI (browser, VNC, terminal)
   stays later.
@@ -397,3 +403,8 @@ Concrete follow-ups after v0. Filed on GitHub against
   while you were away shows Jump to latest. Send, Regenerate,
   and Jump still snap to the bottom. Session memory only.
   Desktop matches. OpenAPI stays 0.18.0.
+- **v0.75:** drag files onto the composer. Dropping files or
+  images adds the same pending chips as the paperclip. A text
+  selection does not. Nothing is sent. Desktop matches (muted
+  Drop files to attach over the open chat). OpenAPI stays
+  0.18.0.

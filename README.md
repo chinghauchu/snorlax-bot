@@ -355,7 +355,12 @@ coming back restores that place; within ~64px of the bottom
 still opens at the latest; a new reply while you were away
 shows Jump to latest; Send, Regenerate, and Jump still snap
 to the bottom; session memory only; no new HTTP; OpenAPI
-stays 0.18.0).
+stays 0.18.0), and
+v0.75 drag files onto the chat (dragging files over the open
+chat shows Drop files to attach; drop adds pending chips like
+the paperclip; Esc or dragging away clears it; text drags do
+not; iOS drop on the composer adds the same chips; nothing
+auto-sends; no new HTTP; OpenAPI stays 0.18.0).
 Later: full sandbox computer GUI, MCP marketplace catalog,
 Slack/GitHub inbound listeners.
 

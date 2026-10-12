@@ -363,6 +363,11 @@ while you were away shows Jump to latest. Send, Regenerate,
 and Jump still snap to the bottom. Session memory only. No
 new routes. OpenAPI stays 0.18.0.
 
+v0.75 drag files onto the chat: desktop shows Drop files to
+attach over the open chat; drop adds pending chips. iOS drop
+on the composer does the same. Text drags do not. Nothing
+sends. No new routes. OpenAPI stays 0.18.0.
+
 A copy is also kept at `runtime/openapi.yaml` and `desktop/openapi.yaml`
 so those trees are self-contained. Do not let the files diverge.
 
