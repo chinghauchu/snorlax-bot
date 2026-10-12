@@ -1623,21 +1623,27 @@ private struct MessageBubble: View {
                         HStack(alignment: .top, spacing: 0) {
                             VStack(alignment: .leading, spacing: AssistantBubbleGap.sameTurn) {
                                 ForEach(Array(leftBubbles.enumerated()), id: \.offset) { offset, part in
-                                    HStack(alignment: .lastTextBaseline, spacing: 2) {
-                                        if MidStreamPlaintext.shouldRenderMarkdown(completed: completed) {
-                                            AssistantMarkdown(
-                                                text: part,
-                                                names: agents.filter { !$0.isChannel }.map(\.name),
-                                                completed: completed
-                                            )
-                                        } else {
-                                            MidStreamPlaintextView(
-                                                text: part,
-                                                rowId: "\(message.id)#\(offset)"
-                                            )
-                                        }
-                                        if showCaret && offset == leftBubbles.count - 1 {
-                                            StreamingCaretView()
+                                    LongMessageBody(
+                                        completed: completed,
+                                        text: part,
+                                        activeFind: find.activeRowId == "\(message.id)#\(offset)"
+                                    ) {
+                                        HStack(alignment: .lastTextBaseline, spacing: 2) {
+                                            if MidStreamPlaintext.shouldRenderMarkdown(completed: completed) {
+                                                AssistantMarkdown(
+                                                    text: part,
+                                                    names: agents.filter { !$0.isChannel }.map(\.name),
+                                                    completed: completed
+                                                )
+                                            } else {
+                                                MidStreamPlaintextView(
+                                                    text: part,
+                                                    rowId: "\(message.id)#\(offset)"
+                                                )
+                                            }
+                                            if showCaret && offset == leftBubbles.count - 1 {
+                                                StreamingCaretView()
+                                            }
                                         }
                                     }
                                     .padding(.horizontal, 12)
