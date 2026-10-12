@@ -38,6 +38,11 @@ enum ChatShortcuts {
             action: "Retry or Remove"
         ),
         Row(
+            id: "image",
+            keys: "Tap an image",
+            action: "View it full size"
+        ),
+        Row(
             id: "approve",
             keys: "Long-press an approve command",
             action: "Copy the command"

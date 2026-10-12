@@ -323,6 +323,19 @@ import {
   type PendingAttachment,
 } from "./attachments";
 import {
+  IMAGE_LIGHTBOX_CLOSE,
+  LIGHTBOX_HIDDEN,
+  escapeClosesLightbox,
+  isLightboxImage,
+  lightboxAppear,
+  lightboxDismiss,
+  lightboxFadeMs,
+  lightboxLabel,
+  lightboxShown,
+  type ImageLightboxTarget,
+  type LightboxPaint,
+} from "./imageLightbox";
+import {
   DROP_FILES_LABEL,
   dragCarriesFiles,
   escapeClearsFileDrop,
@@ -854,6 +867,18 @@ export function App() {
   const lastAssistantSig = useRef("");
   const [showJump, setShowJump] = useState(false);
   const [jumpPaint, setJumpPaint] = useState<JumpChipPaint>(JUMP_CHIP_HIDDEN);
+  const [lightboxTarget, setLightboxTarget] = useState<ImageLightboxTarget | null>(
+    null,
+  );
+  const [lightboxFrame, setLightboxFrame] = useState<ImageLightboxTarget | null>(
+    null,
+  );
+  const [lightboxPaint, setLightboxPaint] = useState<LightboxPaint>(LIGHTBOX_HIDDEN);
+  const lightboxTargetRef = useRef<ImageLightboxTarget | null>(null);
+  const lightboxReturnRef = useRef<HTMLElement | null>(null);
+  const lightboxCloseRef = useRef<HTMLButtonElement>(null);
+  const lightboxWasOpen = useRef(false);
+  lightboxTargetRef.current = lightboxTarget;
   const composerRef = useRef<HTMLTextAreaElement>(null);
   const composerRootRef = useRef<HTMLElement>(null);
   const skillTypeaheadRef = useRef<HTMLUListElement>(null);
@@ -1058,6 +1083,26 @@ export function App() {
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [dictation]);
+
+  useEffect(() => {
+    const onKey = (event: globalThis.KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      if (
+        !escapeClosesLightbox({
+          open: lightboxTargetRef.current != null,
+          composing: isComposerComposing(event),
+        })
+      ) {
+        return;
+      }
+      event.preventDefault();
+      event.stopPropagation();
+      event.stopImmediatePropagation();
+      setLightboxTarget(null);
+    };
+    window.addEventListener("keydown", onKey, true);
+    return () => window.removeEventListener("keydown", onKey, true);
+  }, []);
 
   useEffect(() => {
     const onKey = (event: globalThis.KeyboardEvent) => {
@@ -1341,6 +1386,68 @@ export function App() {
     }, ms);
     return () => window.clearTimeout(timer);
   }, [showJump]);
+
+  const restoreLightboxFocus = useCallback(() => {
+    const back = lightboxReturnRef.current;
+    lightboxReturnRef.current = null;
+    if (back?.isConnected) {
+      back.focus({ preventScroll: true });
+      return;
+    }
+    focusComposer();
+  }, [focusComposer]);
+
+  const openImageLightbox = useCallback(
+    (target: ImageLightboxTarget, trigger: HTMLElement) => {
+      lightboxReturnRef.current = trigger;
+      setLightboxTarget(target);
+    },
+    [],
+  );
+
+  const closeImageLightbox = useCallback(() => {
+    setLightboxTarget(null);
+  }, []);
+
+  useEffect(() => {
+    const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    if (lightboxTarget) {
+      lightboxWasOpen.current = true;
+      setLightboxFrame(lightboxTarget);
+      setLightboxPaint(lightboxAppear(reduce));
+      if (reduce) return;
+      const frame = requestAnimationFrame(() => {
+        setLightboxPaint(lightboxShown());
+      });
+      return () => cancelAnimationFrame(frame);
+    }
+    if (!lightboxWasOpen.current) return;
+    setLightboxPaint(lightboxDismiss(reduce));
+    const ms = lightboxFadeMs(reduce);
+    if (ms === 0) {
+      lightboxWasOpen.current = false;
+      setLightboxFrame(null);
+      setLightboxPaint(LIGHTBOX_HIDDEN);
+      restoreLightboxFocus();
+      return;
+    }
+    const timer = window.setTimeout(() => {
+      lightboxWasOpen.current = false;
+      setLightboxFrame(null);
+      setLightboxPaint(LIGHTBOX_HIDDEN);
+      restoreLightboxFocus();
+    }, ms);
+    return () => window.clearTimeout(timer);
+  }, [lightboxTarget, restoreLightboxFocus]);
+
+  useEffect(() => {
+    if (!lightboxPaint.shown || !lightboxTarget) return;
+    lightboxCloseRef.current?.focus({ preventScroll: true });
+  }, [lightboxPaint.shown, lightboxTarget]);
+
+  useEffect(() => {
+    setLightboxTarget(null);
+  }, [activeId, threadId]);
 
   useLayoutEffect(() => {
     const key = activeId ? readingPlaceKey(activeId, threadId) : null;
@@ -4178,6 +4285,7 @@ export function App() {
                           message={message}
                           session={session}
                           onOpenFile={openAttachedFile}
+                          onOpenImage={openImageLightbox}
                         />
                         {message.content ? (
                           <pre>
@@ -4199,6 +4307,7 @@ export function App() {
                           message={message}
                           session={session}
                           onOpenFile={openAttachedFile}
+                          onOpenImage={openImageLightbox}
                         />
                         {leftBubbles.length ? (
                           <div className="assistant-bubbles">
@@ -5747,6 +5856,43 @@ export function App() {
           </div>
         </div>
       ) : null}
+      {lightboxPaint.mounted && lightboxFrame ? (
+        <div
+          className="image-lightbox-backdrop"
+          data-shown={lightboxPaint.shown ? "true" : "false"}
+          onMouseDown={() => closeImageLightbox()}
+          onKeyDown={(event) => {
+            if (event.key !== "Tab") return;
+            event.preventDefault();
+            lightboxCloseRef.current?.focus({ preventScroll: true });
+          }}
+        >
+          <div
+            className="image-lightbox"
+            role="dialog"
+            aria-modal="true"
+            aria-label={lightboxLabel(lightboxFrame.name)}
+            tabIndex={-1}
+            onMouseDown={(event) => event.stopPropagation()}
+          >
+            <button
+              ref={lightboxCloseRef}
+              type="button"
+              className="image-lightbox-close"
+              onMouseDown={(event) => event.stopPropagation()}
+              onClick={() => closeImageLightbox()}
+            >
+              {IMAGE_LIGHTBOX_CLOSE}
+            </button>
+            <AuthedImg
+              className="image-lightbox-image"
+              src={lightboxFrame.url}
+              session={session}
+              alt={lightboxLabel(lightboxFrame.name)}
+            />
+          </div>
+        </div>
+      ) : null}
       {shortcutsOpen ? (
         <div
           className="shortcuts-backdrop"
@@ -6003,27 +6149,44 @@ function MessageAttachmentChrome({
   message,
   session,
   onOpenFile,
+  onOpenImage,
 }: {
   message: ChatMessage;
   session: Session | null;
   onOpenFile: (file: { name: string; url: string }) => void;
+  onOpenImage: (target: ImageLightboxTarget, trigger: HTMLElement) => void;
 }) {
   const atts = userRightAttachments(message);
-  const images = atts.filter((row) => row.kind === "image");
+  const images = atts.filter((row) => isLightboxImage(row.kind));
   const videos = atts.filter((row) => row.kind === "video");
   const files = atts.filter((row) => row.kind === "file");
   if (!images.length && !videos.length && !files.length) return null;
   return (
     <div className="message-atts">
-      {images.map((image) => (
-        <AuthedImg
-          key={image.id}
-          className="bubble-image"
-          src={resolveMediaUrl(session?.baseUrl ?? "", image.url)}
-          session={session}
-          alt=""
-        />
-      ))}
+      {images.map((image) => {
+        const url = resolveMediaUrl(session?.baseUrl ?? "", image.url);
+        return (
+          <button
+            key={image.id}
+            type="button"
+            className="bubble-image-btn"
+            aria-label={lightboxLabel(image.name)}
+            onClick={(event) =>
+              onOpenImage(
+                { id: image.id, url, name: image.name },
+                event.currentTarget,
+              )
+            }
+          >
+            <AuthedImg
+              className="bubble-image"
+              src={url}
+              session={session}
+              alt=""
+            />
+          </button>
+        );
+      })}
       {videos.map((video) => (
         <AuthedVideo
           key={video.id}
