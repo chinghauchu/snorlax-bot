@@ -337,6 +337,13 @@ import {
   type LightboxPaint,
 } from "./imageLightbox";
 import {
+  applyFinishedPreview,
+  previewOwnsMessages,
+  rememberChatPreview,
+  retainChatPreviews,
+  snapshotChatPreview,
+} from "./lastMessagePreview";
+import {
   DROP_FILES_LABEL,
   dragCarriesFiles,
   escapeClearsFileDrop,
@@ -735,6 +742,20 @@ export function App() {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const messagesRef = useRef(messages);
   messagesRef.current = messages;
+  /** v0.80: last preview line per chat, from transcripts already in memory. */
+  const [chatPreviews, setChatPreviews] = useState<Record<string, string>>({});
+  /** False while a chat switch is waiting on its transcript, so the previous rows are not written onto the next chat. */
+  const previewLive = useRef(false);
+  useEffect(() => {
+    if (!previewLive.current) return;
+    if (!activeId || !snapshotChatPreview(threadId)) return;
+    if (!previewOwnsMessages(activeId, messages)) return;
+    setChatPreviews((prev) => rememberChatPreview(prev, activeId, messages));
+  }, [activeId, threadId, messages]);
+  useEffect(() => {
+    const ids = new Set(agents.map((agent) => agent.id));
+    setChatPreviews((prev) => retainChatPreviews(prev, ids));
+  }, [agents]);
   const [failedSends, setFailedSends] = useState<FailedSend<ChatMessage>[]>([]);
   const failedSendsRef = useRef(failedSends);
   failedSendsRef.current = failedSends;
@@ -1565,13 +1586,14 @@ export function App() {
         setAgents(roster);
         const preferred = fallbackRosterSelection(roster);
         moveComposer(preferred, null);
+        previewLive.current = false;
         setActiveId(preferred);
         setThreadId(null);
         const epoch = beginNewMessagesLoad(preferred, null);
         if (preferred) {
-          setMessages(
-            commitTranscript(await listMessages(next, preferred), preferred, null),
-          );
+          const listed = await listMessages(next, preferred);
+          previewLive.current = true;
+          setMessages(commitTranscript(listed, preferred, null));
           focusComposer();
           placeCaretAtEnd();
         } else {
@@ -1581,6 +1603,7 @@ export function App() {
       } catch (err) {
         setAgents([]);
         moveComposer(null, null);
+        previewLive.current = false;
         setActiveId(null);
         setThreadId(null);
         const epoch = beginNewMessagesLoad(null, null);
@@ -1682,6 +1705,7 @@ export function App() {
 
   async function loadConversation(id: string, thread: string | null) {
     moveComposer(id, thread);
+    previewLive.current = false;
     const epoch = beginNewMessagesLoad(id, thread);
     const gen = transcriptGenRef.current + 1;
     transcriptGenRef.current = gen;
@@ -1718,6 +1742,7 @@ export function App() {
     let rows: ChatMessage[] = [];
     if (!session) {
       if (transcriptGenRef.current !== gen) return;
+      previewLive.current = snapshotChatPreview(thread);
       setMessages(commitTranscript(rows, id, thread));
       setTranscriptGen(gen);
       finishNewMessagesLoad(epoch);
@@ -1734,6 +1759,7 @@ export function App() {
       setComposerError(describeError(err));
     }
     if (transcriptGenRef.current !== gen) return;
+    previewLive.current = snapshotChatPreview(thread);
     setMessages(commitTranscript(rows, id, thread));
     setTranscriptGen(gen);
     finishNewMessagesLoad(epoch);
@@ -2284,6 +2310,7 @@ export function App() {
         const next = nextRosterSelection(roster, doomed.id, activeId);
         if (next) chatUnread.current.clear(next);
         moveComposer(next, null);
+        previewLive.current = false;
         setActiveId(next);
         setThreadId(null);
         setProfileOpen(false);
@@ -2296,11 +2323,9 @@ export function App() {
           );
           failedSendsRef.current = keptFailed;
           setFailedSends(keptFailed);
-          setMessages(
-            next
-              ? commitTranscript(await listMessages(session, next), next, null)
-              : [],
-          );
+          const listed = next ? await listMessages(session, next) : [];
+          previewLive.current = Boolean(next);
+          setMessages(next ? commitTranscript(listed, next, null) : []);
         } finally {
           finishNewMessagesLoad(epoch);
         }
@@ -2511,6 +2536,11 @@ export function App() {
           message.replyTo
         ) {
           return;
+        }
+        if (message && snapshotChatPreview(originThread)) {
+          setChatPreviews((prev) =>
+            applyFinishedPreview(prev, streamChatId, message),
+          );
         }
         if (message) {
           if (isEmptyAssistantReply(message)) {
@@ -3884,6 +3914,9 @@ export function App() {
                   <span className="row-name">{agent.name}</span>
                   {rosterSubtitle(agent) ? (
                     <span className="row-title">{rosterSubtitle(agent)}</span>
+                  ) : null}
+                  {chatPreviews[agent.id] ? (
+                    <span className="row-preview">{chatPreviews[agent.id]}</span>
                   ) : null}
                 </span>
                 {unreadIds.has(agent.id) || replyUnreadIds.has(agent.id) ? (
