@@ -92,6 +92,8 @@ final class AppModel {
     }
     /// v0.80: last preview line per chat, from transcripts already in memory.
     var chatPreviews: [String: String] = [:]
+    /// v0.83: latest-message createdAt per chat, already in memory.
+    var chatActivity: [String: Date] = [:]
     /// v0.76: message id the New messages line sits above. Nil hides it.
     var newMessagesAnchorID: String?
     var toolTraces: [LiveToolTrace] = []
@@ -1754,6 +1756,7 @@ final class AppModel {
         guard LastMessagePreview.snapshotMainTranscript(threadID) else { return }
         guard LastMessagePreview.owns(chatId: id, messages: messages) else { return }
         storeChatPreview(chatId: id, messages: messages)
+        storeChatActivity(chatId: id, messages: messages)
     }
 
     /// A finished message the client already has, even if that chat is no longer open.
@@ -1784,6 +1787,29 @@ final class AppModel {
     private func retainChatPreviews() {
         let ids = Set(agents.map(\.id))
         chatPreviews = chatPreviews.filter { ids.contains($0.key) }
+        chatActivity = chatActivity.filter { ids.contains($0.key) }
+    }
+
+    /// Latest message in the open main transcript. A thread does not replace the channel row.
+    private func storeChatActivity(chatId: String, messages: [Message]) {
+        guard !chatId.isEmpty else { return }
+        if let stamp = messages.last?.createdAt {
+            if chatActivity[chatId] != stamp {
+                chatActivity[chatId] = stamp
+            }
+        } else if chatActivity[chatId] != nil {
+            chatActivity.removeValue(forKey: chatId)
+        }
+    }
+
+    /// A finished message the client already has, even if that chat is no longer open.
+    /// An older stamp does not move the row backward.
+    private func noteFinishedActivity(chatId: String, createdAt: Date) {
+        guard !chatId.isEmpty else { return }
+        if let prev = chatActivity[chatId], prev > createdAt { return }
+        if chatActivity[chatId] != createdAt {
+            chatActivity[chatId] = createdAt
+        }
     }
 
     private func noteFinishedAssistantReply(chatId: String, message: Message) {
@@ -1809,6 +1835,7 @@ final class AppModel {
                 let channel = agents.first(where: { $0.id == agentId })?.isChannel == true
                 if !(channel && message.replyTo != nil) {
                     noteFinishedPreview(chatId: agentId, message: message)
+                    noteFinishedActivity(chatId: agentId, createdAt: message.createdAt)
                 }
             }
         }

@@ -229,6 +229,7 @@ button:disabled {
 .row-copy {
   display: flex;
   flex-direction: column;
+  flex: 1;
   min-width: 0;
 }
 
@@ -240,13 +241,32 @@ button:disabled {
   color: var(--text-muted);
 }
 
-/* v0.80: one muted line of the latest user-visible message. */
+/* v0.80: one muted line of the latest user-visible message.
+   v0.83: the relative time sits on that same row. */
+.row-meta {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  min-width: 0;
+}
+
 .row-preview {
+  flex: 1;
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
   font-size: 12px;
   color: var(--text-muted);
+}
+
+.row-time {
+  flex: none;
+  margin-left: auto;
+  font-size: 12px;
+  color: var(--text-muted);
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
 }
 
 .account {
