@@ -349,6 +349,7 @@ import {
   retainChatPreviews,
   snapshotChatPreview,
 } from "./lastMessagePreview";
+import { chatRowPreview } from "./chatDraftPreview";
 import {
   CHAT_LIST_TIME_TICK_MS,
   applyFinishedActivity,
@@ -4166,6 +4167,12 @@ export function App() {
           ) : null}
           {[...pinnedAgents, ...restAgents].map((agent) => {
             const preview = chatPreviews[agent.id];
+            const shown = chatRowPreview({
+              chatId: agent.id,
+              openChatId: activeId,
+              draft: chatDrafts.current.get(agent.id, null),
+              lastMessage: preview,
+            });
             const stamp = chatActivity[agent.id];
             const timeLabel = stamp
               ? chatListTimeLabel(stamp, activityNow)
@@ -4197,10 +4204,21 @@ export function App() {
                     {rosterSubtitle(agent) ? (
                       <span className="row-title">{rosterSubtitle(agent)}</span>
                     ) : null}
-                    {preview || timeLabel ? (
+                    {shown || timeLabel ? (
                       <span className="row-meta">
-                        {preview ? (
-                          <span className="row-preview">{preview}</span>
+                        {shown ? (
+                          <span className="row-preview">
+                            {shown.kind === "draft" ? (
+                              <>
+                                <span className="row-draft-prefix">
+                                  {shown.prefix}{" "}
+                                </span>
+                                {shown.text}
+                              </>
+                            ) : (
+                              shown.text
+                            )}
+                          </span>
                         ) : null}
                         {timeLabel && stamp ? (
                           <time className="row-time" dateTime={stamp}>

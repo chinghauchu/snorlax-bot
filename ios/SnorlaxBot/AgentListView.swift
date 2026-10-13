@@ -226,10 +226,12 @@ private struct AgentRow: View {
                         .foregroundStyle(.secondary)
                         .lineLimit(1)
                 }
-                if let preview = model.chatPreviews[agent.id], !preview.isEmpty {
+                let preview = model.chatListPreview(
+                    for: agent.id,
+                    lastMessage: model.chatPreviews[agent.id]
+                )
+                if preview != nil || model.chatActivity[agent.id] != nil {
                     chatMeta(preview: preview, agentId: agent.id)
-                } else if model.chatActivity[agent.id] != nil {
-                    chatMeta(preview: nil, agentId: agent.id)
                 }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -252,15 +254,13 @@ private struct AgentRow: View {
 
     /// v0.83: preview and compact relative time share one row. The time
     /// follows the latest message and refreshes on a light timer.
+    /// v0.91: a non-open chat with a saved draft shows a muted-accent
+    /// Draft: prefix and that text instead of the last message.
     @ViewBuilder
-    private func chatMeta(preview: String?, agentId: String) -> some View {
+    private func chatMeta(preview: ChatDraftPreview.Row?, agentId: String) -> some View {
         HStack(alignment: .firstTextBaseline, spacing: 8) {
-            if let preview, !preview.isEmpty {
-                Text(preview)
-                    .font(.system(size: 12))
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-                    .truncationMode(.tail)
+            if let preview {
+                previewLine(preview)
             }
             Spacer(minLength: 0)
             if model.chatActivity[agentId] != nil {
@@ -277,6 +277,28 @@ private struct AgentRow: View {
                 }
             }
         }
+    }
+
+    /// One truncated line. A draft paints "Draft:" in a muted accent
+    /// and the rest in the same secondary color as a last-message preview.
+    private func previewLine(_ preview: ChatDraftPreview.Row) -> some View {
+        let line: Text = {
+            if preview.kind == .draft {
+                return Text(ChatDraftPreview.prefix + " ")
+                    .foregroundStyle(Color.accentColor.opacity(0.72))
+                    + Text(preview.text).foregroundStyle(.secondary)
+            }
+            return Text(preview.text).foregroundStyle(.secondary)
+        }()
+        return line
+            .font(.system(size: 12))
+            .lineLimit(1)
+            .truncationMode(.tail)
+            .accessibilityLabel(
+                preview.kind == .draft
+                    ? "\(ChatDraftPreview.prefix) \(preview.text)"
+                    : preview.text
+            )
     }
 }
 
