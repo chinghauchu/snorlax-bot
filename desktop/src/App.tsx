@@ -4385,9 +4385,10 @@ export function App() {
                                       />
                                     ) : (
                                       <pre className="assistant-plain">
-                                        <FindText
+                                        <HttpsText
                                           text={part}
                                           active={rangeFor(bubbleRowId)}
+                                          streaming
                                         />
                                         {showCaret ? (
                                           <span
@@ -6083,6 +6084,17 @@ function MentionText({
   activeRange?: { start: number; end: number } | null;
 }) {
   const findQuery = useFindQuery();
+  if (links) {
+    return (
+      <HttpsText
+        text={text}
+        knownNames={knownNames}
+        chips={chips}
+        findQuery={findQuery}
+        active={activeRange}
+      />
+    );
+  }
   const pieces = splitMentions(text, knownNames);
   if (pieces.length === 0) {
     return text ? (
@@ -6113,16 +6125,6 @@ function MentionText({
             <span key={index} className={chips ? "mention-chip" : "mention"}>
               {body}
             </span>
-          );
-        }
-        if (links) {
-          return (
-            <HttpsText
-              key={index}
-              text={piece.value}
-              findQuery={findQuery}
-              active={local}
-            />
           );
         }
         return <span key={index}>{body}</span>;

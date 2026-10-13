@@ -17,11 +17,10 @@ import {
   codeBlockCopyLabel,
   showCodeBlockCopy,
 } from "./codeBlockCopy";
+import { isSafeWebUrl, splitWebUrls } from "./linkify";
 import {
   copyText,
   fenceLanguage,
-  isSafeHttpsUrl,
-  splitHttpsUrls,
   stabilizeMarkdown,
 } from "./markdown";
 import {
@@ -34,6 +33,7 @@ import {
 import { shouldRenderMermaid, renderMermaidSvg } from "./mermaid";
 import { splitMentions } from "./mentions";
 import { openOsBrowser } from "./openUrl";
+import { findHits, findQueryActive } from "./chatFind";
 import { FindText, useFindQuery } from "./FindText";
 
 type Props = {
@@ -57,9 +57,7 @@ export function MarkdownBody({ text, knownNames, completed = true }: Props) {
             {children}
           </CodeFence>
         ),
-        code: ({ className, children }) => (
-          <code className={className}>{children}</code>
-        ),
+        code: InlineCode,
         img: ({ alt }) => (alt ? <span>{alt}</span> : null),
         p: ({ children }) => {
           const block = soleBlockMath(children, slots, completed, findQuery);
@@ -87,7 +85,7 @@ export function MdLink({
   href?: string;
   children?: ReactNode;
 }) {
-  if (!isSafeHttpsUrl(href) || !href) {
+  if (!isSafeWebUrl(href) || !href) {
     return <>{children}</>;
   }
   const url = href;
@@ -108,16 +106,130 @@ export function MdLink({
 
 export function HttpsText({
   text,
-  findQuery = "",
+  knownNames = [],
+  chips = false,
+  findQuery,
   active = null,
+  streaming = false,
 }: {
   text: string;
+  knownNames?: string[];
+  chips?: boolean;
   findQuery?: string;
   active?: { start: number; end: number } | null;
+  /** A URL that still touches the end of a growing bubble stays plain. */
+  streaming?: boolean;
 }) {
-  const pieces = splitHttpsUrls(text);
-  if (pieces.length === 1 && pieces[0]?.type === "text") {
-    return <FindText text={text} query={findQuery} active={active} />;
+  const fromContext = useFindQuery();
+  const query = findQuery ?? fromContext;
+  const pieces = splitWebUrls(text, { streaming });
+  const hits = findQueryActive(query)
+    ? findHits([{ id: "row", text }], query)
+    : [];
+  let offset = 0;
+  return (
+    <>
+      {pieces.map((piece, index) => {
+        const start = offset;
+        offset += piece.value.length;
+        const overlapped = overlapHits(hits, active, start, offset);
+        if (piece.type === "link") {
+          return (
+            <MdLink key={index} href={piece.value}>
+              {paintOverlap(piece.value, overlapped)}
+            </MdLink>
+          );
+        }
+        return (
+          <MentionPieces
+            key={index}
+            text={piece.value}
+            knownNames={knownNames}
+            chips={chips}
+            hits={overlapped}
+          />
+        );
+      })}
+    </>
+  );
+}
+
+type OverlapHit = { start: number; end: number; active: boolean };
+
+function overlapHits(
+  hits: Array<{ start: number; end: number }>,
+  active: { start: number; end: number } | null,
+  start: number,
+  end: number,
+): OverlapHit[] {
+  const overlapped: OverlapHit[] = [];
+  for (const hit of hits) {
+    if (hit.end <= start || hit.start >= end) continue;
+    overlapped.push({
+      start: Math.max(hit.start, start) - start,
+      end: Math.min(hit.end, end) - start,
+      active: active != null && active.start === hit.start && active.end === hit.end,
+    });
+  }
+  return overlapped;
+}
+
+function sliceHits(hits: OverlapHit[], start: number, end: number): OverlapHit[] {
+  const sliced: OverlapHit[] = [];
+  for (const hit of hits) {
+    if (hit.end <= start || hit.start >= end) continue;
+    sliced.push({
+      start: Math.max(hit.start, start) - start,
+      end: Math.min(hit.end, end) - start,
+      active: hit.active,
+    });
+  }
+  return sliced;
+}
+
+function paintOverlap(text: string, hits: OverlapHit[]): ReactNode {
+  if (!text) return null;
+  if (!hits.length) return text;
+  const nodes: ReactNode[] = [];
+  let cursor = 0;
+  hits.forEach((hit, index) => {
+    if (hit.start > cursor) {
+      nodes.push(<span key={`t-${index}`}>{text.slice(cursor, hit.start)}</span>);
+    }
+    nodes.push(
+      <mark
+        key={`m-${index}`}
+        className={hit.active ? "find-hit active" : "find-hit"}
+        data-find-active={hit.active ? "true" : undefined}
+      >
+        {text.slice(hit.start, hit.end)}
+      </mark>,
+    );
+    cursor = hit.end;
+  });
+  if (cursor < text.length) {
+    nodes.push(<span key="tail">{text.slice(cursor)}</span>);
+  }
+  return <>{nodes}</>;
+}
+
+function MentionPieces({
+  text,
+  knownNames,
+  chips,
+  hits,
+}: {
+  text: string;
+  knownNames: string[];
+  chips: boolean;
+  hits: OverlapHit[];
+}) {
+  const pieces = splitMentions(text, knownNames);
+  if (
+    pieces.length === 0 ||
+    (pieces.length === 1 && pieces[0]?.type !== "mention")
+  ) {
+    return <>{paintOverlap(text, hits)}</>;
   }
   let offset = 0;
   return (
@@ -125,28 +237,28 @@ export function HttpsText({
       {pieces.map((piece, index) => {
         const start = offset;
         offset += piece.value.length;
-        const local =
-          active &&
-          active.start >= start &&
-          active.start < start + piece.value.length
-            ? {
-                start: active.start - start,
-                end: Math.min(active.end, start + piece.value.length) - start,
-              }
-            : null;
-        const body = (
-          <FindText text={piece.value} query={findQuery} active={local} />
-        );
-        return piece.type === "link" ? (
-          <MdLink key={index} href={piece.value}>
-            {body}
-          </MdLink>
-        ) : (
-          <span key={index}>{body}</span>
-        );
+        const body = paintOverlap(piece.value, sliceHits(hits, start, offset));
+        if (piece.type === "mention" && piece.resolved) {
+          return (
+            <span key={index} className={chips ? "mention-chip" : "mention"}>
+              {body}
+            </span>
+          );
+        }
+        return <span key={index}>{body}</span>;
       })}
     </>
   );
+}
+
+function InlineCode({
+  className,
+  children,
+}: {
+  className?: string;
+  children?: ReactNode;
+}) {
+  return <code className={className}>{children}</code>;
 }
 
 function CodeFence({
@@ -358,6 +470,7 @@ function enrichChildren(
   completed: boolean,
   slots: MathSlot[],
   findQuery: string,
+  linkify = true,
 ): ReactNode {
   return Children.map(children, (child, index) => {
     if (typeof child === "string") {
@@ -368,15 +481,29 @@ function enrichChildren(
         slots,
         index,
         findQuery,
+        linkify,
       );
     }
     if (isValidElement(child)) {
       const props = child.props as { children?: ReactNode };
       if (props.children == null) return child;
+      const skipLinks =
+        child.type === InlineCode ||
+        child.type === MdLink ||
+        child.type === "code" ||
+        child.type === "a" ||
+        child.type === "pre";
       return cloneElement(
         child,
         undefined,
-        enrichChildren(props.children, knownNames, completed, slots, findQuery),
+        enrichChildren(
+          props.children,
+          knownNames,
+          completed,
+          slots,
+          findQuery,
+          linkify && !skipLinks,
+        ),
       );
     }
     return child;
@@ -390,10 +517,11 @@ function renderTextWithMath(
   slots: MathSlot[],
   keyBase: number,
   findQuery: string,
+  linkify: boolean,
 ): ReactNode {
   const pieces = splitMathTokens(text);
   if (pieces.length === 1 && pieces[0]?.type === "text") {
-    return mentionifyString(text, knownNames, keyBase, findQuery);
+    return mentionifyString(text, knownNames, keyBase, findQuery, linkify);
   }
   return pieces.map((piece, inner) => {
     if (piece.type === "math") {
@@ -409,7 +537,7 @@ function renderTextWithMath(
     }
     return (
       <span key={`${keyBase}-t-${inner}`}>
-        {mentionifyString(piece.value, knownNames, inner, findQuery)}
+        {mentionifyString(piece.value, knownNames, inner, findQuery, linkify)}
       </span>
     );
   });
@@ -461,7 +589,13 @@ function mentionifyString(
   knownNames: string[],
   index: number,
   findQuery: string,
+  linkify: boolean,
 ): ReactNode {
+  if (linkify) {
+    return (
+      <HttpsText text={text} knownNames={knownNames} findQuery={findQuery} />
+    );
+  }
   const pieces = splitMentions(text, knownNames);
   if (pieces.length === 1 && pieces[0]?.type === "text") {
     return <FindText text={text} query={findQuery} />;
