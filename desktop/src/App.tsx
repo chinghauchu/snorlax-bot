@@ -369,6 +369,19 @@ import {
   type ChatListFilter,
 } from "./chatListFilter";
 import {
+  PIN_LABEL,
+  PINNED_GROUP_LABEL,
+  UNPIN_LABEL,
+  browserPinStorage,
+  groupPinnedChats,
+  isChatPinned,
+  pinActionLabel,
+  readChatPins,
+  retainChatPins,
+  toggleChatPin,
+  writeChatPins,
+} from "./chatPins";
+import {
   DROP_FILES_LABEL,
   dragCarriesFiles,
   escapeClearsFileDrop,
@@ -444,6 +457,23 @@ function envToken(): string {
     import.meta.env.VITE_SNORLAX_TOKEN ||
     ""
   ).trim();
+}
+
+function PinGlyph() {
+  return (
+    <svg
+      className="pin-glyph"
+      viewBox="0 0 12 12"
+      width="12"
+      height="12"
+      aria-hidden="true"
+    >
+      <path
+        fill="currentColor"
+        d="M4.1 1.1h3.8l-.7 3.1 1.7 1.7H3.1l1.7-1.7-.7-3.1Zm1.3 5.1h1.2v4.6H5.4V6.2Z"
+      />
+    </svg>
+  );
 }
 
 function initialUrl(): string {
@@ -792,6 +822,31 @@ export function App() {
   function chooseChatListFilter(next: ChatListFilter) {
     setChatListFilter(next);
     writeChatListFilter(browserFilterStorage(), next);
+  }
+  // v0.89: pinned chats stay at the top, in the order they were pinned.
+  const [pinnedChatIds, setPinnedChatIds] = useState<string[]>(() =>
+    readChatPins(browserPinStorage()),
+  );
+  function onTogglePin(id: string) {
+    setContextMenu(null);
+    setPinnedChatIds((current) => {
+      const next = toggleChatPin(current, id);
+      writeChatPins(browserPinStorage(), next);
+      return next;
+    });
+  }
+  function retainPins(keep: ReadonlySet<string>) {
+    setPinnedChatIds((current) => {
+      const next = retainChatPins(current, keep);
+      if (
+        next.length === current.length &&
+        next.every((id, index) => id === current[index])
+      ) {
+        return current;
+      }
+      writeChatPins(browserPinStorage(), next);
+      return next;
+    });
   }
   // v0.77: title and dock / taskbar badge follow the unread-dot set.
   useEffect(() => {
@@ -1681,6 +1736,7 @@ export function App() {
       try {
         const roster = await listAgents(next);
         setAgents(roster);
+        retainPins(new Set(roster.map((row) => row.id)));
         const preferred = fallbackRosterSelection(roster);
         moveComposer(preferred, null);
         previewLive.current = false;
@@ -2403,6 +2459,7 @@ export function App() {
       const rosterIds = new Set(roster.map((row) => row.id));
       chatUnread.current.retain(rosterIds);
       chatLastSeen.current.retain(rosterIds);
+      retainPins(rosterIds);
       if (activeId === doomed.id) {
         const next = nextRosterSelection(roster, doomed.id, activeId);
         if (next) chatUnread.current.clear(next);
@@ -3732,7 +3789,6 @@ export function App() {
   }
 
   function onAgentContext(event: MouseEvent, agent: Agent) {
-    if (!credsReady || !canDelete(agent)) return;
     event.preventDefault();
     event.stopPropagation();
     setContextMenu({ x: event.clientX, y: event.clientY, agent });
@@ -3956,6 +4012,11 @@ export function App() {
       unreadIds.has(agent.id) || replyUnreadIds.has(agent.id),
     ),
   );
+  const { pinned: pinnedAgents, rest: restAgents } = groupPinnedChats(
+    rosterAgents,
+    pinnedChatIds,
+    (agent) => agent.id,
+  );
   const unreadRosterCount = agents.filter(
     (agent) => unreadIds.has(agent.id) || replyUnreadIds.has(agent.id),
   ).length;
@@ -4079,48 +4140,69 @@ export function App() {
           {showUnreadEmpty(chatListFilter, unreadRosterCount) ? (
             <li className="roster-empty">{UNREAD_EMPTY_LABEL}</li>
           ) : null}
-          {rosterAgents.map((agent) => {
+          {pinnedAgents.length > 0 ? (
+            <li className="roster-group">{PINNED_GROUP_LABEL}</li>
+          ) : null}
+          {[...pinnedAgents, ...restAgents].map((agent) => {
             const preview = chatPreviews[agent.id];
             const stamp = chatActivity[agent.id];
             const timeLabel = stamp
               ? chatListTimeLabel(stamp, activityNow)
               : null;
+            const pinned = isChatPinned(pinnedChatIds, agent.id);
             return (
             <li key={agent.id}>
-              <button
-                type="button"
-                className={agent.id === activeId ? "row selected" : "row"}
-                onClick={() => void selectAgent(agent.id)}
+              <div
+                className={
+                  "row" +
+                  (agent.id === activeId ? " selected" : "") +
+                  (pinned ? " pinned" : "")
+                }
                 onContextMenu={(e) => onAgentContext(e, agent)}
               >
-                <Avatar
-                  src={agent.avatar}
-                  name={agent.name}
-                  size={28}
-                  session={session}
-                />
-                <span className="row-copy">
-                  <span className="row-name">{agent.name}</span>
-                  {rosterSubtitle(agent) ? (
-                    <span className="row-title">{rosterSubtitle(agent)}</span>
+                <button
+                  type="button"
+                  className="row-hit"
+                  onClick={() => void selectAgent(agent.id)}
+                >
+                  <Avatar
+                    src={agent.avatar}
+                    name={agent.name}
+                    size={28}
+                    session={session}
+                  />
+                  <span className="row-copy">
+                    <span className="row-name">{agent.name}</span>
+                    {rosterSubtitle(agent) ? (
+                      <span className="row-title">{rosterSubtitle(agent)}</span>
+                    ) : null}
+                    {preview || timeLabel ? (
+                      <span className="row-meta">
+                        {preview ? (
+                          <span className="row-preview">{preview}</span>
+                        ) : null}
+                        {timeLabel && stamp ? (
+                          <time className="row-time" dateTime={stamp}>
+                            {timeLabel}
+                          </time>
+                        ) : null}
+                      </span>
+                    ) : null}
+                  </span>
+                  {unreadIds.has(agent.id) || replyUnreadIds.has(agent.id) ? (
+                    <span className="unread-dot" aria-label="Unread" />
                   ) : null}
-                  {preview || timeLabel ? (
-                    <span className="row-meta">
-                      {preview ? (
-                        <span className="row-preview">{preview}</span>
-                      ) : null}
-                      {timeLabel && stamp ? (
-                        <time className="row-time" dateTime={stamp}>
-                          {timeLabel}
-                        </time>
-                      ) : null}
-                    </span>
-                  ) : null}
-                </span>
-                {unreadIds.has(agent.id) || replyUnreadIds.has(agent.id) ? (
-                  <span className="unread-dot" aria-label="Unread" />
-                ) : null}
-              </button>
+                </button>
+                <button
+                  type="button"
+                  className={pinned ? "row-pin pinned" : "row-pin"}
+                  aria-label={pinned ? UNPIN_LABEL : PIN_LABEL}
+                  aria-pressed={pinned}
+                  onClick={() => onTogglePin(agent.id)}
+                >
+                  <PinGlyph />
+                </button>
+              </div>
             </li>
             );
           })}
@@ -5477,14 +5559,23 @@ export function App() {
           <button
             type="button"
             role="menuitem"
-            className="danger"
-            onClick={() => {
-              setPendingDelete(contextMenu.agent);
-              setContextMenu(null);
-            }}
+            onClick={() => onTogglePin(contextMenu.agent.id)}
           >
-            Delete…
+            {pinActionLabel(isChatPinned(pinnedChatIds, contextMenu.agent.id))}
           </button>
+          {credsReady && canDelete(contextMenu.agent) ? (
+            <button
+              type="button"
+              role="menuitem"
+              className="danger"
+              onClick={() => {
+                setPendingDelete(contextMenu.agent);
+                setContextMenu(null);
+              }}
+            >
+              Delete…
+            </button>
+          ) : null}
         </div>
       ) : null}
 

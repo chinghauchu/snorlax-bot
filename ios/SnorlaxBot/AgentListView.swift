@@ -30,6 +30,11 @@ struct AgentListView: View {
         return ids.compactMap { byID[$0] }
     }
 
+    /// Search still covers every chat in the All / Unread set, then pins group.
+    private var groupedListed: (pinned: [Agent], rest: [Agent]) {
+        ChatPins.grouped(listedAgents, pinned: model.pinnedChatIDs) { $0.id }
+    }
+
     var body: some View {
         @Bindable var model = model
         VStack(spacing: 0) {
@@ -120,22 +125,57 @@ struct AgentListView: View {
                 .foregroundStyle(.secondary)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .accessibilityLabel(ChatSwitcher.emptyLabel)
-        }
-        ForEach(listedAgents) { agent in
-            row(for: agent)
-                .tag(agent.id)
-                .listRowInsets(EdgeInsets(top: 0, leading: 16, bottom: 0, trailing: 16))
-                .swipeActions(edge: .trailing, allowsFullSwipe: false) {
-                    if model.isConfigured {
-                        Button("Delete", role: .destructive) {
-                            pendingDelete = agent
-                        }
+        } else {
+            let grouped = groupedListed
+            if !grouped.pinned.isEmpty {
+                Section {
+                    ForEach(grouped.pinned) { agent in
+                        chatRow(agent)
+                    }
+                } header: {
+                    Text(ChatPins.groupLabel)
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundStyle(.secondary)
+                        .textCase(nil)
+                }
+            }
+            if !grouped.rest.isEmpty {
+                Section {
+                    ForEach(grouped.rest) { agent in
+                        chatRow(agent)
                     }
                 }
-                .modifier(UserAgentDeleteMenu(enabled: model.isConfigured) {
-                    pendingDelete = agent
-                })
+            }
         }
+    }
+
+    private func chatRow(_ agent: Agent) -> some View {
+        row(for: agent)
+            .tag(agent.id)
+            .listRowInsets(EdgeInsets(top: 0, leading: 16, bottom: 0, trailing: 16))
+            .swipeActions(edge: .leading, allowsFullSwipe: false) {
+                Button {
+                    model.toggleChatPin(agent.id)
+                } label: {
+                    Label(ChatPins.label(pinned: model.isChatPinned(agent.id)), systemImage: "pin")
+                }
+                .tint(Color.accentColor)
+            }
+            .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+                if model.isConfigured {
+                    Button("Delete", role: .destructive) {
+                        pendingDelete = agent
+                    }
+                }
+            }
+            .modifier(
+                UserAgentDeleteMenu(
+                    enabled: model.isConfigured,
+                    pinned: model.isChatPinned(agent.id),
+                    onPin: { model.toggleChatPin(agent.id) },
+                    onDelete: { pendingDelete = agent }
+                )
+            )
     }
 
     @ViewBuilder
@@ -182,6 +222,12 @@ private struct AgentRow: View {
                 }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
+            if model.isChatPinned(agent.id) {
+                Image(systemName: "pin.fill")
+                    .font(.system(size: 12))
+                    .foregroundStyle(.secondary)
+                    .accessibilityLabel(ChatPins.glyphLabel)
+            }
             if model.showsUnreadDot(agent) {
                 Circle()
                     .fill(Color.accentColor)
@@ -248,16 +294,16 @@ struct AccountChip: View {
 
 private struct UserAgentDeleteMenu: ViewModifier {
     let enabled: Bool
+    let pinned: Bool
+    var onPin: () -> Void
     var onDelete: () -> Void
 
-    @ViewBuilder
     func body(content: Content) -> some View {
-        if enabled {
-            content.contextMenu {
+        content.contextMenu {
+            Button(ChatPins.label(pinned: pinned), action: onPin)
+            if enabled {
                 Button("Delete", role: .destructive, action: onDelete)
             }
-        } else {
-            content
         }
     }
 }
