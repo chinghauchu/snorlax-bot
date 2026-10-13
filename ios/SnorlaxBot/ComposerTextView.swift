@@ -22,6 +22,8 @@ struct ComposerTextView: UIViewRepresentable {
     var onArrowUpRecall: (() -> Void)? = nil
     /// v0.55: hardware Return does not send while an assistant turn is in flight.
     var sendMuted: Bool = false
+    /// v0.84: grown height, already capped. The parent applies it with no animation.
+    var onHeight: ((CGFloat) -> Void)? = nil
 
     func makeCoordinator() -> Coordinator {
         Coordinator(self)
@@ -42,11 +44,17 @@ struct ComposerTextView: UIViewRepresentable {
         view.onArrowUpRecall = { [coordinator = context.coordinator] in
             coordinator.parent.onArrowUpRecall?()
         }
+        view.onGrowHeight = { [coordinator = context.coordinator] next in
+            let send = coordinator.parent.onHeight
+            DispatchQueue.main.async { send?(next) }
+        }
         view.sendMuted = sendMuted
         view.font = .systemFont(ofSize: 14)
         view.backgroundColor = .clear
         view.textContainerInset = UIEdgeInsets(top: 4, left: 0, bottom: 4, right: 0)
         view.textContainer.lineFragmentPadding = 0
+        view.textContainer.widthTracksTextView = true
+        view.textContainer.lineBreakMode = .byWordWrapping
         view.isScrollEnabled = false
         view.adjustsFontForContentSizeCategory = true
         view.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
@@ -67,10 +75,15 @@ struct ComposerTextView: UIViewRepresentable {
         view.onArrowUpRecall = { [coordinator = context.coordinator] in
             coordinator.parent.onArrowUpRecall?()
         }
+        view.onGrowHeight = { [coordinator = context.coordinator] next in
+            let send = coordinator.parent.onHeight
+            DispatchQueue.main.async { send?(next) }
+        }
         view.sendMuted = sendMuted
         view.isEditable = !disabled
         view.isUserInteractionEnabled = !disabled
-        if view.text != text {
+        let textChanged = view.text != text
+        if textChanged {
             let selected = view.selectedRange
             view.attributedText = Self.chipped(text, names: chipNames)
             view.typingAttributes = Self.plainAttributes
@@ -94,6 +107,10 @@ struct ComposerTextView: UIViewRepresentable {
         } else if !focused.wrappedValue, view.isFirstResponder {
             view.resignFirstResponder()
         }
+        view.applyGrow(text: text)
+        if textChanged, view.isScrollEnabled {
+            view.scrollRangeToVisible(view.selectedRange)
+        }
         context.coordinator.placeholderLabel.text = placeholder
         context.coordinator.placeholderLabel.isHidden = !text.isEmpty
         if context.coordinator.placeholderLabel.superview !== view {
@@ -104,6 +121,29 @@ struct ComposerTextView: UIViewRepresentable {
                 context.coordinator.placeholderLabel.topAnchor.constraint(equalTo: view.topAnchor, constant: 4),
             ])
         }
+    }
+
+    func sizeThatFits(
+        _ proposal: ProposedViewSize,
+        uiView: ComposerUITextView,
+        context: Context
+    ) -> CGSize? {
+        let width = proposal.width ?? uiView.bounds.width
+        let font = uiView.font ?? .systemFont(ofSize: 14)
+        let content = ComposerGrow.contentHeight(
+            text: text,
+            width: width,
+            font: font,
+            inset: uiView.textContainerInset,
+            lineFragmentPadding: uiView.textContainer.lineFragmentPadding
+        )
+        let resting = ComposerGrow.restingHeight(font: font, inset: uiView.textContainerInset)
+        let fitted = ComposerGrow.frame(
+            contentHeight: content,
+            empty: text.isEmpty,
+            restingHeight: resting
+        )
+        return CGSize(width: max(width, 0), height: fitted.height)
     }
 
     static var plainAttributes: [NSAttributedString.Key: Any] {
@@ -153,6 +193,11 @@ struct ComposerTextView: UIViewRepresentable {
             parent.text = textView.text ?? ""
             placeholderLabel.isHidden = !parent.text.isEmpty
             parent.onCaretChange?(textView.selectedRange)
+            guard let view = textView as? ComposerUITextView else { return }
+            view.applyGrow(text: parent.text)
+            if view.isScrollEnabled {
+                view.scrollRangeToVisible(view.selectedRange)
+            }
         }
 
         func textViewDidChangeSelection(_ textView: UITextView) {
@@ -185,6 +230,45 @@ final class ComposerUITextView: UITextView {
     var onEscapeStop: ((Bool) -> Void)?
     var onArrowUpRecall: (() -> Void)?
     var sendMuted = false
+    var onGrowHeight: ((CGFloat) -> Void)?
+    private var grewWidth: CGFloat = -1
+    private var reportedHeight: CGFloat = -1
+
+    override func layoutSubviews() {
+        super.layoutSubviews()
+        let width = bounds.width
+        guard abs(width - grewWidth) > 0.5 else { return }
+        grewWidth = width
+        applyGrow(text: text ?? "")
+    }
+
+    /// v0.84: turn internal scrolling on only once the text is past the cap.
+    func applyGrow(text: String) {
+        let width = bounds.width
+        guard width > 1, let font else {
+            isScrollEnabled = false
+            return
+        }
+        let content = ComposerGrow.contentHeight(
+            text: text,
+            width: width,
+            font: font,
+            inset: textContainerInset,
+            lineFragmentPadding: textContainer.lineFragmentPadding
+        )
+        let resting = ComposerGrow.restingHeight(font: font, inset: textContainerInset)
+        let fitted = ComposerGrow.frame(
+            contentHeight: content,
+            empty: text.isEmpty,
+            restingHeight: resting
+        )
+        if isScrollEnabled != fitted.scroll {
+            isScrollEnabled = fitted.scroll
+        }
+        guard abs(reportedHeight - fitted.height) > 0.5 else { return }
+        reportedHeight = fitted.height
+        onGrowHeight?(fitted.height)
+    }
 
     override var keyCommands: [UIKeyCommand]? {
         let escape = UIKeyCommand(
