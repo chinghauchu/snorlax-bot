@@ -355,6 +355,20 @@ import {
   retainChatActivity,
 } from "./chatListTime";
 import {
+  FILTER_ALL,
+  FILTER_ALL_LABEL,
+  FILTER_GROUP_LABEL,
+  FILTER_UNREAD,
+  FILTER_UNREAD_LABEL,
+  UNREAD_EMPTY_LABEL,
+  browserFilterStorage,
+  chatVisibleInFilter,
+  readChatListFilter,
+  showUnreadEmpty,
+  writeChatListFilter,
+  type ChatListFilter,
+} from "./chatListFilter";
+import {
   DROP_FILES_LABEL,
   dragCarriesFiles,
   escapeClearsFileDrop,
@@ -771,6 +785,14 @@ export function App() {
   const [replyUnreadIds, setReplyUnreadIds] = useState<Set<string>>(() =>
     chatUnread.current.snapshot(),
   );
+  // v0.88: All shows every chat. Unread keeps rows that paint the accent dot.
+  const [chatListFilter, setChatListFilter] = useState<ChatListFilter>(() =>
+    readChatListFilter(browserFilterStorage()),
+  );
+  function chooseChatListFilter(next: ChatListFilter) {
+    setChatListFilter(next);
+    writeChatListFilter(browserFilterStorage(), next);
+  }
   // v0.77: title and dock / taskbar badge follow the unread-dot set.
   useEffect(() => {
     void applyUnreadChrome(unreadChrome(replyUnreadIds));
@@ -3928,6 +3950,15 @@ export function App() {
     agents.map((agent) => ({ id: agent.id, name: agent.name })),
     switchOpen ? switchQuery : "",
   );
+  const rosterAgents = agents.filter((agent) =>
+    chatVisibleInFilter(
+      chatListFilter,
+      unreadIds.has(agent.id) || replyUnreadIds.has(agent.id),
+    ),
+  );
+  const unreadRosterCount = agents.filter(
+    (agent) => unreadIds.has(agent.id) || replyUnreadIds.has(agent.id),
+  ).length;
   const switchSafeIndex = clampSwitchIndex(switchIndex, switchHits.length);
   const activeSwitch =
     switchSafeIndex >= 0 ? switchHits[switchSafeIndex] : null;
@@ -4028,8 +4059,27 @@ export function App() {
             ) : null}
           </div>
         </header>
+        <div className="roster-filter" role="group" aria-label={FILTER_GROUP_LABEL}>
+          <button
+            type="button"
+            aria-pressed={chatListFilter !== FILTER_UNREAD}
+            onClick={() => chooseChatListFilter(FILTER_ALL)}
+          >
+            {FILTER_ALL_LABEL}
+          </button>
+          <button
+            type="button"
+            aria-pressed={chatListFilter === FILTER_UNREAD}
+            onClick={() => chooseChatListFilter(FILTER_UNREAD)}
+          >
+            {FILTER_UNREAD_LABEL}
+          </button>
+        </div>
         <ul className="roster">
-          {agents.map((agent) => {
+          {showUnreadEmpty(chatListFilter, unreadRosterCount) ? (
+            <li className="roster-empty">{UNREAD_EMPTY_LABEL}</li>
+          ) : null}
+          {rosterAgents.map((agent) => {
             const preview = chatPreviews[agent.id];
             const stamp = chatActivity[agent.id];
             const timeLabel = stamp

@@ -7,17 +7,43 @@ struct AgentListView: View {
     @State private var showCreateChannel = false
     @State private var chatQuery = ""
 
+    /// Chats that currently paint the accent dot, before the name search.
+    private var unreadAgents: [Agent] {
+        model.visibleAgents.filter { model.showsUnreadDot($0) }
+    }
+
+    private var filteredAgents: [Agent] {
+        model.visibleAgents.filter {
+            ChatListFilter.includes(
+                filter: model.chatListFilter,
+                hasUnreadDot: model.showsUnreadDot($0)
+            )
+        }
+    }
+
     private var listedAgents: [Agent] {
-        let chats = model.visibleAgents.map {
+        let chats = filteredAgents.map {
             ChatSwitcher.Chat(id: $0.id, name: $0.name)
         }
         let ids = ChatSwitcher.filter(chats, query: chatQuery).map(\.id)
-        let byID = Dictionary(uniqueKeysWithValues: model.visibleAgents.map { ($0.id, $0) })
+        let byID = Dictionary(uniqueKeysWithValues: filteredAgents.map { ($0.id, $0) })
         return ids.compactMap { byID[$0] }
     }
 
     var body: some View {
-        styledList
+        @Bindable var model = model
+        VStack(spacing: 0) {
+            Picker(ChatListFilter.groupLabel, selection: $model.chatListFilter) {
+                Text(ChatListFilter.allLabel).tag(ChatListFilter.Mode.all)
+                Text(ChatListFilter.unreadLabel).tag(ChatListFilter.Mode.unread)
+            }
+            .pickerStyle(.segmented)
+            .labelsHidden()
+            .accessibilityLabel(ChatListFilter.groupLabel)
+            .padding(.horizontal, 16)
+            .padding(.vertical, 8)
+            styledList
+        }
             .searchable(text: $chatQuery, prompt: ChatSwitcher.placeholder)
             .accessibilityInputLabels([ChatSwitcher.inputLabel])
             .toolbar {
@@ -79,7 +105,16 @@ struct AgentListView: View {
 
     @ViewBuilder
     private var rows: some View {
-        if ChatSwitcher.queryActive(chatQuery), listedAgents.isEmpty {
+        if ChatListFilter.showEmpty(
+            filter: model.chatListFilter,
+            unreadCount: unreadAgents.count
+        ) {
+            Text(ChatListFilter.emptyLabel)
+                .font(.system(size: 12))
+                .foregroundStyle(.secondary)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .accessibilityLabel(ChatListFilter.emptyLabel)
+        } else if ChatSwitcher.queryActive(chatQuery), listedAgents.isEmpty {
             Text(ChatSwitcher.emptyLabel)
                 .font(.system(size: 12))
                 .foregroundStyle(.secondary)

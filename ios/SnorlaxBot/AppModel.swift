@@ -101,6 +101,10 @@ final class AppModel {
     var unreadChannelIDs: Set<String> = []
     /// v0.70 persisted reply-unread roster ids. Handoff dots stay in `unreadChannelIDs`.
     var replyUnreadIDs: Set<String> = []
+    /// v0.88: All shows every chat. Unread keeps rows that paint the accent dot.
+    var chatListFilter: ChatListFilter.Mode = .all {
+        didSet { ChatListFilter.write(chatListFilter) }
+    }
     /// App scene is active. A backgrounded app is not focused on the open chat.
     var sceneFocused = true
     private var chatUnread = ChatUnread()
@@ -182,6 +186,7 @@ final class AppModel {
         token = KeychainStore.load()
         theme = AppTheme(rawValue: UserDefaults.standard.string(forKey: Keys.theme) ?? "") ?? .system
         accent = AccentChoice(rawValue: UserDefaults.standard.string(forKey: Keys.accent) ?? "") ?? .teal
+        chatListFilter = ChatListFilter.read()
         publishReplyUnread()
     }
 
