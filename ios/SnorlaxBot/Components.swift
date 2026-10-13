@@ -195,7 +195,7 @@ struct MentionLabel: View {
             .fixedSize(horizontal: false, vertical: true)
             .frame(minWidth: 0, alignment: .leading)
             .environment(\.openURL, OpenURLAction { url in
-                guard links, url.scheme?.lowercased() == "https" else { return .discarded }
+                guard links, WebLinks.allows(url) else { return .discarded }
                 openURL(url)
                 return .handled
             })
@@ -203,31 +203,22 @@ struct MentionLabel: View {
 
     private var attributed: AttributedString {
         var output = AttributedString()
-        let pattern = try? NSRegularExpression(pattern: "(?<![A-Za-z0-9_])@([A-Za-z][A-Za-z0-9._-]*)")
-        let ns = text as NSString
-        let full = NSRange(location: 0, length: ns.length)
-        var last = 0
-        let lowered = names.map { $0.lowercased() } + ["everyone"]
-        pattern?.enumerateMatches(in: text, range: full) { match, _, _ in
-            guard let match else { return }
-            if match.range.location > last {
-                appendPlain(ns.substring(with: NSRange(location: last, length: match.range.location - last)), to: &output)
+        if links {
+            for piece in WebLinks.split(text, streaming: false) {
+                if piece.kind == .link, let link = WebLinks.url(piece.value) {
+                    var chunk = AttributedString(piece.value)
+                    chunk.link = link
+                    chunk.foregroundColor = .accentColor
+                    output.append(chunk)
+                } else {
+                    appendMentions(piece.value, to: &output)
+                }
             }
-            let token = ns.substring(with: match.range(at: 1))
-            var chunk = AttributedString(ns.substring(with: match.range))
-            let resolved = lowered.contains(token.lowercased())
-            if resolved {
-                chunk.foregroundColor = .accentColor
-                chunk.font = .system(size: 14, weight: .semibold)
-            }
-            output.append(chunk)
-            last = match.range.location + match.range.length
-        }
-        if last < ns.length {
-            appendPlain(ns.substring(from: last), to: &output)
+        } else {
+            appendMentions(text, to: &output)
         }
         if output.characters.isEmpty {
-            appendPlain(text, to: &output)
+            output = AttributedString(text)
         }
         let active = find.activeRowId == findRowId
         return ChatFind.paint(
@@ -250,36 +241,26 @@ struct MentionLabel: View {
         return AttributedString(ns)
     }
 
-    private func appendPlain(_ raw: String, to output: inout AttributedString) {
-        guard links else {
-            output.append(AttributedString(raw))
-            return
-        }
-        guard let pattern = try? NSRegularExpression(pattern: "https://[^\\s<>\"'`]+") else {
-            output.append(AttributedString(raw))
-            return
-        }
+    private func appendMentions(_ raw: String, to output: inout AttributedString) {
+        let pattern = try? NSRegularExpression(pattern: "(?<![A-Za-z0-9_])@([A-Za-z][A-Za-z0-9._-]*)")
         let ns = raw as NSString
         let full = NSRange(location: 0, length: ns.length)
         var last = 0
-        pattern.enumerateMatches(in: raw, range: full) { match, _, _ in
+        let lowered = names.map { $0.lowercased() } + ["everyone"]
+        pattern?.enumerateMatches(in: raw, range: full) { match, _, _ in
             guard let match else { return }
             if match.range.location > last {
                 output.append(AttributedString(ns.substring(with: NSRange(location: last, length: match.range.location - last))))
             }
-            var url = ns.substring(with: match.range)
-            while let lastChar = url.last, ".,;:!?)".contains(lastChar) {
-                url.removeLast()
-            }
-            if let parsed = URL(string: url), parsed.scheme?.lowercased() == "https" {
-                var chunk = AttributedString(url)
-                chunk.link = parsed
+            let token = ns.substring(with: match.range(at: 1))
+            var chunk = AttributedString(ns.substring(with: match.range))
+            let resolved = lowered.contains(token.lowercased())
+            if resolved {
                 chunk.foregroundColor = .accentColor
-                output.append(chunk)
-                last = match.range.location + url.count
-            } else {
-                last = match.range.location
+                chunk.font = .system(size: 14, weight: .semibold)
             }
+            output.append(chunk)
+            last = match.range.location + match.range.length
         }
         if last < ns.length {
             output.append(AttributedString(ns.substring(from: last)))

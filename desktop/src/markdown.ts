@@ -23,16 +23,7 @@ export function stabilizeMarkdown(src: string): string {
   return src.endsWith("\n") ? `${src}${closer}` : `${src}\n${closer}`;
 }
 
-/** Only https:// URLs are tappable. javascript:/data:/http: stay inert text. */
-export function isSafeHttpsUrl(href: string | undefined | null): boolean {
-  if (!href) return false;
-  try {
-    const url = new URL(href);
-    return url.protocol === "https:";
-  } catch {
-    return false;
-  }
-}
+export { isSafeWebUrl, splitWebUrls, type WebPiece } from "./linkify.ts";
 
 export function fenceLanguage(className?: string | null): string {
   const match = /(?:^|\s)language-([A-Za-z0-9_+-]+)/.exec(className || "");
@@ -42,33 +33,6 @@ export function fenceLanguage(className?: string | null): string {
 /** Language tag is exactly `mermaid` (case-insensitive). */
 export function isMermaidLanguage(language: string | undefined | null): boolean {
   return (language ?? "").trim().toLowerCase() === "mermaid";
-}
-
-const HTTPS = /https:\/\/[^\s<>"'`]+/g;
-
-export type HttpsPiece = { type: "text"; value: string } | { type: "link"; value: string };
-
-/** Autolink https:// in plain (non-markdown) text. Trailing punctuation stays text. */
-export function splitHttpsUrls(text: string): HttpsPiece[] {
-  const pieces: HttpsPiece[] = [];
-  let last = 0;
-  for (const match of text.matchAll(HTTPS)) {
-    const idx = match.index ?? 0;
-    let url = match[0];
-    while (url.length > 8 && ".,;:!?)".includes(url[url.length - 1]!)) {
-      url = url.slice(0, -1);
-    }
-    if (idx > last) pieces.push({ type: "text", value: text.slice(last, idx) });
-    if (isSafeHttpsUrl(url)) {
-      pieces.push({ type: "link", value: url });
-      last = idx + url.length;
-    } else {
-      pieces.push({ type: "text", value: match[0] });
-      last = idx + match[0].length;
-    }
-  }
-  if (last < text.length) pieces.push({ type: "text", value: text.slice(last) });
-  return pieces;
 }
 
 export async function copyText(text: string): Promise<void> {

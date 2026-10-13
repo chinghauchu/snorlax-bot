@@ -269,7 +269,7 @@ private struct MarkdownRun: View {
             .fixedSize(horizontal: false, vertical: true)
             .frame(minWidth: 0, maxWidth: .infinity, alignment: .leading)
             .environment(\.openURL, OpenURLAction { url in
-                guard url.scheme?.lowercased() == "https" else { return .discarded }
+                guard WebLinks.allows(url) else { return .discarded }
                 openURL(url)
                 return .handled
             })
@@ -300,6 +300,7 @@ private struct MarkdownRun: View {
         styleHeadings(&parsed)
         styleInlineCode(&parsed)
         dropUnsafeLinks(&parsed)
+        parsed = WebLinks.applyingLinks(parsed, streaming: false)
         highlightMentions(&parsed)
         return ChatFind.paint(parsed, query: find.query)
     }
@@ -328,10 +329,10 @@ private struct MarkdownRun: View {
     private func dropUnsafeLinks(_ parsed: inout AttributedString) {
         for run in parsed.runs {
             guard let url = run.link else { continue }
-            if url.scheme?.lowercased() != "https" {
-                parsed[run.range].link = nil
-            } else {
+            if WebLinks.allows(url) {
                 parsed[run.range].foregroundColor = .accentColor
+            } else {
+                parsed[run.range].link = nil
             }
         }
     }

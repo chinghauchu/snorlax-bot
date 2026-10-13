@@ -4,12 +4,8 @@ import { existsSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import test from "node:test";
-import {
-  fenceLanguage,
-  isSafeHttpsUrl,
-  splitHttpsUrls,
-  stabilizeMarkdown,
-} from "./markdown.ts";
+import { isSafeWebUrl, splitWebUrls } from "./linkify.ts";
+import { fenceLanguage, stabilizeMarkdown } from "./markdown.ts";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const css = readFileSync(join(here, "styles.css"), "utf8");
@@ -33,20 +29,22 @@ test("stabilizeMarkdown closes an open fence so streamed deltas keep rendering",
   assert.equal(stabilizeMarkdown("no fences"), "no fences");
 });
 
-test("only https:// URLs are safe to open", () => {
-  assert.equal(isSafeHttpsUrl("https://example.com/a"), true);
-  assert.equal(isSafeHttpsUrl("http://example.com"), false);
-  assert.equal(isSafeHttpsUrl("javascript:alert(1)"), false);
-  assert.equal(isSafeHttpsUrl("data:text/html,hi"), false);
-  assert.equal(isSafeHttpsUrl("/relative"), false);
-  assert.equal(isSafeHttpsUrl(undefined), false);
+test("http and https URLs are safe to open; other schemes are not", () => {
+  assert.equal(isSafeWebUrl("https://example.com/a"), true);
+  assert.equal(isSafeWebUrl("http://example.com"), true);
+  assert.equal(isSafeWebUrl("javascript:alert(1)"), false);
+  assert.equal(isSafeWebUrl("data:text/html,hi"), false);
+  assert.equal(isSafeWebUrl("file:///tmp/x"), false);
+  assert.equal(isSafeWebUrl("/relative"), false);
+  assert.equal(isSafeWebUrl(undefined), false);
   assert.equal(fenceLanguage("language-js"), "js");
   assert.equal(fenceLanguage("language-C++"), "C++");
   assert.equal(fenceLanguage("language-mermaid"), "mermaid");
-  const links = splitHttpsUrls("see https://example.com/a, please");
+  const links = splitWebUrls("see https://example.com/a, please");
   assert.equal(links[0]?.type, "text");
   assert.equal(links[1]?.type, "link");
   assert.equal(links[1]?.value, "https://example.com/a");
+  assert.equal(splitWebUrls("see http://example.com/a.")[1]?.value, "http://example.com/a");
 });
 
 test("assistant kind=message is 14px markdown; completed LEFT uses short agent bubbles", () => {
@@ -170,7 +168,7 @@ test("https links are accent with hover underline; inline code is 13px chip", ()
     chip,
     /background:\s*color-mix\(in srgb,\s*var\(--accent\)\s+18%/,
   );
-  assert.match(body, /isSafeHttpsUrl/);
+  assert.match(body, /isSafeWebUrl/);
   assert.match(body, /openOsBrowser/);
   assert.match(body, /img:/);
 });
