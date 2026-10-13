@@ -1697,6 +1697,28 @@ final class AppModel {
         pinnedChatIDs = ChatPins.toggle(pinnedChatIDs, id: id)
     }
 
+    /// v0.90: manual unread uses the same persisted reply-unread set.
+    /// Mark as read also drops a channel handoff dot. Pins stay put.
+    func toggleChatRead(_ id: String) {
+        guard !id.isEmpty else { return }
+        let shows: Bool
+        if let agent = agents.first(where: { $0.id == id }) {
+            shows = showsUnreadDot(agent)
+        } else {
+            shows = replyUnreadIDs.contains(id) || unreadChannelIDs.contains(id)
+        }
+        if shows {
+            let cleared = chatUnread.clear(id)
+            unreadChannelIDs.remove(id)
+            if cleared {
+                publishReplyUnread()
+            }
+            return
+        }
+        guard chatUnread.mark(id) else { return }
+        publishReplyUnread()
+    }
+
     /// A chat that left the roster loses its pin. Order of the rest stays.
     private func retainChatPins(against roster: [Agent]) {
         let next = ChatPins.retain(pinnedChatIDs, keep: Set(roster.map(\.id)))
@@ -1706,8 +1728,12 @@ final class AppModel {
     }
 
     func showsUnreadDot(_ agent: Agent) -> Bool {
-        if agent.isChannel, unreadChannelIDs.contains(agent.id) { return true }
-        return replyUnreadIDs.contains(agent.id)
+        ChatUnread.showsDot(
+            chatId: agent.id,
+            replyUnread: replyUnreadIDs,
+            handoffUnread: unreadChannelIDs,
+            channel: agent.isChannel
+        )
     }
 
     private func onScreenChatID() -> String? {

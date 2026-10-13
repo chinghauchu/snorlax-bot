@@ -108,3 +108,4 @@ jobs:
           python3 ios/scripts/test_ios_backspace_chip.py
           python3 ios/scripts/test_ios_chat_list_filter.py
           python3 ios/scripts/test_ios_chat_pins.py
+          python3 ios/scripts/test_ios_chat_mark_unread.py

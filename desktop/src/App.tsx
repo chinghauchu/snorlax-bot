@@ -279,6 +279,8 @@ import {
   browserUnreadStorage,
   isFinishedAssistantReply,
   replyMarksUnread,
+  rowShowsUnreadDot,
+  unreadActionLabel,
   windowIsFocused,
 } from "./chatUnread";
 import { applyUnreadChrome, unreadChrome } from "./unreadOutside";
@@ -834,6 +836,25 @@ export function App() {
       writeChatPins(browserPinStorage(), next);
       return next;
     });
+  }
+  // v0.90: manual unread uses the same persisted reply-unread set.
+  // Mark as read also drops a channel handoff dot. Pins stay put.
+  function onToggleRead(id: string) {
+    setContextMenu(null);
+    if (!id) return;
+    if (rowShowsUnreadDot(id, replyUnreadIds, unreadIds)) {
+      const cleared = chatUnread.current.clear(id);
+      setUnreadIds((prev) => {
+        if (!prev.has(id)) return prev;
+        const next = new Set(prev);
+        next.delete(id);
+        return next;
+      });
+      if (cleared) publishReplyUnread();
+      return;
+    }
+    if (!chatUnread.current.mark(id)) return;
+    publishReplyUnread();
   }
   function retainPins(keep: ReadonlySet<string>) {
     setPinnedChatIds((current) => {
@@ -5562,6 +5583,19 @@ export function App() {
             onClick={() => onTogglePin(contextMenu.agent.id)}
           >
             {pinActionLabel(isChatPinned(pinnedChatIds, contextMenu.agent.id))}
+          </button>
+          <button
+            type="button"
+            role="menuitem"
+            onClick={() => onToggleRead(contextMenu.agent.id)}
+          >
+            {unreadActionLabel(
+              rowShowsUnreadDot(
+                contextMenu.agent.id,
+                replyUnreadIds,
+                unreadIds,
+              ),
+            )}
           </button>
           {credsReady && canDelete(contextMenu.agent) ? (
             <button

@@ -9,9 +9,34 @@ import Foundation
 /// already on screen clears it too. The set persists in UserDefaults
 /// (`snorlax.chatUnread`). No HTTP.
 /// Channel handoff unread stays a separate in-memory set.
+/// v0.90: the chat list can mark a read chat into this same set, or
+/// clear a dotted chat. Mark as read also drops a channel handoff
+/// dot so the accent dot leaves the row. Opening the chat still
+/// clears this set. No new storage key.
 /// Keep in lockstep with `desktop/src/chatUnread.ts`.
 struct ChatUnread {
     static let storageKey = "snorlax.chatUnread"
+    static let markUnreadLabel = "Mark as unread"
+    static let markReadLabel = "Mark as read"
+
+    /// A dotted row offers Mark as read. A read row offers Mark as unread.
+    static func actionLabel(showsDot: Bool) -> String {
+        showsDot ? markReadLabel : markUnreadLabel
+    }
+
+    /// The v0.70 accent dot. Reply unread is the persisted set. A
+    /// channel handoff unread shares that same dot. Handoff only
+    /// paints on a channel row.
+    static func showsDot(
+        chatId: String,
+        replyUnread: Set<String>,
+        handoffUnread: Set<String>,
+        channel: Bool
+    ) -> Bool {
+        guard !chatId.isEmpty else { return false }
+        if channel, handoffUnread.contains(chatId) { return true }
+        return replyUnread.contains(chatId)
+    }
 
     struct ReplySnapshot {
         var fromUser: Bool
