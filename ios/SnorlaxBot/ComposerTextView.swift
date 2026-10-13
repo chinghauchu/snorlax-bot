@@ -20,6 +20,10 @@ struct ComposerTextView: UIViewRepresentable {
     var onEscapeStop: ((Bool) -> Void)? = nil
     /// v0.68: hardware Up-arrow recalls the latest user message when empty.
     var onArrowUpRecall: (() -> Void)? = nil
+    /// v0.87: empty composer + Delete removes the last pending chip.
+    /// Hardware Delete and the on-screen keyboard both call `deleteBackward`.
+    /// Returns true when a chip was removed.
+    var onBackspaceRemoveChip: (() -> Bool)? = nil
     /// v0.55: hardware Return does not send while an assistant turn is in flight.
     var sendMuted: Bool = false
     /// v0.84: grown height, already capped. The parent applies it with no animation.
@@ -43,6 +47,9 @@ struct ComposerTextView: UIViewRepresentable {
         }
         view.onArrowUpRecall = { [coordinator = context.coordinator] in
             coordinator.parent.onArrowUpRecall?()
+        }
+        view.onBackspaceRemoveChip = { [coordinator = context.coordinator] in
+            coordinator.parent.onBackspaceRemoveChip?() ?? false
         }
         view.onGrowHeight = { [coordinator = context.coordinator] next in
             let send = coordinator.parent.onHeight
@@ -74,6 +81,9 @@ struct ComposerTextView: UIViewRepresentable {
         }
         view.onArrowUpRecall = { [coordinator = context.coordinator] in
             coordinator.parent.onArrowUpRecall?()
+        }
+        view.onBackspaceRemoveChip = { [coordinator = context.coordinator] in
+            coordinator.parent.onBackspaceRemoveChip?() ?? false
         }
         view.onGrowHeight = { [coordinator = context.coordinator] next in
             let send = coordinator.parent.onHeight
@@ -229,7 +239,10 @@ final class ComposerUITextView: UITextView {
     var onPasteAttachments: (([ComposerPasteboard.Attachment]) -> Void)?
     var onEscapeStop: ((Bool) -> Void)?
     var onArrowUpRecall: (() -> Void)?
+    var onBackspaceRemoveChip: (() -> Bool)?
     var sendMuted = false
+    /// Hardware Delete with Shift/Alt/Cmd/Ctrl. Software Delete leaves this false.
+    private var deleteModifierChord = false
     var onGrowHeight: ((CGFloat) -> Void)?
     private var grewWidth: CGFloat = -1
     private var reportedHeight: CGFloat = -1
@@ -324,9 +337,44 @@ final class ComposerUITextView: UITextView {
         return super.canPerformAction(action, withSender: sender)
     }
 
+    /// v0.87: empty field removes the last chip. Text still deletes as usual.
+    override func deleteBackward() {
+        let chord = deleteModifierChord
+        deleteModifierChord = false
+        let current = text ?? ""
+        if BackspaceChip.composerAllowsRemove(
+            composerText: current,
+            composing: markedTextRange != nil,
+            chord: chord
+        ), onBackspaceRemoveChip?() == true {
+            return
+        }
+        super.deleteBackward()
+    }
+
+    override func pressesEnded(_ presses: Set<UIPress>, with event: UIPressesEvent?) {
+        super.pressesEnded(presses, with: event)
+        // If deleteBackward already ran it cleared the flag. If a chorded
+        // Delete never reached it, drop the flag on the next turn so a
+        // later on-screen Delete is not treated as a chord.
+        if deleteModifierChord {
+            DispatchQueue.main.async { [weak self] in
+                self?.deleteModifierChord = false
+            }
+        }
+    }
+
     override func pressesBegan(_ presses: Set<UIPress>, with event: UIPressesEvent?) {
         for press in presses {
             guard let key = press.key else { continue }
+            if key.keyCode == .keyboardDeleteOrBackspace {
+                let mods = key.modifierFlags
+                deleteModifierChord = mods.contains(.command)
+                    || mods.contains(.alternate)
+                    || mods.contains(.control)
+                    || mods.contains(.shift)
+                continue
+            }
             if key.keyCode == .keyboardUpArrow {
                 let mods = key.modifierFlags
                 let chord = mods.contains(.command)

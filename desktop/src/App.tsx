@@ -126,6 +126,7 @@ import {
   latestUserMessageText,
   recallArmedAfterEdit,
 } from "./recallDraft";
+import { backspaceRemovesLastChip, withoutLastChip } from "./backspaceChip";
 import {
   loadInitialRuntimeUrl,
   normalizeRuntimeUrl,
@@ -3378,6 +3379,24 @@ export function App() {
       clearRecalledDraft();
       return;
     }
+    // v0.87: empty composer + plain Backspace removes the last chip.
+    // Text, IME, and chords stay with the field. No chips: do nothing.
+    if (
+      backspaceRemovesLastChip({
+        key: event.key,
+        composerText: event.currentTarget.value,
+        chipCount: pendingAttachments.length,
+        composing: isComposerComposing(event),
+        altKey: event.altKey,
+        metaKey: event.metaKey,
+        ctrlKey: event.ctrlKey,
+        shiftKey: event.shiftKey,
+      })
+    ) {
+      event.preventDefault();
+      removeLastPendingChip();
+      return;
+    }
     if (sendMutedWhileGenerating(busy)) {
       return;
     }
@@ -3669,6 +3688,19 @@ export function App() {
       return prev.filter((row) => row.id !== id);
     });
     setAttachError(null);
+  }
+
+  /** v0.87: one chip, the last one. Focus stays in the composer. */
+  function removeLastPendingChip() {
+    setPendingAttachments((prev) => {
+      const next = withoutLastChip(prev);
+      if (next.length === prev.length) return prev;
+      const removed = prev[prev.length - 1];
+      if (removed?.previewUrl) URL.revokeObjectURL(removed.previewUrl);
+      return [...next];
+    });
+    setAttachError(null);
+    composerRef.current?.focus();
   }
 
   async function onPickAvatar(file: File | undefined) {

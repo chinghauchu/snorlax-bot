@@ -2068,6 +2068,26 @@ final class AppModel {
         attachError = nil
     }
 
+    /// v0.87: hardware or on-screen Delete in an empty composer.
+    /// One chip, the last one. Focus stays in the composer. No send.
+    @discardableResult
+    func removeLastPendingChipFromBackspace() -> Bool {
+        guard !computerTakeoverOpen else { return false }
+        guard BackspaceChip.removesLast(
+            composerText: draft,
+            chipCount: pendingAttachments.count,
+            composing: false,
+            chord: false
+        ) else { return false }
+        let next = BackspaceChip.withoutLast(pendingAttachments)
+        guard next.count < pendingAttachments.count, let last = pendingAttachments.last else {
+            return false
+        }
+        removePending(id: last.id)
+        wantsComposerFocus = true
+        return true
+    }
+
     func openAttachment(_ att: Attachment) async -> URL? {
         guard let client, let url = client.resolve(att.url) else { return nil }
         do {
