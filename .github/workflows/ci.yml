@@ -106,3 +106,4 @@ jobs:
           python3 ios/scripts/test_ios_sticky_day.py
           python3 ios/scripts/test_ios_user_copy.py
           python3 ios/scripts/test_ios_backspace_chip.py
+          python3 ios/scripts/test_ios_chat_list_filter.py
