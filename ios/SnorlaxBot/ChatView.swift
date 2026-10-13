@@ -389,7 +389,7 @@ struct ChatView: View {
         ScrollViewReader { proxy in
             ZStack(alignment: .bottom) {
             ScrollView {
-                LazyVStack(alignment: .leading, spacing: 0) {
+                LazyVStack(alignment: .leading, spacing: 0, pinnedViews: [.sectionHeaders]) {
                     if model.messages.isEmpty, !model.isConfigured {
                         Text("Paste your Spark URL and token in Settings to start.")
                             .font(.system(size: 14))
@@ -491,75 +491,87 @@ struct ChatView: View {
                                 )
                             }
                         )
-                        ForEach(Array(visible.enumerated()), id: \.element.id) { index, message in
-                            let toolStack = CompactToolTraces.stack(for: index, in: toolStacks)
-                            let toolCollapsed = toolStack.map {
-                                CompactToolTraces.collapsed(
-                                    expanded: expandedToolStacks,
-                                    stackId: $0.id,
-                                    count: $0.items.count
-                                )
-                            } ?? false
-                            let rowCompleted = !(model.isSending && index == liveAssistantIdx)
-                            if !CompactToolTraces.hidePersisted(
-                                stack: toolStack,
-                                index: index,
-                                collapsed: toolCollapsed
-                            ), !findOmits(message, completed: rowCompleted) {
-                                if let dayLabel = dayLabels[index] {
+                        let dayGroups = DaySeparator.groups(
+                            labels: dayLabels,
+                            ids: visible.map(\.id)
+                        )
+                        let indexedMessages = Array(visible.enumerated())
+                        ForEach(dayGroups) { group in
+                            Section {
+                                ForEach(Array(indexedMessages[group.start..<group.end]), id: \.element.id) { index, message in
+                                    let toolStack = CompactToolTraces.stack(for: index, in: toolStacks)
+                                    let toolCollapsed = toolStack.map {
+                                        CompactToolTraces.collapsed(
+                                            expanded: expandedToolStacks,
+                                            stackId: $0.id,
+                                            count: $0.items.count
+                                        )
+                                    } ?? false
+                                    let rowCompleted = !(model.isSending && index == liveAssistantIdx)
+                                    if !CompactToolTraces.hidePersisted(
+                                        stack: toolStack,
+                                        index: index,
+                                        collapsed: toolCollapsed
+                                    ), !findOmits(message, completed: rowCompleted) {
+                                        if message.id == model.newMessagesAnchorID {
+                                            NewMessagesDivider()
+                                        }
+                                        transcriptItem(
+                                            message,
+                                            index: index,
+                                            in: visible,
+                                            agent: agent,
+                                            toolTraces: index == liveAssistantIdx ? livePaint.lines : [],
+                                            liveHeader: index == liveAssistantIdx ? livePaint.header : nil,
+                                            toolStack: toolStack,
+                                            toolStackCollapsed: toolCollapsed,
+                                            showCopy: Self.showsCopy(
+                                                message,
+                                                index: index,
+                                                liveAssistantIdx: liveAssistantIdx,
+                                                sending: model.isSending
+                                            ),
+                                            showSpeak: Self.showsSpeak(
+                                                message,
+                                                index: index,
+                                                liveAssistantIdx: liveAssistantIdx,
+                                                sending: model.isSending
+                                            ),
+                                            showRegenerate: Self.showsRegenerate(
+                                                message,
+                                                index: index,
+                                                lastLeftIdx: lastLeftIdx,
+                                                isChannel: agent.isChannel,
+                                                liveAssistantIdx: liveAssistantIdx,
+                                                sending: model.isSending
+                                            ),
+                                            completed: !(model.isSending && index == liveAssistantIdx),
+                                            showEditAsNew: index == recallIdx,
+                                            showCaret: StreamingCaretChrome.shouldShow(
+                                                busy: model.isSending,
+                                                completed: !(model.isSending && index == liveAssistantIdx),
+                                                hasFirstToken: !message.content.isEmpty,
+                                                isUser: message.isFromUser,
+                                                isKindMessage: message.isKindMessage
+                                            )
+                                        )
+                                        .readingAnchor(message.id)
+                                        .padding(.top, turnSpacing(at: index, in: visible, message: message))
+                                        .id(message.id)
+                                    }
+                                }
+                            } header: {
+                                if let dayLabel = group.label {
                                     Text(dayLabel)
                                         .font(.system(size: 12))
                                         .foregroundStyle(.secondary)
                                         .frame(maxWidth: .infinity, alignment: .center)
                                         .multilineTextAlignment(.center)
                                         .padding(.top, 12)
+                                        .padding(.bottom, 4)
+                                        .background(Color(uiColor: .systemBackground))
                                         .accessibilityAddTraits(.isHeader)
                                 }
-                                if message.id == model.newMessagesAnchorID {
-                                    NewMessagesDivider()
-                                }
-                                transcriptItem(
-                                    message,
-                                    index: index,
-                                    in: visible,
-                                    agent: agent,
-                                    toolTraces: index == liveAssistantIdx ? livePaint.lines : [],
-                                    liveHeader: index == liveAssistantIdx ? livePaint.header : nil,
-                                    toolStack: toolStack,
-                                    toolStackCollapsed: toolCollapsed,
-                                    showCopy: Self.showsCopy(
-                                        message,
-                                        index: index,
-                                        liveAssistantIdx: liveAssistantIdx,
-                                        sending: model.isSending
-                                    ),
-                                    showSpeak: Self.showsSpeak(
-                                        message,
-                                        index: index,
-                                        liveAssistantIdx: liveAssistantIdx,
-                                        sending: model.isSending
-                                    ),
-                                    showRegenerate: Self.showsRegenerate(
-                                        message,
-                                        index: index,
-                                        lastLeftIdx: lastLeftIdx,
-                                        isChannel: agent.isChannel,
-                                        liveAssistantIdx: liveAssistantIdx,
-                                        sending: model.isSending
-                                    ),
-                                    completed: !(model.isSending && index == liveAssistantIdx),
-                                    showEditAsNew: index == recallIdx,
-                                    showCaret: StreamingCaretChrome.shouldShow(
-                                        busy: model.isSending,
-                                        completed: !(model.isSending && index == liveAssistantIdx),
-                                        hasFirstToken: !message.content.isEmpty,
-                                        isUser: message.isFromUser,
-                                        isKindMessage: message.isKindMessage
-                                    )
-                                )
-                                .readingAnchor(message.id)
-                                .padding(.top, turnSpacing(at: index, in: visible, message: message))
-                                .id(message.id)
                             }
                         }
                         if liveAssistantIdx == nil, showLiveChrome {

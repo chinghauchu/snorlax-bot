@@ -135,10 +135,13 @@ def test_sources() -> None:
     assert "animation" not in SWIFT.split("struct NewMessagesDivider", 1)[1]
     assert "withAnimation" not in CHAT[CHAT.index("NewMessagesDivider()") - 200 : CHAT.index("NewMessagesDivider()") + 80]
 
-    day_at = CHAT.index("if let dayLabel = dayLabels[index]")
-    line_at = CHAT.index("NewMessagesDivider()", day_at)
+    # v0.85 pins the day line as the section header. The divider stays
+    # in that section's body, above the transcript row.
+    pinned = CHAT.index("pinnedViews: [.sectionHeaders]")
+    line_at = CHAT.index("NewMessagesDivider()")
     item_at = CHAT.index("transcriptItem(", line_at)
-    assert day_at < line_at < item_at
+    day_at = CHAT.index("if let dayLabel = group.label")
+    assert pinned < line_at < item_at < day_at
 
     assert "newMessagesAnchorID" in MODEL
     assert "chatLastSeen" in MODEL

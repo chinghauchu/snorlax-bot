@@ -8,6 +8,12 @@
  *
  * Jump to latest (v0.47–v0.63) already covers scroll-up. This line is
  * the reading aid for the messages you stopped to look at.
+ *
+ * v0.85: that same line pins to the top of the transcript while its
+ * day is on screen. The next day pushes it off. No animation.
+ * `dayGroups` is the section each label sticks inside. `pinnedDayLabel`
+ * is the pin rule (the group covering the top of the viewport).
+ * Desktop CSS sticky and iOS pinned section headers follow it.
  */
 
 export const DAY_TODAY = "Today";
@@ -119,4 +125,59 @@ export function daySeparatorLabels(
     }
   }
   return out;
+}
+
+export type DayGroup = {
+  /** Null for a leading run that has no day line yet. Nothing pins. */
+  label: string | null;
+  /** Inclusive index in the label list. */
+  start: number;
+  /** Exclusive index. */
+  end: number;
+};
+
+/**
+ * One run per day line. A new group starts at each non-null label.
+ * Nulls stay in the current run (hidden rows and undated rows do not
+ * split a day). A leading run of nulls is one group with no label.
+ */
+export function dayGroups(labels: readonly (string | null)[]): DayGroup[] {
+  if (labels.length === 0) return [];
+  const groups: DayGroup[] = [];
+  let start = 0;
+  let label: string | null = labels[0] ?? null;
+  for (let index = 1; index < labels.length; index++) {
+    const next = labels[index];
+    if (next == null) continue;
+    groups.push({ label, start, end: index });
+    label = next;
+    start = index;
+  }
+  groups.push({ label, start, end: labels.length });
+  return groups;
+}
+
+export type DaySpan = {
+  label: string | null;
+  top: number;
+  bottom: number;
+};
+
+/**
+ * The label pinned at the top of the transcript.
+ * The group that covers `viewportTop` wins. A group already scrolled
+ * past (`bottom <= viewportTop`) does not. The next group's top
+ * pushes this one off. A covering group with no label pins nothing.
+ * No animation — the label is either this one or the next.
+ */
+export function pinnedDayLabel(
+  groups: readonly DaySpan[],
+  viewportTop: number,
+): string | null {
+  for (const group of groups) {
+    if (group.bottom <= viewportTop) continue;
+    if (group.top > viewportTop) break;
+    return group.label;
+  }
+  return null;
 }

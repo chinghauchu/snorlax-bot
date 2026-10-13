@@ -310,10 +310,13 @@ test("desktop paints the line under a day separator and clears it on Send", () =
   assert.match(swift, /static let label = "New messages"/);
   assert.match(swift, /snorlax\.chatLastSeen/);
   assert.match(chat, /NewMessagesDivider\(\)/);
-  const dayAt = chat.indexOf("if let dayLabel = dayLabels[index]");
-  const lineAt = chat.indexOf("NewMessagesDivider()", dayAt);
+  // v0.85 pins the day line as the section header. The divider stays
+  // in that section's body, above the transcript row.
+  const pinned = chat.indexOf("pinnedViews: [.sectionHeaders]");
+  const lineAt = chat.indexOf("NewMessagesDivider()");
   const itemAt = chat.indexOf("transcriptItem(", lineAt);
-  assert.ok(dayAt >= 0 && dayAt < lineAt && lineAt < itemAt);
+  const dayAt = chat.indexOf("if let dayLabel = group.label");
+  assert.ok(pinned >= 0 && pinned < lineAt && lineAt < itemAt && itemAt < dayAt);
 });
 
 test("OpenAPI stays 0.18.0; last seen is local; no computerPane.ts", () => {
