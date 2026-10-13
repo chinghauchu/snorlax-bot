@@ -21,17 +21,19 @@ export type ChatShortcut = {
  * Rows are the chat shortcuts already wired on desktop.
  * Enter sends (`composerEnterSends`); Shift Enter stays a newline.
  * Esc stops, closes find / the switcher / menus, clears a recall,
- * jumps, or cancels dictation. Up-arrow recalls. Cmd/Ctrl-F finds.
- * Cmd/Ctrl-K switches. Cmd/Ctrl-Shift-I opens info. Cmd/Ctrl-V
- * pastes an image or file. Find's Enter / Shift-Enter steps matches.
- * The switcher uses Up / Down / Enter. Mention and skill menus use
- * Up / Down / Enter / Tab.
+ * jumps, or cancels dictation. Up-arrow recalls. Alt+Up / Alt+Down
+ * (Option on macOS) opens the previous or next visible chat.
+ * Cmd/Ctrl-F finds. Cmd/Ctrl-K switches. Cmd/Ctrl-Shift-I opens info.
+ * Cmd/Ctrl-V pastes an image or file. Find's Enter / Shift-Enter
+ * steps matches. The switcher uses Up / Down / Enter. Mention and
+ * skill menus use Up / Down / Enter / Tab.
  */
 export const CHAT_SHORTCUTS: readonly ChatShortcut[] = [
   { id: "send", keys: "Enter", action: "Send" },
   { id: "newline", keys: "Shift Enter", action: "New line" },
   { id: "escape", keys: "Esc", action: "Stop, close, or jump" },
   { id: "recall", keys: "↑", action: "Recall last message" },
+  { id: "chat-nav", keys: "Alt ↑ / Alt ↓", action: "Previous or next chat" },
   { id: "find", keys: "Cmd/Ctrl F", action: "Find in chat" },
   { id: "switch", keys: "Cmd/Ctrl K", action: "Switch chat" },
   { id: "info", keys: "Cmd/Ctrl Shift I", action: "Open info" },

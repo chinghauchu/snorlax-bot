@@ -362,6 +362,34 @@ final class AppModel {
         await loadConversation(id, thread: nil, push: push)
     }
 
+    /// Sidebar order after All / Unread, then the Pinned group.
+    /// The name-search field does not change this order.
+    func visibleChatOrder() -> [String] {
+        let rows = visibleAgents.filter {
+            ChatListFilter.includes(
+                filter: chatListFilter,
+                hasUnreadDot: showsUnreadDot($0)
+            )
+        }
+        let grouped = ChatPins.grouped(rows, pinned: pinnedChatIDs) { $0.id }
+        return grouped.pinned.map(\.id) + grouped.rest.map(\.id)
+    }
+
+    /// Same as opening that row: clears unread, restores the draft and
+    /// reading place, then focuses the composer.
+    func openAdjacentChat(direction: Int) {
+        guard !computerTakeoverOpen else { return }
+        guard let next = ChatNav.adjacent(
+            ids: visibleChatOrder(),
+            currentId: selectedAgentID,
+            direction: direction
+        ) else { return }
+        Task {
+            await select(next, push: true)
+            wantsComposerFocus = true
+        }
+    }
+
     func openJump(channelId: String, threadId: String) async {
         guard agents.contains(where: { $0.id == channelId && $0.isChannel }) else {
             return
