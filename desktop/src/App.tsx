@@ -190,7 +190,7 @@ import {
 } from "./assistantBubbles";
 import { LongMessageBody } from "./LongMessageBody";
 import { bubbleTimeLabel } from "./bubbleTime";
-import { daySeparatorLabels } from "./daySeparator";
+import { dayGroups, daySeparatorLabels } from "./daySeparator";
 import {
   anchorScrollTop,
   captureReadingPlace,
@@ -4124,7 +4124,14 @@ export function App() {
             ) : loadError ? (
               <p className="transcript-line error">{loadError}</p>
             ) : (
-              visibleMessages.map((message, index) => {
+              dayGroups(dayLabels).map((group) => (
+                <section
+                  className="day-group"
+                  key={visibleMessages[group.start]?.id ?? group.start}
+                  data-day-label={group.label ?? undefined}
+                >
+                {visibleMessages.slice(group.start, group.end).map((message, offset) => {
+                const index = group.start + offset;
                 const toolStack = stackForMessageIndex(toolStacks, index);
                 const toolStackIsCollapsed = toolStack
                   ? stackCollapsed(
@@ -4176,14 +4183,20 @@ export function App() {
                   return (
                     <Fragment key={message.id}>
                     {dayLabel ? (
-                      <p
-                        className="day-separator"
-                        role="heading"
-                        aria-level={2}
-                        data-reading-id={`day:${message.id}`}
-                      >
-                        {dayLabel}
-                      </p>
+                      <>
+                        <span
+                          className="day-reading-anchor"
+                          data-reading-id={`day:${message.id}`}
+                          aria-hidden="true"
+                        />
+                        <p
+                          className="day-separator"
+                          role="heading"
+                          aria-level={2}
+                        >
+                          {dayLabel}
+                        </p>
+                      </>
                     ) : null}
                     <NewMessagesDivider show={message.id === dividerAnchorId} />
                     <button
@@ -4230,14 +4243,20 @@ export function App() {
                 return (
                   <Fragment key={message.id}>
                   {dayLabel ? (
-                    <p
-                      className="day-separator"
-                      role="heading"
-                      aria-level={2}
-                      data-reading-id={`day:${message.id}`}
-                    >
-                      {dayLabel}
-                    </p>
+                    <>
+                      <span
+                        className="day-reading-anchor"
+                        data-reading-id={`day:${message.id}`}
+                        aria-hidden="true"
+                      />
+                      <p
+                        className="day-separator"
+                        role="heading"
+                        aria-level={2}
+                      >
+                        {dayLabel}
+                      </p>
+                    </>
                   ) : null}
                   <NewMessagesDivider show={message.id === dividerAnchorId} />
                   <article
@@ -4540,7 +4559,9 @@ export function App() {
                   </article>
                   </Fragment>
                 );
-              })
+              })}
+                </section>
+              ))
             )}
             {showStandaloneTraces && showLiveChrome ? (
               <article className="turn left new-sender">

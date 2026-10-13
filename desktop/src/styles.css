@@ -655,11 +655,36 @@ mark.find-hit.active {
   font-size: 13px;
 }
 
-/* v0.67: day line while reading earlier messages. No animation. */
-.day-separator {
+/* v0.85: the v0.67 day line pins while this day's section is on screen.
+   The section is the sticky containing block, so the next day pushes
+   it off. Opaque fill matches the chat so rows scroll under the line.
+   The zero-height anchor keeps the in-flow reading place (v0.74);
+   the sticky line itself is not a reading anchor. No animation. */
+.day-group {
+  display: flex;
+  flex-direction: column;
   align-self: stretch;
-  margin: 12px 0 0;
-  padding: 0;
+  width: 100%;
+  min-width: 0;
+}
+
+.day-reading-anchor {
+  display: block;
+  flex: none;
+  height: 0;
+  min-height: 0;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.day-separator {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  align-self: stretch;
+  margin: 0;
+  padding: 12px 0 4px;
+  background: var(--bg);
   color: var(--text-muted);
   font-size: 12px;
   line-height: 1.3;
