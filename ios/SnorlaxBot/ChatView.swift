@@ -1012,6 +1012,8 @@ private struct ComposerBar: View {
     var onEscapeFind: () -> Bool = { false }
     @Environment(AppModel.self) private var model
     @State private var pickerItem: PhotosPickerItem?
+    /// v0.84: grown field height. Empty starts at the single-line floor.
+    @State private var fieldHeight = ComposerGrow.minHeight
     @State private var attachMenu = false
     @State private var showPhotos = false
     @State private var showFiles = false
@@ -1164,9 +1166,22 @@ private struct ComposerBar: View {
                     onArrowUpRecall: {
                         model.recallLastSentFromArrowUp()
                     },
-                    sendMuted: SendMuted.whileGenerating(busy: model.isSending)
+                    sendMuted: SendMuted.whileGenerating(busy: model.isSending),
+                    onHeight: { next in
+                        guard abs(fieldHeight - next) > 0.5 else { return }
+                        var transaction = Transaction()
+                        transaction.disablesAnimations = true
+                        withTransaction(transaction) {
+                            fieldHeight = next
+                        }
+                    }
                 )
-                .frame(minHeight: 22, maxHeight: 120)
+                .frame(height: fieldHeight, alignment: .bottom)
+                .frame(
+                    minHeight: ComposerGrow.minHeight,
+                    maxHeight: ComposerGrow.maxHeight,
+                    alignment: .bottom
+                )
 
                 Button {
                     Task { await model.toggleDictation() }

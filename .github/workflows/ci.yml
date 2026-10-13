@@ -102,3 +102,4 @@ jobs:
           python3 ios/scripts/test_ios_long_message.py
           python3 ios/scripts/test_ios_web_links.py
           python3 ios/scripts/test_ios_chat_list_time.py
+          python3 ios/scripts/test_ios_composer_grow.py

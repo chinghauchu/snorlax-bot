@@ -119,6 +119,7 @@ import {
   isComposerPasteChord,
   rosterRefreshTool,
 } from "./composerKeys";
+import { COMPOSER_MAX_PX, composerFrame } from "./composerGrow";
 import {
   arrowUpRecalls,
   escapeClearsRecall,
@@ -1096,15 +1097,30 @@ export function App() {
   }, [computerOpen]);
 
   useLayoutEffect(() => {
-    const caret = pendingCaret.current;
-    if (caret == null) return;
-    pendingCaret.current = null;
     const node = composerRef.current;
-    if (!node) return;
-    node.focus();
-    node.setSelectionRange(caret, caret);
-    resizeComposer();
+    const caret = pendingCaret.current;
+    if (caret != null && node) {
+      pendingCaret.current = null;
+      node.focus();
+      node.setSelectionRange(caret, caret);
+    }
+    // v0.84: fit after type, paste, recall, dictation, and draft restore.
+    resizeComposer(draft.length === 0);
   }, [draft]);
+
+  useEffect(() => {
+    const el = composerRef.current;
+    if (!el || typeof ResizeObserver === "undefined") return;
+    let width = el.clientWidth;
+    const observer = new ResizeObserver(() => {
+      const next = el.clientWidth;
+      if (next === width) return;
+      width = next;
+      resizeComposer(draftRef.current.length === 0);
+    });
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, []);
 
   useEffect(() => {
     return () => {
@@ -3509,8 +3525,27 @@ export function App() {
   function resizeComposer(reset = false) {
     const el = composerRef.current;
     if (!el) return;
-    el.style.height = "auto";
-    if (!reset) el.style.height = `${Math.min(el.scrollHeight, 160)}px`;
+    const empty = reset || el.value.length === 0;
+    // Measure against the stylesheet line, not a leftover inline height.
+    el.style.overflowY = "hidden";
+    el.style.height = "";
+    const frame = composerFrame({
+      restingHeight: el.clientHeight,
+      scrollHeight: el.scrollHeight,
+      empty,
+      maxPx: COMPOSER_MAX_PX,
+    });
+    const field = el.parentElement;
+    if (frame.height == null) {
+      el.style.height = "";
+      el.style.overflowY = "hidden";
+      field?.classList.remove("is-scrolling");
+    } else {
+      el.style.height = `${frame.height}px`;
+      el.style.overflowY = frame.scroll ? "auto" : "hidden";
+      field?.classList.toggle("is-scrolling", frame.scroll);
+    }
+    syncComposerScroll();
   }
 
   async function addPendingFile(file: File) {
@@ -3613,6 +3648,11 @@ export function App() {
     const field = composerRef.current;
     const overlay = highlightRef.current;
     if (!field || !overlay) return;
+    // The textarea is inline-block, so the field is a few pixels taller
+    // than the control. Pin the highlight to the control or the caret
+    // drifts at the bottom of a scrolled draft.
+    overlay.style.height = `${field.offsetHeight}px`;
+    overlay.style.bottom = "auto";
     overlay.scrollTop = field.scrollTop;
     overlay.scrollLeft = field.scrollLeft;
   }

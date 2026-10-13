@@ -1762,6 +1762,26 @@ pre.md-math-fallback.md-math-block {
   line-height: 1.4;
   color: var(--text);
   caret-color: var(--text);
+  overflow-y: hidden;
+  /* v0.84: height follows the text. Instant, including Reduce Motion. */
+  transition: none;
+}
+
+/* Scroll inside the cap without a bar that would narrow the field
+   and pull the caret off the highlight. */
+.composer-field.is-scrolling textarea {
+  scrollbar-width: none;
+}
+
+.composer-field.is-scrolling textarea::-webkit-scrollbar {
+  width: 0;
+  height: 0;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .composer-bar textarea {
+    transition: none;
+  }
 }
 
 .composer-field {
