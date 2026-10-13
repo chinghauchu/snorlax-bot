@@ -204,7 +204,7 @@ test("sidebar control filters the roster and leaves the dots", () => {
     app,
     /agents\.map\(\(agent\) => \(\{ id: agent\.id, name: agent\.name \}\)\)/,
   );
-  assert.match(app, /rosterAgents\.map\(\(agent\)/);
+  assert.match(app, /groupPinnedChats\(\s*rosterAgents/);
   assert.doesNotMatch(src, /fetch\(/);
   assert.doesNotMatch(src, /\/v1\//);
   assert.doesNotMatch(src, /computerPane\.ts/);

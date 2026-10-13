@@ -105,6 +105,10 @@ final class AppModel {
     var chatListFilter: ChatListFilter.Mode = .all {
         didSet { ChatListFilter.write(chatListFilter) }
     }
+    /// v0.89: pinned chat ids, in the order they were pinned. UserDefaults.
+    var pinnedChatIDs: [String] = [] {
+        didSet { ChatPins.write(pinnedChatIDs) }
+    }
     /// App scene is active. A backgrounded app is not focused on the open chat.
     var sceneFocused = true
     private var chatUnread = ChatUnread()
@@ -187,6 +191,7 @@ final class AppModel {
         theme = AppTheme(rawValue: UserDefaults.standard.string(forKey: Keys.theme) ?? "") ?? .system
         accent = AccentChoice(rawValue: UserDefaults.standard.string(forKey: Keys.accent) ?? "") ?? .teal
         chatListFilter = ChatListFilter.read()
+        pinnedChatIDs = ChatPins.read()
         publishReplyUnread()
     }
 
@@ -334,6 +339,7 @@ final class AppModel {
         do {
             let roster = try await client.listAgents()
             agents = roster
+            retainChatPins(against: roster)
             retainChatPreviews()
             plugins = (try? await client.listPlugins()) ?? []
             pluginCatalog = (try? await client.listPluginCatalog()) ?? []
@@ -524,6 +530,7 @@ final class AppModel {
             unreadChannelIDs.remove(agent.id)
             _ = chatUnread.retain(Set(agents.map(\.id)))
             _ = chatLastSeen.retain(Set(agents.map(\.id)))
+            retainChatPins(against: agents)
             publishReplyUnread()
             if lastExtraChannelID == agent.id {
                 lastExtraChannelID = nil
@@ -1626,6 +1633,7 @@ final class AppModel {
         guard let client, isConfigured else { return }
         do {
             agents = try await client.listAgents()
+            retainChatPins(against: agents)
             retainChatPreviews()
         } catch {
             /* keep current roster */
@@ -1678,6 +1686,22 @@ final class AppModel {
         if !was {
             watchingNewMessages = false
             syncNewMessages(returning: true)
+        }
+    }
+
+    func isChatPinned(_ id: String) -> Bool {
+        pinnedChatIDs.contains(id)
+    }
+
+    func toggleChatPin(_ id: String) {
+        pinnedChatIDs = ChatPins.toggle(pinnedChatIDs, id: id)
+    }
+
+    /// A chat that left the roster loses its pin. Order of the rest stays.
+    private func retainChatPins(against roster: [Agent]) {
+        let next = ChatPins.retain(pinnedChatIDs, keep: Set(roster.map(\.id)))
+        if next != pinnedChatIDs {
+            pinnedChatIDs = next
         }
     }
 
