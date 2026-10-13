@@ -1191,6 +1191,9 @@ private struct ComposerBar: View {
                     onArrowUpRecall: {
                         model.recallLastSentFromArrowUp()
                     },
+                    onBackspaceRemoveChip: {
+                        model.removeLastPendingChipFromBackspace()
+                    },
                     sendMuted: SendMuted.whileGenerating(busy: model.isSending),
                     onHeight: { next in
                         guard abs(fieldHeight - next) > 0.5 else { return }
