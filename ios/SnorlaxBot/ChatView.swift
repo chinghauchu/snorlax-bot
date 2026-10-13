@@ -530,6 +530,11 @@ struct ChatView: View {
                                                 index: index,
                                                 liveAssistantIdx: liveAssistantIdx,
                                                 sending: model.isSending
+                                            ) || Self.showsUserCopy(
+                                                message,
+                                                pending: model.isSending
+                                                    && OptimisticSend.isOptimistic(message.id)
+                                                    && model.failedSend(id: message.id) == nil
                                             ),
                                             showSpeak: Self.showsSpeak(
                                                 message,
@@ -982,6 +987,14 @@ struct ChatView: View {
         else { return false }
         if sending, index == liveAssistantIdx { return false }
         return true
+    }
+
+    /// v0.86: long-press Copy on a settled user-RIGHT kind=message.
+    /// Hidden while that bubble is still the in-flight optimistic send.
+    /// Does not turn on Speak or Regenerate.
+    private static func showsUserCopy(_ message: Message, pending: Bool) -> Bool {
+        guard message.isFromUser, message.isKindMessage else { return false }
+        return !pending
     }
 
     private static func showsRegenerate(
@@ -1970,8 +1983,11 @@ private struct BubbleTimestampMenu: ViewModifier {
                         .disabled(true)
                 }
             }
-        } else if showFailedSend || showEditAsNew {
+        } else if showCopy || showFailedSend || showEditAsNew {
             content.contextMenu {
+                if showCopy {
+                    Button("Copy") { onCopy() }
+                }
                 if showEditAsNew {
                     Button(RecallDraft.editAsNewMessage) { onEditAsNew() }
                 }

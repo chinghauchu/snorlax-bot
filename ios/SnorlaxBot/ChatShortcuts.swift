@@ -30,7 +30,7 @@ enum ChatShortcuts {
         Row(
             id: "edit",
             keys: "Long-press your message",
-            action: RecallDraft.editAsNewMessage
+            action: "Copy, or \(RecallDraft.editAsNewMessage)"
         ),
         Row(
             id: "retry",

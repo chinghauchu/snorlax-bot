@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 import { isUserSender } from "./mentions.ts";
+import { isOptimisticId } from "./optimisticSend.ts";
 
 /** v0.61: muted `Copied` beside Copy for 1.2s. Do not replace the Copy label. */
 export const MESSAGE_COPY_FEEDBACK_MS = 1200;
@@ -31,6 +32,41 @@ export function showAssistantCopy(opts: {
   completed: boolean;
 }): boolean {
   return opts.completed && isLeftKindMessage(opts.message);
+}
+
+export function isUserKindMessage(message: {
+  kind?: string;
+  role?: string;
+  senderId?: string;
+}): boolean {
+  if (!isUserSender(message.senderId, message.role)) return false;
+  const kind = message.kind ?? "message";
+  return kind === "message";
+}
+
+/**
+ * v0.86: Copy on a settled user-RIGHT kind=message.
+ * Hidden while that bubble is still the in-flight optimistic send.
+ */
+export function showUserCopy(opts: {
+  message: {
+    kind?: string;
+    role?: string;
+    senderId?: string;
+  };
+  pending?: boolean;
+}): boolean {
+  if (!isUserKindMessage(opts.message)) return false;
+  return !opts.pending;
+}
+
+/** True only for the local bubble that is still sending. A failed send is settled. */
+export function userCopyPending(opts: {
+  id: string;
+  busy: boolean;
+  failed: boolean;
+}): boolean {
+  return opts.busy && isOptimisticId(opts.id) && !opts.failed;
 }
 
 export function showAssistantRegenerate(opts: {

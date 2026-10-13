@@ -211,6 +211,8 @@ import {
   regeneratePostBody,
   showAssistantCopy,
   showAssistantRegenerate,
+  showUserCopy,
+  userCopyPending,
 } from "./messageActions";
 import {
   JUMP_CHIP_HIDDEN,
@@ -608,6 +610,44 @@ function MessageActions({
           Regenerate
         </button>
       ) : null}
+    </div>
+  );
+}
+
+function UserMessageCopy({ content }: { content: string }) {
+  const [copied, setCopied] = useState(false);
+  const timer = useRef<number | null>(null);
+  useEffect(() => {
+    return () => {
+      if (timer.current != null) window.clearTimeout(timer.current);
+    };
+  }, []);
+  async function onCopy() {
+    await copyText(content);
+    setCopied(true);
+    if (timer.current != null) window.clearTimeout(timer.current);
+    timer.current = window.setTimeout(() => {
+      setCopied(false);
+      timer.current = null;
+    }, MESSAGE_COPY_FEEDBACK_MS);
+  }
+  const copiedLabel = copiedFeedbackLabel(copied);
+  return (
+    <div className={`message-actions user-copy${copied ? " is-copied" : ""}`}>
+      <span className="message-copy">
+        <button
+          type="button"
+          className="message-action"
+          onClick={() => void onCopy()}
+        >
+          {COPY_CONTROL_LABEL}
+        </button>
+        {copiedLabel ? (
+          <span className="message-copied" aria-live="polite">
+            {copiedLabel}
+          </span>
+        ) : null}
+      </span>
     </div>
   );
 }
@@ -4399,6 +4439,7 @@ export function App() {
                         onDeny={(id) => void denyApprove(id)}
                       />
                     ) : mine ? (
+                      <>
                       <div
                         className="bubble user"
                         data-failed={
@@ -4431,6 +4472,17 @@ export function App() {
                           </pre>
                         ) : null}
                       </div>
+                      {showUserCopy({
+                        message,
+                        pending: userCopyPending({
+                          id: message.id,
+                          busy,
+                          failed: failedSends.some((row) => row.id === message.id),
+                        }),
+                      }) ? (
+                        <UserMessageCopy content={message.content} />
+                      ) : null}
+                    </>
                     ) : (
                       <div className="assistant-md">
                         <MessageAttachmentChrome
