@@ -344,6 +344,13 @@ import {
   snapshotChatPreview,
 } from "./lastMessagePreview";
 import {
+  CHAT_LIST_TIME_TICK_MS,
+  applyFinishedActivity,
+  chatListTimeLabel,
+  rememberChatActivity,
+  retainChatActivity,
+} from "./chatListTime";
+import {
   DROP_FILES_LABEL,
   dragCarriesFiles,
   escapeClearsFileDrop,
@@ -744,6 +751,15 @@ export function App() {
   messagesRef.current = messages;
   /** v0.80: last preview line per chat, from transcripts already in memory. */
   const [chatPreviews, setChatPreviews] = useState<Record<string, string>>({});
+  /** v0.83: latest-message createdAt per chat, already in memory. */
+  const [chatActivity, setChatActivity] = useState<Record<string, string>>({});
+  const [activityNow, setActivityNow] = useState(() => new Date());
+  useEffect(() => {
+    const timer = window.setInterval(() => {
+      setActivityNow(new Date());
+    }, CHAT_LIST_TIME_TICK_MS);
+    return () => window.clearInterval(timer);
+  }, []);
   /** False while a chat switch is waiting on its transcript, so the previous rows are not written onto the next chat. */
   const previewLive = useRef(false);
   useEffect(() => {
@@ -751,10 +767,12 @@ export function App() {
     if (!activeId || !snapshotChatPreview(threadId)) return;
     if (!previewOwnsMessages(activeId, messages)) return;
     setChatPreviews((prev) => rememberChatPreview(prev, activeId, messages));
+    setChatActivity((prev) => rememberChatActivity(prev, activeId, messages));
   }, [activeId, threadId, messages]);
   useEffect(() => {
     const ids = new Set(agents.map((agent) => agent.id));
     setChatPreviews((prev) => retainChatPreviews(prev, ids));
+    setChatActivity((prev) => retainChatActivity(prev, ids));
   }, [agents]);
   const [failedSends, setFailedSends] = useState<FailedSend<ChatMessage>[]>([]);
   const failedSendsRef = useRef(failedSends);
@@ -2541,6 +2559,9 @@ export function App() {
           setChatPreviews((prev) =>
             applyFinishedPreview(prev, streamChatId, message),
           );
+          setChatActivity((prev) =>
+            applyFinishedActivity(prev, streamChatId, message.createdAt),
+          );
         }
         if (message) {
           if (isEmptyAssistantReply(message)) {
@@ -3896,7 +3917,13 @@ export function App() {
           </div>
         </header>
         <ul className="roster">
-          {agents.map((agent) => (
+          {agents.map((agent) => {
+            const preview = chatPreviews[agent.id];
+            const stamp = chatActivity[agent.id];
+            const timeLabel = stamp
+              ? chatListTimeLabel(stamp, activityNow)
+              : null;
+            return (
             <li key={agent.id}>
               <button
                 type="button"
@@ -3915,8 +3942,17 @@ export function App() {
                   {rosterSubtitle(agent) ? (
                     <span className="row-title">{rosterSubtitle(agent)}</span>
                   ) : null}
-                  {chatPreviews[agent.id] ? (
-                    <span className="row-preview">{chatPreviews[agent.id]}</span>
+                  {preview || timeLabel ? (
+                    <span className="row-meta">
+                      {preview ? (
+                        <span className="row-preview">{preview}</span>
+                      ) : null}
+                      {timeLabel && stamp ? (
+                        <time className="row-time" dateTime={stamp}>
+                          {timeLabel}
+                        </time>
+                      ) : null}
+                    </span>
                   ) : null}
                 </span>
                 {unreadIds.has(agent.id) || replyUnreadIds.has(agent.id) ? (
@@ -3924,7 +3960,8 @@ export function App() {
                 ) : null}
               </button>
             </li>
-          ))}
+            );
+          })}
         </ul>
         <button
           type="button"

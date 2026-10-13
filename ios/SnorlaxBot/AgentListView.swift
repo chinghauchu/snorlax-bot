@@ -141,14 +141,12 @@ private struct AgentRow: View {
                         .lineLimit(1)
                 }
                 if let preview = model.chatPreviews[agent.id], !preview.isEmpty {
-                    Text(preview)
-                        .font(.system(size: 12))
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
-                        .truncationMode(.tail)
+                    chatMeta(preview: preview, agentId: agent.id)
+                } else if model.chatActivity[agent.id] != nil {
+                    chatMeta(preview: nil, agentId: agent.id)
                 }
             }
-            Spacer(minLength: 0)
+            .frame(maxWidth: .infinity, alignment: .leading)
             if model.showsUnreadDot(agent) {
                 Circle()
                     .fill(Color.accentColor)
@@ -158,6 +156,35 @@ private struct AgentRow: View {
         }
         .frame(minHeight: 44, alignment: .center)
         .contentShape(Rectangle())
+    }
+
+    /// v0.83: preview and compact relative time share one row. The time
+    /// follows the latest message and refreshes on a light timer.
+    @ViewBuilder
+    private func chatMeta(preview: String?, agentId: String) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: 8) {
+            if let preview, !preview.isEmpty {
+                Text(preview)
+                    .font(.system(size: 12))
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+            }
+            Spacer(minLength: 0)
+            if model.chatActivity[agentId] != nil {
+                TimelineView(.periodic(from: .now, by: ChatListTime.tickSeconds)) { context in
+                    if let stamp = model.chatActivity[agentId],
+                       let label = ChatListTime.label(createdAt: stamp, now: context.date) {
+                        Text(label)
+                            .font(.system(size: 12))
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                            .layoutPriority(1)
+                            .accessibilityLabel(label)
+                    }
+                }
+            }
+        }
     }
 }
 
