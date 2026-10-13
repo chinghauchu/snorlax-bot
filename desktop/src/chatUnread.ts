@@ -9,10 +9,35 @@
  * reply). The set persists in localStorage (`snorlax.chatUnread`) so a
  * relaunch keeps the dots. No HTTP.
  * Channel handoff unread stays a separate in-memory set.
+ * v0.90: the sidebar menu marks a read chat into this same set, or
+ * clears a dotted chat. Mark as read also drops a channel handoff
+ * dot so the accent dot leaves the row. Opening the chat still
+ * clears this set. No new storage key.
  * Keep in lockstep with `ios/SnorlaxBot/ChatUnread.swift`.
  */
 
 export const CHAT_UNREAD_KEY = "snorlax.chatUnread";
+
+export const MARK_UNREAD_LABEL = "Mark as unread";
+export const MARK_READ_LABEL = "Mark as read";
+
+/** A dotted row offers Mark as read. A read row offers Mark as unread. */
+export function unreadActionLabel(showsDot: boolean): string {
+  return showsDot ? MARK_READ_LABEL : MARK_UNREAD_LABEL;
+}
+
+/**
+ * The v0.70 accent dot. Reply unread is the persisted set. A channel
+ * handoff unread shares that same dot and lives in a separate set.
+ */
+export function rowShowsUnreadDot(
+  chatId: string,
+  replyUnread: ReadonlySet<string>,
+  handoffUnread: ReadonlySet<string>,
+): boolean {
+  if (!chatId) return false;
+  return replyUnread.has(chatId) || handoffUnread.has(chatId);
+}
 
 export type UnreadStorage = {
   getItem(key: string): string | null;

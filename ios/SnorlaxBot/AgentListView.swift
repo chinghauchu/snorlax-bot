@@ -167,12 +167,23 @@ struct AgentListView: View {
                         pendingDelete = agent
                     }
                 }
+                Button {
+                    model.toggleChatRead(agent.id)
+                } label: {
+                    Label(
+                        ChatUnread.actionLabel(showsDot: model.showsUnreadDot(agent)),
+                        systemImage: "envelope.badge"
+                    )
+                }
+                .tint(Color.accentColor)
             }
             .modifier(
                 UserAgentDeleteMenu(
                     enabled: model.isConfigured,
                     pinned: model.isChatPinned(agent.id),
+                    unread: model.showsUnreadDot(agent),
                     onPin: { model.toggleChatPin(agent.id) },
+                    onRead: { model.toggleChatRead(agent.id) },
                     onDelete: { pendingDelete = agent }
                 )
             )
@@ -295,12 +306,15 @@ struct AccountChip: View {
 private struct UserAgentDeleteMenu: ViewModifier {
     let enabled: Bool
     let pinned: Bool
+    let unread: Bool
     var onPin: () -> Void
+    var onRead: () -> Void
     var onDelete: () -> Void
 
     func body(content: Content) -> some View {
         content.contextMenu {
             Button(ChatPins.label(pinned: pinned), action: onPin)
+            Button(ChatUnread.actionLabel(showsDot: unread), action: onRead)
             if enabled {
                 Button("Delete", role: .destructive, action: onDelete)
             }
