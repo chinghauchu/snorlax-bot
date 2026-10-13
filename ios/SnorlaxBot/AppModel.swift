@@ -1805,6 +1805,17 @@ final class AppModel {
         return message.isFromUser || message.senderId == agent.id
     }
 
+    /// v0.91: last-message preview, or a Draft: hint when this chat is not
+    /// the one on screen and its top-level composer draft has visible text.
+    func chatListPreview(for agentId: String, lastMessage: String?) -> ChatDraftPreview.Row? {
+        ChatDraftPreview.row(
+            chatId: agentId,
+            openChatId: onScreenChatID(),
+            draft: chatDrafts.text(agentId: agentId, threadId: nil),
+            lastMessage: lastMessage
+        )
+    }
+
     /// v0.80: snapshot the open main transcript. A thread does not replace the channel row.
     private func noteChatPreview() {
         guard let id = selectedAgentID, !id.isEmpty else { return }

@@ -368,6 +368,11 @@ button:disabled {
   color: var(--text-muted);
 }
 
+/* v0.91: muted-accent Draft: prefix. The draft text stays muted. */
+.row-draft-prefix {
+  color: color-mix(in srgb, var(--accent) 70%, var(--text-muted));
+}
+
 .row-time {
   flex: none;
   margin-left: auto;
