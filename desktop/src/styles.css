@@ -296,7 +296,7 @@ button:disabled {
 .row:hover .row-hit,
 .row:focus-within .row-hit,
 .row.renaming .row-hit {
-  padding-right: 52px;
+  padding-right: 78px;
 }
 
 /* v0.89: hover control. Idle rows keep today's layout; the glyph stays on a pin. */
@@ -381,6 +381,57 @@ button:disabled {
 .rename-glyph {
   width: 12px;
   height: 12px;
+  display: block;
+}
+
+/* v1.02: hover Mute. A muted row also keeps a glyph in the row. No motion. */
+.row-mute {
+  position: absolute;
+  z-index: 1;
+  top: 50%;
+  right: 60px;
+  transform: translateY(-50%);
+  width: 22px;
+  height: 22px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-muted);
+  display: grid;
+  place-items: center;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.row:hover .row-mute,
+.row:focus-within .row-mute {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.row.renaming .row-mute {
+  opacity: 0;
+  pointer-events: none;
+}
+
+.mute-glyph {
+  width: 12px;
+  height: 12px;
+  display: block;
+}
+
+.row-muted-mark {
+  width: 12px;
+  height: 12px;
+  margin-left: auto;
+  flex: none;
+  color: var(--text-muted);
+  display: block;
+}
+
+.row-muted-mark .mute-glyph {
   display: block;
 }
 

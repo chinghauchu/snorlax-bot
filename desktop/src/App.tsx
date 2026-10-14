@@ -416,6 +416,21 @@ import {
   writeChatPins,
 } from "./chatPins";
 import {
+  MUTE_LABEL,
+  MUTED_GLYPH_LABEL,
+  UNMUTE_LABEL,
+  audibleUnreadIds,
+  browserMuteStorage,
+  isChatMuted,
+  muteActionLabel,
+  paintsUnreadAccent,
+  readChatMutes,
+  replyMayMarkUnread,
+  retainChatMutes,
+  toggleChatMute,
+  writeChatMutes,
+} from "./chatMute";
+import {
   CHATS_SECTION_LABEL,
   rosterSectionHeaders,
 } from "./chatSections";
@@ -569,6 +584,30 @@ function RenameGlyph() {
       <path
         fill="currentColor"
         d="M8.4 1.2 10.8 3.6 4.4 10.1 1.2 10.8 1.9 7.6 8.4 1.2Zm0 1.7L3.1 8.2l-.3 1.1 1.1-.3 5.3-5.3-1-1Z"
+      />
+    </svg>
+  );
+}
+
+function MuteGlyph() {
+  return (
+    <svg
+      className="mute-glyph"
+      viewBox="0 0 12 12"
+      width="12"
+      height="12"
+      aria-hidden="true"
+    >
+      <path
+        fill="currentColor"
+        d="M6 1.1a2.5 2.5 0 0 0-2.5 2.5v1.2c0 .5-.2.9-.5 1.3L2.2 7.1h7.6L9 6.1c-.3-.4-.5-.8-.5-1.3V3.6A2.5 2.5 0 0 0 6 1.1ZM5.1 8.8a.9.9 0 0 0 1.8 0H5.1Z"
+      />
+      <path
+        d="M1.8 1.8 10.2 10.2"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.2"
+        strokeLinecap="round"
       />
     </svg>
   );
@@ -980,7 +1019,10 @@ export function App() {
   const [unreadIds, setUnreadIds] = useState<Set<string>>(() => new Set());
   const chatUnread = useRef(new ChatUnread(browserUnreadStorage()));
   const [replyUnreadIds, setReplyUnreadIds] = useState<Set<string>>(() =>
-    chatUnread.current.snapshot(),
+    audibleUnreadIds(
+      chatUnread.current.snapshot(),
+      readChatMutes(browserMuteStorage()),
+    ),
   );
   // v0.88: All shows every chat. Unread keeps rows that paint the accent dot.
   const [chatListFilter, setChatListFilter] = useState<ChatListFilter>(() =>
@@ -994,6 +1036,12 @@ export function App() {
   const [pinnedChatIds, setPinnedChatIds] = useState<string[]>(() =>
     readChatPins(browserPinStorage()),
   );
+  // v1.02: muted chats stay in the list. Replies do not mark them unread.
+  const [mutedChatIds, setMutedChatIds] = useState<string[]>(() =>
+    readChatMutes(browserMuteStorage()),
+  );
+  const mutedChatIdsRef = useRef(mutedChatIds);
+  mutedChatIdsRef.current = mutedChatIds;
   function onTogglePin(id: string) {
     setContextMenu(null);
     setPinnedChatIds((current) => {
@@ -1018,6 +1066,7 @@ export function App() {
       if (cleared) publishReplyUnread();
       return;
     }
+    if (!replyMayMarkUnread(isChatMuted(mutedChatIdsRef.current, id))) return;
     if (!chatUnread.current.mark(id)) return;
     publishReplyUnread();
   }
@@ -1042,6 +1091,41 @@ export function App() {
       writeChatPins(browserPinStorage(), next);
       return next;
     });
+  }
+  function retainMutes(keep: ReadonlySet<string>) {
+    setMutedChatIds((current) => {
+      const next = retainChatMutes(current, keep);
+      if (
+        next.length === current.length &&
+        next.every((id, index) => id === current[index])
+      ) {
+        return current;
+      }
+      writeChatMutes(browserMuteStorage(), next);
+      mutedChatIdsRef.current = next;
+      return next;
+    });
+  }
+  // v1.02: Mute clears the current dot. Later replies do not mark it.
+  // Unmute does not invent a dot. Opening the chat still works.
+  function onToggleMute(id: string) {
+    setContextMenu(null);
+    if (!id) return;
+    const muting = !isChatMuted(mutedChatIdsRef.current, id);
+    const next = toggleChatMute(mutedChatIdsRef.current, id);
+    mutedChatIdsRef.current = next;
+    writeChatMutes(browserMuteStorage(), next);
+    setMutedChatIds(next);
+    if (muting) {
+      chatUnread.current.clear(id);
+      setUnreadIds((prev) => {
+        if (!prev.has(id)) return prev;
+        const cleared = new Set(prev);
+        cleared.delete(id);
+        return cleared;
+      });
+    }
+    publishReplyUnread();
   }
   // v0.96: archived chats leave the main list. The pin id stays.
   const [archivedChatIds, setArchivedChatIds] = useState<string[]>(() =>
@@ -1687,11 +1771,16 @@ export function App() {
   }, [draft]);
 
   function publishReplyUnread() {
-    setReplyUnreadIds(chatUnread.current.snapshot());
+    setReplyUnreadIds(
+      audibleUnreadIds(chatUnread.current.snapshot(), mutedChatIdsRef.current),
+    );
   }
 
   /** v0.70: a finished assistant reply the user is not looking at. */
   function noteReplyUnread(chatId: string) {
+    if (!replyMayMarkUnread(isChatMuted(mutedChatIdsRef.current, chatId))) {
+      return;
+    }
     if (
       !replyMarksUnread({
         chatId,
@@ -2006,6 +2095,7 @@ export function App() {
         setAgents(roster);
         const rosterIds = new Set(roster.map((row) => row.id));
         retainPins(rosterIds);
+        retainMutes(rosterIds);
         retainArchives(rosterIds);
         retainNames(rosterIds);
         const preferred = fallbackRosterSelection(roster);
@@ -2739,6 +2829,7 @@ export function App() {
       chatUnread.current.retain(rosterIds);
       chatLastSeen.current.retain(rosterIds);
       retainPins(rosterIds);
+      retainMutes(rosterIds);
       retainArchives(rosterIds);
       retainNames(rosterIds);
       if (activeId === doomed.id) {
@@ -3089,7 +3180,10 @@ export function App() {
         const channelId = listed
           .map((message) => visibleJump(message, agents)?.channelId)
           .find((id): id is string => Boolean(id));
-        if (channelId) {
+        if (
+          channelId &&
+          replyMayMarkUnread(isChatMuted(mutedChatIdsRef.current, channelId))
+        ) {
           setUnreadIds((prev) => new Set(prev).add(channelId));
         }
       }
@@ -4314,7 +4408,10 @@ export function App() {
       !isChatArchived(archivedChatIds, agent.id) &&
       chatVisibleInFilter(
         chatListFilter,
-        unreadIds.has(agent.id) || replyUnreadIds.has(agent.id),
+        paintsUnreadAccent(
+          isChatMuted(mutedChatIds, agent.id),
+          unreadIds.has(agent.id) || replyUnreadIds.has(agent.id),
+        ),
       ),
   );
   const { pinned: pinnedAgents, rest: restAgents } = groupPinnedChats(
@@ -4332,7 +4429,10 @@ export function App() {
   const unreadRosterCount = agents.filter(
     (agent) =>
       !isChatArchived(archivedChatIds, agent.id) &&
-      (unreadIds.has(agent.id) || replyUnreadIds.has(agent.id)),
+      paintsUnreadAccent(
+        isChatMuted(mutedChatIds, agent.id),
+        unreadIds.has(agent.id) || replyUnreadIds.has(agent.id),
+      ),
   ).length;
   const switchSafeIndex = clampSwitchIndex(switchIndex, switchHits.length);
   const activeSwitch =
@@ -4664,6 +4764,7 @@ export function App() {
       ? chatListTimeLabel(stamp, activityNow)
       : null;
   const pinned = !archivedRow && isChatPinned(pinnedChatIds, agent.id);
+  const muted = isChatMuted(mutedChatIds, agent.id);
   const label = visibleName(agent);
   const renaming = renamingId === agent.id;
   const rowBody = (
@@ -4775,8 +4876,15 @@ export function App() {
             </span>
           ) : null}
         </span>
-        {unreadIds.has(agent.id) || replyUnreadIds.has(agent.id) ? (
+        {paintsUnreadAccent(
+          muted,
+          unreadIds.has(agent.id) || replyUnreadIds.has(agent.id),
+        ) ? (
           <span className="unread-dot" aria-label="Unread" />
+        ) : muted ? (
+          <span className="row-muted-mark" aria-label={MUTED_GLYPH_LABEL}>
+            <MuteGlyph />
+          </span>
         ) : null}
     </>
   );
@@ -4787,6 +4895,7 @@ export function App() {
         "row" +
         (agent.id === activeId ? " selected" : "") +
         (pinned ? " pinned" : "") +
+        (muted ? " muted" : "") +
         (renaming ? " renaming" : "")
       }
       onContextMenu={(e) => onAgentContext(e, agent)}
@@ -4802,6 +4911,15 @@ export function App() {
           {rowBody}
         </button>
       )}
+      <button
+        type="button"
+        className={muted ? "row-mute muted" : "row-mute"}
+        aria-label={muted ? UNMUTE_LABEL : MUTE_LABEL}
+        aria-pressed={muted}
+        onClick={() => onToggleMute(agent.id)}
+      >
+        <MuteGlyph />
+      </button>
       <button
         type="button"
         className="row-rename"
@@ -6339,6 +6457,13 @@ export function App() {
               </button>
             </>
           )}
+          <button
+            type="button"
+            role="menuitem"
+            onClick={() => onToggleMute(contextMenu.agent.id)}
+          >
+            {muteActionLabel(isChatMuted(mutedChatIds, contextMenu.agent.id))}
+          </button>
           <button
             type="button"
             role="menuitem"
