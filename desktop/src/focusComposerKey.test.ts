@@ -240,7 +240,7 @@ test("iOS hardware command-L focuses; OpenAPI stays 0.18.0", () => {
   assert.match(ci, /test_ios_focus_composer\.py/);
   assert.match(roadmap, new RegExp(PHRASE.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
   assert.match(roadmap, /\/ v0\.99 /);
-  assert.match(roadmap, /focus the composer\)/);
+  assert.match(roadmap, /focus the composer(?:\)| \+)/);
   assert.match(spec, /## 99\. v0\.99/);
   assert.match(spec, /OpenAPI stays \*\*0\.18\.0\*\*/);
 });

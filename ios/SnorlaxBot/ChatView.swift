@@ -14,6 +14,8 @@ struct ChatView: View {
     @State private var expandedToolStacks: Set<String> = []
     @State private var jumpPaint = StickToBottom.JumpChipPaint.hidden
     @State private var jumpPaintGeneration = 0
+    @State private var copiedReplyId: String?
+    @State private var copiedReplyPulse = 0
     @State private var findOpen = false
     @State private var findQuery = ""
     @State private var findIndex = 0
@@ -57,6 +59,7 @@ struct ChatView: View {
                 isChannel: agent.isChannel,
                 focused: $composerFocused,
                 showJump: stick.showJump,
+                onCopyLastReply: { copyLastAssistantReply() },
                 onEscapeFind: {
                     guard findOpen else { return false }
                     closeFind()
@@ -75,6 +78,9 @@ struct ChatView: View {
         )
         .onKeyPress(phases: .down) { press in
             if chatNavKey(press) == .handled {
+                return .handled
+            }
+            if copyLastReplyKey(press) == .handled {
                 return .handled
             }
             return focusComposerKey(press)
@@ -205,6 +211,69 @@ struct ChatView: View {
         ) else { return .ignored }
         model.openAdjacentChat(direction: direction)
         return .handled
+    }
+
+    /// Hardware ⌘⇧C / ⌃⇧C. Allowed while `composerFocused` is true: the
+    /// draft is not edited, and the text view offers the same command.
+    private func copyLastReplyKey(_ press: KeyPress) -> KeyPress.Result {
+        // composerFocused may already be true. The draft stays put either way.
+        guard hasRealAgent else { return .ignored }
+        if copyLastReplyBlocked() { return .ignored }
+        guard CopyLastReply.isChord(
+            key: press.key.character,
+            characters: press.characters,
+            command: press.modifiers.contains(.command),
+            control: press.modifiers.contains(.control),
+            option: press.modifiers.contains(.option),
+            shift: press.modifiers.contains(.shift)
+        ) else { return .ignored }
+        copyLastAssistantReply()
+        return .handled
+    }
+
+    private func copyLastReplyBlocked() -> Bool {
+        if model.computerTakeoverOpen || model.showProfile || model.showSettings {
+            return true
+        }
+        if findOpen || findFieldFocused || lightbox != nil || shortcutsOpen {
+            return true
+        }
+        if model.skillMenuOpen() { return true }
+        return false
+    }
+
+    /// Copies the latest completed assistant reply. A streaming reply
+    /// is skipped. An empty reply leaves the pasteboard alone.
+    private func copyLastAssistantReply() {
+        if copyLastReplyBlocked() { return }
+        let visible = model.visibleMessages(for: agent)
+        let lastUserIdx = visible.lastIndex(where: \.isFromUser)
+        let liveIndex = visible.indices.first { index in
+            guard let lastUserIdx else { return false }
+            let message = visible[index]
+            return index > lastUserIdx
+                && message.role == .assistant
+                && !message.isHandoffRoot
+                && !message.isToolLine
+                && !message.isWidget
+                && !message.isConnect
+                && !message.isApprove
+        }
+        guard let reply = CopyLastReply.lastReply(
+            messages: visible,
+            sending: model.isSending,
+            liveIndex: liveIndex
+        ) else { return }
+        UIPasteboard.general.string = reply.content
+        copiedReplyId = reply.id
+        copiedReplyPulse += 1
+        let pulse = copiedReplyPulse
+        Task {
+            try? await Task.sleep(nanoseconds: 1_200_000_000)
+            if pulse == copiedReplyPulse {
+                copiedReplyId = nil
+            }
+        }
     }
 
     /// Hardware ⌘L / ⌃L focuses the composer and does not insert or send.
@@ -614,6 +683,7 @@ struct ChatView: View {
                                             ),
                                             completed: !(model.isSending && index == liveAssistantIdx),
                                             showEditAsNew: index == recallIdx,
+                                            shortcutCopied: message.id == copiedReplyId,
                                             showCaret: StreamingCaretChrome.shouldShow(
                                                 busy: model.isSending,
                                                 completed: !(model.isSending && index == liveAssistantIdx),
@@ -959,7 +1029,8 @@ struct ChatView: View {
         showRegenerate: Bool = false,
         completed: Bool = true,
         showEditAsNew: Bool = false,
-        showCaret: Bool = false
+        showCaret: Bool = false,
+        shortcutCopied: Bool = false
     ) -> some View {
         let onTimeline = agent.isChannel && model.threadID == nil
         if onTimeline, message.isHandoffRoot {
@@ -1002,6 +1073,7 @@ struct ChatView: View {
                 completed: completed,
                 showEditAsNew: showEditAsNew,
                 showCaret: showCaret,
+                shortcutCopied: shortcutCopied,
                 onOpenImage: { target in
                     openLightbox(target)
                 }
@@ -1096,6 +1168,7 @@ private struct ComposerBar: View {
     var isChannel: Bool
     var focused: FocusState<Bool>.Binding
     var showJump = false
+    var onCopyLastReply: () -> Void = {}
     var onEscapeFind: () -> Bool = { false }
     @Environment(AppModel.self) private var model
     @State private var pickerItem: PhotosPickerItem?
@@ -1257,6 +1330,7 @@ private struct ComposerBar: View {
                         guard !findOpen, lightbox == nil, !shortcutsOpen else { return }
                         model.openAdjacentChat(direction: direction)
                     },
+                    onCopyLastReply: onCopyLastReply,
                     onBackspaceRemoveChip: {
                         model.removeLastPendingChipFromBackspace()
                     },
@@ -1564,6 +1638,7 @@ private struct MessageBubble: View {
     var completed = true
     var showEditAsNew = false
     var showCaret = false
+    var shortcutCopied = false
     var onOpenImage: (ImageLightbox.Target) -> Void = { _ in }
     var onJump: ((HandoffRef) -> Void)?
     @Environment(AppModel.self) private var model
@@ -1787,7 +1862,7 @@ private struct MessageBubble: View {
                                     .font(.system(size: 12))
                                     .foregroundStyle(.secondary)
                                     .buttonStyle(.plain)
-                                    if copied {
+                                    if copied || shortcutCopied {
                                         Text("Copied")
                                             .font(.system(size: 12))
                                             .foregroundStyle(.secondary)

@@ -23,6 +23,8 @@ struct ComposerTextView: UIViewRepresentable {
     /// v0.92: Option+Up / Option+Down opens the previous or next visible chat.
     /// The chat view ignores this while find is open. IME is filtered here.
     var onChatNav: ((Int) -> Void)? = nil
+    /// v1.00: ⌘⇧C / ⌃⇧C copies the last assistant reply. Does not send.
+    var onCopyLastReply: (() -> Void)? = nil
     /// v0.87: empty composer + Delete removes the last pending chip.
     /// Hardware Delete and the on-screen keyboard both call `deleteBackward`.
     /// Returns true when a chip was removed.
@@ -53,6 +55,9 @@ struct ComposerTextView: UIViewRepresentable {
         }
         view.onChatNav = { [coordinator = context.coordinator] direction in
             coordinator.parent.onChatNav?(direction)
+        }
+        view.onCopyLastReply = { [coordinator = context.coordinator] in
+            coordinator.parent.onCopyLastReply?()
         }
         view.onBackspaceRemoveChip = { [coordinator = context.coordinator] in
             coordinator.parent.onBackspaceRemoveChip?() ?? false
@@ -90,6 +95,9 @@ struct ComposerTextView: UIViewRepresentable {
         }
         view.onChatNav = { [coordinator = context.coordinator] direction in
             coordinator.parent.onChatNav?(direction)
+        }
+        view.onCopyLastReply = { [coordinator = context.coordinator] in
+            coordinator.parent.onCopyLastReply?()
         }
         view.onBackspaceRemoveChip = { [coordinator = context.coordinator] in
             coordinator.parent.onBackspaceRemoveChip?() ?? false
@@ -249,6 +257,7 @@ final class ComposerUITextView: UITextView {
     var onEscapeStop: ((Bool) -> Void)?
     var onArrowUpRecall: (() -> Void)?
     var onChatNav: ((Int) -> Void)?
+    var onCopyLastReply: (() -> Void)?
     var onBackspaceRemoveChip: (() -> Bool)?
     var sendMuted = false
     /// Hardware Delete with Shift/Alt/Cmd/Ctrl. Software Delete leaves this false.
@@ -317,6 +326,7 @@ final class ComposerUITextView: UITextView {
         if markedTextRange == nil {
             commands.append(contentsOf: chatNavCommands())
             commands.append(contentsOf: focusComposerCommands())
+            commands.append(contentsOf: copyLastReplyCommands())
         }
         return commands
     }
@@ -335,6 +345,25 @@ final class ComposerUITextView: UITextView {
             action: #selector(focusComposerFromShortcut),
             input: "l",
             modifierFlags: .control
+        )
+        command.wantsPriorityOverSystemBehavior = true
+        control.wantsPriorityOverSystemBehavior = true
+        return [command, control]
+    }
+
+    /// ⌘⇧C / ⌃⇧C. Copies the last assistant reply. Does not insert or send.
+    private func copyLastReplyCommands() -> [UIKeyCommand] {
+        let command = UIKeyCommand(
+            title: CopyLastReply.action,
+            action: #selector(copyLastReplyFromShortcut),
+            input: "c",
+            modifierFlags: [.command, .shift]
+        )
+        let control = UIKeyCommand(
+            title: CopyLastReply.action,
+            action: #selector(copyLastReplyFromShortcut),
+            input: "c",
+            modifierFlags: [.control, .shift]
         )
         command.wantsPriorityOverSystemBehavior = true
         control.wantsPriorityOverSystemBehavior = true
@@ -373,6 +402,11 @@ final class ComposerUITextView: UITextView {
 
     @objc private func focusComposerFromShortcut() {
         if markedTextRange != nil { return }
+    }
+
+    @objc private func copyLastReplyFromShortcut() {
+        if markedTextRange != nil { return }
+        onCopyLastReply?()
     }
 
     @objc private func chatNavUp() {

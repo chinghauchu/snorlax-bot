@@ -117,3 +117,4 @@ jobs:
           python3 ios/scripts/test_ios_chat_archive.py
           python3 ios/scripts/test_ios_chat_sections.py
           python3 ios/scripts/test_ios_focus_composer.py
+          python3 ios/scripts/test_ios_copy_last_reply.py
