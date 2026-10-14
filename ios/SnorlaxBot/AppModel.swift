@@ -136,6 +136,8 @@ final class AppModel {
     var attachError: String?
     var attachInFlight = 0
     var isSending = false
+    /// v0.93: chat whose client-started assistant reply is still in flight.
+    var generatingChatID: String?
     /// v0.78 failed Sends for this session. Not persisted. No HTTP.
     var failedSends: [FailedSendRecord] = []
     var hiddenOrphanIDs: Set<String> = []
@@ -1100,6 +1102,7 @@ final class AppModel {
         isSending = true
         defer {
             isSending = false
+            generatingChatID = nil
             if StopGenerating.shouldFocusComposerOnSettle() {
                 wantsComposerFocus = true
             }
@@ -1154,6 +1157,7 @@ final class AppModel {
             }
             messages = OptimisticSend.insert(messages, user)
         }
+        generatingChatID = originAgentID
         wantsComposerFocus = true
         stickBump += 1
         newMessagesPlace = NewMessages.clear(newMessagesPlace)
@@ -1507,7 +1511,11 @@ final class AppModel {
         dropLastAssistantTurn()
         toolTraces = []
         isSending = true
-        defer { isSending = false }
+        generatingChatID = agent.id
+        defer {
+            isSending = false
+            generatingChatID = nil
+        }
         let epoch = streamEpoch
         let work = Task { @MainActor in
             do {
@@ -1589,7 +1597,11 @@ final class AppModel {
         composerError = nil
         toolTraces = []
         isSending = true
-        defer { isSending = false }
+        generatingChatID = agent.id
+        defer {
+            isSending = false
+            generatingChatID = nil
+        }
         let epoch = streamEpoch
         let mainTranscript = threadID == nil
         let work = Task { @MainActor in
@@ -1835,12 +1847,14 @@ final class AppModel {
 
     /// v0.91: last-message preview, or a Draft: hint when this chat is not
     /// the one on screen and its top-level composer draft has visible text.
-    func chatListPreview(for agentId: String, lastMessage: String?) -> ChatDraftPreview.Row? {
-        ChatDraftPreview.row(
+    /// v0.93: Typing… while this chat's reply is in flight. Draft: still wins.
+    func chatListPreview(for agentId: String, lastMessage: String?) -> ChatGenerating.Row? {
+        ChatGenerating.line(
             chatId: agentId,
             openChatId: onScreenChatID(),
             draft: chatDrafts.text(agentId: agentId, threadId: nil),
-            lastMessage: lastMessage
+            lastMessage: lastMessage,
+            generating: generatingChatID == agentId
         )
     }
 

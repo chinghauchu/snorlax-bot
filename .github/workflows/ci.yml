@@ -111,3 +111,4 @@ jobs:
           python3 ios/scripts/test_ios_chat_mark_unread.py
           python3 ios/scripts/test_ios_chat_draft_preview.py
           python3 ios/scripts/test_ios_chat_nav.py
+          python3 ios/scripts/test_ios_chat_generating.py
