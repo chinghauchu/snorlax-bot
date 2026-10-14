@@ -115,3 +115,4 @@ jobs:
           python3 ios/scripts/test_ios_quote_selection.py
           python3 ios/scripts/test_ios_chat_names.py
           python3 ios/scripts/test_ios_chat_archive.py
+          python3 ios/scripts/test_ios_chat_sections.py

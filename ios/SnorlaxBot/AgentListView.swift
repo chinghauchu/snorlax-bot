@@ -194,7 +194,11 @@ struct AgentListView: View {
                 .accessibilityLabel(ChatSwitcher.emptyLabel)
         } else {
             let grouped = groupedListed
-            if !grouped.pinned.isEmpty {
+            let headers = ChatSections.labels(
+                pinnedCount: grouped.pinned.count,
+                restCount: grouped.rest.count
+            )
+            if headers.contains(ChatPins.groupLabel) {
                 Section {
                     ForEach(grouped.pinned) { agent in
                         chatRow(agent, archived: model.isChatArchived(agent.id))
@@ -206,11 +210,16 @@ struct AgentListView: View {
                         .textCase(nil)
                 }
             }
-            if !grouped.rest.isEmpty {
+            if headers.contains(ChatSections.chatsLabel) {
                 Section {
                     ForEach(grouped.rest) { agent in
                         chatRow(agent, archived: model.isChatArchived(agent.id))
                     }
+                } header: {
+                    Text(ChatSections.chatsLabel)
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundStyle(.secondary)
+                        .textCase(nil)
                 }
             }
         }

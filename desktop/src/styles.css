@@ -385,6 +385,11 @@ button:disabled {
   font-weight: 500;
 }
 
+/* v0.97: a later section header sits a step below the rows above it. */
+.roster li + li.roster-group {
+  margin-top: 8px;
+}
+
 /* v0.96: archived chats sit under a muted toggle. No animation. */
 .roster-archive {
   flex: 0 1 auto;
