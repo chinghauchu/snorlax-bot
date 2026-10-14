@@ -6,6 +6,7 @@ struct AgentListView: View {
     @State private var pendingDelete: Agent?
     @State private var showCreateChannel = false
     @State private var chatQuery = ""
+    @State private var renamingID: String?
 
     /// Chats that currently paint the accent dot, before the name search.
     private var unreadAgents: [Agent] {
@@ -23,7 +24,7 @@ struct AgentListView: View {
 
     private var listedAgents: [Agent] {
         let chats = filteredAgents.map {
-            ChatSwitcher.Chat(id: $0.id, name: $0.name)
+            ChatSwitcher.Chat(id: $0.id, name: model.chatDisplayName(for: $0))
         }
         let ids = ChatSwitcher.filter(chats, query: chatQuery).map(\.id)
         let byID = Dictionary(uniqueKeysWithValues: filteredAgents.map { ($0.id, $0) })
@@ -78,7 +79,8 @@ struct AgentListView: View {
             .confirmationDialog(
                 pendingDelete.map {
                     let kind = $0.isChannel ? "channel" : "agent"
-                    return "Delete \($0.name)? This removes the \(kind) and its chat."
+                    let label = model.chatDisplayName(for: $0)
+                    return "Delete \(label)? This removes the \(kind) and its chat."
                 } ?? "",
                 isPresented: deletePresented,
                 titleVisibility: .visible
@@ -160,6 +162,12 @@ struct AgentListView: View {
                     Label(ChatPins.label(pinned: model.isChatPinned(agent.id)), systemImage: "pin")
                 }
                 .tint(Color.accentColor)
+                Button {
+                    beginRename(agent)
+                } label: {
+                    Label(ChatNames.renameLabel, systemImage: "pencil")
+                }
+                .tint(Color.accentColor)
             }
             .swipeActions(edge: .trailing, allowsFullSwipe: false) {
                 if model.isConfigured {
@@ -182,6 +190,7 @@ struct AgentListView: View {
                     enabled: model.isConfigured,
                     pinned: model.isChatPinned(agent.id),
                     unread: model.showsUnreadDot(agent),
+                    onRename: { beginRename(agent) },
                     onPin: { model.toggleChatPin(agent.id) },
                     onRead: { model.toggleChatRead(agent.id) },
                     onDelete: { pendingDelete = agent }
@@ -191,13 +200,32 @@ struct AgentListView: View {
 
     @ViewBuilder
     private func row(for agent: Agent) -> some View {
-        if UIDevice.current.userInterfaceIdiom == .pad {
-            AgentRow(agent: agent)
+        let content = AgentRow(
+            agent: agent,
+            renaming: renamingID == agent.id,
+            onCommit: { draft in
+                model.commitChatName(agent.id, draft: draft, serverName: agent.name)
+                if renamingID == agent.id {
+                    renamingID = nil
+                }
+            },
+            onCancel: {
+                if renamingID == agent.id {
+                    renamingID = nil
+                }
+            }
+        )
+        if UIDevice.current.userInterfaceIdiom == .pad || renamingID == agent.id {
+            content
         } else {
             NavigationLink(value: agent.id) {
-                AgentRow(agent: agent)
+                content
             }
         }
+    }
+
+    private func beginRename(_ agent: Agent) {
+        renamingID = agent.id
     }
 
     private var deletePresented: Binding<Bool> {
@@ -210,16 +238,27 @@ struct AgentListView: View {
 
 private struct AgentRow: View {
     let agent: Agent
+    var renaming: Bool = false
+    var onCommit: (String) -> Void = { _ in }
+    var onCancel: () -> Void = {}
     @Environment(AppModel.self) private var model
 
     var body: some View {
         HStack(spacing: 10) {
             AgentAvatar(agent: agent, size: 28)
             VStack(alignment: .leading, spacing: 1) {
-                Text(agent.name)
-                    .font(.system(size: 14, weight: .medium))
-                    .foregroundStyle(.primary)
-                    .lineLimit(1)
+                if renaming {
+                    ChatRenameField(
+                        initial: model.chatDisplayName(for: agent),
+                        onCommit: onCommit,
+                        onCancel: onCancel
+                    )
+                } else {
+                    Text(model.chatDisplayName(for: agent))
+                        .font(.system(size: 14, weight: .medium))
+                        .foregroundStyle(.primary)
+                        .lineLimit(1)
+                }
                 if !agent.rosterSubtitle.isEmpty {
                     Text(agent.rosterSubtitle)
                         .font(.system(size: 12))
@@ -343,17 +382,80 @@ private struct UserAgentDeleteMenu: ViewModifier {
     let enabled: Bool
     let pinned: Bool
     let unread: Bool
+    var onRename: () -> Void
     var onPin: () -> Void
     var onRead: () -> Void
     var onDelete: () -> Void
 
     func body(content: Content) -> some View {
         content.contextMenu {
+            Button(ChatNames.renameLabel, action: onRename)
             Button(ChatPins.label(pinned: pinned), action: onPin)
             Button(ChatUnread.actionLabel(showsDot: unread), action: onRead)
             if enabled {
                 Button("Delete", role: .destructive, action: onDelete)
             }
+        }
+    }
+}
+
+/// Inline name field. Return or leaving the field commits. Escape cancels.
+/// A second finish is ignored so blur after Return does not commit twice.
+private struct ChatRenameField: View {
+    let initial: String
+    var onCommit: (String) -> Void
+    var onCancel: () -> Void
+    @FocusState private var focused: Bool
+    @State private var draft: String
+    @State private var settled = false
+    @State private var didFocus = false
+
+    init(initial: String, onCommit: @escaping (String) -> Void, onCancel: @escaping () -> Void) {
+        self.initial = initial
+        self.onCommit = onCommit
+        self.onCancel = onCancel
+        _draft = State(initialValue: initial)
+    }
+
+    var body: some View {
+        TextField(ChatNames.fieldLabel, text: $draft)
+            .font(.system(size: 14, weight: .medium))
+            .textFieldStyle(.plain)
+            .submitLabel(.done)
+            .focused($focused)
+            .onSubmit { finish(commit: true) }
+            .onKeyPress(.escape) {
+                finish(commit: false)
+                return .handled
+            }
+            .onChange(of: focused) { _, isFocused in
+                if isFocused {
+                    didFocus = true
+                    return
+                }
+                if didFocus {
+                    finish(commit: true)
+                }
+            }
+            .onDisappear {
+                if didFocus {
+                    finish(commit: true)
+                }
+            }
+            .onAppear {
+                DispatchQueue.main.async {
+                    focused = true
+                }
+            }
+    }
+
+    private func finish(commit: Bool) {
+        guard !settled else { return }
+        settled = true
+        if commit {
+            onCommit(draft)
+        } else {
+            onCancel()
         }
     }
 }

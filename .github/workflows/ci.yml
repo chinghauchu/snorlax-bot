@@ -113,3 +113,4 @@ jobs:
           python3 ios/scripts/test_ios_chat_nav.py
           python3 ios/scripts/test_ios_chat_generating.py
           python3 ios/scripts/test_ios_quote_selection.py
+          python3 ios/scripts/test_ios_chat_names.py

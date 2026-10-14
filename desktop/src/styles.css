@@ -266,10 +266,14 @@ button:disabled {
   text-align: left;
 }
 
-.row.pinned .row-hit,
-.row:hover .row-hit,
-.row:focus-within .row-hit {
+.row.pinned .row-hit {
   padding-right: 26px;
+}
+
+.row:hover .row-hit,
+.row:focus-within .row-hit,
+.row.renaming .row-hit {
+  padding-right: 52px;
 }
 
 /* v0.89: hover control. Idle rows keep today's layout; the glyph stays on a pin. */
@@ -313,6 +317,64 @@ button:disabled {
   width: 12px;
   height: 12px;
   display: block;
+}
+
+/* v0.95: hover Rename. Idle rows keep the pin's layout. No motion. */
+.row-rename {
+  position: absolute;
+  z-index: 1;
+  top: 50%;
+  right: 34px;
+  transform: translateY(-50%);
+  width: 22px;
+  height: 22px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-muted);
+  display: grid;
+  place-items: center;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.row:hover .row-rename {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.row:focus-within .row-rename {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.row.renaming .row-rename {
+  opacity: 0;
+  pointer-events: none;
+}
+
+.rename-glyph {
+  width: 12px;
+  height: 12px;
+  display: block;
+}
+
+.row-name-input {
+  width: 100%;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-size: 13px;
+  line-height: 1.3;
+  outline: none;
+  box-shadow: inset 0 -1px 0 var(--text-muted);
 }
 
 .roster-group {
