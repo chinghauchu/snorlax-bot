@@ -19,6 +19,8 @@ type Props = {
   text: string;
   /** The active in-chat find hit is in this bubble. */
   activeFind: boolean;
+  /** v0.94: `message` marks completed message text as quotable. */
+  quote?: string;
   children: ReactNode;
 };
 
@@ -34,6 +36,7 @@ export function LongMessageBody({
   completed,
   text,
   activeFind,
+  quote,
   children,
 }: Props) {
   const bodyRef = useRef<HTMLDivElement>(null);
@@ -81,7 +84,7 @@ export function LongMessageBody({
         data-collapsed={clamp ? "true" : "false"}
         style={maxHeight == null ? undefined : { maxHeight }}
       >
-        <div ref={bodyRef} className="long-message-body">
+        <div ref={bodyRef} className="long-message-body" data-quote={quote}>
           {children}
         </div>
       </div>

@@ -269,6 +269,16 @@ final class AppModel {
         pendingComposerCaret = (text as NSString).length
     }
 
+    /// v0.94: insert a `>` quote of the selection. Does not send.
+    /// Keeps an existing draft and appends after a blank line.
+    func quoteIntoComposer(_ selection: String) {
+        guard !computerTakeoverOpen else { return }
+        guard let next = QuoteSelection.append(draft: draft, selection: selection) else { return }
+        draft = next.text
+        pendingComposerCaret = next.caret
+        wantsComposerFocus = true
+    }
+
     /// v0.68: long-press "Edit as new message" on the latest user bubble.
     func editAsNewMessage(_ text: String) {
         guard !computerTakeoverOpen else { return }

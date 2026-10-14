@@ -1941,9 +1941,27 @@ private struct MessageBubble: View {
             onSpeak: { Task { await model.toggleSpeak(message: message) } },
             onRegenerate: { Task { await model.regenerate() } },
             onEditAsNew: { model.editAsNewMessage(message.content) },
+            showQuote: canQuote,
             onRetry: { Task { await model.retryFailedSend(id: message.id) } },
-            onRemove: { model.dismissFailedSend(id: message.id) }
+            onRemove: { model.dismissFailedSend(id: message.id) },
+            onQuote: { model.quoteIntoComposer($0) }
         )
+    }
+
+    /// v0.94: user-RIGHT kind=message, and a completed assistant LEFT one.
+    /// Streaming LEFT, tool lines, cards, and file-only bubbles are not.
+    private var canQuote: Bool {
+        QuoteSelection.surfaceAllowed(
+            kindMessage: message.isKindMessage
+                && !message.isToolLine
+                && !message.isWidget
+                && !message.isConnect
+                && !message.isApprove
+                && !message.isHandoffRoot,
+            fromUser: message.isFromUser,
+            completed: completed,
+            fileChip: false
+        ) && !message.content.isEmpty
     }
 
     private func copyMessageText() {
@@ -1972,12 +1990,14 @@ private struct BubbleTimestampMenu: ViewModifier {
     var showEditAsNew: Bool
     var showFailedSend: Bool = false
     var retryDisabled: Bool = false
+    var showQuote: Bool = false
     let onCopy: () -> Void
     let onSpeak: () -> Void
     let onRegenerate: () -> Void
     let onEditAsNew: () -> Void
     var onRetry: () -> Void = {}
     var onRemove: () -> Void = {}
+    var onQuote: (String) -> Void = { _ in }
 
     @ViewBuilder
     private var failedSendActions: some View {
@@ -1988,9 +2008,18 @@ private struct BubbleTimestampMenu: ViewModifier {
         }
     }
 
+    /// Long-press Quote only when this bubble is quotable and text is selected.
+    @ViewBuilder
+    private var quoteButton: some View {
+        if showQuote, let selected = QuoteSelection.menuSelection() {
+            Button(QuoteSelection.label) { onQuote(selected) }
+        }
+    }
+
     func body(content: Content) -> some View {
         if let stamp {
-            let hasActions = showCopy || showSpeak || showRegenerate || showFailedSend || showEditAsNew
+            let selectedQuote = showQuote ? QuoteSelection.menuSelection() : nil
+            let hasActions = showCopy || showSpeak || showRegenerate || showFailedSend || showEditAsNew || selectedQuote != nil
             if hasActions {
                 content.contextMenu {
                     Section {
@@ -2006,6 +2035,7 @@ private struct BubbleTimestampMenu: ViewModifier {
                         if showEditAsNew {
                             Button(RecallDraft.editAsNewMessage) { onEditAsNew() }
                         }
+                        quoteButton
                         failedSendActions
                     } header: {
                         Text(stamp)
@@ -2019,7 +2049,7 @@ private struct BubbleTimestampMenu: ViewModifier {
                         .disabled(true)
                 }
             }
-        } else if showCopy || showFailedSend || showEditAsNew {
+        } else if showCopy || showFailedSend || showEditAsNew || (showQuote && QuoteSelection.menuSelection() != nil) {
             content.contextMenu {
                 if showCopy {
                     Button("Copy") { onCopy() }
@@ -2027,6 +2057,7 @@ private struct BubbleTimestampMenu: ViewModifier {
                 if showEditAsNew {
                     Button(RecallDraft.editAsNewMessage) { onEditAsNew() }
                 }
+                quoteButton
                 failedSendActions
             }
         } else {

@@ -2675,6 +2675,41 @@ pre.md-math-fallback.md-math-block {
   }
 }
 
+/* v0.94: only message text is selectable for Quote. Chips and the stamp stay out. */
+[data-quote="message"] {
+  user-select: text;
+}
+
+/* v0.94: Quote sits near the selection. Muted 12px. No motion. */
+.quote-selection {
+  position: fixed;
+  z-index: 25;
+  margin: 0;
+  padding: 2px 6px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg-elevated);
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1.2;
+  color: var(--text-muted);
+  cursor: pointer;
+  user-select: none;
+  transition: none;
+  animation: none;
+}
+
+.quote-selection:hover {
+  color: var(--accent);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .quote-selection {
+    transition: none;
+    animation: none;
+  }
+}
+
 .info-routine-remove {
   flex-shrink: 0;
   border: 0;

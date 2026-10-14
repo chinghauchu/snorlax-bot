@@ -28,6 +28,11 @@ enum ChatShortcuts {
             action: "Copy, Speak, Regenerate, or the time"
         ),
         Row(
+            id: "quote",
+            keys: "Select text, then Quote",
+            action: "Insert a quote in the composer"
+        ),
+        Row(
             id: "edit",
             keys: "Long-press your message",
             action: "Copy, or \(RecallDraft.editAsNewMessage)"
