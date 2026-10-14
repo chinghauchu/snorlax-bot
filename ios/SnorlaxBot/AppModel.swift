@@ -113,6 +113,10 @@ final class AppModel {
     var chatNames: [String: String] = [:] {
         didSet { ChatNames.write(chatNames) }
     }
+    /// v0.96: archived chat ids. UserDefaults. Pin ids stay so Unarchive restores them.
+    var archivedChatIDs: [String] = [] {
+        didSet { ChatArchive.write(archivedChatIDs) }
+    }
     /// App scene is active. A backgrounded app is not focused on the open chat.
     var sceneFocused = true
     private var chatUnread = ChatUnread()
@@ -199,6 +203,7 @@ final class AppModel {
         chatListFilter = ChatListFilter.read()
         pinnedChatIDs = ChatPins.read()
         chatNames = ChatNames.read()
+        archivedChatIDs = ChatArchive.read()
         publishReplyUnread()
     }
 
@@ -357,6 +362,7 @@ final class AppModel {
             let roster = try await client.listAgents()
             agents = roster
             retainChatPins(against: roster)
+            retainChatArchives(against: roster)
             retainChatNames(against: roster)
             retainChatPreviews()
             plugins = (try? await client.listPlugins()) ?? []
@@ -380,10 +386,11 @@ final class AppModel {
         await loadConversation(id, thread: nil, push: push)
     }
 
-    /// Sidebar order after All / Unread, then the Pinned group.
-    /// The name-search field does not change this order.
+    /// Sidebar order after archive, then All / Unread, then the Pinned group.
+    /// Archived chats are skipped. The name-search field does not change this order.
     func visibleChatOrder() -> [String] {
         let rows = visibleAgents.filter {
+            !isChatArchived($0.id) &&
             ChatListFilter.includes(
                 filter: chatListFilter,
                 hasUnreadDot: showsUnreadDot($0)
@@ -577,6 +584,7 @@ final class AppModel {
             _ = chatUnread.retain(Set(agents.map(\.id)))
             _ = chatLastSeen.retain(Set(agents.map(\.id)))
             retainChatPins(against: agents)
+            retainChatArchives(against: agents)
             retainChatNames(against: agents)
             publishReplyUnread()
             if lastExtraChannelID == agent.id {
@@ -1695,6 +1703,7 @@ final class AppModel {
         do {
             agents = try await client.listAgents()
             retainChatPins(against: agents)
+            retainChatArchives(against: agents)
             retainChatNames(against: agents)
             retainChatPreviews()
         } catch {
@@ -1753,6 +1762,65 @@ final class AppModel {
 
     func isChatPinned(_ id: String) -> Bool {
         pinnedChatIDs.contains(id)
+    }
+
+    func isChatArchived(_ id: String) -> Bool {
+        ChatArchive.contains(archivedChatIDs, id: id)
+    }
+
+    /// Archived chats still on the roster, in roster order. Pins are kept but not shown here.
+    var archivedAgents: [Agent] {
+        visibleAgents.filter { isChatArchived($0.id) }
+    }
+
+    /// Archive removes the row now. The open chat moves to the next
+    /// visible row (Option+Down order) or the empty state. A new reply
+    /// later still marks unread and does not unarchive.
+    func archiveChat(_ id: String) {
+        guard !id.isEmpty, !isChatArchived(id) else { return }
+        let open = onScreenChatID()
+        let next = ChatArchive.selectionAfterArchive(
+            visibleIds: visibleChatOrder(),
+            openId: open,
+            archivedId: id
+        )
+        let updated = ChatArchive.archive(archivedChatIDs, id: id)
+        if updated != archivedChatIDs {
+            archivedChatIDs = updated
+        }
+        guard open == id else { return }
+        if let next {
+            // Move off this chat before the transcript load so a reply
+            // that finishes now still marks unread and stays archived.
+            selectedAgentID = next
+            navigationPath = [next]
+            Task {
+                await select(next, push: true)
+                wantsComposerFocus = true
+            }
+        } else {
+            adoptComposerDraft(agentId: nil, threadId: nil)
+            selectedAgentID = nil
+            messages = []
+            navigationPath = []
+            threadID = nil
+        }
+    }
+
+    /// Unarchive restores pin and recency order. The open chat stays open.
+    func unarchiveChat(_ id: String) {
+        let updated = ChatArchive.unarchive(archivedChatIDs, id: id)
+        if updated != archivedChatIDs {
+            archivedChatIDs = updated
+        }
+    }
+
+    /// A chat that left the roster loses its archive mark.
+    private func retainChatArchives(against roster: [Agent]) {
+        let next = ChatArchive.retain(archivedChatIDs, keep: Set(roster.map(\.id)))
+        if next != archivedChatIDs {
+            archivedChatIDs = next
+        }
     }
 
     func toggleChatPin(_ id: String) {

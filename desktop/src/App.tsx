@@ -413,6 +413,19 @@ import {
   type ChatNameMap,
 } from "./chatNames";
 import {
+  ARCHIVE_LABEL,
+  UNARCHIVE_LABEL,
+  archivedSectionLabel,
+  archiveChat,
+  browserArchiveStorage,
+  isChatArchived,
+  readChatArchives,
+  retainChatArchives,
+  selectionAfterArchive,
+  unarchiveChat,
+  writeChatArchives,
+} from "./chatArchive";
+import {
   DROP_FILES_LABEL,
   dragCarriesFiles,
   escapeClearsFileDrop,
@@ -502,6 +515,23 @@ function PinGlyph() {
       <path
         fill="currentColor"
         d="M4.1 1.1h3.8l-.7 3.1 1.7 1.7H3.1l1.7-1.7-.7-3.1Zm1.3 5.1h1.2v4.6H5.4V6.2Z"
+      />
+    </svg>
+  );
+}
+
+function ArchiveGlyph() {
+  return (
+    <svg
+      className="archive-glyph"
+      viewBox="0 0 12 12"
+      width="12"
+      height="12"
+      aria-hidden="true"
+    >
+      <path
+        fill="currentColor"
+        d="M1.2 1.6h9.6v2.1H1.2V1.6Zm1 3h7.6v5.6H2.2V4.6Zm2.1 1.3h3.4v1.2H4.3V5.9Z"
       />
     </svg>
   );
@@ -978,6 +1008,28 @@ export function App() {
         return current;
       }
       writeChatPins(browserPinStorage(), next);
+      return next;
+    });
+  }
+  // v0.96: archived chats leave the main list. The pin id stays.
+  const [archivedChatIds, setArchivedChatIds] = useState<string[]>(() =>
+    readChatArchives(browserArchiveStorage()),
+  );
+  const [archiveOpen, setArchiveOpen] = useState(false);
+  useEffect(() => {
+    if (!activeId || !isChatArchived(archivedChatIds, activeId)) return;
+    setArchiveOpen((open) => (open ? open : true));
+  }, [activeId, archivedChatIds]);
+  function retainArchives(keep: ReadonlySet<string>) {
+    setArchivedChatIds((current) => {
+      const next = retainChatArchives(current, keep);
+      if (
+        next.length === current.length &&
+        next.every((id, index) => id === current[index])
+      ) {
+        return current;
+      }
+      writeChatArchives(browserArchiveStorage(), next);
       return next;
     });
   }
@@ -1911,6 +1963,7 @@ export function App() {
         setAgents(roster);
         const rosterIds = new Set(roster.map((row) => row.id));
         retainPins(rosterIds);
+        retainArchives(rosterIds);
         retainNames(rosterIds);
         const preferred = fallbackRosterSelection(roster);
         moveComposer(preferred, null);
@@ -2643,6 +2696,7 @@ export function App() {
       chatUnread.current.retain(rosterIds);
       chatLastSeen.current.retain(rosterIds);
       retainPins(rosterIds);
+      retainArchives(rosterIds);
       retainNames(rosterIds);
       if (activeId === doomed.id) {
         const next = nextRosterSelection(roster, doomed.id, activeId);
@@ -4212,19 +4266,26 @@ export function App() {
     })),
     switchOpen ? switchQuery : "",
   );
-  const rosterAgents = agents.filter((agent) =>
-    chatVisibleInFilter(
-      chatListFilter,
-      unreadIds.has(agent.id) || replyUnreadIds.has(agent.id),
-    ),
+  const rosterAgents = agents.filter(
+    (agent) =>
+      !isChatArchived(archivedChatIds, agent.id) &&
+      chatVisibleInFilter(
+        chatListFilter,
+        unreadIds.has(agent.id) || replyUnreadIds.has(agent.id),
+      ),
   );
   const { pinned: pinnedAgents, rest: restAgents } = groupPinnedChats(
     rosterAgents,
     pinnedChatIds,
     (agent) => agent.id,
   );
+  const archivedAgents = agents.filter((agent) =>
+    isChatArchived(archivedChatIds, agent.id),
+  );
   const unreadRosterCount = agents.filter(
-    (agent) => unreadIds.has(agent.id) || replyUnreadIds.has(agent.id),
+    (agent) =>
+      !isChatArchived(archivedChatIds, agent.id) &&
+      (unreadIds.has(agent.id) || replyUnreadIds.has(agent.id)),
   ).length;
   const switchSafeIndex = clampSwitchIndex(switchIndex, switchHits.length);
   const activeSwitch =
@@ -4327,6 +4388,261 @@ export function App() {
     row?.scrollIntoView({ block: "nearest" });
   }, [switchOpen, switchSafeIndex, activeSwitch?.id, switchQuery]);
 
+  function leaveToEmptyChat() {
+    moveComposer(null, null);
+    previewLive.current = false;
+    setFindOpen(false);
+    setFindQuery("");
+    setFindIndex(0);
+    setActiveId(null);
+    setThreadId(null);
+    setProfileOpen(false);
+    setProfileEditing(false);
+    setExpandedToolStacks(new Set());
+    setComposerError(null);
+    setAttachError(null);
+    setPendingAttachments((prev) => {
+      for (const row of prev) {
+        if (row.previewUrl) URL.revokeObjectURL(row.previewUrl);
+      }
+      return [];
+    });
+    setMessages([]);
+  }
+
+  // v0.96: archive removes the row now. The open chat moves to the
+  // next visible row (Alt+Down order) or the empty state.
+  function onArchive(id: string) {
+    setContextMenu(null);
+    if (!id || isChatArchived(archivedChatIds, id)) return;
+    if (renamingIdRef.current === id) {
+      renamingIdRef.current = null;
+      renameCancelRef.current = id;
+      setRenamingId(null);
+    }
+    const visibleIds = [...pinnedAgents, ...restAgents].map((agent) => agent.id);
+    const nextOpen = selectionAfterArchive(visibleIds, activeId, id);
+    setArchivedChatIds((current) => {
+      const next = archiveChat(current, id);
+      writeChatArchives(browserArchiveStorage(), next);
+      return next;
+    });
+    if (activeId !== id) return;
+    if (nextOpen) {
+      void selectAgent(nextOpen);
+      return;
+    }
+    leaveToEmptyChat();
+  }
+
+  function onUnarchive(id: string) {
+    setContextMenu(null);
+    if (!id) return;
+    setArchivedChatIds((current) => {
+      const next = unarchiveChat(current, id);
+      if (
+        next.length === current.length &&
+        next.every((row, index) => row === current[index])
+      ) {
+        return current;
+      }
+      writeChatArchives(browserArchiveStorage(), next);
+      return next;
+    });
+  }
+
+  function renderChatRow(agent: Agent, archivedRow: boolean) {
+  const preview = chatPreviews[agent.id];
+  const base = chatRowPreview({
+    chatId: agent.id,
+    openChatId: activeId,
+    draft: chatDrafts.current.get(agent.id, null),
+    lastMessage: preview,
+  });
+  const generating = showGeneratingDots(generatingChatId === agent.id);
+  const shown = chatListLine({
+    preview: base,
+    generating,
+    chatId: agent.id,
+  });
+  const stamp = chatActivity[agent.id];
+  const timeLabel =
+    !generating && stamp
+      ? chatListTimeLabel(stamp, activityNow)
+      : null;
+  const pinned = !archivedRow && isChatPinned(pinnedChatIds, agent.id);
+  const label = visibleName(agent);
+  const renaming = renamingId === agent.id;
+  const rowBody = (
+    <>
+        <Avatar
+          src={agent.avatar}
+          name={label}
+          size={28}
+          session={session}
+        />
+        <span className="row-copy">
+          {renaming ? (
+            <input
+              ref={renameInputRef}
+              className="row-name-input"
+              aria-label={RENAME_FIELD_LABEL}
+              value={renameDraft}
+              maxLength={CHAT_NAME_MAX}
+              spellCheck={false}
+              onChange={(event) => {
+                renameDraftRef.current = event.target.value;
+                setRenameDraft(event.target.value);
+              }}
+              onKeyDown={(event) => {
+                if (isComposerComposing(event)) return;
+                if (event.key === "Escape") {
+                  event.preventDefault();
+                  event.stopPropagation();
+                  renameCancelRef.current = agent.id;
+                  if (renamingIdRef.current === agent.id) {
+                    renamingIdRef.current = null;
+                  }
+                  setRenamingId(null);
+                  return;
+                }
+                if (event.key === "Enter") {
+                  event.preventDefault();
+                  event.currentTarget.blur();
+                }
+              }}
+              onBlur={() => {
+                if (renameCancelRef.current === agent.id) {
+                  renameCancelRef.current = null;
+                  return;
+                }
+                const draft = renameDraftRef.current;
+                if (renamingIdRef.current === agent.id) {
+                  renamingIdRef.current = null;
+                  setRenamingId(null);
+                }
+                setChatNames((current) => {
+                  const next = commitChatName(
+                    current,
+                    agent.id,
+                    draft,
+                    agent.name,
+                  );
+                  if (next === current) return current;
+                  writeChatNames(browserNameStorage(), next);
+                  return next;
+                });
+              }}
+              onClick={(event) => event.stopPropagation()}
+            />
+          ) : (
+            <span className="row-name">{label}</span>
+          )}
+          {rosterSubtitle(agent) ? (
+            <span className="row-title">{rosterSubtitle(agent)}</span>
+          ) : null}
+          {shown || timeLabel || generating ? (
+            <span className="row-meta">
+              {shown ? (
+                <span
+                  className="row-preview"
+                  aria-hidden={
+                    shown.kind === "typing" ? true : undefined
+                  }
+                >
+                  {shown.kind === "draft" ? (
+                    <>
+                      <span className="row-draft-prefix">
+                        {shown.prefix}{" "}
+                      </span>
+                      {shown.text}
+                    </>
+                  ) : shown.kind === "typing" ? (
+                    <span className="row-typing">{shown.text}</span>
+                  ) : (
+                    shown.text
+                  )}
+                </span>
+              ) : null}
+              {generating ? (
+                <span
+                  className="row-generating waiting-dots"
+                  role="status"
+                  aria-label={TYPING_HINT}
+                >
+                  <span>{WAITING_DOT}</span>
+                  <span>{WAITING_DOT}</span>
+                  <span>{WAITING_DOT}</span>
+                </span>
+              ) : timeLabel && stamp ? (
+                <time className="row-time" dateTime={stamp}>
+                  {timeLabel}
+                </time>
+              ) : null}
+            </span>
+          ) : null}
+        </span>
+        {unreadIds.has(agent.id) || replyUnreadIds.has(agent.id) ? (
+          <span className="unread-dot" aria-label="Unread" />
+        ) : null}
+    </>
+  );
+  return (
+  <li key={agent.id}>
+    <div
+      className={
+        "row" +
+        (agent.id === activeId ? " selected" : "") +
+        (pinned ? " pinned" : "") +
+        (renaming ? " renaming" : "")
+      }
+      onContextMenu={(e) => onAgentContext(e, agent)}
+    >
+      {renaming ? (
+        <div className="row-hit">{rowBody}</div>
+      ) : (
+        <button
+          type="button"
+          className="row-hit"
+          onClick={() => void selectAgent(agent.id)}
+        >
+          {rowBody}
+        </button>
+      )}
+      <button
+        type="button"
+        className="row-rename"
+        aria-label={RENAME_LABEL}
+        onClick={() => beginRename(agent)}
+      >
+        <RenameGlyph />
+      </button>
+      {archivedRow ? (
+        <button
+          type="button"
+          className="row-unarchive"
+          aria-label={UNARCHIVE_LABEL}
+          onClick={() => onUnarchive(agent.id)}
+        >
+          <ArchiveGlyph />
+        </button>
+      ) : (
+        <button
+          type="button"
+          className={pinned ? "row-pin pinned" : "row-pin"}
+          aria-label={pinned ? UNPIN_LABEL : PIN_LABEL}
+          aria-pressed={pinned}
+          onClick={() => onTogglePin(agent.id)}
+        >
+          <PinGlyph />
+        </button>
+      )}
+    </div>
+  </li>
+  );
+  }
+
+
   return (
     <div className={computerOpen ? "app computer-open" : "app computer-collapsed"}>
       <aside className="sidebar">
@@ -4397,186 +4713,26 @@ export function App() {
           {pinnedAgents.length > 0 ? (
             <li className="roster-group">{PINNED_GROUP_LABEL}</li>
           ) : null}
-          {[...pinnedAgents, ...restAgents].map((agent) => {
-            const preview = chatPreviews[agent.id];
-            const base = chatRowPreview({
-              chatId: agent.id,
-              openChatId: activeId,
-              draft: chatDrafts.current.get(agent.id, null),
-              lastMessage: preview,
-            });
-            const generating = showGeneratingDots(generatingChatId === agent.id);
-            const shown = chatListLine({
-              preview: base,
-              generating,
-              chatId: agent.id,
-            });
-            const stamp = chatActivity[agent.id];
-            const timeLabel =
-              !generating && stamp
-                ? chatListTimeLabel(stamp, activityNow)
-                : null;
-            const pinned = isChatPinned(pinnedChatIds, agent.id);
-            const label = visibleName(agent);
-            const renaming = renamingId === agent.id;
-            const rowBody = (
-              <>
-                  <Avatar
-                    src={agent.avatar}
-                    name={label}
-                    size={28}
-                    session={session}
-                  />
-                  <span className="row-copy">
-                    {renaming ? (
-                      <input
-                        ref={renameInputRef}
-                        className="row-name-input"
-                        aria-label={RENAME_FIELD_LABEL}
-                        value={renameDraft}
-                        maxLength={CHAT_NAME_MAX}
-                        spellCheck={false}
-                        onChange={(event) => {
-                          renameDraftRef.current = event.target.value;
-                          setRenameDraft(event.target.value);
-                        }}
-                        onKeyDown={(event) => {
-                          if (isComposerComposing(event)) return;
-                          if (event.key === "Escape") {
-                            event.preventDefault();
-                            event.stopPropagation();
-                            renameCancelRef.current = agent.id;
-                            if (renamingIdRef.current === agent.id) {
-                              renamingIdRef.current = null;
-                            }
-                            setRenamingId(null);
-                            return;
-                          }
-                          if (event.key === "Enter") {
-                            event.preventDefault();
-                            event.currentTarget.blur();
-                          }
-                        }}
-                        onBlur={() => {
-                          if (renameCancelRef.current === agent.id) {
-                            renameCancelRef.current = null;
-                            return;
-                          }
-                          const draft = renameDraftRef.current;
-                          if (renamingIdRef.current === agent.id) {
-                            renamingIdRef.current = null;
-                            setRenamingId(null);
-                          }
-                          setChatNames((current) => {
-                            const next = commitChatName(
-                              current,
-                              agent.id,
-                              draft,
-                              agent.name,
-                            );
-                            if (next === current) return current;
-                            writeChatNames(browserNameStorage(), next);
-                            return next;
-                          });
-                        }}
-                        onClick={(event) => event.stopPropagation()}
-                      />
-                    ) : (
-                      <span className="row-name">{label}</span>
-                    )}
-                    {rosterSubtitle(agent) ? (
-                      <span className="row-title">{rosterSubtitle(agent)}</span>
-                    ) : null}
-                    {shown || timeLabel || generating ? (
-                      <span className="row-meta">
-                        {shown ? (
-                          <span
-                            className="row-preview"
-                            aria-hidden={
-                              shown.kind === "typing" ? true : undefined
-                            }
-                          >
-                            {shown.kind === "draft" ? (
-                              <>
-                                <span className="row-draft-prefix">
-                                  {shown.prefix}{" "}
-                                </span>
-                                {shown.text}
-                              </>
-                            ) : shown.kind === "typing" ? (
-                              <span className="row-typing">{shown.text}</span>
-                            ) : (
-                              shown.text
-                            )}
-                          </span>
-                        ) : null}
-                        {generating ? (
-                          <span
-                            className="row-generating waiting-dots"
-                            role="status"
-                            aria-label={TYPING_HINT}
-                          >
-                            <span>{WAITING_DOT}</span>
-                            <span>{WAITING_DOT}</span>
-                            <span>{WAITING_DOT}</span>
-                          </span>
-                        ) : timeLabel && stamp ? (
-                          <time className="row-time" dateTime={stamp}>
-                            {timeLabel}
-                          </time>
-                        ) : null}
-                      </span>
-                    ) : null}
-                  </span>
-                  {unreadIds.has(agent.id) || replyUnreadIds.has(agent.id) ? (
-                    <span className="unread-dot" aria-label="Unread" />
-                  ) : null}
-              </>
-            );
-            return (
-            <li key={agent.id}>
-              <div
-                className={
-                  "row" +
-                  (agent.id === activeId ? " selected" : "") +
-                  (pinned ? " pinned" : "") +
-                  (renaming ? " renaming" : "")
-                }
-                onContextMenu={(e) => onAgentContext(e, agent)}
-              >
-                {renaming ? (
-                  <div className="row-hit">{rowBody}</div>
-                ) : (
-                  <button
-                    type="button"
-                    className="row-hit"
-                    onClick={() => void selectAgent(agent.id)}
-                  >
-                    {rowBody}
-                  </button>
-                )}
-                <button
-                  type="button"
-                  className="row-rename"
-                  aria-label={RENAME_LABEL}
-                  onClick={() => beginRename(agent)}
-                >
-                  <RenameGlyph />
-                </button>
-                <button
-                  type="button"
-                  className={pinned ? "row-pin pinned" : "row-pin"}
-                  aria-label={pinned ? UNPIN_LABEL : PIN_LABEL}
-                  aria-pressed={pinned}
-                  onClick={() => onTogglePin(agent.id)}
-                >
-                  <PinGlyph />
-                </button>
-              </div>
-            </li>
-            );
-          })}
+          {[...pinnedAgents, ...restAgents].map((agent) => renderChatRow(agent, false))}
         </ul>
+        {archivedAgents.length > 0 ? (
+          <div className="roster-archive">
+            <button
+              type="button"
+              className="roster-archive-toggle"
+              aria-expanded={archiveOpen}
+              aria-label={archivedSectionLabel(archivedAgents.length)}
+              onClick={() => setArchiveOpen((open) => !open)}
+            >
+              {archivedSectionLabel(archivedAgents.length)}
+            </button>
+            {archiveOpen ? (
+              <ul className="roster-archive-list">
+                {archivedAgents.map((agent) => renderChatRow(agent, true))}
+              </ul>
+            ) : null}
+          </div>
+        ) : null}
         <button
           type="button"
           className="account"
@@ -5950,13 +6106,34 @@ export function App() {
           >
             {RENAME_LABEL}
           </button>
-          <button
-            type="button"
-            role="menuitem"
-            onClick={() => onTogglePin(contextMenu.agent.id)}
-          >
-            {pinActionLabel(isChatPinned(pinnedChatIds, contextMenu.agent.id))}
-          </button>
+          {isChatArchived(archivedChatIds, contextMenu.agent.id) ? (
+            <button
+              type="button"
+              role="menuitem"
+              aria-label={UNARCHIVE_LABEL}
+              onClick={() => onUnarchive(contextMenu.agent.id)}
+            >
+              {UNARCHIVE_LABEL}
+            </button>
+          ) : (
+            <>
+              <button
+                type="button"
+                role="menuitem"
+                onClick={() => onTogglePin(contextMenu.agent.id)}
+              >
+                {pinActionLabel(isChatPinned(pinnedChatIds, contextMenu.agent.id))}
+              </button>
+              <button
+                type="button"
+                role="menuitem"
+                aria-label={ARCHIVE_LABEL}
+                onClick={() => onArchive(contextMenu.agent.id)}
+              >
+                {ARCHIVE_LABEL}
+              </button>
+            </>
+          )}
           <button
             type="button"
             role="menuitem"
