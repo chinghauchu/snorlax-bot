@@ -313,11 +313,32 @@ final class ComposerUITextView: UITextView {
             up.wantsPriorityOverSystemBehavior = true
             commands.append(up)
         }
-        // IME keeps Option+arrows while marked text is composing.
+        // IME keeps Option+arrows and ⌘L while marked text is composing.
         if markedTextRange == nil {
             commands.append(contentsOf: chatNavCommands())
+            commands.append(contentsOf: focusComposerCommands())
         }
         return commands
+    }
+
+    /// ⌘L / ⌃L while the composer is already first responder.
+    /// Do not insert and do not send. The caret stays put.
+    private func focusComposerCommands() -> [UIKeyCommand] {
+        let command = UIKeyCommand(
+            title: FocusComposer.action,
+            action: #selector(focusComposerFromShortcut),
+            input: "l",
+            modifierFlags: .command
+        )
+        let control = UIKeyCommand(
+            title: FocusComposer.action,
+            action: #selector(focusComposerFromShortcut),
+            input: "l",
+            modifierFlags: .control
+        )
+        command.wantsPriorityOverSystemBehavior = true
+        control.wantsPriorityOverSystemBehavior = true
+        return [command, control]
     }
 
     /// Option+Up / Option+Down. Plain Up stays the recall command above.
@@ -348,6 +369,10 @@ final class ComposerUITextView: UITextView {
     @objc private func recallFromArrowUp() {
         if markedTextRange != nil || !text.isEmpty { return }
         onArrowUpRecall?()
+    }
+
+    @objc private func focusComposerFromShortcut() {
+        if markedTextRange != nil { return }
     }
 
     @objc private func chatNavUp() {

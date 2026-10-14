@@ -137,6 +137,14 @@ import {
 import { backspaceRemovesLastChip, withoutLastChip } from "./backspaceChip";
 import { adjacentChatId, chatNavDirection } from "./chatNav";
 import {
+  appendDraftAtEnd,
+  focusComposerChordBlocked,
+  focusInsideCard,
+  isFocusComposerChord,
+  typeToFocusBlocked,
+  typeToFocusCharacter,
+} from "./focusComposerKey";
+import {
   loadInitialRuntimeUrl,
   normalizeRuntimeUrl,
 } from "./runtimeUrl";
@@ -189,6 +197,7 @@ import {
   CHAT_SHORTCUTS,
   SHORTCUTS_TITLE,
   escapeClosesShortcuts,
+  focusIsTextField,
   isShortcutsChord,
   isShortcutsQuestion,
 } from "./chatShortcuts";
@@ -1144,6 +1153,7 @@ export function App() {
   );
   const draftRef = useRef(draft);
   draftRef.current = draft;
+  const typeIntoComposerRef = useRef<(character: string) => void>(() => {});
   /** v0.68: composer text came from recalling the latest user message. */
   const [recallArmed, setRecallArmed] = useState(false);
   const [dictation, setDictation] = useState<DictationState>("idle");
@@ -4386,6 +4396,83 @@ export function App() {
     switcherBlocked,
     lightboxTarget,
     renamingId,
+  ]);
+
+  // v0.99: a printable character outside a text field lands at the end
+  // of this chat's draft. Cmd/Ctrl-L focuses and inserts nothing.
+  typeIntoComposerRef.current = (character: string) => {
+    const next = appendDraftAtEnd(draftRef.current, character);
+    pendingCaret.current = next.caret;
+    draftRef.current = next.text;
+    setDraft(next.text);
+    setRecallArmed((armed) => recallArmedAfterEdit(next.text, armed));
+    syncComposerTriggers(next.text, next.caret);
+  };
+
+  useEffect(() => {
+    const onFocusComposerKey = (event: globalThis.KeyboardEvent) => {
+      if (event.defaultPrevented) return;
+      const gate = {
+        chatOpen: active != null,
+        editable: !fieldDisabled,
+        composing: isComposerComposing(event),
+        inTextField: focusIsTextField(event.target),
+        inCard: focusInsideCard(event.target),
+        findOpen,
+        switchOpen,
+        shortcutsOpen,
+        renaming: renamingId != null,
+        lightboxOpen: lightboxTarget != null,
+        menuOpen: contextMenu != null,
+        blocked: switcherBlocked || mentionOpen || skillMenuOpen,
+      };
+      if (
+        isFocusComposerChord({
+          key: event.key,
+          metaKey: event.metaKey,
+          ctrlKey: event.ctrlKey,
+          altKey: event.altKey,
+          shiftKey: event.shiftKey,
+          repeat: event.repeat,
+        })
+      ) {
+        if (focusComposerChordBlocked(gate)) return;
+        event.preventDefault();
+        event.stopPropagation();
+        if (!gate.inTextField) {
+          placeCaretAtEnd();
+        }
+        return;
+      }
+      if (typeToFocusBlocked(gate)) return;
+      const character = typeToFocusCharacter({
+        key: event.key,
+        metaKey: event.metaKey,
+        ctrlKey: event.ctrlKey,
+        altKey: event.altKey,
+        composing: isComposerComposing(event),
+        reserved: isShortcutsQuestion(event, event.target),
+      });
+      if (character == null) return;
+      event.preventDefault();
+      event.stopPropagation();
+      typeIntoComposerRef.current(character);
+    };
+    window.addEventListener("keydown", onFocusComposerKey, true);
+    return () => window.removeEventListener("keydown", onFocusComposerKey, true);
+  }, [
+    active,
+    fieldDisabled,
+    findOpen,
+    switchOpen,
+    shortcutsOpen,
+    renamingId,
+    lightboxTarget,
+    contextMenu,
+    switcherBlocked,
+    mentionOpen,
+    skillMenuOpen,
+    placeCaretAtEnd,
   ]);
 
   useLayoutEffect(() => {
