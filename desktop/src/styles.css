@@ -382,6 +382,21 @@ button:disabled {
   font-variant-numeric: tabular-nums;
 }
 
+/* v0.93: muted ··· in the relative-time slot while a reply is in flight.
+   The spans reuse .waiting-dots, so Reduce Motion already freezes them. */
+.row-generating {
+  flex: none;
+  margin-left: auto;
+  font-size: 12px;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+/* v0.93: muted Typing… preview. Draft: stays the accent prefix. */
+.row-typing {
+  color: var(--text-muted);
+}
+
 .account {
   display: flex;
   align-items: center;

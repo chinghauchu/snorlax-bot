@@ -352,6 +352,12 @@ import {
 } from "./lastMessagePreview";
 import { chatRowPreview } from "./chatDraftPreview";
 import {
+  TYPING_HINT,
+  activeGeneratingChat,
+  chatListLine,
+  showGeneratingDots,
+} from "./chatGenerating";
+import {
   CHAT_LIST_TIME_TICK_MS,
   applyFinishedActivity,
   chatListTimeLabel,
@@ -958,6 +964,8 @@ export function App() {
   const dropHoldRef = useRef(false);
   dropTargetRef.current = dropTarget;
   const [busy, setBusy] = useState(false);
+  /** v0.93: chat whose client-started assistant reply is still in flight. */
+  const [generatingChatId, setGeneratingChatId] = useState<string | null>(null);
   const inFlight = useRef(false);
   const abortRef = useRef<AbortController | null>(null);
   const [composerError, setComposerError] = useState<string | null>(null);
@@ -2621,6 +2629,9 @@ export function App() {
     }
     const content = opts.content;
     const streamChatId = active.id;
+    setGeneratingChatId(
+      activeGeneratingChat({ busy: true, chatId: streamChatId }),
+    );
     const images = opts.images ?? [];
     const localImages = opts.localImages ?? [];
     const mentionIds = opts.mentionIds ?? [];
@@ -2890,6 +2901,9 @@ export function App() {
       if (abortRef.current === ac) abortRef.current = null;
       inFlight.current = false;
       setBusy(false);
+      setGeneratingChatId(
+        activeGeneratingChat({ busy: false, chatId: streamChatId }),
+      );
       if (shouldFocusComposerOnSettle()) {
         focusComposer();
       }
@@ -4214,16 +4228,23 @@ export function App() {
           ) : null}
           {[...pinnedAgents, ...restAgents].map((agent) => {
             const preview = chatPreviews[agent.id];
-            const shown = chatRowPreview({
+            const base = chatRowPreview({
               chatId: agent.id,
               openChatId: activeId,
               draft: chatDrafts.current.get(agent.id, null),
               lastMessage: preview,
             });
+            const generating = showGeneratingDots(generatingChatId === agent.id);
+            const shown = chatListLine({
+              preview: base,
+              generating,
+              chatId: agent.id,
+            });
             const stamp = chatActivity[agent.id];
-            const timeLabel = stamp
-              ? chatListTimeLabel(stamp, activityNow)
-              : null;
+            const timeLabel =
+              !generating && stamp
+                ? chatListTimeLabel(stamp, activityNow)
+                : null;
             const pinned = isChatPinned(pinnedChatIds, agent.id);
             return (
             <li key={agent.id}>
@@ -4251,10 +4272,15 @@ export function App() {
                     {rosterSubtitle(agent) ? (
                       <span className="row-title">{rosterSubtitle(agent)}</span>
                     ) : null}
-                    {shown || timeLabel ? (
+                    {shown || timeLabel || generating ? (
                       <span className="row-meta">
                         {shown ? (
-                          <span className="row-preview">
+                          <span
+                            className="row-preview"
+                            aria-hidden={
+                              shown.kind === "typing" ? true : undefined
+                            }
+                          >
                             {shown.kind === "draft" ? (
                               <>
                                 <span className="row-draft-prefix">
@@ -4262,12 +4288,24 @@ export function App() {
                                 </span>
                                 {shown.text}
                               </>
+                            ) : shown.kind === "typing" ? (
+                              <span className="row-typing">{shown.text}</span>
                             ) : (
                               shown.text
                             )}
                           </span>
                         ) : null}
-                        {timeLabel && stamp ? (
+                        {generating ? (
+                          <span
+                            className="row-generating waiting-dots"
+                            role="status"
+                            aria-label={TYPING_HINT}
+                          >
+                            <span>{WAITING_DOT}</span>
+                            <span>{WAITING_DOT}</span>
+                            <span>{WAITING_DOT}</span>
+                          </span>
+                        ) : timeLabel && stamp ? (
                           <time className="row-time" dateTime={stamp}>
                             {timeLabel}
                           </time>

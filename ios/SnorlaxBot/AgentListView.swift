@@ -230,7 +230,8 @@ private struct AgentRow: View {
                     for: agent.id,
                     lastMessage: model.chatPreviews[agent.id]
                 )
-                if preview != nil || model.chatActivity[agent.id] != nil {
+                let generating = model.generatingChatID == agent.id
+                if preview != nil || model.chatActivity[agent.id] != nil || generating {
                     chatMeta(preview: preview, agentId: agent.id)
                 }
             }
@@ -256,14 +257,20 @@ private struct AgentRow: View {
     /// follows the latest message and refreshes on a light timer.
     /// v0.91: a non-open chat with a saved draft shows a muted-accent
     /// Draft: prefix and that text instead of the last message.
+    /// v0.93: while a reply is in flight, muted ··· replace the time
+    /// and the preview may read Typing…. Draft: still wins that line.
     @ViewBuilder
-    private func chatMeta(preview: ChatDraftPreview.Row?, agentId: String) -> some View {
+    private func chatMeta(preview: ChatGenerating.Row?, agentId: String) -> some View {
+        let generating = ChatGenerating.showsDots(generating: model.generatingChatID == agentId)
         HStack(alignment: .firstTextBaseline, spacing: 8) {
             if let preview {
                 previewLine(preview)
             }
             Spacer(minLength: 0)
-            if model.chatActivity[agentId] != nil {
+            if generating {
+                GeneratingDots()
+                    .layoutPriority(1)
+            } else if model.chatActivity[agentId] != nil {
                 TimelineView(.periodic(from: .now, by: ChatListTime.tickSeconds)) { context in
                     if let stamp = model.chatActivity[agentId],
                        let label = ChatListTime.label(createdAt: stamp, now: context.date) {
@@ -281,12 +288,16 @@ private struct AgentRow: View {
 
     /// One truncated line. A draft paints "Draft:" in a muted accent
     /// and the rest in the same secondary color as a last-message preview.
-    private func previewLine(_ preview: ChatDraftPreview.Row) -> some View {
+    /// Typing… is muted, the same secondary color as a last message.
+    private func previewLine(_ preview: ChatGenerating.Row) -> some View {
         let line: Text = {
             if preview.kind == .draft {
                 return Text(ChatDraftPreview.prefix + " ")
                     .foregroundStyle(Color.accentColor.opacity(0.72))
                     + Text(preview.text).foregroundStyle(.secondary)
+            }
+            if preview.kind == .typing {
+                return Text(ChatGenerating.hint).foregroundStyle(.secondary)
             }
             return Text(preview.text).foregroundStyle(.secondary)
         }()
@@ -297,8 +308,11 @@ private struct AgentRow: View {
             .accessibilityLabel(
                 preview.kind == .draft
                     ? "\(ChatDraftPreview.prefix) \(preview.text)"
-                    : preview.text
+                    : preview.kind == .typing
+                        ? ChatGenerating.hint
+                        : preview.text
             )
+            .accessibilityHidden(preview.kind == .typing)
     }
 }
 
