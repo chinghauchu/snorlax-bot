@@ -86,6 +86,9 @@ struct AgentListView: View {
         }
             .searchable(text: $chatQuery, prompt: ChatSwitcher.placeholder)
             .accessibilityInputLabels([ChatSwitcher.inputLabel])
+            .onKeyPress(phases: .down) { press in
+                newChatKey(press)
+            }
             .toolbar {
                 if model.hasAnyUnreadChat {
                     ToolbarItem(placement: .topBarLeading) {
@@ -137,6 +140,31 @@ struct AgentListView: View {
                 }
                 Button("Cancel", role: .cancel) { pendingDelete = nil }
             }
+    }
+
+    /// Hardware ⌘N / ⌃N from the chat list. The New agent item is the
+    /// same path. Search, rename, and the channel sheet own the key.
+    private func newChatKey(_ press: KeyPress) -> KeyPress.Result {
+        guard NewChat.isChord(
+            key: press.key.character,
+            characters: press.characters,
+            command: press.modifiers.contains(.command),
+            control: press.modifiers.contains(.control),
+            option: press.modifiers.contains(.option),
+            shift: press.modifiers.contains(.shift)
+        ) else { return .ignored }
+        if renamingID != nil || showCreateChannel { return .ignored }
+        if model.showSettings || model.showProfile || model.computerTakeoverOpen {
+            return .ignored
+        }
+        if NewChat.overlayTextFieldOwnsChord(
+            textFieldFocused: TranscriptScroll.textInputIsFirstResponder(),
+            composerFocused: false
+        ) {
+            return .ignored
+        }
+        model.createAgentFromChord()
+        return .handled
     }
 
     @ViewBuilder

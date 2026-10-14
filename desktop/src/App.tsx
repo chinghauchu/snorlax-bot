@@ -156,6 +156,11 @@ import {
   transcriptScrollBlocked,
 } from "./transcriptScroll";
 import {
+  isNewChatChord,
+  newChatBlocked,
+  overlayTextFieldOwnsNewChat,
+} from "./newChatKey";
+import {
   loadInitialRuntimeUrl,
   normalizeRuntimeUrl,
 } from "./runtimeUrl";
@@ -1366,6 +1371,7 @@ export function App() {
   const [shortcutCopiedId, setShortcutCopiedId] = useState<string | null>(null);
   const shortcutCopyTimer = useRef<number | null>(null);
   const copyLastReplyRef = useRef<() => void>(() => {});
+  const createFromShortcutRef = useRef<() => void>(() => {});
   useEffect(() => {
     return () => {
       if (shortcutCopyTimer.current != null) {
@@ -4750,6 +4756,67 @@ export function App() {
     onJumpLatest,
     applyStick,
     captureOpenReadingPlace,
+  ]);
+
+  // v1.04: Cmd/Ctrl-N runs the same New agent path as the sidebar
+  // Create menu. The composer does not own the chord. A modal or
+  // overlay text field does. IME keeps it. Focus lands in the composer.
+  createFromShortcutRef.current = () => {
+    setCreateMenuOpen(false);
+    void onCreate();
+  };
+
+  useEffect(() => {
+    const onNewChatKey = (event: globalThis.KeyboardEvent) => {
+      if (event.defaultPrevented) return;
+      if (
+        !isNewChatChord({
+          key: event.key,
+          metaKey: event.metaKey,
+          ctrlKey: event.ctrlKey,
+          altKey: event.altKey,
+          shiftKey: event.shiftKey,
+          repeat: event.repeat,
+        })
+      ) {
+        return;
+      }
+      const gate = {
+        ready: session !== null,
+        composing: isComposerComposing(event),
+        overlayTextField: overlayTextFieldOwnsNewChat(
+          focusIsTextField(event.target),
+          event.target === composerRef.current,
+        ),
+        inCard: focusInsideCard(event.target),
+        findOpen,
+        switchOpen,
+        shortcutsOpen,
+        renaming: renamingId != null,
+        lightboxOpen: lightboxTarget != null,
+        menuOpen: contextMenu != null,
+        blocked: switcherBlocked || mentionOpen || skillMenuOpen,
+      };
+      if (newChatBlocked(gate)) return;
+      event.preventDefault();
+      event.stopPropagation();
+      createFromShortcutRef.current();
+    };
+    window.addEventListener("keydown", onNewChatKey, true);
+    return () => {
+      window.removeEventListener("keydown", onNewChatKey, true);
+    };
+  }, [
+    session,
+    findOpen,
+    switchOpen,
+    shortcutsOpen,
+    renamingId,
+    lightboxTarget,
+    contextMenu,
+    switcherBlocked,
+    mentionOpen,
+    skillMenuOpen,
   ]);
 
   useLayoutEffect(() => {

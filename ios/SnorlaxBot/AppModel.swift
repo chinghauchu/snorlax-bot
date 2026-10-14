@@ -198,6 +198,8 @@ final class AppModel {
     private var dictationEpoch = 0
     private var speakPlayback = SpeakPlayback()
     private var speakEpoch = 0
+    /// v1.04: collapses a held ⌘N and a second listener in the same moment.
+    @ObservationIgnored private var newChatChordAt: TimeInterval = 0
 
     init() {
         runtimeURL = UserDefaults.standard.string(forKey: Keys.runtimeURL) ?? ""
@@ -561,6 +563,17 @@ final class AppModel {
         } catch {
             errorMessage = error.localizedDescription
         }
+    }
+
+    /// v1.04: hardware ⌘N / ⌃N. Same create as the New agent menu item,
+    /// including composer focus. A repeat or a second view that sees
+    /// the same key does not create another agent.
+    func createAgentFromChord() {
+        guard isConfigured else { return }
+        let now = Date().timeIntervalSinceReferenceDate
+        if now - newChatChordAt < 0.4 { return }
+        newChatChordAt = now
+        Task { await createAgent() }
     }
 
     func createChannel(name: String, memberIds: [String]) async {
