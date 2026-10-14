@@ -25,7 +25,7 @@ struct AssistantMarkdown: View {
                     if completed && closed {
                         MathBlock(source: source, raw: raw)
                     } else {
-                        MathFallback(raw: raw, block: true)
+                        MathFallback(raw: raw, block: true, quoteEnabled: completed)
                     }
                 }
             }
@@ -143,15 +143,21 @@ private struct FenceBar: View {
 
 private struct FenceSource: View {
     let source: String
+    var quoteEnabled = true
     @Environment(\.chatFind) private var find
+    @Environment(AppModel.self) private var model
 
     var body: some View {
         ScrollView(.horizontal, showsIndicators: true) {
-            Text(ChatFind.paint(AttributedString(source), query: find.query))
-                .font(.system(size: 12, design: .monospaced))
-                .lineSpacing(12 * 0.45)
-                .textSelection(.enabled)
-                .fixedSize(horizontal: true, vertical: false)
+            QuoteSelectableText(
+                text: ChatFind.paint(AttributedString(source), query: find.query),
+                quoteEnabled: quoteEnabled,
+                font: .monospacedSystemFont(ofSize: 12, weight: .regular),
+                expandsHorizontally: true,
+                onQuote: { model.quoteIntoComposer($0) }
+            )
+            .font(.system(size: 12, design: .monospaced))
+            .fixedSize(horizontal: true, vertical: true)
         }
         .padding(.horizontal, 10)
         .padding(.vertical, 8)
@@ -212,20 +218,29 @@ private struct MathInline: View {
 private struct MathFallback: View {
     let raw: String
     var block: Bool
+    var quoteEnabled = true
+    @Environment(AppModel.self) private var model
 
     var body: some View {
         if block {
             ScrollView(.horizontal, showsIndicators: true) {
-                Text(raw)
-                    .font(.system(size: 13, design: .monospaced))
-                    .textSelection(.enabled)
-                    .fixedSize(horizontal: true, vertical: false)
+                QuoteSelectableText(
+                    text: AttributedString(raw),
+                    quoteEnabled: quoteEnabled,
+                    font: .monospacedSystemFont(ofSize: 13, weight: .regular),
+                    expandsHorizontally: true,
+                    onQuote: { model.quoteIntoComposer($0) }
+                )
+                .fixedSize(horizontal: true, vertical: true)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
         } else {
-            Text(raw)
-                .font(.system(size: 13, design: .monospaced))
-                .textSelection(.enabled)
+            QuoteSelectableText(
+                text: AttributedString(raw),
+                quoteEnabled: quoteEnabled,
+                font: .monospacedSystemFont(ofSize: 13, weight: .regular),
+                onQuote: { model.quoteIntoComposer($0) }
+            )
         }
     }
 }
@@ -236,6 +251,7 @@ private struct MarkdownRun: View {
     var completed: Bool = true
     @Environment(\.openURL) private var openURL
     @Environment(\.chatFind) private var find
+    @Environment(AppModel.self) private var model
 
     var body: some View {
         let pieces = MarkdownSplit.splitInlineMath(source)
@@ -251,7 +267,7 @@ private struct MarkdownRun: View {
                         if completed && closed {
                             MathInline(source: tex, raw: raw)
                         } else {
-                            MathFallback(raw: raw, block: false)
+                            MathFallback(raw: raw, block: false, quoteEnabled: completed)
                         }
                     }
                 }
@@ -261,18 +277,19 @@ private struct MarkdownRun: View {
     }
 
     private func markdownText(_ src: String) -> some View {
-        Text(wrapping(attributed(src)))
-            .font(.system(size: 14))
-            .textSelection(.enabled)
-            .multilineTextAlignment(.leading)
-            .lineLimit(nil)
-            .fixedSize(horizontal: false, vertical: true)
-            .frame(minWidth: 0, maxWidth: .infinity, alignment: .leading)
-            .environment(\.openURL, OpenURLAction { url in
-                guard WebLinks.allows(url) else { return .discarded }
+        QuoteSelectableText(
+            text: wrapping(attributed(src)),
+            quoteEnabled: completed,
+            font: .systemFont(ofSize: 14),
+            onQuote: { model.quoteIntoComposer($0) },
+            onLink: { url in
+                guard WebLinks.allows(url) else { return }
                 openURL(url)
-                return .handled
-            })
+            }
+        )
+        .lineLimit(nil)
+        .fixedSize(horizontal: false, vertical: true)
+        .frame(minWidth: 0, maxWidth: .infinity, alignment: .leading)
     }
 
     private func wrapping(_ text: AttributedString) -> AttributedString {

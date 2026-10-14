@@ -126,6 +126,14 @@ import {
   latestUserMessageText,
   recallArmedAfterEdit,
 } from "./recallDraft";
+import {
+  QUOTE_LABEL,
+  QUOTE_ROOT_VALUE,
+  appendQuoteToDraft,
+  quoteButtonOrigin,
+  quoteRootAttr,
+  quoteableText,
+} from "./quoteSelection";
 import { backspaceRemovesLastChip, withoutLastChip } from "./backspaceChip";
 import { adjacentChatId, chatNavDirection } from "./chatNav";
 import {
@@ -599,6 +607,72 @@ function AgentRoutineRow({
 function BubbleStamp({ label }: { label: string | null }) {
   if (!label) return null;
   return <span className="bubble-time">{label}</span>;
+}
+
+function quoteRootOf(node: Node | null): Element | null {
+  const el = node instanceof Element ? node : node?.parentElement ?? null;
+  return el?.closest(`[data-quote="${QUOTE_ROOT_VALUE}"]`) ?? null;
+}
+
+/** Selection inside one quotable message, or null. Empty selections are null. */
+function readQuoteOffer(): { text: string; top: number; left: number } | null {
+  const selection = window.getSelection();
+  if (!selection || selection.isCollapsed || selection.rangeCount === 0) {
+    return null;
+  }
+  const text = quoteableText(selection.toString());
+  if (!text) return null;
+  const anchor = quoteRootOf(selection.anchorNode);
+  const focus = quoteRootOf(selection.focusNode);
+  if (!anchor || anchor !== focus) return null;
+  const rect = selection.getRangeAt(0).getBoundingClientRect();
+  if (rect.width === 0 && rect.height === 0) return null;
+  const origin = quoteButtonOrigin(
+    { top: rect.top, left: rect.left, bottom: rect.bottom },
+    { width: window.innerWidth, height: window.innerHeight },
+  );
+  return { text, top: origin.top, left: origin.left };
+}
+
+/**
+ * v0.94: muted Quote control just above the selection. No animation.
+ * mousedown does not collapse the selection before the click quotes it.
+ */
+function QuoteSelectionButton({
+  disabled,
+  onQuote,
+}: {
+  disabled?: boolean;
+  onQuote: (selection: string) => void;
+}) {
+  const [offer, setOffer] = useState<{
+    text: string;
+    top: number;
+    left: number;
+  } | null>(null);
+  useEffect(() => {
+    const update = () => setOffer(readQuoteOffer());
+    document.addEventListener("selectionchange", update);
+    window.addEventListener("scroll", update, true);
+    window.addEventListener("resize", update);
+    return () => {
+      document.removeEventListener("selectionchange", update);
+      window.removeEventListener("scroll", update, true);
+      window.removeEventListener("resize", update);
+    };
+  }, []);
+  if (disabled || !offer) return null;
+  return (
+    <button
+      type="button"
+      className="quote-selection"
+      style={{ top: offer.top, left: offer.left }}
+      onMouseDown={(event) => event.preventDefault()}
+      onClick={() => onQuote(offer.text)}
+    >
+      {QUOTE_LABEL}
+    </button>
+  );
 }
 
 function MessageActions({
@@ -2993,6 +3067,19 @@ export function App() {
     syncComposerTriggers(text, text.length);
   }
 
+  /** v0.94: quote the selection into this chat's draft. Does not send. */
+  function quoteIntoComposer(selection: string) {
+    if (takeoverOpen) return;
+    const next = appendQuoteToDraft(draftRef.current, selection);
+    if (!next) return;
+    pendingCaret.current = next.caret;
+    draftRef.current = next.text;
+    setDraft(next.text);
+    setRecallArmed((armed) => recallArmedAfterEdit(next.text, armed));
+    syncComposerTriggers(next.text, next.caret);
+    window.getSelection()?.removeAllRanges();
+  }
+
   /** Escape, or a later empty field, leaves the composer empty. */
   function clearRecalledDraft() {
     pendingCaret.current = 0;
@@ -4748,6 +4835,13 @@ export function App() {
                         />
                         {message.content ? (
                           <pre>
+                            <span
+                              data-quote={quoteRootAttr({
+                                kind: message.kind,
+                                fromUser: true,
+                                completed: true,
+                              })}
+                            >
                             <MentionText
                               text={displayBody(
                                 message.content,
@@ -4757,6 +4851,7 @@ export function App() {
                               links
                               activeRange={rangeFor(message.id)}
                             />
+                            </span>
                           </pre>
                         ) : null}
                       </div>
@@ -4809,6 +4904,11 @@ export function App() {
                                   <LongMessageBody
                                     completed={completed}
                                     text={part}
+                                    quote={quoteRootAttr({
+                                      kind: message.kind,
+                                      fromUser: false,
+                                      completed,
+                                    })}
                                     activeFind={
                                       findRowActive(bubbleRowId) === "true"
                                     }
@@ -5489,6 +5589,10 @@ export function App() {
             {DROP_FILES_LABEL}
           </div>
         ) : null}
+        <QuoteSelectionButton
+          disabled={takeoverOpen}
+          onQuote={quoteIntoComposer}
+        />
       </main>
 
       <ComputerPane

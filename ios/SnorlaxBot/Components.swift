@@ -185,20 +185,26 @@ struct MentionLabel: View {
     let names: [String]
     var links = false
     var findRowId: String = ""
+    /// v0.94: user-RIGHT kind=message text can be quoted. File chips stay buttons.
+    var quoteEnabled = true
     @Environment(\.openURL) private var openURL
     @Environment(\.chatFind) private var find
+    @Environment(AppModel.self) private var model
 
     var body: some View {
-        Text(wrapping(attributed))
-            .multilineTextAlignment(.leading)
-            .lineLimit(nil)
-            .fixedSize(horizontal: false, vertical: true)
-            .frame(minWidth: 0, alignment: .leading)
-            .environment(\.openURL, OpenURLAction { url in
-                guard links, WebLinks.allows(url) else { return .discarded }
+        QuoteSelectableText(
+            text: wrapping(attributed),
+            quoteEnabled: quoteEnabled,
+            font: .systemFont(ofSize: 14),
+            onQuote: { model.quoteIntoComposer($0) },
+            onLink: { url in
+                guard links, WebLinks.allows(url) else { return }
                 openURL(url)
-                return .handled
-            })
+            }
+        )
+        .lineLimit(nil)
+        .fixedSize(horizontal: false, vertical: true)
+        .frame(minWidth: 0, alignment: .leading)
     }
 
     private var attributed: AttributedString {
