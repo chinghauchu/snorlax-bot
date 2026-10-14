@@ -1850,6 +1850,24 @@ final class AppModel {
         }
     }
 
+    /// v1.01: true when any reply or handoff unread remains, including archived chats.
+    var hasAnyUnreadChat: Bool {
+        ChatUnread.anyChatUnread(reply: replyUnreadIDs, handoff: unreadChannelIDs)
+    }
+
+    /// Clears every unread dot. Archived chats in the persisted set are
+    /// cleared too and stay archived. Channel handoff dots leave as well.
+    /// Pins, names, and the All / Unread choice stay. No new storage key.
+    func markAllChatsRead() {
+        let cleared = chatUnread.clearAll()
+        if !unreadChannelIDs.isEmpty {
+            unreadChannelIDs = []
+        }
+        if cleared {
+            publishReplyUnread()
+        }
+    }
+
     /// v0.90: manual unread uses the same persisted reply-unread set.
     /// Mark as read also drops a channel handoff dot. Pins stay put.
     func toggleChatRead(_ id: String) {

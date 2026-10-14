@@ -269,7 +269,7 @@ test("iOS hardware command-shift-C copies; OpenAPI stays 0.18.0", () => {
   assert.match(ci, /test_ios_copy_last_reply\.py/);
   assert.match(roadmap, new RegExp(PHRASE.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
   assert.match(roadmap, /\/ v1\.00 /);
-  assert.match(roadmap, /copy the last assistant reply\)/);
+  assert.match(roadmap, /copy the last assistant reply(?:\)| \+)/);
   assert.match(spec, /## 100\. v1\.00/);
   assert.match(spec, /OpenAPI stays \*\*0\.18\.0\*\*/);
 });
