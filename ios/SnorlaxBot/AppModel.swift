@@ -109,6 +109,10 @@ final class AppModel {
     var pinnedChatIDs: [String] = [] {
         didSet { ChatPins.write(pinnedChatIDs) }
     }
+    /// v0.95: local display names, keyed by chat id. UserDefaults.
+    var chatNames: [String: String] = [:] {
+        didSet { ChatNames.write(chatNames) }
+    }
     /// App scene is active. A backgrounded app is not focused on the open chat.
     var sceneFocused = true
     private var chatUnread = ChatUnread()
@@ -194,6 +198,7 @@ final class AppModel {
         accent = AccentChoice(rawValue: UserDefaults.standard.string(forKey: Keys.accent) ?? "") ?? .teal
         chatListFilter = ChatListFilter.read()
         pinnedChatIDs = ChatPins.read()
+        chatNames = ChatNames.read()
         publishReplyUnread()
     }
 
@@ -352,6 +357,7 @@ final class AppModel {
             let roster = try await client.listAgents()
             agents = roster
             retainChatPins(against: roster)
+            retainChatNames(against: roster)
             retainChatPreviews()
             plugins = (try? await client.listPlugins()) ?? []
             pluginCatalog = (try? await client.listPluginCatalog()) ?? []
@@ -571,6 +577,7 @@ final class AppModel {
             _ = chatUnread.retain(Set(agents.map(\.id)))
             _ = chatLastSeen.retain(Set(agents.map(\.id)))
             retainChatPins(against: agents)
+            retainChatNames(against: agents)
             publishReplyUnread()
             if lastExtraChannelID == agent.id {
                 lastExtraChannelID = nil
@@ -601,6 +608,7 @@ final class AppModel {
 
     func saveProfile(_ draft: Agent) async {
         guard let client else { return }
+        let previousName = agents.first(where: { $0.id == draft.id })?.name
         do {
             let updated = try await client.patchAgent(
                 draft.isChannel
@@ -621,6 +629,9 @@ final class AppModel {
                 agents[index] = updated
             } else {
                 agents.append(updated)
+            }
+            if let previousName, updated.name != previousName {
+                dropChatName(updated.id)
             }
         } catch {
             errorMessage = error.localizedDescription
@@ -1684,6 +1695,7 @@ final class AppModel {
         do {
             agents = try await client.listAgents()
             retainChatPins(against: agents)
+            retainChatNames(against: agents)
             retainChatPreviews()
         } catch {
             /* keep current roster */
@@ -1745,6 +1757,29 @@ final class AppModel {
 
     func toggleChatPin(_ id: String) {
         pinnedChatIDs = ChatPins.toggle(pinnedChatIDs, id: id)
+    }
+
+    func chatDisplayName(for agent: Agent) -> String {
+        ChatNames.displayName(chatNames, id: agent.id, serverName: agent.name)
+    }
+
+    func commitChatName(_ id: String, draft: String, serverName: String) {
+        chatNames = ChatNames.commit(chatNames, id: id, draft: draft, serverName: serverName)
+    }
+
+    private func dropChatName(_ id: String) {
+        let next = ChatNames.clear(chatNames, id: id)
+        if next != chatNames {
+            chatNames = next
+        }
+    }
+
+    /// A chat that left the roster loses its display name.
+    private func retainChatNames(against roster: [Agent]) {
+        let next = ChatNames.retain(chatNames, keep: Set(roster.map(\.id)))
+        if next != chatNames {
+            chatNames = next
+        }
     }
 
     /// v0.90: manual unread uses the same persisted reply-unread set.

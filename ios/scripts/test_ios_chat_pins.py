@@ -154,7 +154,8 @@ def test_list_wires_pin_and_keeps_search() -> None:
     assert 'aria-label={pinned ? UNPIN_LABEL : PIN_LABEL}' in APP
     assert 'className="roster-group">{PINNED_GROUP_LABEL}' in APP
     assert "retainPins(rosterIds)" in APP
-    assert "agents.map((agent) => ({ id: agent.id, name: agent.name }))" in APP
+    assert "agents.map((agent) => ({" in APP
+    assert "id: agent.id" in APP
     assert "computerPane.ts" not in APP
     assert "computerPane.ts" not in LIST
 

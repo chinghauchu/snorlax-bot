@@ -209,7 +209,7 @@ test("sidebar pin control groups rows and leaves the switcher on every chat", ()
   assert.match(app, /groupPinnedChats\(\s*rosterAgents/);
   assert.match(
     app,
-    /filterChats\(\s*agents\.map\(\(agent\) => \(\{ id: agent\.id, name: agent\.name \}\)\)/,
+    /filterChats\(\s*agents\.map\(\(agent\) => \(\{\s*id: agent\.id,/,
   );
   assert.doesNotMatch(app, /filterChats\(\s*pinnedAgents/);
   assert.doesNotMatch(src, /fetch\(/);

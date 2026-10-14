@@ -132,7 +132,8 @@ def test_list_wires_filter_and_keeps_dots() -> None:
     assert 'className="row-preview"' in APP
     assert 'className="row-time"' in APP
     assert "clearReplyUnread(id)" in APP
-    assert "agents.map((agent) => ({ id: agent.id, name: agent.name }))" in APP
+    assert "agents.map((agent) => ({" in APP
+    assert "id: agent.id" in APP
     assert "computerPane.ts" not in APP
     assert "computerPane.ts" not in LIST
 

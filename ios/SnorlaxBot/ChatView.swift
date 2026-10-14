@@ -35,6 +35,12 @@ struct ChatView: View {
 
     private var hasRealAgent: Bool { !agent.id.isEmpty }
 
+    /// v0.95: the chat chrome uses the local display name. Transcript
+    /// speakers stay on the server name.
+    private var chatTitle: String {
+        model.chatDisplayName(for: agent)
+    }
+
     var body: some View {
         @Bindable var model = model
         let hits = loadedFindHits
@@ -47,7 +53,7 @@ struct ChatView: View {
             transcript
             Divider()
             ComposerBar(
-                agentName: agent.name,
+                agentName: chatTitle,
                 isChannel: agent.isChannel,
                 focused: $composerFocused,
                 showJump: stick.showJump,
@@ -70,7 +76,7 @@ struct ChatView: View {
         .onKeyPress(phases: .down) { press in
             chatNavKey(press)
         }
-        .navigationTitle(agent.name)
+        .navigationTitle(chatTitle)
         .navigationBarTitleDisplayMode(.inline)
         .navigationBarBackButtonHidden(model.threadID != nil && agent.isChannel)
         .toolbar {
@@ -112,16 +118,16 @@ struct ChatView: View {
                     } label: {
                         HStack(spacing: 8) {
                             AgentAvatar(agent: agent, size: 24)
-                            Text(agent.name)
+                            Text(chatTitle)
                                 .font(.system(size: 14, weight: .semibold))
                                 .foregroundStyle(.primary)
                                 .lineLimit(1)
                         }
                     }
-                    .accessibilityLabel(agent.name)
+                    .accessibilityLabel(chatTitle)
                     .accessibilityHint("Opens info")
                 } else {
-                    Text(agent.name)
+                    Text(chatTitle)
                         .font(.system(size: 14, weight: .semibold))
                 }
             }

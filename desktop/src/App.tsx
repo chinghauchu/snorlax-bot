@@ -400,6 +400,19 @@ import {
   writeChatPins,
 } from "./chatPins";
 import {
+  RENAME_FIELD_LABEL,
+  RENAME_LABEL,
+  browserNameStorage,
+  chatDisplayName,
+  CHAT_NAME_MAX,
+  clearChatName,
+  commitChatName,
+  readChatNames,
+  retainChatNames,
+  writeChatNames,
+  type ChatNameMap,
+} from "./chatNames";
+import {
   DROP_FILES_LABEL,
   dragCarriesFiles,
   escapeClearsFileDrop,
@@ -489,6 +502,23 @@ function PinGlyph() {
       <path
         fill="currentColor"
         d="M4.1 1.1h3.8l-.7 3.1 1.7 1.7H3.1l1.7-1.7-.7-3.1Zm1.3 5.1h1.2v4.6H5.4V6.2Z"
+      />
+    </svg>
+  );
+}
+
+function RenameGlyph() {
+  return (
+    <svg
+      className="rename-glyph"
+      viewBox="0 0 12 12"
+      width="12"
+      height="12"
+      aria-hidden="true"
+    >
+      <path
+        fill="currentColor"
+        d="M8.4 1.2 10.8 3.6 4.4 10.1 1.2 10.8 1.9 7.6 8.4 1.2Zm0 1.7L3.1 8.2l-.3 1.1 1.1-.3 5.3-5.3-1-1Z"
       />
     </svg>
   );
@@ -951,6 +981,43 @@ export function App() {
       return next;
     });
   }
+  // v0.95: a local display name overlays the server name. Ids stay put.
+  const [chatNames, setChatNames] = useState<ChatNameMap>(() =>
+    readChatNames(browserNameStorage()),
+  );
+  const [renamingId, setRenamingId] = useState<string | null>(null);
+  const [renameDraft, setRenameDraft] = useState("");
+  const renamingIdRef = useRef<string | null>(null);
+  const renameCancelRef = useRef<string | null>(null);
+  const renameDraftRef = useRef("");
+  const renameInputRef = useRef<HTMLInputElement>(null);
+  function retainNames(keep: ReadonlySet<string>) {
+    setChatNames((current) => {
+      const next = retainChatNames(current, keep);
+      if (next === current) return current;
+      writeChatNames(browserNameStorage(), next);
+      return next;
+    });
+  }
+  function beginRename(agent: Agent) {
+    setContextMenu(null);
+    renameCancelRef.current = null;
+    const label = chatDisplayName(chatNames, agent.id, agent.name);
+    renameDraftRef.current = label;
+    renamingIdRef.current = agent.id;
+    setRenameDraft(label);
+    setRenamingId(agent.id);
+  }
+  function visibleName(agent: { id: string; name: string }) {
+    return chatDisplayName(chatNames, agent.id, agent.name);
+  }
+  useEffect(() => {
+    if (!renamingId) return;
+    const el = renameInputRef.current;
+    if (!el) return;
+    el.focus();
+    el.select();
+  }, [renamingId]);
   // v0.77: title and dock / taskbar badge follow the unread-dot set.
   useEffect(() => {
     void applyUnreadChrome(unreadChrome(replyUnreadIds));
@@ -1208,6 +1275,7 @@ export function App() {
     () => agents.find((a) => a.id === activeId) ?? null,
     [agents, activeId],
   );
+  const activeLabel = active ? visibleName(active) : "";
   const profileOpenRef = useRef(profileOpen);
   profileOpenRef.current = profileOpen;
   const settingsOpenRef = useRef(settingsOpen);
@@ -1841,7 +1909,9 @@ export function App() {
       try {
         const roster = await listAgents(next);
         setAgents(roster);
-        retainPins(new Set(roster.map((row) => row.id)));
+        const rosterIds = new Set(roster.map((row) => row.id));
+        retainPins(rosterIds);
+        retainNames(rosterIds);
         const preferred = fallbackRosterSelection(roster);
         moveComposer(preferred, null);
         previewLive.current = false;
@@ -2508,6 +2578,14 @@ export function App() {
               avatar: profileAvatar,
             });
       setAgents((prev) => prev.map((a) => (a.id === updated.id ? updated : a)));
+      if (updated.name !== active.name) {
+        setChatNames((current) => {
+          const next = clearChatName(current, updated.id);
+          if (next === current) return current;
+          writeChatNames(browserNameStorage(), next);
+          return next;
+        });
+      }
       setProfileName(updated.name);
       setProfileTitle(updated.title);
       setProfileDescription(updated.description);
@@ -2565,6 +2643,7 @@ export function App() {
       chatUnread.current.retain(rosterIds);
       chatLastSeen.current.retain(rosterIds);
       retainPins(rosterIds);
+      retainNames(rosterIds);
       if (activeId === doomed.id) {
         const next = nextRosterSelection(roster, doomed.id, activeId);
         if (next) chatUnread.current.clear(next);
@@ -4127,7 +4206,10 @@ export function App() {
   ]);
 
   const switchHits = filterChats(
-    agents.map((agent) => ({ id: agent.id, name: agent.name })),
+    agents.map((agent) => ({
+      id: agent.id,
+      name: chatDisplayName(chatNames, agent.id, agent.name),
+    })),
     switchOpen ? switchQuery : "",
   );
   const rosterAgents = agents.filter((agent) =>
@@ -4212,7 +4294,8 @@ export function App() {
           mentionOpen ||
           skillMenuOpen ||
           switcherBlocked ||
-          lightboxTarget != null,
+          lightboxTarget != null ||
+          renamingId != null,
       });
       if (direction == null) return;
       event.preventDefault();
@@ -4233,6 +4316,7 @@ export function App() {
     skillMenuOpen,
     switcherBlocked,
     lightboxTarget,
+    renamingId,
   ]);
 
   useLayoutEffect(() => {
@@ -4333,29 +4417,73 @@ export function App() {
                 ? chatListTimeLabel(stamp, activityNow)
                 : null;
             const pinned = isChatPinned(pinnedChatIds, agent.id);
-            return (
-            <li key={agent.id}>
-              <div
-                className={
-                  "row" +
-                  (agent.id === activeId ? " selected" : "") +
-                  (pinned ? " pinned" : "")
-                }
-                onContextMenu={(e) => onAgentContext(e, agent)}
-              >
-                <button
-                  type="button"
-                  className="row-hit"
-                  onClick={() => void selectAgent(agent.id)}
-                >
+            const label = visibleName(agent);
+            const renaming = renamingId === agent.id;
+            const rowBody = (
+              <>
                   <Avatar
                     src={agent.avatar}
-                    name={agent.name}
+                    name={label}
                     size={28}
                     session={session}
                   />
                   <span className="row-copy">
-                    <span className="row-name">{agent.name}</span>
+                    {renaming ? (
+                      <input
+                        ref={renameInputRef}
+                        className="row-name-input"
+                        aria-label={RENAME_FIELD_LABEL}
+                        value={renameDraft}
+                        maxLength={CHAT_NAME_MAX}
+                        spellCheck={false}
+                        onChange={(event) => {
+                          renameDraftRef.current = event.target.value;
+                          setRenameDraft(event.target.value);
+                        }}
+                        onKeyDown={(event) => {
+                          if (isComposerComposing(event)) return;
+                          if (event.key === "Escape") {
+                            event.preventDefault();
+                            event.stopPropagation();
+                            renameCancelRef.current = agent.id;
+                            if (renamingIdRef.current === agent.id) {
+                              renamingIdRef.current = null;
+                            }
+                            setRenamingId(null);
+                            return;
+                          }
+                          if (event.key === "Enter") {
+                            event.preventDefault();
+                            event.currentTarget.blur();
+                          }
+                        }}
+                        onBlur={() => {
+                          if (renameCancelRef.current === agent.id) {
+                            renameCancelRef.current = null;
+                            return;
+                          }
+                          const draft = renameDraftRef.current;
+                          if (renamingIdRef.current === agent.id) {
+                            renamingIdRef.current = null;
+                            setRenamingId(null);
+                          }
+                          setChatNames((current) => {
+                            const next = commitChatName(
+                              current,
+                              agent.id,
+                              draft,
+                              agent.name,
+                            );
+                            if (next === current) return current;
+                            writeChatNames(browserNameStorage(), next);
+                            return next;
+                          });
+                        }}
+                        onClick={(event) => event.stopPropagation()}
+                      />
+                    ) : (
+                      <span className="row-name">{label}</span>
+                    )}
                     {rosterSubtitle(agent) ? (
                       <span className="row-title">{rosterSubtitle(agent)}</span>
                     ) : null}
@@ -4403,6 +4531,37 @@ export function App() {
                   {unreadIds.has(agent.id) || replyUnreadIds.has(agent.id) ? (
                     <span className="unread-dot" aria-label="Unread" />
                   ) : null}
+              </>
+            );
+            return (
+            <li key={agent.id}>
+              <div
+                className={
+                  "row" +
+                  (agent.id === activeId ? " selected" : "") +
+                  (pinned ? " pinned" : "") +
+                  (renaming ? " renaming" : "")
+                }
+                onContextMenu={(e) => onAgentContext(e, agent)}
+              >
+                {renaming ? (
+                  <div className="row-hit">{rowBody}</div>
+                ) : (
+                  <button
+                    type="button"
+                    className="row-hit"
+                    onClick={() => void selectAgent(agent.id)}
+                  >
+                    {rowBody}
+                  </button>
+                )}
+                <button
+                  type="button"
+                  className="row-rename"
+                  aria-label={RENAME_LABEL}
+                  onClick={() => beginRename(agent)}
+                >
+                  <RenameGlyph />
                 </button>
                 <button
                   type="button"
@@ -4451,11 +4610,11 @@ export function App() {
               <button type="button" className="chat-who" onClick={openInfo}>
                 <Avatar
                   src={active.avatar}
-                  name={active.name}
+                  name={activeLabel}
                   size={24}
                   session={session}
                 />
-                <span>{active.name}</span>
+                <span>{activeLabel}</span>
               </button>
             </>
           ) : (
@@ -5237,7 +5396,7 @@ export function App() {
                 readOnly={takeoverOpen}
                 tabIndex={takeoverOpen ? -1 : undefined}
                 placeholder={
-                  active ? `Message ${active.name}` : "Message"
+                  active ? `Message ${activeLabel}` : "Message"
                 }
                 onChange={(e) => {
                   const value = e.target.value;
@@ -5787,6 +5946,13 @@ export function App() {
           <button
             type="button"
             role="menuitem"
+            onClick={() => beginRename(contextMenu.agent)}
+          >
+            {RENAME_LABEL}
+          </button>
+          <button
+            type="button"
+            role="menuitem"
             onClick={() => onTogglePin(contextMenu.agent.id)}
           >
             {pinActionLabel(isChatPinned(pinnedChatIds, contextMenu.agent.id))}
@@ -5832,7 +5998,7 @@ export function App() {
             onClick={(e) => e.stopPropagation()}
           >
             <p>
-              Delete {pendingDelete.name}? This removes the{" "}
+              Delete {visibleName(pendingDelete)}? This removes the{" "}
               {pendingDelete.kind === "channel" ? "channel" : "agent"} and its
               chat.
             </p>

@@ -92,7 +92,8 @@ def test_sources() -> None:
     title_call = "UnreadOutside.title(count: UnreadOutside.count(model.replyUnreadIDs))"
     assert CONTENT.count(title_call) == 2
     assert 'navigationTitle("Snorlax-Bot")' not in CONTENT
-    assert "navigationTitle(agent.name)" in CHAT
+    assert "navigationTitle(chatTitle)" in CHAT
+    assert "chatDisplayName(for: agent)" in CHAT
     assert "unreadChannelIDs" not in OUTSIDE
 
     assert "publishReplyUnread()" in MODEL
