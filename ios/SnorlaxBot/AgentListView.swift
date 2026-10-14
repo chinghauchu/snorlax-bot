@@ -5,16 +5,23 @@ struct AgentListView: View {
     @Environment(AppModel.self) private var model
     @State private var pendingDelete: Agent?
     @State private var showCreateChannel = false
+    @State private var showArchived = false
     @State private var chatQuery = ""
     @State private var renamingID: String?
 
+    /// Chats still in the main list. Archived chats live in the Archived list.
+    private var mainAgents: [Agent] {
+        model.visibleAgents.filter { !model.isChatArchived($0.id) }
+    }
+
     /// Chats that currently paint the accent dot, before the name search.
+    /// Archived unread stays out of this count so the empty state can show.
     private var unreadAgents: [Agent] {
-        model.visibleAgents.filter { model.showsUnreadDot($0) }
+        mainAgents.filter { model.showsUnreadDot($0) }
     }
 
     private var filteredAgents: [Agent] {
-        model.visibleAgents.filter {
+        mainAgents.filter {
             ChatListFilter.includes(
                 filter: model.chatListFilter,
                 hasUnreadDot: model.showsUnreadDot($0)
@@ -22,12 +29,21 @@ struct AgentListView: View {
         }
     }
 
+    /// Name search still finds archived chats. An empty query stays on the main list.
+    private var searchPool: [Agent] {
+        let base = filteredAgents.map { $0 }
+        guard ChatSwitcher.queryActive(chatQuery) else { return base }
+        var seen = Set(base.map(\.id))
+        let archived = model.archivedAgents.filter { seen.insert($0.id).inserted }
+        return base + archived
+    }
+
     private var listedAgents: [Agent] {
-        let chats = filteredAgents.map {
+        let chats = searchPool.map {
             ChatSwitcher.Chat(id: $0.id, name: model.chatDisplayName(for: $0))
         }
         let ids = ChatSwitcher.filter(chats, query: chatQuery).map(\.id)
-        let byID = Dictionary(uniqueKeysWithValues: filteredAgents.map { ($0.id, $0) })
+        let byID = Dictionary(uniqueKeysWithValues: searchPool.map { ($0.id, $0) })
         return ids.compactMap { byID[$0] }
     }
 
@@ -39,15 +55,33 @@ struct AgentListView: View {
     var body: some View {
         @Bindable var model = model
         VStack(spacing: 0) {
-            Picker(ChatListFilter.groupLabel, selection: $model.chatListFilter) {
-                Text(ChatListFilter.allLabel).tag(ChatListFilter.Mode.all)
-                Text(ChatListFilter.unreadLabel).tag(ChatListFilter.Mode.unread)
+            if showArchived {
+                Button {
+                    showArchived = false
+                } label: {
+                    HStack(spacing: 4) {
+                        Image(systemName: "chevron.left")
+                        Text("Chats")
+                    }
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                }
+                .buttonStyle(.plain)
+                .padding(.horizontal, 16)
+                .padding(.vertical, 8)
+                .accessibilityLabel("Back to chats")
+            } else {
+                Picker(ChatListFilter.groupLabel, selection: $model.chatListFilter) {
+                    Text(ChatListFilter.allLabel).tag(ChatListFilter.Mode.all)
+                    Text(ChatListFilter.unreadLabel).tag(ChatListFilter.Mode.unread)
+                }
+                .pickerStyle(.segmented)
+                .labelsHidden()
+                .accessibilityLabel(ChatListFilter.groupLabel)
+                .padding(.horizontal, 16)
+                .padding(.vertical, 8)
             }
-            .pickerStyle(.segmented)
-            .labelsHidden()
-            .accessibilityLabel(ChatListFilter.groupLabel)
-            .padding(.horizontal, 16)
-            .padding(.vertical, 8)
             styledList
         }
             .searchable(text: $chatQuery, prompt: ChatSwitcher.placeholder)
@@ -99,14 +133,45 @@ struct AgentListView: View {
     private var styledList: some View {
         if UIDevice.current.userInterfaceIdiom == .pad {
             List(selection: Bindable(model).selectedAgentID) {
-                rows
+                listBody
             }
             .listStyle(.sidebar)
         } else {
             List {
-                rows
+                listBody
             }
             .listStyle(.insetGrouped)
+        }
+    }
+
+    @ViewBuilder
+    private var listBody: some View {
+        if showArchived {
+            archivedRows
+        } else {
+            rows
+        }
+    }
+
+    @ViewBuilder
+    private var archivedRows: some View {
+        if model.archivedAgents.isEmpty {
+            Text(ChatArchive.sectionLabel)
+                .font(.system(size: 12))
+                .foregroundStyle(.secondary)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .accessibilityLabel(ChatArchive.sectionLabel)
+        } else {
+            Section {
+                ForEach(model.archivedAgents) { agent in
+                    chatRow(agent, archived: true)
+                }
+            } header: {
+                Text(ChatArchive.sectionLabel)
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundStyle(.secondary)
+                    .textCase(nil)
+            }
         }
     }
 
@@ -132,7 +197,7 @@ struct AgentListView: View {
             if !grouped.pinned.isEmpty {
                 Section {
                     ForEach(grouped.pinned) { agent in
-                        chatRow(agent)
+                        chatRow(agent, archived: model.isChatArchived(agent.id))
                     }
                 } header: {
                     Text(ChatPins.groupLabel)
@@ -144,24 +209,49 @@ struct AgentListView: View {
             if !grouped.rest.isEmpty {
                 Section {
                     ForEach(grouped.rest) { agent in
-                        chatRow(agent)
+                        chatRow(agent, archived: model.isChatArchived(agent.id))
                     }
                 }
             }
         }
+        if !showArchived,
+           !ChatSwitcher.queryActive(chatQuery),
+           !model.archivedAgents.isEmpty {
+            Section {
+                Button {
+                    showArchived = true
+                } label: {
+                    Text(ChatArchive.sectionTitle(count: model.archivedAgents.count))
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundStyle(.secondary)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(ChatArchive.sectionTitle(count: model.archivedAgents.count))
+            }
+        }
     }
 
-    private func chatRow(_ agent: Agent) -> some View {
-        row(for: agent)
+    private func chatRow(_ agent: Agent, archived: Bool = false) -> some View {
+        row(for: agent, showsPinGlyph: !archived)
             .tag(agent.id)
             .listRowInsets(EdgeInsets(top: 0, leading: 16, bottom: 0, trailing: 16))
             .swipeActions(edge: .leading, allowsFullSwipe: false) {
-                Button {
-                    model.toggleChatPin(agent.id)
-                } label: {
-                    Label(ChatPins.label(pinned: model.isChatPinned(agent.id)), systemImage: "pin")
+                if archived {
+                    Button {
+                        model.unarchiveChat(agent.id)
+                    } label: {
+                        Label(ChatArchive.unarchiveLabel, systemImage: "archivebox")
+                    }
+                    .tint(Color.accentColor)
+                } else {
+                    Button {
+                        model.toggleChatPin(agent.id)
+                    } label: {
+                        Label(ChatPins.label(pinned: model.isChatPinned(agent.id)), systemImage: "pin")
+                    }
+                    .tint(Color.accentColor)
                 }
-                .tint(Color.accentColor)
                 Button {
                     beginRename(agent)
                 } label: {
@@ -184,14 +274,32 @@ struct AgentListView: View {
                     )
                 }
                 .tint(Color.accentColor)
+                if archived {
+                    Button {
+                        model.unarchiveChat(agent.id)
+                    } label: {
+                        Label(ChatArchive.unarchiveLabel, systemImage: "archivebox")
+                    }
+                    .tint(Color.accentColor)
+                } else {
+                    Button {
+                        model.archiveChat(agent.id)
+                    } label: {
+                        Label(ChatArchive.archiveLabel, systemImage: "archivebox")
+                    }
+                    .tint(Color.accentColor)
+                }
             }
             .modifier(
                 UserAgentDeleteMenu(
                     enabled: model.isConfigured,
+                    archived: archived,
                     pinned: model.isChatPinned(agent.id),
                     unread: model.showsUnreadDot(agent),
                     onRename: { beginRename(agent) },
                     onPin: { model.toggleChatPin(agent.id) },
+                    onArchive: { model.archiveChat(agent.id) },
+                    onUnarchive: { model.unarchiveChat(agent.id) },
                     onRead: { model.toggleChatRead(agent.id) },
                     onDelete: { pendingDelete = agent }
                 )
@@ -199,10 +307,11 @@ struct AgentListView: View {
     }
 
     @ViewBuilder
-    private func row(for agent: Agent) -> some View {
+    private func row(for agent: Agent, showsPinGlyph: Bool = true) -> some View {
         let content = AgentRow(
             agent: agent,
             renaming: renamingID == agent.id,
+            showsPinGlyph: showsPinGlyph,
             onCommit: { draft in
                 model.commitChatName(agent.id, draft: draft, serverName: agent.name)
                 if renamingID == agent.id {
@@ -239,6 +348,7 @@ struct AgentListView: View {
 private struct AgentRow: View {
     let agent: Agent
     var renaming: Bool = false
+    var showsPinGlyph: Bool = true
     var onCommit: (String) -> Void = { _ in }
     var onCancel: () -> Void = {}
     @Environment(AppModel.self) private var model
@@ -275,7 +385,7 @@ private struct AgentRow: View {
                 }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
-            if model.isChatPinned(agent.id) {
+            if showsPinGlyph, model.isChatPinned(agent.id) {
                 Image(systemName: "pin.fill")
                     .font(.system(size: 12))
                     .foregroundStyle(.secondary)
@@ -380,17 +490,25 @@ struct AccountChip: View {
 
 private struct UserAgentDeleteMenu: ViewModifier {
     let enabled: Bool
+    let archived: Bool
     let pinned: Bool
     let unread: Bool
     var onRename: () -> Void
     var onPin: () -> Void
+    var onArchive: () -> Void
+    var onUnarchive: () -> Void
     var onRead: () -> Void
     var onDelete: () -> Void
 
     func body(content: Content) -> some View {
         content.contextMenu {
             Button(ChatNames.renameLabel, action: onRename)
-            Button(ChatPins.label(pinned: pinned), action: onPin)
+            if archived {
+                Button(ChatArchive.unarchiveLabel, action: onUnarchive)
+            } else {
+                Button(ChatPins.label(pinned: pinned), action: onPin)
+                Button(ChatArchive.archiveLabel, action: onArchive)
+            }
             Button(ChatUnread.actionLabel(showsDot: unread), action: onRead)
             if enabled {
                 Button("Delete", role: .destructive, action: onDelete)
