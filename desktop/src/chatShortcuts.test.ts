@@ -120,6 +120,7 @@ test("the overlay lists only shortcuts that already have handlers", () => {
     [
       "send",
       "newline",
+      "focus",
       "escape",
       "recall",
       "chat-nav",
@@ -135,6 +136,7 @@ test("the overlay lists only shortcuts that already have handlers", () => {
   const action = Object.fromEntries(CHAT_SHORTCUTS.map((row) => [row.id, row.action]));
   assert.equal(action.send, "Send");
   assert.equal(action.newline, "New line");
+  assert.equal(action.focus, "Focus the composer");
   assert.equal(action.escape, "Stop, close, or jump");
   assert.equal(action.recall, "Recall last message");
   assert.equal(action["chat-nav"], "Previous or next chat");

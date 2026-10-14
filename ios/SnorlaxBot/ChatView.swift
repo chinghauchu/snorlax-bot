@@ -74,7 +74,10 @@ struct ChatView: View {
             )
         )
         .onKeyPress(phases: .down) { press in
-            chatNavKey(press)
+            if chatNavKey(press) == .handled {
+                return .handled
+            }
+            return focusComposerKey(press)
         }
         .navigationTitle(chatTitle)
         .navigationBarTitleDisplayMode(.inline)
@@ -201,6 +204,30 @@ struct ChatView: View {
             findOpen: findOpen
         ) else { return .ignored }
         model.openAdjacentChat(direction: direction)
+        return .handled
+    }
+
+    /// Hardware ⌘L / ⌃L focuses the composer and does not insert or send.
+    /// Plain letters stay where they are. Find, the shortcuts sheet, the
+    /// lightbox, and an already-focused composer keep the key. The name
+    /// field and widget text fields are first responder, so they keep it too.
+    private func focusComposerKey(_ press: KeyPress) -> KeyPress.Result {
+        guard hasRealAgent else { return .ignored }
+        guard model.canCompose || model.isSending else { return .ignored }
+        if model.computerTakeoverOpen || model.showProfile { return .ignored }
+        if composerFocused || findOpen || findFieldFocused || lightbox != nil || shortcutsOpen {
+            return .ignored
+        }
+        guard FocusComposer.isChord(
+            key: press.key.character,
+            characters: press.characters,
+            command: press.modifiers.contains(.command),
+            control: press.modifiers.contains(.control),
+            option: press.modifiers.contains(.option),
+            shift: press.modifiers.contains(.shift)
+        ) else { return .ignored }
+        model.pendingComposerCaret = (model.draft as NSString).length
+        composerFocused = true
         return .handled
     }
 

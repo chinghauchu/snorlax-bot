@@ -155,7 +155,7 @@ test("sidebar paints muted headers without touching row order or archive", () =>
   assert.match(ci, /test_ios_chat_sections\.py/);
   assert.match(roadmap, new RegExp(PHRASE.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
   assert.match(roadmap, /\/ v0\.97 /);
-  assert.match(roadmap, /sidebar section headers\)/);
+  assert.match(roadmap, /sidebar section headers(?:\)| \+)/);
   assert.match(spec, /## 98\. v0\.97/);
   assert.match(spec, /OpenAPI stays \*\*0\.18\.0\*\*/);
 });

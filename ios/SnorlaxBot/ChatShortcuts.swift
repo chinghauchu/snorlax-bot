@@ -4,8 +4,9 @@ import SwiftUI
 /// v0.73: gestures and hardware-keyboard shortcuts that already exist
 /// on the chat screen. Long-press actions come from the message menu
 /// and the approve-command copy. Hardware keys are `UIKeyCommand`
-/// (Escape, Up, Option+Up/Down), `.keyboardShortcut` (Cmd-F), and the
-/// composer Return / Shift-Return presses. No Cmd-K on iOS (the
+/// (Escape, Up, Option+Up/Down, ⌘L / ⌃L), `.keyboardShortcut` (Cmd-F),
+/// and the composer Return / Shift-Return presses. ⌘L focuses the
+/// composer and does not insert or send. No Cmd-K on iOS (the
 /// switcher is the chat-list search field). No HTTP.
 /// Keep in lockstep with `desktop/src/chatShortcuts.ts`.
 enum ChatShortcuts {
@@ -61,6 +62,7 @@ enum ChatShortcuts {
         Row(id: "escape", keys: "Esc", action: "Stop, close, or jump"),
         Row(id: "recall", keys: "↑", action: "Recall last message"),
         Row(id: "chat-nav", keys: ChatNav.keysLabel, action: ChatNav.action),
+        Row(id: "focus", keys: FocusComposer.keysLabel, action: FocusComposer.action),
         Row(id: "find", keys: "⌘F", action: "Find in chat"),
         Row(
             id: "find-step",
