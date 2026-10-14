@@ -17,7 +17,7 @@ private final class SendWatch: @unchecked Sendable {
 
     func observe(_ event: RuntimeClient.StreamEvent) {
         switch event {
-        case .delta(_, let text, _, _, _):
+        case .delta(_, let text, _, _, _, _):
             if FailedSend.replyStarted(
                 delta: text,
                 isUser: false,
@@ -180,6 +180,11 @@ final class AppModel {
     var composerSkills: [Skill] = []
     var skillPickerDismissed = false
     var plugins: [Plugin] = []
+    /// v0.98 global default. Loaded from GET /v1/settings/model. Not a secret.
+    var modelDefaultProvider: ModelDefault.Provider = .omlx
+    var modelDefaultId = ModelProvider.localModelId
+    var providerKeys: [ProviderKeyStatus] = []
+    var modelSettingsNote: String?
     var pluginCatalog: [PluginCatalogEntry] = []
     var computerPreview: ComputerPreview?
     var computerImage: UIImage?
@@ -614,25 +619,42 @@ final class AppModel {
         }
     }
 
-    func saveProfile(_ draft: Agent) async {
-        guard let client else { return }
+    @discardableResult
+    func saveProfile(_ draft: Agent) async -> Bool {
+        guard let client else { return false }
+        if !draft.isChannel,
+           let choice = draft.model,
+           choice.id.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            errorMessage = "Enter a model id."
+            return false
+        }
         let previousName = agents.first(where: { $0.id == draft.id })?.name
         do {
-            let updated = try await client.patchAgent(
-                draft.isChannel
-                    ? AgentPatch(
+            let updated: Agent
+            if draft.isChannel {
+                updated = try await client.patchAgent(
+                    AgentPatch(
                         name: draft.name,
                         memberIds: draft.memberIds,
                         sharedProject: draft.sharedProject
-                    )
-                    : AgentPatch(
+                    ),
+                    id: draft.id
+                )
+            } else {
+                updated = try await client.patchAgentProfile(
+                    AgentProfileWrite(
                         name: draft.name,
                         title: draft.title,
                         description: draft.description,
-                        avatar: draft.avatar
+                        avatar: draft.avatar,
+                        model: ModelProvider.choice(
+                            provider: draft.model?.provider.rawValue ?? "",
+                            id: draft.model?.id ?? ""
+                        )
                     ),
-                id: draft.id
-            )
+                    id: draft.id
+                )
+            }
             if let index = agents.firstIndex(where: { $0.id == updated.id }) {
                 agents[index] = updated
             } else {
@@ -641,8 +663,76 @@ final class AppModel {
             if let previousName, updated.name != previousName {
                 dropChatName(updated.id)
             }
+            return true
         } catch {
             errorMessage = error.localizedDescription
+            return false
+        }
+    }
+
+    func loadModelSettings() async {
+        guard let client else { return }
+        do {
+            let saved = try await client.getModelDefault()
+            modelDefaultProvider = saved.provider
+            modelDefaultId = saved.model
+            providerKeys = try await client.listProviderKeys()
+            modelSettingsNote = nil
+        } catch {
+            modelSettingsNote = "Couldn't load model settings."
+        }
+    }
+
+    func saveModelDefault() async {
+        guard let client else { return }
+        let trimmed = modelDefaultId.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else {
+            modelSettingsNote = "Enter a model id."
+            return
+        }
+        guard let provider = ModelDefaultPatch.Provider(rawValue: modelDefaultProvider.rawValue) else {
+            return
+        }
+        do {
+            let saved = try await client.patchModelDefault(
+                ModelDefaultPatch(provider: provider, model: trimmed)
+            )
+            modelDefaultProvider = saved.provider
+            modelDefaultId = saved.model
+            modelSettingsNote = nil
+        } catch {
+            modelSettingsNote = error.localizedDescription
+        }
+    }
+
+    func saveProviderKey(provider: String, apiKey: String) async {
+        guard let client else { return }
+        let trimmed = apiKey.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+        do {
+            let saved = try await client.putProviderKey(provider: provider, apiKey: trimmed)
+            if let index = providerKeys.firstIndex(where: { $0.provider.rawValue == provider }) {
+                providerKeys[index] = saved
+            } else {
+                providerKeys.append(saved)
+            }
+            modelSettingsNote = nil
+        } catch {
+            modelSettingsNote = error.localizedDescription
+        }
+    }
+
+    func clearProviderKey(provider: String) async {
+        guard let client else { return }
+        do {
+            try await client.deleteProviderKey(provider: provider)
+            if let index = providerKeys.firstIndex(where: { $0.provider.rawValue == provider }) {
+                providerKeys[index].configured = false
+                providerKeys[index].masked = nil
+            }
+            modelSettingsNote = nil
+        } catch {
+            modelSettingsNote = error.localizedDescription
         }
     }
 
@@ -2081,10 +2171,13 @@ final class AppModel {
         guard selectedAgentID == agentId else { return }
         let onTimeline = selectedAgent?.isChannel == true && threadID == nil
         switch event {
-        case .delta(let id, let text, let senderId, let senderName, let senderAvatar):
+        case .delta(let id, let text, let senderId, let senderName, let senderAvatar, let modelName):
             if onTimeline { return }
             if let index = messages.firstIndex(where: { $0.id == id }) {
                 messages[index].content += text
+                if messages[index].model == nil {
+                    messages[index].model = ModelProvider.bubbleModel(modelName)
+                }
             } else {
                 if text.isEmpty { return }
                 let agent = selectedAgent
@@ -2094,7 +2187,8 @@ final class AppModel {
                     content: text,
                     senderId: senderId ?? agent?.id ?? agentId,
                     senderName: senderName ?? agent?.name ?? "Agent",
-                    senderAvatar: senderAvatar ?? agent?.avatar
+                    senderAvatar: senderAvatar ?? agent?.avatar,
+                    model: ModelProvider.bubbleModel(modelName)
                 ))
             }
         case .done(let message):

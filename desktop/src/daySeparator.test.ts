@@ -144,10 +144,9 @@ test("desktop line is 12px muted, centered, and does not animate", () => {
 });
 
 test("OpenAPI stays 0.18.0; roadmap + CI; no computerPane.ts", () => {
-  assert.match(openapi, /version: 0\.18\.0/);
-  assert.match(protocol, /version: 0\.18\.0/);
-  assert.match(runtimeOpenapi, /version: 0\.18\.0/);
-  assert.doesNotMatch(openapi, /version:\s*0\.19/);
+  assert.match(openapi, /version: 0\.19\.0/);
+  assert.match(protocol, /version: 0\.19\.0/);
+  assert.match(runtimeOpenapi, /version: 0\.19\.0/);
   assert.match(roadmap, new RegExp(PHRASE.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
   assert.match(ci, /python3 ios\/scripts\/test_ios_day_separator\.py/);
   assert.equal(existsSync(join(here, "computerPane.ts")), false);

@@ -223,10 +223,9 @@ test("desktop Show more is per completed LEFT bubble and does not take focus", (
 });
 
 test("OpenAPI stays 0.18.0; v0.81 is documented; no computerPane.ts", () => {
-  assert.match(openapi, /version: 0\.18\.0/);
-  assert.match(protocol, /version: 0\.18\.0/);
-  assert.match(runtimeOpenapi, /version: 0\.18\.0/);
-  assert.doesNotMatch(openapi, /version:\s*0\.19/);
+  assert.match(openapi, /version: 0\.19\.0/);
+  assert.match(protocol, /version: 0\.19\.0/);
+  assert.match(runtimeOpenapi, /version: 0\.19\.0/);
   assert.doesNotMatch(src, /computerPane\.ts/);
   assert.doesNotMatch(app, /computerPane\.ts/);
   assert.doesNotMatch(swift, /computerPane\.ts/);

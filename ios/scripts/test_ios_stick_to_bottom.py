@@ -82,9 +82,9 @@ def test_send_regenerate_snap_and_composer_focus() -> None:
 
 
 def test_openapi_stays_0180_and_no_computer_pane() -> None:
-    assert "version: 0.18.0" in OPENAPI
-    assert "version: 0.18.0" in RUNTIME_OPENAPI
-    assert "version: 0.18.0" in DESKTOP_OPENAPI
+    assert "version: 0.19.0" in OPENAPI
+    assert "version: 0.19.0" in RUNTIME_OPENAPI
+    assert "version: 0.19.0" in DESKTOP_OPENAPI
     assert "v0.47" in OPENAPI
     assert "v0.47" in RUNTIME_OPENAPI
     assert "v0.47" in DESKTOP_OPENAPI

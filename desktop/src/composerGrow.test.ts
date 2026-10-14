@@ -188,10 +188,9 @@ test("iOS uses the same 160pt cap and scrolls inside it", () => {
 });
 
 test("OpenAPI stays 0.18.0; v0.84 is documented; no computerPane.ts", () => {
-  assert.match(openapi, /version: 0\.18\.0/);
-  assert.match(protocol, /version: 0\.18\.0/);
-  assert.match(runtimeOpenapi, /version: 0\.18\.0/);
-  assert.equal(openapi.includes("version: 0.19"), false);
+  assert.match(openapi, /version: 0\.19\.0/);
+  assert.match(protocol, /version: 0\.19\.0/);
+  assert.match(runtimeOpenapi, /version: 0\.19\.0/);
   assert.equal(existsSync(join(here, "computerPane.ts")), false);
   assert.equal(PHRASE.includes("computerPane"), false);
   assert.ok(roadmap.includes(PHRASE));

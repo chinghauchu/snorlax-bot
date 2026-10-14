@@ -167,10 +167,9 @@ test("Jump click / Esc behavior is unchanged", () => {
 });
 
 test("OpenAPI stays 0.18.0; v0.63 is documented; no computerPane.ts", () => {
-  assert.match(openapi, /version: 0\.18\.0/);
-  assert.match(protocol, /version: 0\.18\.0/);
-  assert.match(runtimeOpenapi, /version: 0\.18\.0/);
-  assert.doesNotMatch(openapi, /version:\s*0\.19/);
+  assert.match(openapi, /version: 0\.19\.0/);
+  assert.match(protocol, /version: 0\.19\.0/);
+  assert.match(runtimeOpenapi, /version: 0\.19\.0/);
   assert.match(openapi, /v0\.63/);
   assert.match(protocol, /v0\.63/);
   assert.match(runtimeOpenapi, /v0\.63/);

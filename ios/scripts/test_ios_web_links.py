@@ -118,10 +118,9 @@ def test_tool_cards_unchanged_and_no_new_http() -> None:
     widget = CHAT.split("} else if message.isWidget", 1)[1].split("} else if message.isConnect", 1)[0]
     assert "WidgetCardView" in widget
     assert "WebLinks" not in widget
-    assert "version: 0.18.0" in OPENAPI
-    assert "version: 0.18.0" in RUNTIME_OPENAPI
-    assert "version: 0.18.0" in DESKTOP_OPENAPI
-    assert "version: 0.19" not in OPENAPI
+    assert "version: 0.19.0" in OPENAPI
+    assert "version: 0.19.0" in RUNTIME_OPENAPI
+    assert "version: 0.19.0" in DESKTOP_OPENAPI
     assert "v0.82 bare http(s) links" in ROADMAP
     assert "/ v0.82 " in ROADMAP
     assert not PANE.exists()

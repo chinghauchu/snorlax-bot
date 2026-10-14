@@ -183,10 +183,9 @@ def test_hardware_up_arrow_and_empty_composer() -> None:
 
 
 def test_openapi_roadmap_ci_no_computer_pane() -> None:
-    assert "version: 0.18.0" in OPENAPI
-    assert "version: 0.18.0" in RUNTIME_OPENAPI
-    assert "version: 0.18.0" in DESKTOP_OPENAPI
-    assert "version: 0.19" not in OPENAPI
+    assert "version: 0.19.0" in OPENAPI
+    assert "version: 0.19.0" in RUNTIME_OPENAPI
+    assert "version: 0.19.0" in DESKTOP_OPENAPI
     assert PHRASE in ROADMAP
     assert "python3 ios/scripts/test_ios_recall_draft.py" in CI
     assert not DESKTOP_PANE.exists()

@@ -222,10 +222,9 @@ test("the sidebar paints the hint and keeps time, unread, filter, and pins", () 
   assert.match(model, /func toggleChatPin\(_ id: String\)/);
   assert.doesNotMatch(model, /computerPane\.ts/);
 
-  assert.match(openapi, /version: 0\.18\.0/);
-  assert.match(protocol, /version: 0\.18\.0/);
-  assert.match(runtimeOpenapi, /version: 0\.18\.0/);
-  assert.doesNotMatch(openapi, /version:\s*0\.19/);
+  assert.match(openapi, /version: 0\.19\.0/);
+  assert.match(protocol, /version: 0\.19\.0/);
+  assert.match(runtimeOpenapi, /version: 0\.19\.0/);
   assert.match(pkg, /"version": "0\.18\.0"/);
   assert.match(pkg, /chatDraftPreview\.test\.ts/);
   assert.match(ci, /test_ios_chat_draft_preview\.py/);

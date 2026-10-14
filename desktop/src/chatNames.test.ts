@@ -289,10 +289,9 @@ test("sidebar rename keeps the other row chrome and the switcher uses the new na
   assert.match(chat, /chatDisplayName\(for: agent\)/);
   assert.doesNotMatch(swift, /computerPane\.ts/);
 
-  assert.match(openapi, /version: 0\.18\.0/);
-  assert.match(protocol, /version: 0\.18\.0/);
-  assert.match(runtimeOpenapi, /version: 0\.18\.0/);
-  assert.doesNotMatch(openapi, /version:\s*0\.19/);
+  assert.match(openapi, /version: 0\.19\.0/);
+  assert.match(protocol, /version: 0\.19\.0/);
+  assert.match(runtimeOpenapi, /version: 0\.19\.0/);
   assert.match(pkg, /"version": "0\.18\.0"/);
   assert.match(pkg, /chatNames\.test\.ts/);
   assert.match(ci, /test_ios_chat_names\.py/);

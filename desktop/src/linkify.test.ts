@@ -163,7 +163,7 @@ test("desktop wires links on user and assistant bubbles, not tool lines", () => 
   assert.doesNotMatch(toolBranch, /splitWebUrls/);
   assert.match(plain, /no live markdown, mermaid, or math/);
   assert.match(roadmap, /v0\.82 bare http\(s\) links/);
-  assert.match(openapi, /version: 0\.18\.0/);
-  assert.match(protocol, /version: 0\.18\.0/);
+  assert.match(openapi, /version: 0\.19\.0/);
+  assert.match(protocol, /version: 0\.19\.0/);
   assert.equal(existsSync(join(here, "computerPane.ts")), false);
 });

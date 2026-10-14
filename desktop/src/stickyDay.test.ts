@@ -157,10 +157,9 @@ test("iOS pins the same line as a section header", () => {
 });
 
 test("OpenAPI stays 0.18.0; roadmap + CI; no computerPane.ts", () => {
-  assert.match(openapi, /version: 0\.18\.0/);
-  assert.match(protocol, /version: 0\.18\.0/);
-  assert.match(runtimeOpenapi, /version: 0\.18\.0/);
-  assert.doesNotMatch(openapi, /version:\s*0\.19/);
+  assert.match(openapi, /version: 0\.19\.0/);
+  assert.match(protocol, /version: 0\.19\.0/);
+  assert.match(runtimeOpenapi, /version: 0\.19\.0/);
   assert.match(roadmap, new RegExp(PHRASE.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
   assert.match(ci, /python3 ios\/scripts\/test_ios_sticky_day\.py/);
   assert.equal(existsSync(join(here, "computerPane.ts")), false);

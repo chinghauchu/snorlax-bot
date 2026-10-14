@@ -182,6 +182,17 @@ def test_protocol_openapi_is_locked_v0_contract() -> None:
     assert "SNORLAX_DATA_DIR" in text
     assert "No MCP, no browser-use GUI" not in text
     assert "0.18.0" in text
+    assert "0.19.0" in text
+    assert "/v1/settings/model" in text
+    assert "/v1/settings/keys" in text
+    assert "getModelDefault" in text
+    assert "putProviderKey" in text
+    assert "ModelChoice" in text
+    assert "modelError" in text
+    assert "missing_key" in text
+    assert "v0.98" in text
+    assert "0600" in text
+    assert "Use default" in text
     assert "0.17.0" in text
     assert "0.16.0" in text
     assert "0.15.0" in text

@@ -3,6 +3,8 @@ import type { components } from "./openapi";
 export type Agent = components["schemas"]["Agent"];
 export type AgentCreate = components["schemas"]["AgentCreate"];
 export type AgentPatch = components["schemas"]["AgentPatch"];
+export type ModelDefault = components["schemas"]["ModelDefault"];
+export type ProviderKeyStatus = components["schemas"]["ProviderKeyStatus"];
 export type ChatMessage = components["schemas"]["Message"];
 export type MessageImage = components["schemas"]["ImageOut"];
 export type ImageIn = components["schemas"]["ImageIn"];

@@ -37,6 +37,11 @@ import {
   listRoutines,
   listSkills,
   patchAgent,
+  patchModelDefault,
+  getModelDefault,
+  listProviderKeys,
+  putProviderKey,
+  deleteProviderKey,
   patchRoutine,
   patchSkill,
   resolveMediaUrl,
@@ -60,6 +65,17 @@ import {
   repliesLabel,
   visibleJump,
 } from "./handoff";
+import {
+  KEY_PROVIDERS,
+  MODEL_PROVIDERS,
+  type ModelProviderId,
+  bubbleModel,
+  isModelKeyError,
+  modelChoice,
+  modelErrorCopy,
+  modelSummary,
+  providerLabel,
+} from "./modelProvider";
 import {
   canDeleteAgent,
   canEditChannel,
@@ -969,6 +985,13 @@ export function App() {
   );
   const [showToken, setShowToken] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [defaultProvider, setDefaultProvider] = useState<ModelProviderId>("omlx");
+  const [defaultModel, setDefaultModel] = useState("");
+  const [providerKeys, setProviderKeys] = useState<
+    { provider: string; configured: boolean; masked?: string | null }[]
+  >([]);
+  const [keyDrafts, setKeyDrafts] = useState<Record<string, string>>({});
+  const [modelSettingsNote, setModelSettingsNote] = useState<string | null>(null);
   const [profileOpen, setProfileOpen] = useState(false);
   const [profileEditing, setProfileEditing] = useState(false);
   const [contextMenu, setContextMenu] = useState<ContextMenu | null>(null);
@@ -1214,6 +1237,8 @@ export function App() {
   const [profileAvatar, setProfileAvatar] = useState<string | null>(null);
   const [profileMemberIds, setProfileMemberIds] = useState<string[]>([]);
   const [profileSharedProject, setProfileSharedProject] = useState(false);
+  const [profileModelProvider, setProfileModelProvider] = useState("");
+  const [profileModelId, setProfileModelId] = useState("");
   const [profileSaving, setProfileSaving] = useState(false);
   const [routines, setRoutines] = useState<Routine[]>([]);
   const [routineSkills, setRoutineSkills] = useState<Skill[]>([]);
@@ -2283,6 +2308,8 @@ export function App() {
     setProfileAvatar(agent.avatar);
     setProfileMemberIds([...agent.memberIds]);
     setProfileSharedProject(Boolean(agent.sharedProject));
+    setProfileModelProvider(agent.model?.provider ?? "");
+    setProfileModelId(agent.model?.id ?? "");
     setProfileEditing(false);
     setProfileOpen(true);
     void loadRoutines(agent);
@@ -2655,9 +2682,39 @@ export function App() {
     setFindIndex(0);
   }, [activeId, threadId]);
 
+  useEffect(() => {
+    if (!settingsOpen || !session) return;
+    let cancelled = false;
+    void (async () => {
+      try {
+        const [model, keys] = await Promise.all([
+          getModelDefault(session),
+          listProviderKeys(session),
+        ]);
+        if (cancelled) return;
+        setDefaultProvider(model.provider);
+        setDefaultModel(model.model);
+        setProviderKeys(keys);
+      } catch {
+        if (!cancelled) setModelSettingsNote("Couldn't load model settings.");
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [settingsOpen, session]);
+
   async function saveProfile(event: FormEvent) {
     event.preventDefault();
     if (!session || !active) return;
+    if (
+      infoPaneKind(active) !== "channel" &&
+      profileModelProvider &&
+      !profileModelId.trim()
+    ) {
+      setComposerError("Enter a model id.");
+      return;
+    }
     setProfileSaving(true);
     try {
       const updated =
@@ -2672,6 +2729,7 @@ export function App() {
               title: profileTitle,
               description: profileDescription,
               avatar: profileAvatar,
+              model: modelChoice(profileModelProvider, profileModelId),
             });
       setAgents((prev) => prev.map((a) => (a.id === updated.id ? updated : a)));
       if (updated.name !== active.name) {
@@ -2688,6 +2746,8 @@ export function App() {
       setProfileAvatar(updated.avatar);
       setProfileMemberIds([...updated.memberIds]);
       setProfileSharedProject(Boolean(updated.sharedProject));
+      setProfileModelProvider(updated.model?.provider ?? "");
+      setProfileModelId(updated.model?.id ?? "");
       setProfileEditing(false);
     } catch (err) {
       setComposerError(describeError(err));
@@ -2941,11 +3001,18 @@ export function App() {
                 senderAvatar: sender?.senderAvatar ?? active.avatar,
                 hop: 0,
                 mentions: [],
+                model: sender?.model ?? null,
               },
             ];
           }
           return prev.map((m) =>
-            m.id === messageId ? { ...m, content: m.content + delta } : m,
+            m.id === messageId
+              ? {
+                  ...m,
+                  content: m.content + delta,
+                  model: m.model ?? sender?.model ?? null,
+                }
+              : m,
           );
         });
       },
@@ -5213,6 +5280,11 @@ export function App() {
                           <span className="sender-name">
                             {message.senderName || "Agent"}
                           </span>
+                          {bubbleModel(message.model) ? (
+                            <span className="model-kicker">
+                              {bubbleModel(message.model)}
+                            </span>
+                          ) : null}
                           {message.routineName ? (
                             <span className="routine-kicker">
                               {message.routineName}
@@ -5393,7 +5465,18 @@ export function App() {
                           onOpenFile={openAttachedFile}
                           onOpenImage={openImageLightbox}
                         />
-                        {leftBubbles.length ? (
+                        {isModelKeyError(message.modelError) ? (
+                          <p className="model-error">
+                            {modelErrorCopy(message.content).text}{" "}
+                            <button
+                              type="button"
+                              className="model-error-link"
+                              onClick={() => setSettingsOpen(true)}
+                            >
+                              Settings
+                            </button>
+                          </p>
+                        ) : leftBubbles.length ? (
                           <div className="assistant-bubbles">
                             {leftBubbles.map((part, bubbleIdx) => {
                               const showCaret =
@@ -5462,7 +5545,7 @@ export function App() {
                         {showAssistantCopy({
                           message,
                           completed,
-                        }) ? (
+                        }) && !isModelKeyError(message.modelError) ? (
                           <MessageActions
                             content={message.content}
                             speaking={speakingId === message.id}
@@ -5992,6 +6075,38 @@ export function App() {
                   onChange={(e) => setProfileDescription(e.target.value)}
                 />
               </label>
+              <div className="model-provider-picks" role="radiogroup" aria-label="Model">
+                <span className="section-label">Model</span>
+                <button
+                  type="button"
+                  aria-pressed={profileModelProvider === ""}
+                  onClick={() => setProfileModelProvider("")}
+                >
+                  Use default
+                </button>
+                {MODEL_PROVIDERS.map((row) => (
+                  <button
+                    key={row.id}
+                    type="button"
+                    aria-pressed={profileModelProvider === row.id}
+                    onClick={() => setProfileModelProvider(row.id)}
+                  >
+                    {row.label}
+                  </button>
+                ))}
+              </div>
+              {profileModelProvider ? (
+                <label>
+                  Model id
+                  <input
+                    value={profileModelId}
+                    spellCheck={false}
+                    autoComplete="off"
+                    placeholder="gpt-4o"
+                    onChange={(e) => setProfileModelId(e.target.value)}
+                  />
+                </label>
+              ) : null}
               <button type="submit" className="primary" disabled={profileSaving}>
                 Save
               </button>
@@ -6012,6 +6127,9 @@ export function App() {
               {active.description ? (
                 <p className="info-muted">{active.description}</p>
               ) : null}
+              <p className="info-muted model-kicker">
+                {modelSummary(active.model)}
+              </p>
             </div>
             <AgentComputer
               session={session}
@@ -6233,6 +6351,129 @@ export function App() {
                     />
                   ))
                 )}
+              </section>
+              <section className="settings-model" aria-label="Model">
+                <p className="settings-plugins-header">Default model</p>
+                <div
+                  className="model-provider-picks"
+                  role="radiogroup"
+                  aria-label="Default model provider"
+                >
+                  <span className="section-label">Provider</span>
+                  {MODEL_PROVIDERS.map((row) => (
+                    <button
+                      key={row.id}
+                      type="button"
+                      aria-pressed={defaultProvider === row.id}
+                      onClick={() => setDefaultProvider(row.id)}
+                    >
+                      {row.label}
+                    </button>
+                  ))}
+                </div>
+                <label>
+                  Model id
+                  <input
+                    aria-label="Default model id"
+                    value={defaultModel}
+                    spellCheck={false}
+                    autoComplete="off"
+                    onChange={(e) => setDefaultModel(e.target.value)}
+                  />
+                </label>
+                <button
+                  type="button"
+                  className="primary"
+                  disabled={!session || !defaultModel.trim()}
+                  onClick={() => {
+                    if (!session) return;
+                    void patchModelDefault(session, {
+                      provider: defaultProvider,
+                      model: defaultModel.trim(),
+                    })
+                      .then((saved) => {
+                        setDefaultProvider(saved.provider);
+                        setDefaultModel(saved.model);
+                        setModelSettingsNote(null);
+                      })
+                      .catch((err) => setModelSettingsNote(describeError(err)));
+                  }}
+                >
+                  Save default
+                </button>
+                <p className="settings-plugins-header">API keys</p>
+                {KEY_PROVIDERS.map((provider) => {
+                  const row = providerKeys.find((item) => item.provider === provider);
+                  return (
+                    <label key={provider}>
+                      {providerLabel(provider)}
+                      <span className="password-row">
+                        <input
+                          type="password"
+                          aria-label={`${providerLabel(provider)} API key`}
+                          value={keyDrafts[provider] ?? ""}
+                          placeholder={row?.masked ?? "Not set"}
+                          spellCheck={false}
+                          autoComplete="off"
+                          onChange={(e) =>
+                            setKeyDrafts((prev) => ({
+                              ...prev,
+                              [provider]: e.target.value,
+                            }))
+                          }
+                        />
+                        <button
+                          type="button"
+                          className="text-btn"
+                          disabled={!session || !(keyDrafts[provider] ?? "").trim()}
+                          onClick={() => {
+                            if (!session) return;
+                            const apiKey = (keyDrafts[provider] ?? "").trim();
+                            void putProviderKey(session, provider, apiKey)
+                              .then((saved) => {
+                                setProviderKeys((prev) =>
+                                  prev.map((item) =>
+                                    item.provider === provider ? saved : item,
+                                  ),
+                                );
+                                setKeyDrafts((prev) => ({ ...prev, [provider]: "" }));
+                              })
+                              .catch((err) => setModelSettingsNote(describeError(err)));
+                          }}
+                        >
+                          Save
+                        </button>
+                        {row?.configured ? (
+                          <button
+                            type="button"
+                            className="text-btn"
+                            onClick={() => {
+                              if (!session) return;
+                              void deleteProviderKey(session, provider)
+                                .then(() => {
+                                  setProviderKeys((prev) =>
+                                    prev.map((item) =>
+                                      item.provider === provider
+                                        ? { provider, configured: false, masked: null }
+                                        : item,
+                                    ),
+                                  );
+                                })
+                                .catch((err) =>
+                                  setModelSettingsNote(describeError(err)),
+                                );
+                            }}
+                          >
+                            Clear
+                          </button>
+                        ) : null}
+                      </span>
+                    </label>
+                  );
+                })}
+                {modelSettingsNote ? (
+                  <p className="error under">{modelSettingsNote}</p>
+                ) : null}
               </section>
               <section className="settings-plugins" aria-label="Plugins">
                 <div className="settings-plugins-head">

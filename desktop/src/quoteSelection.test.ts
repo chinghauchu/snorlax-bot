@@ -298,10 +298,9 @@ test("iOS selection menu and long-press Quote share the same insert", () => {
 });
 
 test("OpenAPI stays 0.18.0; roadmap locks v0.94; no computerPane.ts", () => {
-  assert.match(openapi, /version: 0\.18\.0/);
-  assert.match(protocol, /version: 0\.18\.0/);
-  assert.match(runtimeOpenapi, /version: 0\.18\.0/);
-  assert.doesNotMatch(openapi, /version:\s*0\.19/);
+  assert.match(openapi, /version: 0\.19\.0/);
+  assert.match(protocol, /version: 0\.19\.0/);
+  assert.match(runtimeOpenapi, /version: 0\.19\.0/);
   assert.match(roadmap, new RegExp(PHRASE.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
   assert.match(roadmap, /\/ v0\.94 /);
   assert.match(spec, /## 95\. v0\.94/);

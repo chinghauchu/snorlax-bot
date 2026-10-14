@@ -146,10 +146,9 @@ test("sidebar paints muted headers without touching row order or archive", () =>
   assert.doesNotMatch(list, /withAnimation/);
   assert.doesNotMatch(swift, /computerPane\.ts/);
 
-  assert.match(openapi, /version: 0\.18\.0/);
-  assert.match(protocol, /version: 0\.18\.0/);
-  assert.match(runtimeOpenapi, /version: 0\.18\.0/);
-  assert.doesNotMatch(openapi, /version:\s*0\.19/);
+  assert.match(openapi, /version: 0\.19\.0/);
+  assert.match(protocol, /version: 0\.19\.0/);
+  assert.match(runtimeOpenapi, /version: 0\.19\.0/);
   assert.match(pkg, /"version": "0\.18\.0"/);
   assert.match(pkg, /chatSections\.test\.ts/);
   assert.match(ci, /test_ios_chat_sections\.py/);

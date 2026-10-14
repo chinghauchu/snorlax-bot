@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 //
-// Generated from protocol/openapi.yaml (Snorlax-Bot 0.18.0).
+// Generated from protocol/openapi.yaml (Snorlax-Bot 0.19.0).
 // Do not edit by hand. Regenerate with:
 //   python3 ios/scripts/generate_v1_types.py
 //
@@ -48,10 +48,11 @@ struct Agent: Codable, Hashable, Identifiable, Sendable {
     var kind: Kind
     var memberIds: [String]
     var sharedProject: Bool
+    var model: ModelChoice?
     var createdAt: Date
     var updatedAt: Date
 
-    init(id: String, name: String, title: String, description: String, avatar: String?, kind: Kind, memberIds: [String], sharedProject: Bool, createdAt: Date, updatedAt: Date) {
+    init(id: String, name: String, title: String, description: String, avatar: String?, kind: Kind, memberIds: [String], sharedProject: Bool, model: ModelChoice? = nil, createdAt: Date, updatedAt: Date) {
         self.id = id
         self.name = name
         self.title = title
@@ -60,11 +61,12 @@ struct Agent: Codable, Hashable, Identifiable, Sendable {
         self.kind = kind
         self.memberIds = memberIds
         self.sharedProject = sharedProject
+        self.model = model
         self.createdAt = createdAt
         self.updatedAt = updatedAt
     }
 
-    enum CodingKeys: String, CodingKey { case id, name, title, description, avatar, kind, memberIds, sharedProject, createdAt, updatedAt }
+    enum CodingKeys: String, CodingKey { case id, name, title, description, avatar, kind, memberIds, sharedProject, model, createdAt, updatedAt }
 
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
@@ -76,6 +78,7 @@ struct Agent: Codable, Hashable, Identifiable, Sendable {
         kind = try container.decode(Kind.self, forKey: .kind)
         memberIds = try container.decode([String].self, forKey: .memberIds)
         sharedProject = try container.decode(Bool.self, forKey: .sharedProject)
+        model = try container.decodeIfPresent(ModelChoice.self, forKey: .model)
         createdAt = try container.decode(Date.self, forKey: .createdAt)
         updatedAt = try container.decode(Date.self, forKey: .updatedAt)
     }
@@ -90,6 +93,7 @@ struct Agent: Codable, Hashable, Identifiable, Sendable {
         try container.encode(kind, forKey: .kind)
         try container.encode(memberIds, forKey: .memberIds)
         try container.encode(sharedProject, forKey: .sharedProject)
+        try container.encodeIfPresent(model, forKey: .model)
         try container.encode(createdAt, forKey: .createdAt)
         try container.encode(updatedAt, forKey: .updatedAt)
     }
@@ -147,17 +151,19 @@ struct AgentPatch: Codable, Hashable, Sendable {
     var avatar: String?
     var memberIds: [String]?
     var sharedProject: Bool?
+    var model: ModelChoice?
 
-    init(name: String? = nil, title: String? = nil, description: String? = nil, avatar: String? = nil, memberIds: [String]? = nil, sharedProject: Bool? = nil) {
+    init(name: String? = nil, title: String? = nil, description: String? = nil, avatar: String? = nil, memberIds: [String]? = nil, sharedProject: Bool? = nil, model: ModelChoice? = nil) {
         self.name = name
         self.title = title
         self.description = description
         self.avatar = avatar
         self.memberIds = memberIds
         self.sharedProject = sharedProject
+        self.model = model
     }
 
-    enum CodingKeys: String, CodingKey { case name, title, description, avatar, memberIds, sharedProject }
+    enum CodingKeys: String, CodingKey { case name, title, description, avatar, memberIds, sharedProject, model }
 
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
@@ -167,6 +173,7 @@ struct AgentPatch: Codable, Hashable, Sendable {
         avatar = try container.decodeIfPresent(String.self, forKey: .avatar)
         memberIds = try container.decodeIfPresent([String].self, forKey: .memberIds)
         sharedProject = try container.decodeIfPresent(Bool.self, forKey: .sharedProject)
+        model = try container.decodeIfPresent(ModelChoice.self, forKey: .model)
     }
 
     func encode(to encoder: Encoder) throws {
@@ -177,6 +184,161 @@ struct AgentPatch: Codable, Hashable, Sendable {
         try container.encode(avatar, forKey: .avatar)
         try container.encodeIfPresent(memberIds, forKey: .memberIds)
         try container.encodeIfPresent(sharedProject, forKey: .sharedProject)
+        try container.encodeIfPresent(model, forKey: .model)
+    }
+}
+
+struct ModelChoice: Codable, Hashable, Identifiable, Sendable {
+    enum Provider: String, Codable, Hashable, Sendable {
+        case omlx
+        case vllm
+        case openai
+        case anthropic
+        case gemini
+        case grok
+    }
+
+    var provider: Provider
+    var id: String
+
+    init(provider: Provider, id: String) {
+        self.provider = provider
+        self.id = id
+    }
+
+    enum CodingKeys: String, CodingKey { case provider, id }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        provider = try container.decode(Provider.self, forKey: .provider)
+        id = try container.decode(String.self, forKey: .id)
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(provider, forKey: .provider)
+        try container.encode(id, forKey: .id)
+    }
+}
+
+struct ModelDefault: Codable, Hashable, Sendable {
+    enum Provider: String, Codable, Hashable, Sendable {
+        case omlx
+        case vllm
+        case openai
+        case anthropic
+        case gemini
+        case grok
+    }
+
+    var provider: Provider
+    var model: String
+
+    init(provider: Provider, model: String) {
+        self.provider = provider
+        self.model = model
+    }
+
+    enum CodingKeys: String, CodingKey { case provider, model }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        provider = try container.decode(Provider.self, forKey: .provider)
+        model = try container.decode(String.self, forKey: .model)
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(provider, forKey: .provider)
+        try container.encode(model, forKey: .model)
+    }
+}
+
+struct ModelDefaultPatch: Codable, Hashable, Sendable {
+    enum Provider: String, Codable, Hashable, Sendable {
+        case omlx
+        case vllm
+        case openai
+        case anthropic
+        case gemini
+        case grok
+    }
+
+    var provider: Provider
+    var model: String
+
+    init(provider: Provider, model: String) {
+        self.provider = provider
+        self.model = model
+    }
+
+    enum CodingKeys: String, CodingKey { case provider, model }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        provider = try container.decode(Provider.self, forKey: .provider)
+        model = try container.decode(String.self, forKey: .model)
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(provider, forKey: .provider)
+        try container.encode(model, forKey: .model)
+    }
+}
+
+struct ProviderKeyStatus: Codable, Hashable, Sendable {
+    enum Provider: String, Codable, Hashable, Sendable {
+        case openai
+        case anthropic
+        case gemini
+        case grok
+    }
+
+    var provider: Provider
+    var configured: Bool
+    var masked: String?
+
+    init(provider: Provider, configured: Bool, masked: String? = nil) {
+        self.provider = provider
+        self.configured = configured
+        self.masked = masked
+    }
+
+    enum CodingKeys: String, CodingKey { case provider, configured, masked }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        provider = try container.decode(Provider.self, forKey: .provider)
+        configured = try container.decode(Bool.self, forKey: .configured)
+        masked = try container.decodeIfPresent(String.self, forKey: .masked)
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(provider, forKey: .provider)
+        try container.encode(configured, forKey: .configured)
+        try container.encode(masked, forKey: .masked)
+    }
+}
+
+struct ProviderKeyWrite: Codable, Hashable, Sendable {
+    var apiKey: String
+
+    init(apiKey: String) {
+        self.apiKey = apiKey
+    }
+
+    enum CodingKeys: String, CodingKey { case apiKey }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        apiKey = try container.decode(String.self, forKey: .apiKey)
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(apiKey, forKey: .apiKey)
     }
 }
 
@@ -377,8 +539,10 @@ struct Message: Codable, Hashable, Identifiable, Sendable {
     var widgetStatus: WidgetStatus?
     var widgetValues: [String]?
     var routineName: String?
+    var model: String?
+    var modelError: String?
 
-    init(id: String, agentId: String, role: Role, content: String, images: [ImageOut], attachments: [Attachment], createdAt: Date, senderId: String, senderName: String, senderAvatar: String?, hop: Int, mentions: [Mention], kind: Kind? = nil, replyTo: String? = nil, handoff: HandoffRef? = nil, userAsk: String? = nil, brief: String? = nil, replyCount: Int? = nil, widget: Widget? = nil, connect: ConnectCard? = nil, connectStatus: ConnectStatus? = nil, approve: ApproveCard? = nil, approveStatus: ApproveStatus? = nil, widgetStatus: WidgetStatus? = nil, widgetValues: [String]? = nil, routineName: String? = nil) {
+    init(id: String, agentId: String, role: Role, content: String, images: [ImageOut], attachments: [Attachment], createdAt: Date, senderId: String, senderName: String, senderAvatar: String?, hop: Int, mentions: [Mention], kind: Kind? = nil, replyTo: String? = nil, handoff: HandoffRef? = nil, userAsk: String? = nil, brief: String? = nil, replyCount: Int? = nil, widget: Widget? = nil, connect: ConnectCard? = nil, connectStatus: ConnectStatus? = nil, approve: ApproveCard? = nil, approveStatus: ApproveStatus? = nil, widgetStatus: WidgetStatus? = nil, widgetValues: [String]? = nil, routineName: String? = nil, model: String? = nil, modelError: String? = nil) {
         self.id = id
         self.agentId = agentId
         self.role = role
@@ -405,9 +569,11 @@ struct Message: Codable, Hashable, Identifiable, Sendable {
         self.widgetStatus = widgetStatus
         self.widgetValues = widgetValues
         self.routineName = routineName
+        self.model = model
+        self.modelError = modelError
     }
 
-    enum CodingKeys: String, CodingKey { case id, agentId, role, content, images, attachments, createdAt, senderId, senderName, senderAvatar, hop, mentions, kind, replyTo, handoff, userAsk, brief, replyCount, widget, connect, connectStatus, approve, approveStatus, widgetStatus, widgetValues, routineName }
+    enum CodingKeys: String, CodingKey { case id, agentId, role, content, images, attachments, createdAt, senderId, senderName, senderAvatar, hop, mentions, kind, replyTo, handoff, userAsk, brief, replyCount, widget, connect, connectStatus, approve, approveStatus, widgetStatus, widgetValues, routineName, model, modelError }
 
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
@@ -437,6 +603,8 @@ struct Message: Codable, Hashable, Identifiable, Sendable {
         widgetStatus = try container.decodeIfPresent(WidgetStatus.self, forKey: .widgetStatus)
         widgetValues = try container.decodeIfPresent([String].self, forKey: .widgetValues)
         routineName = try container.decodeIfPresent(String.self, forKey: .routineName)
+        model = try container.decodeIfPresent(String.self, forKey: .model)
+        modelError = try container.decodeIfPresent(String.self, forKey: .modelError)
     }
 
     func encode(to encoder: Encoder) throws {
@@ -467,6 +635,8 @@ struct Message: Codable, Hashable, Identifiable, Sendable {
         try container.encodeIfPresent(widgetStatus, forKey: .widgetStatus)
         try container.encodeIfPresent(widgetValues, forKey: .widgetValues)
         try container.encode(routineName, forKey: .routineName)
+        try container.encode(model, forKey: .model)
+        try container.encode(modelError, forKey: .modelError)
     }
 }
 
@@ -739,17 +909,19 @@ struct MessageDelta: Codable, Hashable, Identifiable, Sendable {
     var senderId: String?
     var senderName: String?
     var senderAvatar: String?
+    var model: String?
 
-    init(id: String, role: String, delta: String, senderId: String? = nil, senderName: String? = nil, senderAvatar: String? = nil) {
+    init(id: String, role: String, delta: String, senderId: String? = nil, senderName: String? = nil, senderAvatar: String? = nil, model: String? = nil) {
         self.id = id
         self.role = role
         self.delta = delta
         self.senderId = senderId
         self.senderName = senderName
         self.senderAvatar = senderAvatar
+        self.model = model
     }
 
-    enum CodingKeys: String, CodingKey { case id, role, delta, senderId, senderName, senderAvatar }
+    enum CodingKeys: String, CodingKey { case id, role, delta, senderId, senderName, senderAvatar, model }
 
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
@@ -759,6 +931,7 @@ struct MessageDelta: Codable, Hashable, Identifiable, Sendable {
         senderId = try container.decodeIfPresent(String.self, forKey: .senderId)
         senderName = try container.decodeIfPresent(String.self, forKey: .senderName)
         senderAvatar = try container.decodeIfPresent(String.self, forKey: .senderAvatar)
+        model = try container.decodeIfPresent(String.self, forKey: .model)
     }
 
     func encode(to encoder: Encoder) throws {
@@ -769,6 +942,7 @@ struct MessageDelta: Codable, Hashable, Identifiable, Sendable {
         try container.encodeIfPresent(senderId, forKey: .senderId)
         try container.encodeIfPresent(senderName, forKey: .senderName)
         try container.encode(senderAvatar, forKey: .senderAvatar)
+        try container.encode(model, forKey: .model)
     }
 }
 

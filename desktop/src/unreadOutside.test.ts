@@ -146,10 +146,9 @@ test("desktop and iOS read the v0.70 unread set, not handoff", () => {
 });
 
 test("OpenAPI stays 0.18.0; count is local; no computerPane.ts", () => {
-  assert.match(openapi, /version: 0\.18\.0/);
-  assert.match(protocol, /version: 0\.18\.0/);
-  assert.match(runtimeOpenapi, /version: 0\.18\.0/);
-  assert.doesNotMatch(openapi, /version:\s*0\.19/);
+  assert.match(openapi, /version: 0\.19\.0/);
+  assert.match(protocol, /version: 0\.19\.0/);
+  assert.match(runtimeOpenapi, /version: 0\.19\.0/);
   assert.doesNotMatch(src, /fetch\(/);
   assert.doesNotMatch(src, /\/v1\//);
   assert.doesNotMatch(src, /localStorage/);

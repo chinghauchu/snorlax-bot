@@ -196,8 +196,8 @@ def test_transcribe_uses_existing_route_multipart_audio() -> None:
 
 
 def test_openapi_stays_0180_and_no_computer_pane() -> None:
-    assert "version: 0.18.0" in OPENAPI
-    assert "version: 0.18.0" in RUNTIME_OPENAPI
+    assert "version: 0.19.0" in OPENAPI
+    assert "version: 0.19.0" in RUNTIME_OPENAPI
     assert "/v1/transcribe" in OPENAPI
     assert not DESKTOP_PANE.exists()
     assert "computerPane.ts" not in CHAT

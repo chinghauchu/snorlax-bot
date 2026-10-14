@@ -38,8 +38,8 @@ def test_routine_confirm_reuses_widget_card() -> None:
     assert "create_routine" not in CLIENT
     assert "pause_routine" not in CLIENT
     assert "/v1/chats/" not in CLIENT
-    assert "version: 0.18.0" in OPENAPI
-    assert "0.18.0" in TYPES
+    assert "version: 0.19.0" in OPENAPI
+    assert "0.19.0" in TYPES
     assert "computerPane.ts" not in CHAT
     assert "computerPane.ts" not in WIDGET
     assert "v0.33" in OPENAPI

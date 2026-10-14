@@ -82,10 +82,9 @@ def test_per_bubble_and_focus() -> None:
 
 
 def test_openapi_and_roadmap() -> None:
-    assert "version: 0.18.0" in OPENAPI
-    assert "version: 0.18.0" in RUNTIME_OPENAPI
-    assert "version: 0.18.0" in DESKTOP_OPENAPI
-    assert "version: 0.19" not in DESKTOP_OPENAPI
+    assert "version: 0.19.0" in OPENAPI
+    assert "version: 0.19.0" in RUNTIME_OPENAPI
+    assert "version: 0.19.0" in DESKTOP_OPENAPI
     assert not PANE.exists()
     assert PHRASE in ROADMAP
     assert "v0.81" in ROADMAP

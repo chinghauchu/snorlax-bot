@@ -302,6 +302,30 @@ def is_loopback_url(url: str) -> bool:
     return False
 
 
+def redact_secret(text: str, secret: str | None) -> str:
+    """Drop a provider key and any Bearer token before an error is stored."""
+    cleaned = text or ""
+    key = (secret or "").strip()
+    if key:
+        cleaned = cleaned.replace(key, "••••")
+    return re.sub(r"Bearer\s+\S+", "Bearer ••••", cleaned)
+
+
+def auth_rejected(status: int, body: str) -> bool:
+    """401/403, or a 400 whose body says the API key itself was rejected."""
+    if status in {401, 403}:
+        return True
+    if status != 400:
+        return False
+    lowered = (body or "").lower()
+    return (
+        "api key" in lowered
+        or "api_key" in lowered
+        or "invalid_api_key" in lowered
+        or "authentication" in lowered
+    )
+
+
 def inference_auth_headers(
     *,
     base_url: str,
@@ -339,6 +363,7 @@ class OpenAICompatBackend:
         send_auth: bool | None = None,
         label: str = "inference",
         transport: httpx.AsyncBaseTransport | httpx.BaseTransport | None = None,
+        key_provider: str | None = None,
     ) -> None:
         self.base_url = base_url.rstrip("/")
         self.model = model
@@ -346,6 +371,7 @@ class OpenAICompatBackend:
         self.send_auth = send_auth
         self.label = label
         self._transport = transport
+        self.key_provider = key_provider
 
     def request_headers(self) -> dict[str, str]:
         return inference_auth_headers(
@@ -384,6 +410,7 @@ class OpenAICompatBackend:
         if tools:
             payload["tools"] = tools
         headers = self.request_headers()
+        self._require_provider_key()
         assembled: dict[int, dict[str, str]] = {}
         async with self._client() as client:
             try:
@@ -392,10 +419,7 @@ class OpenAICompatBackend:
                 ) as response:
                     if response.status_code >= 400:
                         body = (await response.aread()).decode("utf-8", "replace")
-                        raise InferenceError(
-                            "inference_unavailable",
-                            f"{self.label} returned {response.status_code}: {body[:400]}",
-                        )
+                        raise self._status_error(response.status_code, body)
                     async for line in response.aiter_lines():
                         if not line.startswith("data:"):
                             continue
@@ -444,6 +468,26 @@ class OpenAICompatBackend:
             ]
             if calls:
                 yield StreamPart(tool_calls=calls)
+
+    def _require_provider_key(self) -> None:
+        if not self.key_provider:
+            return
+        if (self.api_key or "").strip():
+            return
+        from snorlax_runtime.providers import missing_key_error
+
+        raise missing_key_error(self.key_provider)
+
+    def _status_error(self, status: int, body: str) -> InferenceError:
+        redacted = redact_secret(body, self.api_key)
+        if self.key_provider and auth_rejected(status, redacted):
+            from snorlax_runtime.providers import invalid_key_error
+
+            return invalid_key_error(self.key_provider)
+        return InferenceError(
+            "inference_unavailable",
+            f"{self.label} returned {status}: {redacted[:400]}",
+        )
 
 
 class VllmBackend(OpenAICompatBackend):

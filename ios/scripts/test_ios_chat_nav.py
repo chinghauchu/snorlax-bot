@@ -153,10 +153,9 @@ def test_chat_wires_the_row_open_path() -> None:
 
 
 def test_openapi_roadmap() -> None:
-    assert "version: 0.18.0" in OPENAPI
-    assert "version: 0.18.0" in RUNTIME_OPENAPI
-    assert "version: 0.18.0" in DESKTOP_OPENAPI
-    assert "version: 0.19" not in OPENAPI
+    assert "version: 0.19.0" in OPENAPI
+    assert "version: 0.19.0" in RUNTIME_OPENAPI
+    assert "version: 0.19.0" in DESKTOP_OPENAPI
     assert PHRASE in ROADMAP
     assert "/ v0.92 " in ROADMAP
     assert "## 93. v0.92" in SPEC

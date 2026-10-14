@@ -101,13 +101,12 @@ def test_mid_stream_unchanged_user_right_unchanged() -> None:
 
 
 def test_openapi_0180_and_intact_stack() -> None:
-    assert "version: 0.18.0" in OPENAPI
-    assert "version: 0.18.0" in RUNTIME_OPENAPI
-    assert "version: 0.18.0" in DESKTOP_OPENAPI
+    assert "version: 0.19.0" in OPENAPI
+    assert "version: 0.19.0" in RUNTIME_OPENAPI
+    assert "version: 0.19.0" in DESKTOP_OPENAPI
     assert "v0.54" in OPENAPI
     assert "v0.54" in RUNTIME_OPENAPI
     assert "v0.54" in DESKTOP_OPENAPI
-    assert "0.19" not in OPENAPI.split("version:", 1)[-1][:40]
     assert "static let nearBottom: CGFloat = 64" in STICK
     assert "static func bubbles(in text: String, completed: Bool)" in MARKDOWN
     assert "static func insert(" in OPT

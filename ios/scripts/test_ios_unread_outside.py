@@ -118,7 +118,6 @@ def test_sources() -> None:
     assert "0.18.0" in OPENAPI
     assert "0.18.0" in RUNTIME_OPENAPI
     assert "0.18.0" in DESKTOP_OPENAPI
-    assert "version: 0.19" not in OPENAPI
     assert PHRASE in ROADMAP
     assert "test_ios_unread_outside.py" in CI
     assert "unreadOutside.test.ts" in (ROOT / "desktop" / "package.json").read_text(

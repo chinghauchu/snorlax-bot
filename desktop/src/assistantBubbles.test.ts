@@ -82,7 +82,7 @@ test("blank lines inside fences and $$ math stay one bubble", () => {
 test("Copy / Speak / Regenerates only on the last bubble of that turn", () => {
   assert.match(app, /splitAssistantBubbles/);
   const mdStart = app.indexOf('className="assistant-md"');
-  const md = app.slice(mdStart, mdStart + 4000);
+  const md = app.slice(mdStart, mdStart + 5200);
   assert.match(md, /assistant-bubbles/);
   assert.match(md, /bubble agent/);
   const bubbleBlock = md.slice(
@@ -136,13 +136,12 @@ test("tool / widget / approve / connect stay non-bubbled; OpenAPI 0.18.0", () =>
     userEnd > 0 ? userEnd : userStart + 2500,
   );
   assert.doesNotMatch(userBranch, /splitAssistantBubbles/);
-  assert.match(openapi, /version:\s*0\.18\.0/);
-  assert.match(protocol, /version:\s*0\.18\.0/);
-  assert.match(runtimeOpenapi, /version:\s*0\.18\.0/);
+  assert.match(openapi, /version:\s*0\.19\.0/);
+  assert.match(protocol, /version:\s*0\.19\.0/);
+  assert.match(runtimeOpenapi, /version:\s*0\.19\.0/);
   assert.match(openapi, /v0\.48/);
   assert.match(protocol, /v0\.48/);
   assert.match(runtimeOpenapi, /v0\.48/);
-  assert.doesNotMatch(openapi, /version:\s*0\.19/);
   assert.doesNotMatch(app, /\/v1\/bubbles/);
 });
 
@@ -197,10 +196,9 @@ test("v0.54 mid-stream stays one growing bubble; user-right unchanged", () => {
 });
 
 test("v0.54 OpenAPI stays 0.18.0; fluency stack stays wired", () => {
-  assert.match(openapi, /version:\s*0\.18\.0/);
-  assert.match(protocol, /version:\s*0\.18\.0/);
-  assert.match(runtimeOpenapi, /version:\s*0\.18\.0/);
-  assert.doesNotMatch(openapi, /version:\s*0\.19/);
+  assert.match(openapi, /version:\s*0\.19\.0/);
+  assert.match(protocol, /version:\s*0\.19\.0/);
+  assert.match(runtimeOpenapi, /version:\s*0\.19\.0/);
   assert.match(openapi, /v0\.54/);
   assert.match(protocol, /v0\.54/);
   assert.match(runtimeOpenapi, /v0\.54/);

@@ -268,6 +268,12 @@ class Store:
                 "ALTER TABLE agents ADD COLUMN shared_project "
                 "INTEGER NOT NULL DEFAULT 0"
             )
+        if "model_provider" not in agent_cols:
+            await self.conn.execute(
+                "ALTER TABLE agents ADD COLUMN model_provider TEXT"
+            )
+        if "model_id" not in agent_cols:
+            await self.conn.execute("ALTER TABLE agents ADD COLUMN model_id TEXT")
         msg_cols = await self._columns("messages")
         additions = {
             "sender_id": "TEXT NOT NULL DEFAULT 'user'",
@@ -286,6 +292,8 @@ class Store:
             "connect": "TEXT",
             "approve": "TEXT",
             "routine_name": "TEXT",
+            "model": "TEXT",
+            "model_error": "TEXT",
         }
         for name, spec in additions.items():
             if name not in msg_cols:
@@ -469,6 +477,12 @@ class Store:
 
     def _agent_public(self, row: Any, member_ids: list[str]) -> dict[str, Any]:
         kind = row["kind"] if "kind" in row.keys() else KIND_AGENT
+        keys = row.keys()
+        provider = row["model_provider"] if "model_provider" in keys else None
+        model_id = row["model_id"] if "model_id" in keys else None
+        choice = None
+        if kind != KIND_CHANNEL and provider and model_id:
+            choice = {"provider": provider, "id": model_id}
         return {
             "id": row["id"],
             "name": row["name"],
@@ -482,6 +496,7 @@ class Store:
                 if kind == KIND_CHANNEL and "shared_project" in row.keys()
                 else False
             ),
+            "model": choice,
             "createdAt": row["created_at"],
             "updatedAt": row["updated_at"],
         }
@@ -593,6 +608,7 @@ class Store:
         description: str | None,
         avatar: str | None | object = ...,
         shared_project: bool | object = ...,
+        model: dict[str, str] | None | object = ...,
     ) -> dict[str, Any] | None:
         cur = await self.conn.execute(
             "SELECT * FROM agents WHERE id = ?", (agent_id,)
@@ -609,16 +625,28 @@ class Store:
         new_shared = row["shared_project"] if "shared_project" in row.keys() else 0
         if shared_project is not ...:
             new_shared = 1 if shared_project else 0
+        keys = row.keys()
+        new_provider = row["model_provider"] if "model_provider" in keys else None
+        new_model_id = row["model_id"] if "model_id" in keys else None
+        if model is None:
+            new_provider = None
+            new_model_id = None
+        elif model is not ...:
+            new_provider = str(model.get("provider") or "") or None
+            new_model_id = str(model.get("id") or "") or None
         updated = utcnow()
         await self.conn.execute(
             "UPDATE agents SET name = ?, title = ?, description = ?, avatar = ?, "
-            "shared_project = ?, updated_at = ? WHERE id = ?",
+            "shared_project = ?, model_provider = ?, model_id = ?, updated_at = ? "
+            "WHERE id = ?",
             (
                 new_name,
                 new_title,
                 new_description,
                 new_avatar,
                 new_shared,
+                new_provider,
+                new_model_id,
                 updated,
                 agent_id,
             ),
@@ -1011,6 +1039,8 @@ class Store:
             "approve": approve,
             "approveStatus": approve_status,
             "routineName": message.get("routine_name") or None,
+            "model": message.get("model") or None,
+            "modelError": message.get("model_error") or None,
         }
 
     async def list_images(self, message_id: str) -> list[dict[str, Any]]:
@@ -1242,6 +1272,8 @@ class Store:
         connect: dict[str, Any] | None = None,
         approve: dict[str, Any] | None = None,
         routine_name: str | None = None,
+        model: str | None = None,
+        model_error: str | None = None,
     ) -> dict[str, Any]:
         message_id = message_id or new_id("msg")
         created = utcnow()
@@ -1305,8 +1337,8 @@ class Store:
             "(id, agent_id, role, content, created_at, sender_id, sender_name, "
             "sender_avatar, hop, mentions, reply_to, kind, user_ask, brief, "
             "handoff_channel_id, handoff_thread_id, origin_conversation_id, "
-            "widget, connect, approve, routine_name) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            "widget, connect, approve, routine_name, model, model_error) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (
                 message_id,
                 agent_id,
@@ -1329,6 +1361,8 @@ class Store:
                 stored_connect,
                 stored_approve,
                 routine_name,
+                model,
+                model_error,
             ),
         )
         for image in images or []:

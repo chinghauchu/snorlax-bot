@@ -239,10 +239,9 @@ test("desktop and iOS reuse the send path and do not restore the composer", () =
 });
 
 test("OpenAPI stays 0.18.0; retry is local; no computerPane.ts", () => {
-  assert.match(openapi, /version: 0\.18\.0/);
-  assert.match(protocol, /version: 0\.18\.0/);
-  assert.match(runtimeOpenapi, /version: 0\.18\.0/);
-  assert.doesNotMatch(openapi, /version:\s*0\.19/);
+  assert.match(openapi, /version: 0\.19\.0/);
+  assert.match(protocol, /version: 0\.19\.0/);
+  assert.match(runtimeOpenapi, /version: 0\.19\.0/);
   assert.doesNotMatch(src, /fetch\(/);
   assert.doesNotMatch(src, /\/v1\//);
   assert.doesNotMatch(src, /computerPane\.ts/);

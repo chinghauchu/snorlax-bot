@@ -301,10 +301,9 @@ def test_persist_across_relaunch_and_recall_stays_empty_only() -> None:
 
 
 def test_openapi_roadmap_ci_no_computer_pane() -> None:
-    assert "version: 0.18.0" in OPENAPI
-    assert "version: 0.18.0" in RUNTIME_OPENAPI
-    assert "version: 0.18.0" in DESKTOP_OPENAPI
-    assert "version: 0.19" not in OPENAPI
+    assert "version: 0.19.0" in OPENAPI
+    assert "version: 0.19.0" in RUNTIME_OPENAPI
+    assert "version: 0.19.0" in DESKTOP_OPENAPI
     assert PHRASE in ROADMAP
     assert PERSIST_PHRASE in ROADMAP
     assert "python3 ios/scripts/test_ios_chat_drafts.py" in CI

@@ -111,10 +111,9 @@ def test_composer_wires_grow_without_moving_chrome() -> None:
 
 
 def test_openapi_stays_0180() -> None:
-    assert "version: 0.18.0" in OPENAPI
-    assert "version: 0.18.0" in RUNTIME_OPENAPI
-    assert "version: 0.18.0" in DESKTOP_OPENAPI
-    assert "version: 0.19" not in DESKTOP_OPENAPI
+    assert "version: 0.19.0" in OPENAPI
+    assert "version: 0.19.0" in RUNTIME_OPENAPI
+    assert "version: 0.19.0" in DESKTOP_OPENAPI
     assert not PANE.exists()
     assert "computerPane.ts" not in VIEW
     assert "computerPane.ts" not in SWIFT

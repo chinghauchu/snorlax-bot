@@ -191,9 +191,9 @@ test("waiting line is 12px muted; dots pulse; reduced-motion is static", () => {
 });
 
 test("OpenAPI stays 0.18.0; v0.51 is documented; no computerPane.ts", () => {
-  assert.match(openapi, /version: 0\.18\.0/);
-  assert.match(protocol, /version: 0\.18\.0/);
-  assert.match(runtimeOpenapi, /version: 0\.18\.0/);
+  assert.match(openapi, /version: 0\.19\.0/);
+  assert.match(protocol, /version: 0\.19\.0/);
+  assert.match(runtimeOpenapi, /version: 0\.19\.0/);
   assert.match(openapi, /v0\.51/);
   assert.match(protocol, /v0\.51/);
   assert.match(runtimeOpenapi, /v0\.51/);

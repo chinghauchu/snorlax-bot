@@ -176,13 +176,12 @@ def test_no_new_http_openapi_intact_stack() -> None:
     assert 'static let label = "···"' in WAITING
     assert "static func shouldShow(" in CARET
     assert "UIKeyCommand" in COMPOSER
-    assert "version: 0.18.0" in OPENAPI
-    assert "version: 0.18.0" in RUNTIME_OPENAPI
-    assert "version: 0.18.0" in DESKTOP_OPENAPI
+    assert "version: 0.19.0" in OPENAPI
+    assert "version: 0.19.0" in RUNTIME_OPENAPI
+    assert "version: 0.19.0" in DESKTOP_OPENAPI
     assert "v0.55" in OPENAPI
     assert "v0.55" in RUNTIME_OPENAPI
     assert "v0.55" in DESKTOP_OPENAPI
-    assert "0.19" not in OPENAPI.split("version:", 1)[-1][:40]
     assert "/v1/cancel" not in MUTED
     assert "/v1/cancel" not in COMPOSER
     assert "/v1/cancel" not in CHAT

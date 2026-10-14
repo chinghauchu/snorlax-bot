@@ -203,10 +203,9 @@ test("the sidebar shows the control and does not add a shortcut or HTTP", () => 
   assert.match(model, /var hasAnyUnreadChat: Bool/);
   assert.doesNotMatch(list, /computerPane\.ts/);
 
-  assert.match(openapi, /version: 0\.18\.0/);
-  assert.match(protocol, /version: 0\.18\.0/);
-  assert.match(runtimeOpenapi, /version: 0\.18\.0/);
-  assert.doesNotMatch(openapi, /version:\s*0\.19/);
+  assert.match(openapi, /version: 0\.19\.0/);
+  assert.match(protocol, /version: 0\.19\.0/);
+  assert.match(runtimeOpenapi, /version: 0\.19\.0/);
   assert.match(pkg, /chatMarkAllRead\.test\.ts/);
   assert.match(ci, /test_ios_mark_all_read\.py/);
   assert.match(roadmap, new RegExp(PHRASE.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));

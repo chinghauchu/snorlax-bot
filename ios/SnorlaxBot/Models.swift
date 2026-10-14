@@ -152,7 +152,8 @@ extension Message {
         content: String,
         senderId: String,
         senderName: String,
-        senderAvatar: String?
+        senderAvatar: String?,
+        model: String? = nil
     ) -> Message {
         Message(
             id: id,
@@ -166,7 +167,8 @@ extension Message {
             senderName: senderName,
             senderAvatar: senderAvatar,
             hop: 0,
-            mentions: []
+            mentions: [],
+            model: model
         )
     }
 

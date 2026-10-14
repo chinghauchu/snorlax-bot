@@ -219,10 +219,9 @@ test("the sidebar paints dots in the time slot and keeps neighbors", () => {
   assert.match(model, /generating: generatingChatID == agentId/);
   assert.doesNotMatch(model, /computerPane\.ts/);
 
-  assert.match(openapi, /version: 0\.18\.0/);
-  assert.match(protocol, /version: 0\.18\.0/);
-  assert.match(runtimeOpenapi, /version: 0\.18\.0/);
-  assert.doesNotMatch(openapi, /version:\s*0\.19/);
+  assert.match(openapi, /version: 0\.19\.0/);
+  assert.match(protocol, /version: 0\.19\.0/);
+  assert.match(runtimeOpenapi, /version: 0\.19\.0/);
   assert.match(pkg, /"version": "0\.18\.0"/);
   assert.match(pkg, /chatGenerating\.test\.ts/);
   assert.match(ci, /test_ios_chat_generating\.py/);

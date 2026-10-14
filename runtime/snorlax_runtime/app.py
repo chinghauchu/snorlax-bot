@@ -17,6 +17,14 @@ from snorlax_runtime.auth import require_bearer
 from snorlax_runtime.config import Settings
 from snorlax_runtime.db import Store, dump_json
 from snorlax_runtime.inference import build_backend
+from snorlax_runtime.providers import (
+    KEY_PROVIDERS,
+    ModelDirectory,
+    delete_key,
+    key_statuses,
+    set_key,
+    write_saved_default,
+)
 from snorlax_runtime.routing import (
     MentionError,
     resolve_user_mentions,
@@ -39,6 +47,10 @@ from snorlax_runtime.schemas import (
     ComputerSession,
     Health,
     KeyEvent,
+    ModelDefault,
+    ModelDefaultPatch,
+    ProviderKeyStatus,
+    ProviderKeyWrite,
     MemoryForget,
     PointerEvent,
     Message,
@@ -175,6 +187,7 @@ async def _resume_connect_cards(request: Request, plugin_id: str) -> None:
                 backend=backend,
                 card=updated,
                 max_tool_rounds=rounds,
+                models=getattr(request.app.state, "models", None),
             )
         except Exception as exc:  # noqa: BLE001 — callback must still return HTML
             log.warning("resume after connect %s failed: %s", card["id"], extra)
@@ -234,6 +247,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             api_key=settings.inference_api_key,
             send_auth=settings.inference_send_auth,
         )
+        app.state.models = ModelDirectory(settings, lambda: app.state.backend)
         from snorlax_runtime.listeners import bind_runtime
 
         bind_runtime(
@@ -241,6 +255,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             backend=app.state.backend,
             get_mcp=lambda: getattr(app.state, "mcp", None),
             max_tool_rounds=settings.tool_max_rounds,
+            models=app.state.models,
         )
         scheduler_task = None
         if settings.scheduler:
@@ -325,6 +340,74 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     async def health() -> Health:
         return Health(ok=True, name="Snorlax-Bot", version=__version__)
 
+    @app.get("/v1/settings/model", response_model=ModelDefault)
+    async def get_model_default(
+        request: Request, _: str = Depends(require_bearer)
+    ) -> ModelDefault:
+        provider, model = request.app.state.models.display_default()
+        return ModelDefault(provider=provider, model=model)
+
+    @app.patch("/v1/settings/model", response_model=ModelDefault)
+    async def patch_model_default(
+        payload: ModelDefaultPatch,
+        request: Request,
+        _: str = Depends(require_bearer),
+    ) -> ModelDefault:
+        try:
+            provider, model = write_saved_default(
+                request.app.state.settings.data_dir,
+                payload.provider,
+                payload.model,
+            )
+        except ValueError as exc:
+            raise _error(422, str(exc)) from exc
+        return ModelDefault(provider=provider, model=model)
+
+    @app.get("/v1/settings/keys", response_model=list[ProviderKeyStatus])
+    async def list_provider_keys(
+        request: Request, _: str = Depends(require_bearer)
+    ) -> list[ProviderKeyStatus]:
+        return [
+            ProviderKeyStatus.model_validate(row)
+            for row in key_statuses(request.app.state.settings.data_dir)
+        ]
+
+    @app.put(
+        "/v1/settings/keys/{provider}",
+        response_model=ProviderKeyStatus,
+    )
+    async def put_provider_key(
+        provider: str,
+        payload: ProviderKeyWrite,
+        request: Request,
+        _: str = Depends(require_bearer),
+    ) -> ProviderKeyStatus:
+        if provider not in KEY_PROVIDERS:
+            raise _error(422, "that provider does not take an API key")
+        try:
+            masked = set_key(
+                request.app.state.settings.data_dir,
+                provider,
+                payload.apiKey,
+            )
+        except ValueError as exc:
+            raise _error(422, str(exc)) from exc
+        return ProviderKeyStatus(provider=provider, configured=True, masked=masked)
+
+    @app.delete(
+        "/v1/settings/keys/{provider}",
+        status_code=status.HTTP_204_NO_CONTENT,
+    )
+    async def delete_provider_key(
+        provider: str,
+        request: Request,
+        _: str = Depends(require_bearer),
+    ) -> Response:
+        if provider not in KEY_PROVIDERS:
+            raise _error(422, "that provider does not take an API key")
+        delete_key(request.app.state.settings.data_dir, provider)
+        return Response(status_code=status.HTTP_204_NO_CONTENT)
+
     @app.get("/v1/agents", response_model=list[Agent])
     async def list_agents(
         request: Request, _: str = Depends(require_bearer)
@@ -394,6 +477,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             raise _error(404, f"Agent {id!r} not found")
         fields = payload.model_dump(exclude_unset=True)
         identity = {"name", "title", "description", "avatar", "memberIds"}
+        if "model" in fields and existing.get("kind") == KIND_CHANNEL:
+            raise _error(422, "model is an agent field")
         if existing.get("kind") != KIND_CHANNEL and "sharedProject" in fields:
             raise _error(422, "sharedProject is a channel field")
         if id == SEEDED_CHANNEL_ID:
@@ -447,6 +532,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             title=fields.get("title"),
             description=fields.get("description"),
             avatar=fields["avatar"] if "avatar" in fields else ...,
+            model=fields["model"] if "model" in fields else ...,
         )
         if row is None:
             raise _error(404, f"Agent {id!r} not found")
@@ -662,6 +748,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     auth_base_url=str(request.base_url).rstrip("/"),
                     regenerate=payload.regenerate,
                     mcp=getattr(request.app.state, "mcp", None),
+                    models=getattr(request.app.state, "models", None),
                 ):
                     yield _sse(event, data)
             finally:
@@ -807,6 +894,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 max_tool_rounds=getattr(
                     request.app.state.settings, "tool_max_rounds", None
                 ),
+                models=getattr(request.app.state, "models", None),
             )
         except Exception:
             log.exception("webhook routine %s failed", row.get("id"))

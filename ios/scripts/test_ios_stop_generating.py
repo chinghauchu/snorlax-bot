@@ -146,9 +146,9 @@ def test_stick_multi_bubbles_optimistic_openapi() -> None:
     assert "static let nearBottom: CGFloat = 64" in STICK
     assert "static func bubbles(in text: String, completed: Bool)" in MARKDOWN
     assert "static func insert(" in OPT
-    assert "version: 0.18.0" in OPENAPI
-    assert "version: 0.18.0" in RUNTIME_OPENAPI
-    assert "version: 0.18.0" in DESKTOP_OPENAPI
+    assert "version: 0.19.0" in OPENAPI
+    assert "version: 0.19.0" in RUNTIME_OPENAPI
+    assert "version: 0.19.0" in DESKTOP_OPENAPI
     assert "v0.50" in OPENAPI
     assert "v0.50" in RUNTIME_OPENAPI
     assert "v0.50" in DESKTOP_OPENAPI

@@ -157,13 +157,12 @@ def test_no_new_http_openapi_intact_stack() -> None:
     assert "static func whileGenerating" in MUTED
     assert "shouldFocusComposerAfterAbort" in STOP
     assert "escapeJumps" in STICK
-    assert "version: 0.18.0" in OPENAPI
-    assert "version: 0.18.0" in RUNTIME_OPENAPI
-    assert "version: 0.18.0" in DESKTOP_OPENAPI
+    assert "version: 0.19.0" in OPENAPI
+    assert "version: 0.19.0" in RUNTIME_OPENAPI
+    assert "version: 0.19.0" in DESKTOP_OPENAPI
     assert "v0.61" in OPENAPI
     assert "v0.61" in RUNTIME_OPENAPI
     assert "v0.61" in DESKTOP_OPENAPI
-    assert "version: 0.19" not in OPENAPI
     assert "/v1/cancel" not in CHAT
     assert "/v1/chats/" not in CHAT
     assert "/v1/cancel" not in DESKTOP_APP

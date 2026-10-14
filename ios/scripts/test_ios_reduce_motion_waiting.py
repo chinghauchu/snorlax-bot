@@ -183,13 +183,12 @@ def test_openapi_stays_0180_and_intact_stack() -> None:
     assert "static func whileGenerating(busy: Bool)" in MUTED
     assert "N tools" in COMPACT or "toolsLabel" in COMPACT
     assert "static func shouldRenderMarkdown" in PLAIN
-    assert "version: 0.18.0" in OPENAPI
-    assert "version: 0.18.0" in RUNTIME_OPENAPI
-    assert "version: 0.18.0" in DESKTOP_OPENAPI
+    assert "version: 0.19.0" in OPENAPI
+    assert "version: 0.19.0" in RUNTIME_OPENAPI
+    assert "version: 0.19.0" in DESKTOP_OPENAPI
     assert "v0.58" in OPENAPI
     assert "v0.58" in RUNTIME_OPENAPI
     assert "v0.58" in DESKTOP_OPENAPI
-    assert "version: 0.19" not in OPENAPI
     assert "computerPane.ts" not in WAITING
     assert "computerPane.ts" not in CHAT
     assert "computerPane.ts" not in DESKTOP_WAIT

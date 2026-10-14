@@ -1117,7 +1117,8 @@ struct ChatView: View {
               !message.isWidget,
               !message.isConnect,
               !message.isApprove,
-              !message.isHandoffRoot
+              !message.isHandoffRoot,
+              !ModelProvider.isKeyError(message.modelError)
         else { return false }
         if sending, index == liveAssistantIdx { return false }
         return true
@@ -1690,6 +1691,12 @@ private struct MessageBubble: View {
                         Text(message.senderName)
                             .font(.system(size: 13, weight: .medium))
                             .foregroundStyle(.secondary)
+                        if let modelName = ModelProvider.bubbleModel(message.model) {
+                            Text(modelName)
+                                .font(.system(size: 11))
+                                .foregroundStyle(.secondary)
+                                .accessibilityLabel("Model \(modelName)")
+                        }
                         if let kicker = message.routineName, !kicker.isEmpty {
                             Text(kicker)
                                 .font(.system(size: 12))
@@ -1803,7 +1810,20 @@ private struct MessageBubble: View {
             } else {
                 VStack(alignment: .leading, spacing: 6) {
                     userAttachments
-                    if !leftBubbles.isEmpty {
+                    if ModelProvider.isKeyError(message.modelError) {
+                        let copy = ModelProvider.errorCopy(message.content)
+                        HStack(alignment: .firstTextBaseline, spacing: 4) {
+                            Text(copy.text)
+                            Button(copy.link) {
+                                model.showSettings = true
+                            }
+                            .buttonStyle(.plain)
+                            .accessibilityLabel("Settings")
+                        }
+                        .font(.system(size: 13))
+                        .foregroundStyle(.secondary)
+                        .accessibilityElement(children: .combine)
+                    } else if !leftBubbles.isEmpty {
                         HStack(alignment: .top, spacing: 0) {
                             VStack(alignment: .leading, spacing: AssistantBubbleGap.sameTurn) {
                                 ForEach(Array(leftBubbles.enumerated()), id: \.offset) { offset, part in

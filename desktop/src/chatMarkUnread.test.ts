@@ -224,10 +224,9 @@ test("the context menu marks unread without moving pins or adding HTTP", () => {
   assert.match(model, /func toggleChatPin\(_ id: String\)/);
   assert.doesNotMatch(swift, /computerPane\.ts/);
 
-  assert.match(openapi, /version: 0\.18\.0/);
-  assert.match(protocol, /version: 0\.18\.0/);
-  assert.match(runtimeOpenapi, /version: 0\.18\.0/);
-  assert.doesNotMatch(openapi, /version:\s*0\.19/);
+  assert.match(openapi, /version: 0\.19\.0/);
+  assert.match(protocol, /version: 0\.19\.0/);
+  assert.match(runtimeOpenapi, /version: 0\.19\.0/);
   assert.match(pkg, /chatMarkUnread\.test\.ts/);
   assert.match(ci, /test_ios_chat_mark_unread\.py/);
   assert.match(roadmap, new RegExp(PHRASE.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));

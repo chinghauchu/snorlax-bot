@@ -1418,6 +1418,7 @@ async def run_tool_loop(
     conversation_id: str | None = None,
     store: Any | None = None,
     mcp: Any | None = None,
+    model_label: str | None = None,
 ) -> tuple[
     list[tuple[str, dict[str, Any]]],
     str,
@@ -1451,6 +1452,8 @@ async def run_tool_loop(
         "senderName": agent["name"],
         "senderAvatar": agent.get("avatar"),
     }
+    if model_label:
+        sender["model"] = model_label
     rounds = 0
     final_parts: list[str] = []
     tool_outcomes: list[tuple[str, bool, str]] = []
@@ -1473,6 +1476,10 @@ async def run_tool_loop(
                 if offered and part.tool_calls:
                     tool_calls.extend(part.tool_calls)
         except InferenceError as exc:
+            from snorlax_runtime.providers import ProviderKeyError
+
+            if isinstance(exc, ProviderKeyError):
+                raise
             if rounds == 0:
                 raise
             final_parts = [

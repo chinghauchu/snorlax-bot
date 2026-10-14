@@ -194,10 +194,9 @@ test("sidebar time sits on the preview row; OpenAPI stays 0.18.0", () => {
   assert.doesNotMatch(swift, /\/v1\//);
   assert.doesNotMatch(swift, /computerPane\.ts/);
 
-  assert.match(openapi, /version: 0\.18\.0/);
-  assert.match(protocol, /version: 0\.18\.0/);
-  assert.match(runtimeOpenapi, /version: 0\.18\.0/);
-  assert.doesNotMatch(openapi, /version:\s*0\.19/);
+  assert.match(openapi, /version: 0\.19\.0/);
+  assert.match(protocol, /version: 0\.19\.0/);
+  assert.match(runtimeOpenapi, /version: 0\.19\.0/);
   assert.match(pkg, /chatListTime\.test\.ts/);
   assert.match(ci, /test_ios_chat_list_time\.py/);
   assert.match(roadmap, new RegExp(PHRASE.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));

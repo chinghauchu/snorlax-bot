@@ -180,9 +180,9 @@ def test_no_new_http_openapi_intact_stack() -> None:
     assert "static func insert(" in OPT
     assert "static func whileGenerating" in MUTED
     assert "shouldFocusComposerAfterAbort" in STOP
-    assert "version: 0.18.0" in OPENAPI
-    assert "version: 0.18.0" in RUNTIME_OPENAPI
-    assert "version: 0.18.0" in DESKTOP_OPENAPI
+    assert "version: 0.19.0" in OPENAPI
+    assert "version: 0.19.0" in RUNTIME_OPENAPI
+    assert "version: 0.19.0" in DESKTOP_OPENAPI
     assert "v0.60" in OPENAPI
     assert "v0.60" in RUNTIME_OPENAPI
     assert "v0.60" in DESKTOP_OPENAPI

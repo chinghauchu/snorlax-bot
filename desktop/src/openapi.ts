@@ -38,6 +38,78 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/settings/model": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Global default model
+         * @description v0.98. Provider plus free-text model id. Before a PATCH, this
+         *     is the current local model (oMLX, or Spark vLLM when that
+         *     backend is configured). Agents with model null use it.
+         */
+        get: operations["getModelDefault"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Set the global default model
+         * @description v0.98. Saving a default is what switches a mock process onto
+         *     that adapter. omlx stays `http://127.0.0.1:8000/v1` unless the
+         *     process oMLX URL is configured. vllm uses the Spark vLLM URL.
+         */
+        patch: operations["patchModelDefault"];
+        trace?: never;
+    };
+    "/v1/settings/keys": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Masked provider key status
+         * @description v0.98. openai, anthropic, gemini, grok. Local oMLX and Spark
+         *     vLLM are omitted (no key). masked is never the full key.
+         */
+        get: operations["listProviderKeys"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/settings/keys/{provider}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Store a provider API key
+         * @description v0.98. Write-only. The runtime stores the key in
+         *     `{data}/secrets/provider-keys.json` mode 0600. The response
+         *     is masked. The key is never logged.
+         */
+        put: operations["putProviderKey"];
+        post?: never;
+        /** Forget a provider API key */
+        delete: operations["deleteProviderKey"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/agents": {
         parameters: {
             query?: never;
@@ -1114,6 +1186,11 @@ export interface components {
              *     Not a picker for a folder on the host Mac.
              */
             sharedProject: boolean;
+            /**
+             * @description v0.98. Null means Use default (the global Default model).
+             *     Set on kind=agent only. Channels are null.
+             */
+            model?: components["schemas"]["ModelChoice"] | null;
             /** Format: date-time */
             createdAt: string;
             /** Format: date-time */
@@ -1159,6 +1236,53 @@ export interface components {
              *     field only. kind=agent returns 422.
              */
             sharedProject?: boolean;
+            /**
+             * @description v0.98. Omit to leave the override alone. Null clears it
+             *     (Use default). `{ provider, id }` sets it. kind=channel
+             *     is 422, including the seed channel.
+             */
+            model?: components["schemas"]["ModelChoice"] | null;
+        };
+        ModelChoice: {
+            /**
+             * @description omlx is local OpenAI-compatible oMLX
+             *     (`http://127.0.0.1:8000/v1` unless configured). vllm is
+             *     Spark vLLM. openai, anthropic, gemini, and grok are cloud
+             *     adapters. anthropic is the Messages API. gemini is the
+             *     native stream. openai and grok are OpenAI-compatible.
+             * @enum {string}
+             */
+            provider: "omlx" | "vllm" | "openai" | "anthropic" | "gemini" | "grok";
+            /** @description Free-text model id. Not a catalog. */
+            id: string;
+        };
+        ModelDefault: {
+            /** @enum {string} */
+            provider: "omlx" | "vllm" | "openai" | "anthropic" | "gemini" | "grok";
+            /** @description Free-text model id. The unset default is the current local model. */
+            model: string;
+        };
+        ModelDefaultPatch: {
+            /** @enum {string} */
+            provider: "omlx" | "vllm" | "openai" | "anthropic" | "gemini" | "grok";
+            model: string;
+        };
+        ProviderKeyStatus: {
+            /** @enum {string} */
+            provider: "openai" | "anthropic" | "gemini" | "grok";
+            configured: boolean;
+            /**
+             * @description A hint such as `sk-…abcd`. Never the full key. Null when
+             *     configured is false.
+             */
+            masked?: string | null;
+        };
+        ProviderKeyWrite: {
+            /**
+             * @description Write-only. Stored in the runtime secrets file mode 0600.
+             *     The response is ProviderKeyStatus, never this value.
+             */
+            apiKey: string;
         };
         ImageOut: {
             id: string;
@@ -1323,6 +1447,18 @@ export interface components {
              *     turns. Not a channel post.
              */
             routineName?: string | null;
+            /**
+             * @description v0.98. Model id that produced this assistant reply. Clients
+             *     show it as a muted label on that agent's bubble or header.
+             *     Null on user rows and on tool, widget, connect, and approve.
+             */
+            model?: string | null;
+            /**
+             * @description v0.98. Set when this assistant reply is the inline key
+             *     error. content is the sentence; clients render a Settings
+             *     link and do not crash. Null on a normal reply.
+             */
+            modelError?: string | null;
         };
         WidgetOption: {
             label: string;
@@ -1523,6 +1659,11 @@ export interface components {
             senderId?: string;
             senderName?: string;
             senderAvatar?: string | null;
+            /**
+             * @description v0.98. Model id for this streaming assistant reply, so the
+             *     live bubble can show it before message.done.
+             */
+            model?: string | null;
         };
         ToolTrace: {
             id: string;
@@ -1854,6 +1995,124 @@ export interface operations {
                     "application/json": components["schemas"]["Health"];
                 };
             };
+        };
+    };
+    getModelDefault: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Current default */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ModelDefault"];
+                };
+            };
+            401: components["responses"]["Error"];
+        };
+    };
+    patchModelDefault: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ModelDefaultPatch"];
+            };
+        };
+        responses: {
+            /** @description Saved default */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ModelDefault"];
+                };
+            };
+            401: components["responses"]["Error"];
+            422: components["responses"]["Error"];
+        };
+    };
+    listProviderKeys: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description One row per cloud provider */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProviderKeyStatus"][];
+                };
+            };
+            401: components["responses"]["Error"];
+        };
+    };
+    putProviderKey: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                provider: "openai" | "anthropic" | "gemini" | "grok";
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ProviderKeyWrite"];
+            };
+        };
+        responses: {
+            /** @description Masked status. The request apiKey is not echoed. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProviderKeyStatus"];
+                };
+            };
+            401: components["responses"]["Error"];
+            422: components["responses"]["Error"];
+        };
+    };
+    deleteProviderKey: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                provider: "openai" | "anthropic" | "gemini" | "grok";
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Key removed */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Error"];
+            422: components["responses"]["Error"];
         };
     };
     listAgents: {

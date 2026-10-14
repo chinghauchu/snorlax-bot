@@ -60,6 +60,38 @@ struct RuntimeClient: Sendable {
         try await send("v1/agents/\(Self.encode(id))", method: "PATCH", body: patch, expected: 200)
     }
 
+    /// Info-pane save. Encodes `model: null` when the agent uses the default.
+    func patchAgentProfile(_ patch: AgentProfileWrite, id: String) async throws -> Agent {
+        try await send("v1/agents/\(Self.encode(id))", method: "PATCH", body: patch, expected: 200)
+    }
+
+    func getModelDefault() async throws -> ModelDefault {
+        try await get("v1/settings/model")
+    }
+
+    func patchModelDefault(_ body: ModelDefaultPatch) async throws -> ModelDefault {
+        try await send("v1/settings/model", method: "PATCH", body: body, expected: 200)
+    }
+
+    func listProviderKeys() async throws -> [ProviderKeyStatus] {
+        try await get("v1/settings/keys")
+    }
+
+    func putProviderKey(provider: String, apiKey: String) async throws -> ProviderKeyStatus {
+        try await send(
+            "v1/settings/keys/\(Self.encode(provider))",
+            method: "PUT",
+            body: ProviderKeyWrite(apiKey: apiKey),
+            expected: 200
+        )
+    }
+
+    func deleteProviderKey(provider: String) async throws {
+        let request = try makeRequest("v1/settings/keys/\(Self.encode(provider))", method: "DELETE")
+        let (data, response) = try await URLSession.shared.data(for: request)
+        try Self.throwIfNeeded(data: data, response: response, allowed: [204])
+    }
+
     func deleteAgent(id: String) async throws {
         let request = try makeRequest("v1/agents/\(Self.encode(id))", method: "DELETE")
         let (data, response) = try await URLSession.shared.data(for: request)
@@ -450,7 +482,7 @@ struct RuntimeClient: Sendable {
     }
 
     enum StreamEvent: Sendable {
-        case delta(id: String, text: String, senderId: String?, senderName: String?, senderAvatar: String?)
+        case delta(id: String, text: String, senderId: String?, senderName: String?, senderAvatar: String?, model: String?)
         case done(Message)
         case tool(id: String, name: String, summary: String, done: Bool, senderId: String?, senderName: String?)
         case connectUrl(url: String, pluginId: String)
@@ -473,7 +505,8 @@ struct RuntimeClient: Sendable {
                     text: body.delta,
                     senderId: body.senderId,
                     senderName: body.senderName,
-                    senderAvatar: body.senderAvatar
+                    senderAvatar: body.senderAvatar,
+                    model: body.model
                 )
             case "message.done":
                 guard let message = try? decoder.decode(Message.self, from: payload) else { return nil }

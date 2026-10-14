@@ -146,8 +146,7 @@ def test_selection_menu_and_long_press() -> None:
 
 def test_openapi_roadmap_ci_no_computer_pane() -> None:
     for doc in (OPENAPI, RUNTIME_OPENAPI, DESKTOP_OPENAPI):
-        assert "version: 0.18.0" in doc
-        assert "version: 0.19" not in doc
+        assert "version: 0.19.0" in doc
     assert PHRASE in ROADMAP
     assert "/ v0.94 " in ROADMAP
     assert "## 95. v0.94" in SPEC

@@ -148,7 +148,7 @@ def test_actions_only_on_last_bubble_after_complete() -> None:
         DESKTOP_APP.find('className="assistant-md"') : DESKTOP_APP.find(
             'className="assistant-md"'
         )
-        + 4200
+        + 5200
     ]
     bubble_block = md[
         md.find("assistant-bubbles") : md.find("showAssistantCopy")
@@ -177,13 +177,12 @@ def test_waiting_caret_stick_compact_tools_unchanged() -> None:
 
 
 def test_openapi_stays_0180_and_no_computer_pane() -> None:
-    assert "version: 0.18.0" in OPENAPI
-    assert "version: 0.18.0" in RUNTIME_OPENAPI
-    assert "version: 0.18.0" in DESKTOP_OPENAPI
+    assert "version: 0.19.0" in OPENAPI
+    assert "version: 0.19.0" in RUNTIME_OPENAPI
+    assert "version: 0.19.0" in DESKTOP_OPENAPI
     assert "v0.57" in OPENAPI
     assert "v0.57" in RUNTIME_OPENAPI
     assert "v0.57" in DESKTOP_OPENAPI
-    assert "version: 0.19" not in OPENAPI
     assert "computerPane.ts" not in PLAIN
     assert "computerPane.ts" not in CHAT
     assert "computerPane.ts" not in DESKTOP
