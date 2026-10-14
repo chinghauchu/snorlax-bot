@@ -256,6 +256,15 @@ struct AgentListView: View {
             .tag(agent.id)
             .listRowInsets(EdgeInsets(top: 0, leading: 16, bottom: 0, trailing: 16))
             .swipeActions(edge: .leading, allowsFullSwipe: false) {
+                Button {
+                    model.toggleChatMute(agent.id)
+                } label: {
+                    Label(
+                        ChatMute.label(muted: model.isChatMuted(agent.id)),
+                        systemImage: "bell.slash"
+                    )
+                }
+                .tint(Color.accentColor)
                 if archived {
                     Button {
                         model.unarchiveChat(agent.id)
@@ -314,9 +323,11 @@ struct AgentListView: View {
                     enabled: model.isConfigured,
                     archived: archived,
                     pinned: model.isChatPinned(agent.id),
+                    muted: model.isChatMuted(agent.id),
                     unread: model.showsUnreadDot(agent),
                     onRename: { beginRename(agent) },
                     onPin: { model.toggleChatPin(agent.id) },
+                    onMute: { model.toggleChatMute(agent.id) },
                     onArchive: { model.archiveChat(agent.id) },
                     onUnarchive: { model.unarchiveChat(agent.id) },
                     onRead: { model.toggleChatRead(agent.id) },
@@ -404,6 +415,12 @@ private struct AgentRow: View {
                 }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
+            if model.isChatMuted(agent.id) {
+                Image(systemName: "bell.slash")
+                    .font(.system(size: 12))
+                    .foregroundStyle(.secondary)
+                    .accessibilityLabel(ChatMute.glyphLabel)
+            }
             if showsPinGlyph, model.isChatPinned(agent.id) {
                 Image(systemName: "pin.fill")
                     .font(.system(size: 12))
@@ -511,9 +528,11 @@ private struct UserAgentDeleteMenu: ViewModifier {
     let enabled: Bool
     let archived: Bool
     let pinned: Bool
+    let muted: Bool
     let unread: Bool
     var onRename: () -> Void
     var onPin: () -> Void
+    var onMute: () -> Void
     var onArchive: () -> Void
     var onUnarchive: () -> Void
     var onRead: () -> Void
@@ -528,6 +547,7 @@ private struct UserAgentDeleteMenu: ViewModifier {
                 Button(ChatPins.label(pinned: pinned), action: onPin)
                 Button(ChatArchive.archiveLabel, action: onArchive)
             }
+            Button(ChatMute.label(muted: muted), action: onMute)
             Button(ChatUnread.actionLabel(showsDot: unread), action: onRead)
             if enabled {
                 Button("Delete", role: .destructive, action: onDelete)

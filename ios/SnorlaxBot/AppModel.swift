@@ -117,6 +117,10 @@ final class AppModel {
     var archivedChatIDs: [String] = [] {
         didSet { ChatArchive.write(archivedChatIDs) }
     }
+    /// v1.02: muted chat ids. UserDefaults. Messages still arrive.
+    var mutedChatIDs: [String] = [] {
+        didSet { ChatMute.write(mutedChatIDs) }
+    }
     /// App scene is active. A backgrounded app is not focused on the open chat.
     var sceneFocused = true
     private var chatUnread = ChatUnread()
@@ -204,6 +208,7 @@ final class AppModel {
         pinnedChatIDs = ChatPins.read()
         chatNames = ChatNames.read()
         archivedChatIDs = ChatArchive.read()
+        mutedChatIDs = ChatMute.read()
         publishReplyUnread()
     }
 
@@ -362,6 +367,7 @@ final class AppModel {
             let roster = try await client.listAgents()
             agents = roster
             retainChatPins(against: roster)
+            retainChatMutes(against: roster)
             retainChatArchives(against: roster)
             retainChatNames(against: roster)
             retainChatPreviews()
@@ -584,6 +590,7 @@ final class AppModel {
             _ = chatUnread.retain(Set(agents.map(\.id)))
             _ = chatLastSeen.retain(Set(agents.map(\.id)))
             retainChatPins(against: agents)
+            retainChatMutes(against: agents)
             retainChatArchives(against: agents)
             retainChatNames(against: agents)
             publishReplyUnread()
@@ -1254,7 +1261,8 @@ final class AppModel {
                     toolTraces = []
                     prunePreviews()
                     if !agent.isChannel {
-                        if let channelId = messages.compactMap({ $0.visibleJump(in: self.agents)?.channelId }).last {
+                        if let channelId = messages.compactMap({ $0.visibleJump(in: self.agents)?.channelId }).last,
+                           ChatMute.replyMayMarkUnread(muted: isChatMuted(channelId)) {
                             unreadChannelIDs.insert(channelId)
                         }
                     }
@@ -1703,6 +1711,7 @@ final class AppModel {
         do {
             agents = try await client.listAgents()
             retainChatPins(against: agents)
+            retainChatMutes(against: agents)
             retainChatArchives(against: agents)
             retainChatNames(against: agents)
             retainChatPreviews()
@@ -1766,6 +1775,31 @@ final class AppModel {
 
     func isChatArchived(_ id: String) -> Bool {
         ChatArchive.contains(archivedChatIDs, id: id)
+    }
+
+    func isChatMuted(_ id: String) -> Bool {
+        mutedChatIDs.contains(id)
+    }
+
+    /// Mute clears the current dot. Later replies do not mark it.
+    /// Unmute does not invent a dot. Opening the chat still works.
+    func toggleChatMute(_ id: String) {
+        guard !id.isEmpty else { return }
+        let muting = !isChatMuted(id)
+        mutedChatIDs = ChatMute.toggle(mutedChatIDs, id: id)
+        if muting {
+            _ = chatUnread.clear(id)
+            unreadChannelIDs.remove(id)
+        }
+        publishReplyUnread()
+    }
+
+    /// A chat that left the roster loses its mute.
+    private func retainChatMutes(against roster: [Agent]) {
+        let next = ChatMute.retain(mutedChatIDs, keep: Set(roster.map(\.id)))
+        if next != mutedChatIDs {
+            mutedChatIDs = next
+        }
     }
 
     /// Archived chats still on the roster, in roster order. Pins are kept but not shown here.
@@ -1886,6 +1920,7 @@ final class AppModel {
             }
             return
         }
+        guard ChatMute.replyMayMarkUnread(muted: isChatMuted(id)) else { return }
         guard chatUnread.mark(id) else { return }
         publishReplyUnread()
     }
@@ -1899,11 +1934,14 @@ final class AppModel {
     }
 
     func showsUnreadDot(_ agent: Agent) -> Bool {
-        ChatUnread.showsDot(
-            chatId: agent.id,
-            replyUnread: replyUnreadIDs,
-            handoffUnread: unreadChannelIDs,
-            channel: agent.isChannel
+        ChatMute.paintsUnreadAccent(
+            muted: isChatMuted(agent.id),
+            wouldPaint: ChatUnread.showsDot(
+                chatId: agent.id,
+                replyUnread: replyUnreadIDs,
+                handoffUnread: unreadChannelIDs,
+                channel: agent.isChannel
+            )
         )
     }
 
@@ -1924,6 +1962,7 @@ final class AppModel {
     /// follows only when badge permission is already granted.
     private func publishReplyUnread() {
         replyUnreadIDs = chatUnread.snapshot
+        replyUnreadIDs = ChatMute.audible(replyUnreadIDs, muted: mutedChatIDs)
         let count = UnreadOutside.count(replyUnreadIDs)
         Task { await UnreadOutside.applyIconBadge(count: count) }
     }
@@ -2052,6 +2091,7 @@ final class AppModel {
     }
 
     private func noteFinishedAssistantReply(chatId: String, message: Message) {
+        guard ChatMute.replyMayMarkUnread(muted: isChatMuted(chatId)) else { return }
         let reply = ChatUnread.ReplySnapshot(
             fromUser: message.isFromUser,
             kindMessage: message.isKindMessage,
