@@ -87,6 +87,16 @@ struct AgentListView: View {
             .searchable(text: $chatQuery, prompt: ChatSwitcher.placeholder)
             .accessibilityInputLabels([ChatSwitcher.inputLabel])
             .toolbar {
+                if model.hasAnyUnreadChat {
+                    ToolbarItem(placement: .topBarLeading) {
+                        Button(ChatUnread.markAllReadLabel) {
+                            model.markAllChatsRead()
+                        }
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundStyle(.secondary)
+                        .accessibilityLabel(ChatUnread.markAllReadLabel)
+                    }
+                }
                 ToolbarItem(placement: .primaryAction) {
                     Menu {
                         Button("New agent") {

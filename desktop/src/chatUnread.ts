@@ -13,6 +13,9 @@
  * clears a dotted chat. Mark as read also drops a channel handoff
  * dot so the accent dot leaves the row. Opening the chat still
  * clears this set. No new storage key.
+ * v1.01: Mark all as read empties this same set, including archived
+ * chats. Those chats stay archived. Channel handoff dots are a
+ * separate in-memory set the caller clears too. No new storage key.
  * Keep in lockstep with `ios/SnorlaxBot/ChatUnread.swift`.
  */
 
@@ -20,10 +23,29 @@ export const CHAT_UNREAD_KEY = "snorlax.chatUnread";
 
 export const MARK_UNREAD_LABEL = "Mark as unread";
 export const MARK_READ_LABEL = "Mark as read";
+export const MARK_ALL_READ_LABEL = "Mark all as read";
 
 /** A dotted row offers Mark as read. A read row offers Mark as unread. */
 export function unreadActionLabel(showsDot: boolean): string {
   return showsDot ? MARK_READ_LABEL : MARK_UNREAD_LABEL;
+}
+
+/**
+ * The Mark all as read control is shown only when a chat still paints
+ * an accent dot. Empty strings are not chats. Archived ids count:
+ * they stay in this set until cleared.
+ */
+export function anyChatUnread(
+  replyUnread: ReadonlySet<string>,
+  handoffUnread: ReadonlySet<string>,
+): boolean {
+  for (const id of replyUnread) {
+    if (id.length > 0) return true;
+  }
+  for (const id of handoffUnread) {
+    if (id.length > 0) return true;
+  }
+  return false;
 }
 
 /**
@@ -173,6 +195,17 @@ export class ChatUnread {
   /** Opening a chat clears its dot. Returns true when the set changed. */
   clear(chatId: string): boolean {
     if (!chatId || !this.ids.delete(chatId)) return false;
+    this.persist();
+    return true;
+  }
+
+  /**
+   * Mark all as read. Drops every id, including archived chats.
+   * Returns true when the set changed. Writes the same storage key.
+   */
+  clearAll(): boolean {
+    if (this.ids.size === 0) return false;
+    this.ids.clear();
     this.persist();
     return true;
   }

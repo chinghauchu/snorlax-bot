@@ -13,15 +13,27 @@ import Foundation
 /// clear a dotted chat. Mark as read also drops a channel handoff
 /// dot so the accent dot leaves the row. Opening the chat still
 /// clears this set. No new storage key.
+/// v1.01: Mark all as read empties this same set, including archived
+/// chats. Those chats stay archived. Channel handoff dots are a
+/// separate in-memory set the caller clears too. No new storage key.
 /// Keep in lockstep with `desktop/src/chatUnread.ts`.
 struct ChatUnread {
     static let storageKey = "snorlax.chatUnread"
     static let markUnreadLabel = "Mark as unread"
     static let markReadLabel = "Mark as read"
+    static let markAllReadLabel = "Mark all as read"
 
     /// A dotted row offers Mark as read. A read row offers Mark as unread.
     static func actionLabel(showsDot: Bool) -> String {
         showsDot ? markReadLabel : markUnreadLabel
+    }
+
+    /// The Mark all as read control is shown only when a chat still
+    /// paints an accent dot. Empty strings are not chats. Archived
+    /// ids count: they stay in this set until cleared.
+    static func anyChatUnread(reply: Set<String>, handoff: Set<String>) -> Bool {
+        if reply.contains(where: { !$0.isEmpty }) { return true }
+        return handoff.contains(where: { !$0.isEmpty })
     }
 
     /// The v0.70 accent dot. Reply unread is the persisted set. A
@@ -71,6 +83,16 @@ struct ChatUnread {
     @discardableResult
     mutating func clear(_ chatId: String) -> Bool {
         guard ids.remove(chatId) != nil else { return false }
+        persist()
+        return true
+    }
+
+    /// Mark all as read. Drops every id, including archived chats.
+    /// Returns true when the set changed. Writes the same storage key.
+    @discardableResult
+    mutating func clearAll() -> Bool {
+        guard !ids.isEmpty else { return false }
+        ids = []
         persist()
         return true
     }

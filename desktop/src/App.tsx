@@ -299,6 +299,8 @@ import {
 } from "./chatDrafts";
 import {
   ChatUnread,
+  MARK_ALL_READ_LABEL,
+  anyChatUnread,
   browserUnreadStorage,
   isFinishedAssistantReply,
   replyMarksUnread,
@@ -1018,6 +1020,15 @@ export function App() {
     }
     if (!chatUnread.current.mark(id)) return;
     publishReplyUnread();
+  }
+  // v1.01: one control clears every unread dot. Archived chats in
+  // the persisted set are cleared too and stay archived. Channel
+  // handoff dots leave so the Unread filter can show its empty state.
+  // Pins, names, and the All / Unread choice stay. No new storage key.
+  function onMarkAllRead() {
+    const cleared = chatUnread.current.clearAll();
+    setUnreadIds((prev) => (prev.size === 0 ? prev : new Set<string>()));
+    if (cleared) publishReplyUnread();
   }
   function retainPins(keep: ReadonlySet<string>) {
     setPinnedChatIds((current) => {
@@ -4888,6 +4899,13 @@ export function App() {
             {FILTER_UNREAD_LABEL}
           </button>
         </div>
+        {anyChatUnread(replyUnreadIds, unreadIds) ? (
+          <div className="roster-mark-all">
+            <button type="button" onClick={onMarkAllRead}>
+              {MARK_ALL_READ_LABEL}
+            </button>
+          </div>
+        ) : null}
         <ul className="roster">
           {showUnreadEmpty(chatListFilter, unreadRosterCount) ? (
             <li className="roster-empty">{UNREAD_EMPTY_LABEL}</li>
