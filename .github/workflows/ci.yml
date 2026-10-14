@@ -120,3 +120,4 @@ jobs:
           python3 ios/scripts/test_ios_copy_last_reply.py
           python3 ios/scripts/test_ios_mark_all_read.py
           python3 ios/scripts/test_ios_chat_mute.py
+          python3 ios/scripts/test_ios_transcript_scroll.py

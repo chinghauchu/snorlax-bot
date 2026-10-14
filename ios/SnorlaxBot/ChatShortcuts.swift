@@ -4,11 +4,13 @@ import SwiftUI
 /// v0.73: gestures and hardware-keyboard shortcuts that already exist
 /// on the chat screen. Long-press actions come from the message menu
 /// and the approve-command copy. Hardware keys are `UIKeyCommand`
-/// (Escape, Up, Option+Up/Down, ⌘L / ⌃L, ⌘⇧C / ⌃⇧C), `.keyboardShortcut`
-/// (Cmd-F), and the composer Return / Shift-Return presses. ⌘L focuses
-/// the composer and does not insert or send. ⌘⇧C copies the last
-/// assistant reply and does not send. No Cmd-K on iOS (the
-/// switcher is the chat-list search field). No HTTP.
+/// (Escape, Up, Option+Up/Down, ⌘L / ⌃L, ⌘⇧C / ⌃⇧C), `.onKeyPress`
+/// (Page Up / Page Down, ⌘↑ / ⌘↓), `.keyboardShortcut` (Cmd-F), and
+/// the composer Return / Shift-Return presses. ⌘L focuses the composer
+/// and does not insert or send. ⌘⇧C copies the last assistant reply
+/// and does not send. Page Up / Page Down scroll the transcript.
+/// ⌘↑ / ⌘↓ jump to the oldest or latest messages. No Cmd-K on iOS
+/// (the switcher is the chat-list search field). No HTTP.
 /// Keep in lockstep with `desktop/src/chatShortcuts.ts`.
 enum ChatShortcuts {
     static let title = "Gestures & shortcuts"
@@ -65,6 +67,8 @@ enum ChatShortcuts {
         Row(id: "chat-nav", keys: ChatNav.keysLabel, action: ChatNav.action),
         Row(id: "focus", keys: FocusComposer.keysLabel, action: FocusComposer.action),
         Row(id: "copy-last", keys: CopyLastReply.keysLabel, action: CopyLastReply.action),
+        Row(id: "page", keys: TranscriptScroll.pageKeysLabel, action: TranscriptScroll.pageAction),
+        Row(id: "transcript-edge", keys: TranscriptScroll.edgeKeysLabel, action: TranscriptScroll.edgeAction),
         Row(id: "find", keys: "⌘F", action: "Find in chat"),
         Row(
             id: "find-step",

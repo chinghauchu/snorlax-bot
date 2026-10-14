@@ -150,6 +150,12 @@ import {
   lastAssistantReply,
 } from "./copyLastReply";
 import {
+  nextTranscriptScrollTop,
+  prefersJumpToLatest,
+  transcriptScrollAction,
+  transcriptScrollBlocked,
+} from "./transcriptScroll";
+import {
   loadInitialRuntimeUrl,
   normalizeRuntimeUrl,
 } from "./runtimeUrl";
@@ -4671,6 +4677,79 @@ export function App() {
     switcherBlocked,
     mentionOpen,
     skillMenuOpen,
+  ]);
+
+  // v1.03: PageUp / PageDown scroll the loaded transcript one viewport.
+  // Cmd/Ctrl-End uses Jump to latest so stick-to-bottom re-arms.
+  // Cmd/Ctrl-Home jumps to the oldest loaded messages. Text fields,
+  // find, the switcher, shortcuts, rename, the lightbox, and cards
+  // keep the keys. The offset change is instant.
+  useEffect(() => {
+    const onTranscriptScrollKey = (event: globalThis.KeyboardEvent) => {
+      if (event.defaultPrevented) return;
+      const action = transcriptScrollAction({
+        key: event.key,
+        metaKey: event.metaKey,
+        ctrlKey: event.ctrlKey,
+        altKey: event.altKey,
+        shiftKey: event.shiftKey,
+      });
+      if (!action) return;
+      const gate = {
+        chatOpen: active != null,
+        composing: isComposerComposing(event),
+        inTextField: focusIsTextField(event.target),
+        inCard: focusInsideCard(event.target),
+        findOpen,
+        switchOpen,
+        shortcutsOpen,
+        renaming: renamingId != null,
+        lightboxOpen: lightboxTarget != null,
+        menuOpen: contextMenu != null,
+        blocked: switcherBlocked || mentionOpen || skillMenuOpen,
+      };
+      if (transcriptScrollBlocked(gate)) return;
+      event.preventDefault();
+      event.stopPropagation();
+      if (prefersJumpToLatest(action)) {
+        onJumpLatest();
+        return;
+      }
+      const el = scroller.current;
+      if (!el) return;
+      const box = {
+        scrollTop: el.scrollTop,
+        scrollHeight: el.scrollHeight,
+        clientHeight: el.clientHeight,
+      };
+      const nextTop = nextTranscriptScrollTop(box, action);
+      el.scrollTop = nextTop;
+      applyStick(
+        onUserScroll(
+          stickRef.current,
+          isNearBottom({ ...box, scrollTop: nextTop }, NEAR_BOTTOM_PX),
+        ),
+      );
+      captureOpenReadingPlace();
+    };
+    window.addEventListener("keydown", onTranscriptScrollKey, true);
+    return () => {
+      window.removeEventListener("keydown", onTranscriptScrollKey, true);
+    };
+  }, [
+    active,
+    findOpen,
+    switchOpen,
+    shortcutsOpen,
+    renamingId,
+    lightboxTarget,
+    contextMenu,
+    switcherBlocked,
+    mentionOpen,
+    skillMenuOpen,
+    onJumpLatest,
+    applyStick,
+    captureOpenReadingPlace,
   ]);
 
   useLayoutEffect(() => {

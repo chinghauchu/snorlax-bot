@@ -29,6 +29,12 @@ struct ChatView: View {
     @State private var readingNearBottom = true
     @State private var readingFrames: [ReadingPlace.Frame] = []
     @FocusState private var findFieldFocused: Bool
+    /// v1.03: programmatic transcript offset. Geometry lags a key repeat.
+    @State private var transcriptPosition = ScrollPosition()
+    @State private var scrollBox = TranscriptScroll.Box.zero
+    @State private var commandedY: CGFloat?
+    @State private var previousGeometryY: CGFloat = 0
+    @State private var keyboardJumpToken = 0
 
     private var agent: Agent {
         model.visibleAgents.first(where: { $0.id == agentID })
@@ -78,6 +84,9 @@ struct ChatView: View {
         )
         .onKeyPress(phases: .down) { press in
             if chatNavKey(press) == .handled {
+                return .handled
+            }
+            if transcriptScrollKey(press) == .handled {
                 return .handled
             }
             if copyLastReplyKey(press) == .handled {
@@ -184,6 +193,66 @@ struct ChatView: View {
             guard wants, model.canCompose || model.isSending else { return }
             composerFocused = true
             model.wantsComposerFocus = false
+        }
+    }
+
+    /// Hardware Page Up / Page Down and ⌘↑ / ⌘↓ when focus is not in a
+    /// text field. The composer, find, lightbox, and shortcuts sheet
+    /// keep those keys. ⌘↓ uses the same Jump path as the chip.
+    private func transcriptScrollKey(_ press: KeyPress) -> KeyPress.Result {
+        if composerFocused || findOpen || findFieldFocused || lightbox != nil || shortcutsOpen {
+            return .ignored
+        }
+        if model.computerTakeoverOpen || model.showProfile || model.showSettings {
+            return .ignored
+        }
+        if model.skillMenuOpen() { return .ignored }
+        if TranscriptScroll.textInputIsFirstResponder() { return .ignored }
+        guard hasRealAgent else { return .ignored }
+        guard let action = TranscriptScroll.action(
+            key: transcriptScrollKeyName(press),
+            command: press.modifiers.contains(.command),
+            control: press.modifiers.contains(.control),
+            option: press.modifiers.contains(.option),
+            shift: press.modifiers.contains(.shift)
+        ) else { return .ignored }
+        applyTranscriptScroll(action)
+        return .handled
+    }
+
+    private func transcriptScrollKeyName(_ press: KeyPress) -> TranscriptScroll.Key {
+        switch press.key {
+        case .pageUp: return .pageUp
+        case .pageDown: return .pageDown
+        case .home: return .home
+        case .end: return .end
+        case .upArrow: return .up
+        case .downArrow: return .down
+        default: return .other
+        }
+    }
+
+    /// Page and Home assign an instant offset. End re-arms stick the
+    /// same way Jump to latest does, then the transcript snaps.
+    private func applyTranscriptScroll(_ action: TranscriptScroll.Action) {
+        if TranscriptScroll.prefersJumpToLatest(action) {
+            commandedY = nil
+            stick = StickToBottom.onJumpToLatest()
+            keyboardJumpToken += 1
+            return
+        }
+        var box = scrollBox
+        if let commandedY {
+            box.offsetY = commandedY
+        }
+        let next = TranscriptScroll.offset(box: box, action: action)
+        commandedY = next
+        let near = TranscriptScroll.isNearBottom(offsetY: next, box: box)
+        stick = StickToBottom.onUserScroll(state: stick, nearBottom: near)
+        readingNearBottom = near
+        let transaction = TranscriptScroll.transaction(reduceMotion: reduceMotion)
+        withTransaction(transaction) {
+            transcriptPosition.scrollTo(point: CGPoint(x: 0, y: next))
         }
     }
 
@@ -731,6 +800,7 @@ struct ChatView: View {
                 .padding(.vertical, 8)
                 .coordinateSpace(name: ReadingPlace.coordinateSpace)
             }
+            .scrollPosition($transcriptPosition)
             .onScrollGeometryChange(for: Bool.self) { geo in
                 StickToBottom.isNearBottom(
                     contentHeight: geo.contentSize.height,
@@ -738,9 +808,37 @@ struct ChatView: View {
                     offsetY: geo.contentOffset.y
                 )
             } action: { _, nearBottom in
+                // A keyboard page owns stick until geometry catches the offset.
+                if commandedY != nil { return }
                 readingNearBottom = nearBottom
                 stick = StickToBottom.onUserScroll(state: stick, nearBottom: nearBottom)
                 publishReadingPlace(nearBottom: nearBottom)
+            }
+            .onScrollGeometryChange(for: TranscriptScroll.Box.self) { geo in
+                TranscriptScroll.Box(
+                    offsetY: geo.contentOffset.y,
+                    viewport: geo.containerSize.height,
+                    content: geo.contentSize.height
+                )
+            } action: { _, geometry in
+                let merged = TranscriptScroll.reconcile(
+                    commandedY: commandedY,
+                    previousGeometryY: previousGeometryY,
+                    geometry: geometry
+                )
+                let arrived = commandedY != nil && merged.commandedY == nil
+                commandedY = merged.commandedY
+                previousGeometryY = merged.previousGeometryY
+                scrollBox = merged.box
+                if arrived {
+                    let near = TranscriptScroll.isNearBottom(
+                        offsetY: geometry.offsetY,
+                        box: geometry
+                    )
+                    readingNearBottom = near
+                    stick = StickToBottom.onUserScroll(state: stick, nearBottom: near)
+                    publishReadingPlace(nearBottom: near)
+                }
             }
             .onScrollGeometryChange(for: CGFloat.self) { geo in
                 geo.contentOffset.y
@@ -766,6 +864,19 @@ struct ChatView: View {
             }
             .onChange(of: model.stickBump) { _, _ in
                 snapToBottom(proxy)
+            }
+            .onChange(of: keyboardJumpToken) { _, token in
+                guard token > 0 else { return }
+                let transaction = TranscriptScroll.transaction(reduceMotion: reduceMotion)
+                withTransaction(transaction) {
+                    snapToBottom(proxy)
+                    transcriptPosition.scrollTo(edge: .bottom)
+                }
+                if StopGenerating.shouldFocusComposerAfterAbort(
+                    hardwareKeyboardAttached: StopGenerating.hardwareKeyboardAttached
+                ) {
+                    model.wantsComposerFocus = true
+                }
             }
             .onChange(of: model.readingTranscriptToken) { _, _ in
                 if applyPendingRestore(proxy) { return }

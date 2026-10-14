@@ -122,6 +122,8 @@ test("the overlay lists only shortcuts that already have handlers", () => {
       "newline",
       "focus",
       "copy-last",
+      "page",
+      "transcript-edge",
       "escape",
       "recall",
       "chat-nav",
@@ -139,6 +141,8 @@ test("the overlay lists only shortcuts that already have handlers", () => {
   assert.equal(action.newline, "New line");
   assert.equal(action.focus, "Focus the composer");
   assert.equal(action["copy-last"], "Copy the last reply");
+  assert.equal(action.page, "Scroll the transcript");
+  assert.equal(action["transcript-edge"], "Oldest or latest messages");
   assert.equal(action.escape, "Stop, close, or jump");
   assert.equal(action.recall, "Recall last message");
   assert.equal(action["chat-nav"], "Previous or next chat");
