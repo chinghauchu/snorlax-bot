@@ -25,14 +25,16 @@ export type ChatShortcut = {
  * (Option on macOS) opens the previous or next visible chat.
  * Cmd/Ctrl-F finds. Cmd/Ctrl-K switches. Cmd/Ctrl-Shift-I opens info.
  * Cmd/Ctrl-V pastes an image or file. Cmd/Ctrl-L focuses the composer
- * and does not insert (v0.99). Find's Enter / Shift-Enter steps
- * matches. The switcher uses Up / Down / Enter. Mention and skill
- * menus use Up / Down / Enter / Tab.
+ * and does not insert (v0.99). Cmd/Ctrl-Shift-C copies the last
+ * assistant reply (v1.00). Find's Enter / Shift-Enter steps matches.
+ * The switcher uses Up / Down / Enter. Mention and skill menus use
+ * Up / Down / Enter / Tab.
  */
 export const CHAT_SHORTCUTS: readonly ChatShortcut[] = [
   { id: "send", keys: "Enter", action: "Send" },
   { id: "newline", keys: "Shift Enter", action: "New line" },
   { id: "focus", keys: "Cmd/Ctrl L", action: "Focus the composer" },
+  { id: "copy-last", keys: "Cmd/Ctrl Shift C", action: "Copy the last reply" },
   { id: "escape", keys: "Esc", action: "Stop, close, or jump" },
   { id: "recall", keys: "↑", action: "Recall last message" },
   { id: "chat-nav", keys: "Alt ↑ / Alt ↓", action: "Previous or next chat" },

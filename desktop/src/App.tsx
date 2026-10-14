@@ -145,6 +145,11 @@ import {
   typeToFocusCharacter,
 } from "./focusComposerKey";
 import {
+  copyLastReplyBlocked,
+  isCopyLastReplyChord,
+  lastAssistantReply,
+} from "./copyLastReply";
+import {
   loadInitialRuntimeUrl,
   normalizeRuntimeUrl,
 } from "./runtimeUrl";
@@ -753,6 +758,7 @@ function MessageActions({
   speaking,
   showRegenerate,
   disabled,
+  shortcutCopied,
   onSpeak,
   onRegenerate,
 }: {
@@ -760,6 +766,8 @@ function MessageActions({
   speaking: boolean;
   showRegenerate: boolean;
   disabled?: boolean;
+  /** v1.00: the keyboard shortcut flashed Copied on this message. */
+  shortcutCopied?: boolean;
   onSpeak: () => void;
   onRegenerate: () => void;
 }) {
@@ -780,7 +788,7 @@ function MessageActions({
     }, MESSAGE_COPY_FEEDBACK_MS);
   }
   const speakName = speakLabel(speaking);
-  const copiedLabel = copiedFeedbackLabel(copied);
+  const copiedLabel = copiedFeedbackLabel(Boolean(copied || shortcutCopied));
   return (
     <div className="message-actions">
       <span className="message-copy">
@@ -1254,6 +1262,16 @@ export function App() {
   const [switchQuery, setSwitchQuery] = useState("");
   const [switchIndex, setSwitchIndex] = useState(0);
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
+  const [shortcutCopiedId, setShortcutCopiedId] = useState<string | null>(null);
+  const shortcutCopyTimer = useRef<number | null>(null);
+  const copyLastReplyRef = useRef<() => void>(() => {});
+  useEffect(() => {
+    return () => {
+      if (shortcutCopyTimer.current != null) {
+        window.clearTimeout(shortcutCopyTimer.current);
+      }
+    };
+  }, []);
 
   const scroller = useRef<HTMLDivElement>(null);
   const findInputRef = useRef<HTMLInputElement>(null);
@@ -4475,6 +4493,75 @@ export function App() {
     placeCaretAtEnd,
   ]);
 
+  // v1.00: Cmd/Ctrl-Shift-C copies the latest completed assistant reply.
+  // A streaming reply is skipped. The composer may stay focused.
+  copyLastReplyRef.current = () => {
+    const reply = lastAssistantReply(visibleMessages, {
+      busy,
+      liveAssistantIdx,
+    });
+    if (!reply?.content) return;
+    void copyText(reply.content);
+    setShortcutCopiedId(reply.id);
+    if (shortcutCopyTimer.current != null) {
+      window.clearTimeout(shortcutCopyTimer.current);
+    }
+    const copiedId = reply.id;
+    shortcutCopyTimer.current = window.setTimeout(() => {
+      setShortcutCopiedId((current) => (current === copiedId ? null : current));
+      shortcutCopyTimer.current = null;
+    }, MESSAGE_COPY_FEEDBACK_MS);
+  };
+
+  useEffect(() => {
+    const onCopyLastReply = (event: globalThis.KeyboardEvent) => {
+      if (event.defaultPrevented) return;
+      if (
+        !isCopyLastReplyChord({
+          key: event.key,
+          metaKey: event.metaKey,
+          ctrlKey: event.ctrlKey,
+          altKey: event.altKey,
+          shiftKey: event.shiftKey,
+          repeat: event.repeat,
+        })
+      ) {
+        return;
+      }
+      const gate = {
+        chatOpen: active != null,
+        composing: isComposerComposing(event),
+        inCard: focusInsideCard(event.target),
+        findOpen,
+        switchOpen,
+        shortcutsOpen,
+        renaming: renamingId != null,
+        lightboxOpen: lightboxTarget != null,
+        menuOpen: contextMenu != null,
+        blocked: switcherBlocked || mentionOpen || skillMenuOpen,
+      };
+      if (copyLastReplyBlocked(gate)) return;
+      event.preventDefault();
+      event.stopPropagation();
+      copyLastReplyRef.current();
+    };
+    window.addEventListener("keydown", onCopyLastReply, true);
+    return () => {
+      window.removeEventListener("keydown", onCopyLastReply, true);
+    };
+  }, [
+    active,
+    findOpen,
+    switchOpen,
+    shortcutsOpen,
+    renamingId,
+    lightboxTarget,
+    contextMenu,
+    switcherBlocked,
+    mentionOpen,
+    skillMenuOpen,
+  ]);
+
   useLayoutEffect(() => {
     if (!switchOpen || !activeSwitch) return;
     const row = document.querySelector(
@@ -5369,6 +5456,7 @@ export function App() {
                               streaming: busy,
                             })}
                             disabled={busy}
+                            shortcutCopied={shortcutCopiedId === message.id}
                             onSpeak={() => void toggleSpeak(message.id, message.content)}
                             onRegenerate={() => void onRegenerate()}
                           />
