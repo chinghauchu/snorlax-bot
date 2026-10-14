@@ -127,6 +127,7 @@ import {
   recallArmedAfterEdit,
 } from "./recallDraft";
 import { backspaceRemovesLastChip, withoutLastChip } from "./backspaceChip";
+import { adjacentChatId, chatNavDirection } from "./chatNav";
 import {
   loadInitialRuntimeUrl,
   normalizeRuntimeUrl,
@@ -4086,6 +4087,52 @@ export function App() {
     window.addEventListener("keydown", onSwitcherKey, true);
     return () => window.removeEventListener("keydown", onSwitcherKey, true);
   }, [switchOpen, switchIndex, switchHits, activeId]);
+
+  const visibleChatKey = [...pinnedAgents, ...restAgents]
+    .map((agent) => agent.id)
+    .join("\u0000");
+  const selectAgentRef = useRef(selectAgent);
+  selectAgentRef.current = selectAgent;
+
+  useEffect(() => {
+    const ids = visibleChatKey ? visibleChatKey.split("\u0000") : [];
+    const onChatNav = (event: globalThis.KeyboardEvent) => {
+      const direction = chatNavDirection({
+        key: event.key,
+        altKey: event.altKey,
+        metaKey: event.metaKey,
+        ctrlKey: event.ctrlKey,
+        shiftKey: event.shiftKey,
+        composing: isComposerComposing(event),
+        findOpen,
+        switchOpen,
+        blocked:
+          shortcutsOpen ||
+          mentionOpen ||
+          skillMenuOpen ||
+          switcherBlocked ||
+          lightboxTarget != null,
+      });
+      if (direction == null) return;
+      event.preventDefault();
+      event.stopPropagation();
+      const next = adjacentChatId(ids, activeId, direction);
+      if (!next) return;
+      void selectAgentRef.current(next);
+    };
+    window.addEventListener("keydown", onChatNav, true);
+    return () => window.removeEventListener("keydown", onChatNav, true);
+  }, [
+    visibleChatKey,
+    activeId,
+    findOpen,
+    switchOpen,
+    shortcutsOpen,
+    mentionOpen,
+    skillMenuOpen,
+    switcherBlocked,
+    lightboxTarget,
+  ]);
 
   useLayoutEffect(() => {
     if (!switchOpen || !activeSwitch) return;

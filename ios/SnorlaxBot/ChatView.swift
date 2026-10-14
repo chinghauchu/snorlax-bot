@@ -67,6 +67,9 @@ struct ChatView: View {
                 activeEnd: activeHit?.end ?? -1
             )
         )
+        .onKeyPress(phases: .down) { press in
+            chatNavKey(press)
+        }
         .navigationTitle(agent.name)
         .navigationBarTitleDisplayMode(.inline)
         .navigationBarBackButtonHidden(model.threadID != nil && agent.isChannel)
@@ -167,6 +170,32 @@ struct ChatView: View {
             composerFocused = true
             model.wantsComposerFocus = false
         }
+    }
+
+    /// Hardware Option+Up / Option+Down when the composer is not first
+    /// responder. The composer handles the same chord itself, and find
+    /// keeps plain arrows plus Return. IME is filtered in the text view.
+    private func chatNavKey(_ press: KeyPress) -> KeyPress.Result {
+        if composerFocused || findOpen || findFieldFocused || lightbox != nil || shortcutsOpen {
+            return .ignored
+        }
+        let key: ChatNav.Key
+        switch press.key {
+        case .upArrow: key = .up
+        case .downArrow: key = .down
+        default: key = .other
+        }
+        guard let direction = ChatNav.direction(
+            key: key,
+            option: press.modifiers.contains(.option),
+            command: press.modifiers.contains(.command),
+            control: press.modifiers.contains(.control),
+            shift: press.modifiers.contains(.shift),
+            composing: false,
+            findOpen: findOpen
+        ) else { return .ignored }
+        model.openAdjacentChat(direction: direction)
+        return .handled
     }
 
     private func openFind() {
@@ -1190,6 +1219,10 @@ private struct ComposerBar: View {
                     },
                     onArrowUpRecall: {
                         model.recallLastSentFromArrowUp()
+                    },
+                    onChatNav: { direction in
+                        guard !findOpen, lightbox == nil, !shortcutsOpen else { return }
+                        model.openAdjacentChat(direction: direction)
                     },
                     onBackspaceRemoveChip: {
                         model.removeLastPendingChipFromBackspace()

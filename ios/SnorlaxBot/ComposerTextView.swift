@@ -20,6 +20,9 @@ struct ComposerTextView: UIViewRepresentable {
     var onEscapeStop: ((Bool) -> Void)? = nil
     /// v0.68: hardware Up-arrow recalls the latest user message when empty.
     var onArrowUpRecall: (() -> Void)? = nil
+    /// v0.92: Option+Up / Option+Down opens the previous or next visible chat.
+    /// The chat view ignores this while find is open. IME is filtered here.
+    var onChatNav: ((Int) -> Void)? = nil
     /// v0.87: empty composer + Delete removes the last pending chip.
     /// Hardware Delete and the on-screen keyboard both call `deleteBackward`.
     /// Returns true when a chip was removed.
@@ -47,6 +50,9 @@ struct ComposerTextView: UIViewRepresentable {
         }
         view.onArrowUpRecall = { [coordinator = context.coordinator] in
             coordinator.parent.onArrowUpRecall?()
+        }
+        view.onChatNav = { [coordinator = context.coordinator] direction in
+            coordinator.parent.onChatNav?(direction)
         }
         view.onBackspaceRemoveChip = { [coordinator = context.coordinator] in
             coordinator.parent.onBackspaceRemoveChip?() ?? false
@@ -81,6 +87,9 @@ struct ComposerTextView: UIViewRepresentable {
         }
         view.onArrowUpRecall = { [coordinator = context.coordinator] in
             coordinator.parent.onArrowUpRecall?()
+        }
+        view.onChatNav = { [coordinator = context.coordinator] direction in
+            coordinator.parent.onChatNav?(direction)
         }
         view.onBackspaceRemoveChip = { [coordinator = context.coordinator] in
             coordinator.parent.onBackspaceRemoveChip?() ?? false
@@ -239,6 +248,7 @@ final class ComposerUITextView: UITextView {
     var onPasteAttachments: (([ComposerPasteboard.Attachment]) -> Void)?
     var onEscapeStop: ((Bool) -> Void)?
     var onArrowUpRecall: (() -> Void)?
+    var onChatNav: ((Int) -> Void)?
     var onBackspaceRemoveChip: (() -> Bool)?
     var sendMuted = false
     /// Hardware Delete with Shift/Alt/Cmd/Ctrl. Software Delete leaves this false.
@@ -303,7 +313,30 @@ final class ComposerUITextView: UITextView {
             up.wantsPriorityOverSystemBehavior = true
             commands.append(up)
         }
+        // IME keeps Option+arrows while marked text is composing.
+        if markedTextRange == nil {
+            commands.append(contentsOf: chatNavCommands())
+        }
         return commands
+    }
+
+    /// Option+Up / Option+Down. Plain Up stays the recall command above.
+    private func chatNavCommands() -> [UIKeyCommand] {
+        let up = UIKeyCommand(
+            title: ChatNav.action,
+            action: #selector(chatNavUp),
+            input: UIKeyCommand.inputUpArrow,
+            modifierFlags: .alternate
+        )
+        let down = UIKeyCommand(
+            title: ChatNav.action,
+            action: #selector(chatNavDown),
+            input: UIKeyCommand.inputDownArrow,
+            modifierFlags: .alternate
+        )
+        up.wantsPriorityOverSystemBehavior = true
+        down.wantsPriorityOverSystemBehavior = true
+        return [up, down]
     }
 
     @objc private func stopGeneratingFromEscape() {
@@ -315,6 +348,20 @@ final class ComposerUITextView: UITextView {
     @objc private func recallFromArrowUp() {
         if markedTextRange != nil || !text.isEmpty { return }
         onArrowUpRecall?()
+    }
+
+    @objc private func chatNavUp() {
+        performChatNav(-1)
+    }
+
+    @objc private func chatNavDown() {
+        performChatNav(1)
+    }
+
+    /// IME marked text keeps the key. Find and other gates live in the chat view.
+    private func performChatNav(_ direction: Int) {
+        if markedTextRange != nil { return }
+        onChatNav?(direction)
     }
 
     override func paste(_ sender: Any?) {
