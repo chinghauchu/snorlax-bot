@@ -82,8 +82,7 @@ def test_chat_screen_reaches_the_sheet() -> None:
 
 def test_openapi_roadmap_ci_no_computer_pane() -> None:
     for doc in (OPENAPI, RUNTIME_OPENAPI, DESKTOP_OPENAPI):
-        assert "version: 0.18.0" in doc
-        assert "version: 0.19" not in doc
+        assert "version: 0.19.0" in doc
     assert PHRASE in ROADMAP
     assert "python3 ios/scripts/test_ios_chat_shortcuts.py" in CI
     assert not DESKTOP_PANE.exists()

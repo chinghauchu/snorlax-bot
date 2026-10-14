@@ -527,6 +527,7 @@ async def resume_after_connect(
     backend: Any,
     card: dict[str, Any],
     max_tool_rounds: int | None = None,
+    models: Any | None = None,
 ) -> None:
     """Continue hop-0 after OAuth PATCHes a kind=connect row to connected."""
     conversation = await store.get_agent(card["agentId"])
@@ -542,6 +543,7 @@ async def resume_after_connect(
         reply_to=card.get("replyTo"),
         max_tool_rounds=max_tool_rounds,
         resume_connect=card,
+        models=models,
     ):
         pass
 
@@ -565,6 +567,7 @@ async def run_user_turn(
     attachment_ids: list[str] | None = None,
     regenerate: bool = False,
     mcp: Any | None = None,
+    models: Any | None = None,
 ) -> AsyncIterator[tuple[str, dict[str, Any]]]:
     """Persist the user message, then route hop-0 and peer work.
 
@@ -927,6 +930,7 @@ async def run_user_turn(
                 persist=job.persist,
                 max_tool_rounds=tool_rounds,
                 mcp=mcp,
+                models=models,
             )
             if in_origin and origin_open:
                 for event, payload in events:
@@ -978,6 +982,7 @@ async def run_user_turn(
             persist=job.persist,
             max_tool_rounds=tool_rounds,
             mcp=mcp,
+            models=models,
         )
         if in_origin and origin_open:
             for event, payload in events:
@@ -1320,6 +1325,7 @@ async def run_routine_turn(
     routine: dict[str, Any],
     *,
     max_tool_rounds: int | None = None,
+    models: Any | None = None,
 ) -> dict[str, Any] | None:
     """Wake the assigned agent with its SKILL.md. Persist as A LEFT.
 
@@ -1352,6 +1358,7 @@ async def run_routine_turn(
         persist=True,
         max_tool_rounds=max_tool_rounds,
         routine_name=str(routine.get("name") or "") or None,
+        models=models,
     )
     del _events
     return saved
@@ -1372,8 +1379,15 @@ async def _generate(
     max_tool_rounds: int | None = None,
     routine_name: str | None = None,
     mcp: Any | None = None,
+    models: Any | None = None,
 ) -> tuple[list[tuple[str, dict[str, Any]]], dict[str, Any] | None]:
     from snorlax_runtime.inference import InferenceError
+    from snorlax_runtime.providers import ProviderKeyError
+
+    model_label: str | None = None
+    if models is not None:
+        backend = models.backend_for(agent)
+        model_label = models.label_for(agent) or None
     from snorlax_runtime.skills import (
         invoked_skill,
         load_skills,
@@ -1444,7 +1458,31 @@ async def _generate(
             conversation_id=conversation_id,
             store=store,
             mcp=mcp,
+            model_label=model_label,
         )
+    except ProviderKeyError as exc:
+        if not persist:
+            if stream:
+                events.append(("error", {"error": exc.message}))
+            return events, None
+        saved_error = await store.add_message(
+            agent_id=conversation_id,
+            role="assistant",
+            content=exc.message,
+            message_id=assistant_id,
+            sender_id=agent["id"],
+            sender_name=agent["name"],
+            sender_avatar=agent["avatar"],
+            hop=hop,
+            mentions=[],
+            reply_to=thread_id if is_group else None,
+            routine_name=routine_name,
+            model=model_label,
+            model_error=exc.reason,
+        )
+        if stream:
+            events.append(("message.done", saved_error))
+        return events, saved_error
     except InferenceError as exc:
         # Pre-tool failures only. After tools, run_tool_loop returns
         # follow-up text instead of raising, so this 1:1 still gets a bubble
@@ -1495,6 +1533,7 @@ async def _generate(
                     reply_to=thread_id if is_group else None,
                     routine_name=routine_name,
                     attachment_ids=attachment_ids,
+                    model=model_label,
                 )
                 if stream:
                     events.append(("message.done", saved_text))
@@ -1581,6 +1620,7 @@ async def _generate(
                     reply_to=thread_id if is_group else None,
                     routine_name=routine_name,
                     attachment_ids=attachment_ids,
+                    model=model_label,
                 )
                 if stream:
                     events.append(("message.done", saved_text))
@@ -1661,6 +1701,7 @@ async def _generate(
                     reply_to=thread_id if is_group else None,
                     routine_name=routine_name,
                     attachment_ids=attachment_ids,
+                    model=model_label,
                 )
                 if stream:
                     events.append(("message.done", saved_text))
@@ -1726,6 +1767,7 @@ async def _generate(
             reply_to=thread_id if is_group else None,
             routine_name=routine_name,
             attachment_ids=attachment_ids,
+            model=model_label,
         )
     else:
         saved = {

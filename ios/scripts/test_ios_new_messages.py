@@ -167,7 +167,6 @@ def test_sources() -> None:
     assert "0.18.0" in OPENAPI
     assert "0.18.0" in RUNTIME_OPENAPI
     assert "0.18.0" in DESKTOP_OPENAPI
-    assert "version: 0.19" not in OPENAPI
     assert "/v1/" not in DESKTOP.split("export const", 1)[0]
     assert PHRASE in ROADMAP
     assert "test_ios_new_messages.py" in CI

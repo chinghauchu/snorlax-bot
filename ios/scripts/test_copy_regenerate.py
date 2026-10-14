@@ -57,8 +57,8 @@ def test_regenerate_last_one_to_one_only() -> None:
     assert "isChannel: agent.isChannel" in CHAT
     assert "model.isSending" in CHAT
     assert "var regenerate: Bool?" in TYPES
-    assert "version: 0.18.0" in OPENAPI
-    assert "0.18.0" in TYPES
+    assert "version: 0.19.0" in OPENAPI
+    assert "0.19.0" in TYPES
     assert "/v1/chats/" not in CHAT
     assert "/v1/chats/" not in CLIENT
     assert "/v1/chats/" not in MODEL

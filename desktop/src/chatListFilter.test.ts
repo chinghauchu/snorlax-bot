@@ -239,10 +239,9 @@ test("sidebar control filters the roster and leaves the dots", () => {
   assert.match(model, /replyUnreadIDs = chatUnread\.snapshot/);
   assert.doesNotMatch(swift, /computerPane\.ts/);
 
-  assert.match(openapi, /version: 0\.18\.0/);
-  assert.match(protocol, /version: 0\.18\.0/);
-  assert.match(runtimeOpenapi, /version: 0\.18\.0/);
-  assert.doesNotMatch(openapi, /version:\s*0\.19/);
+  assert.match(openapi, /version: 0\.19\.0/);
+  assert.match(protocol, /version: 0\.19\.0/);
+  assert.match(runtimeOpenapi, /version: 0\.19\.0/);
   assert.match(pkg, /chatListFilter\.test\.ts/);
   assert.match(ci, /test_ios_chat_list_filter\.py/);
   assert.match(roadmap, new RegExp(PHRASE.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));

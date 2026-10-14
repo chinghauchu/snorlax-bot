@@ -126,13 +126,12 @@ test("Send re-enables on complete / Stop / error / empty", () => {
 });
 
 test("OpenAPI stays 0.18.0; v0.55 is documented; no new HTTP", () => {
-  assert.match(openapi, /version: 0\.18\.0/);
-  assert.match(protocol, /version: 0\.18\.0/);
-  assert.match(runtimeOpenapi, /version: 0\.18\.0/);
+  assert.match(openapi, /version: 0\.19\.0/);
+  assert.match(protocol, /version: 0\.19\.0/);
+  assert.match(runtimeOpenapi, /version: 0\.19\.0/);
   assert.match(openapi, /v0\.55/);
   assert.match(protocol, /v0\.55/);
   assert.match(runtimeOpenapi, /v0\.55/);
-  assert.doesNotMatch(openapi, /version:\s*0\.19/);
   assert.doesNotMatch(mutedSrc, /\/v1\/cancel/);
   assert.doesNotMatch(app, /\/v1\/cancel/);
   assert.doesNotMatch(mutedSrc, /\/v1\/chats\//);

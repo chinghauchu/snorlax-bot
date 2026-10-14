@@ -81,10 +81,9 @@ def test_tap_swipe_close_and_reduce_motion() -> None:
 
 
 def test_openapi_stays_0180() -> None:
-    assert "version: 0.18.0" in OPENAPI
-    assert "version: 0.18.0" in RUNTIME_OPENAPI
-    assert "version: 0.18.0" in DESKTOP_OPENAPI
-    assert "version: 0.19" not in DESKTOP_OPENAPI
+    assert "version: 0.19.0" in OPENAPI
+    assert "version: 0.19.0" in RUNTIME_OPENAPI
+    assert "version: 0.19.0" in DESKTOP_OPENAPI
     assert not PANE.exists()
     assert "computerPane.ts" not in CHAT
     assert "/v1/" not in SWIFT

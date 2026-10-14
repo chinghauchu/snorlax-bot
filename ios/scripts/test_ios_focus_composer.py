@@ -115,10 +115,9 @@ def test_chat_focuses_without_sending() -> None:
 
 
 def test_openapi_roadmap() -> None:
-    assert "version: 0.18.0" in OPENAPI
-    assert "version: 0.18.0" in RUNTIME_OPENAPI
-    assert "version: 0.18.0" in DESKTOP_OPENAPI
-    assert "version: 0.19" not in OPENAPI
+    assert "version: 0.19.0" in OPENAPI
+    assert "version: 0.19.0" in RUNTIME_OPENAPI
+    assert "version: 0.19.0" in DESKTOP_OPENAPI
     assert PHRASE in ROADMAP
     assert "/ v0.99 " in ROADMAP
     assert "## 99. v0.99" in SPEC

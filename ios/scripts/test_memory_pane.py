@@ -89,8 +89,8 @@ def test_http_wraps_v036_store() -> None:
     assert "/v1/agents/{id}/memory" in OPENAPI
     assert "getMemory" in OPENAPI
     assert "deleteMemory" in OPENAPI
-    assert "version: 0.18.0" in OPENAPI
-    assert "0.18.0" in TYPES
+    assert "version: 0.19.0" in OPENAPI
+    assert "0.19.0" in TYPES
 
 
 def test_http_user_memory_is_v1_memory() -> None:
@@ -110,7 +110,7 @@ def test_http_user_memory_is_v1_memory() -> None:
     assert "getUserMemory" in OPENAPI
     assert "deleteUserMemory" in OPENAPI
     assert "v0.40" in OPENAPI
-    assert "version: 0.18.0" in OPENAPI
+    assert "version: 0.19.0" in OPENAPI
 
 
 def test_open_pane_refetch_after_remembered_forgot() -> None:

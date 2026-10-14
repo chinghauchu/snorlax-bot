@@ -39,7 +39,7 @@ function block(selector: string): string {
 function assistantMdSlice(): string {
   const start = app.indexOf('className="assistant-md"');
   assert.ok(start >= 0);
-  return app.slice(start, start + 4200);
+  return app.slice(start, start + 5200);
 }
 
 test("mid-stream LEFT kind=message is plaintext — no markdown, mermaid, or math", () => {
@@ -160,13 +160,12 @@ test("waiting ···, caret, stick-to-bottom, compact tools unchanged", () => {
 });
 
 test("OpenAPI stays 0.18.0; v0.57 is documented; no new HTTP", () => {
-  assert.match(openapi, /version: 0\.18\.0/);
-  assert.match(protocol, /version: 0\.18\.0/);
-  assert.match(runtimeOpenapi, /version: 0\.18\.0/);
+  assert.match(openapi, /version: 0\.19\.0/);
+  assert.match(protocol, /version: 0\.19\.0/);
+  assert.match(runtimeOpenapi, /version: 0\.19\.0/);
   assert.match(openapi, /v0\.57/);
   assert.match(protocol, /v0\.57/);
   assert.match(runtimeOpenapi, /v0\.57/);
-  assert.doesNotMatch(openapi, /version:\s*0\.19/);
   assert.doesNotMatch(src, /\/v1\/cancel/);
   assert.doesNotMatch(app, /\/v1\/cancel/);
   assert.doesNotMatch(src, /\/v1\/chats\//);

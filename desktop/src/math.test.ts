@@ -184,13 +184,12 @@ test("Speak treats math like other markup (plain source)", () => {
 });
 
 test("OpenAPI stays 0.18.0; no computerPane.ts; no new routes", () => {
-  assert.match(openapi, /version:\s*0\.18\.0/);
-  assert.match(protocol, /version:\s*0\.18\.0/);
-  assert.match(runtimeOpenapi, /version:\s*0\.18\.0/);
+  assert.match(openapi, /version:\s*0\.19\.0/);
+  assert.match(protocol, /version:\s*0\.19\.0/);
+  assert.match(runtimeOpenapi, /version:\s*0\.19\.0/);
   assert.match(openapi, /v0\.46/);
   assert.match(protocol, /v0\.46/);
   assert.match(runtimeOpenapi, /v0\.46/);
-  assert.doesNotMatch(openapi, /version:\s*0\.19/);
   assert.doesNotMatch(app, /computerPane\.ts/);
   assert.doesNotMatch(body, /computerPane\.ts/);
   assert.doesNotMatch(mathSrc, /computerPane\.ts/);

@@ -113,6 +113,10 @@ struct ProfileSheet: View {
                     .font(.system(size: 13))
                     .foregroundStyle(.secondary)
             }
+            Text(ModelProvider.summary(live.model))
+                .font(.system(size: 12))
+                .foregroundStyle(.secondary)
+                .accessibilityLabel("Model \(ModelProvider.summary(live.model))")
             computerBlock
             routinesList
             skillsList
@@ -489,13 +493,37 @@ struct ProfileSheet: View {
             Section {
                 Button("Save") {
                     Task {
-                        await model.saveProfile(draft)
-                        editing = false
+                        if await model.saveProfile(draft) {
+                            editing = false
+                        }
                     }
                 }
                 .disabled(draft.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || !model.isConfigured)
             }
         }
+    }
+
+    private var modelProviderBinding: Binding<String> {
+        Binding(
+            get: { draft.model?.provider.rawValue ?? "" },
+            set: { raw in
+                if raw.isEmpty {
+                    draft.model = nil
+                } else if let provider = ModelChoice.Provider(rawValue: raw) {
+                    draft.model = ModelChoice(provider: provider, id: draft.model?.id ?? "")
+                }
+            }
+        )
+    }
+
+    private var modelIdBinding: Binding<String> {
+        Binding(
+            get: { draft.model?.id ?? "" },
+            set: { value in
+                guard let provider = draft.model?.provider else { return }
+                draft.model = ModelChoice(provider: provider, id: value)
+            }
+        )
     }
 
     private var editForm: some View {
@@ -524,11 +552,27 @@ struct ProfileSheet: View {
             }
             .font(.system(size: 14))
 
+            Section("Model") {
+                Picker("Model", selection: modelProviderBinding) {
+                    Text("Use default").tag("")
+                    ForEach(ModelProvider.options) { option in
+                        Text(option.label).tag(option.id)
+                    }
+                }
+                if draft.model != nil {
+                    TextField("Model id", text: modelIdBinding)
+                        .textInputAutocapitalization(.never)
+                        .autocorrectionDisabled()
+                }
+            }
+            .font(.system(size: 14))
+
             Section {
                 Button("Save") {
                     Task {
-                        await model.saveProfile(draft)
-                        editing = false
+                        if await model.saveProfile(draft) {
+                            editing = false
+                        }
                     }
                 }
                 .disabled(draft.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || !model.isConfigured)

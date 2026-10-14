@@ -139,10 +139,9 @@ def test_list_wires_filter_and_keeps_dots() -> None:
 
 
 def test_openapi_roadmap() -> None:
-    assert "version: 0.18.0" in OPENAPI
-    assert "version: 0.18.0" in RUNTIME_OPENAPI
-    assert "version: 0.18.0" in DESKTOP_OPENAPI
-    assert "version: 0.19" not in OPENAPI
+    assert "version: 0.19.0" in OPENAPI
+    assert "version: 0.19.0" in RUNTIME_OPENAPI
+    assert "version: 0.19.0" in DESKTOP_OPENAPI
     assert PHRASE in ROADMAP
     assert "/ v0.88 " in ROADMAP
     assert "python3 ios/scripts/test_ios_chat_list_filter.py" in CI

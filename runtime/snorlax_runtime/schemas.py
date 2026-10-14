@@ -14,6 +14,25 @@ class Health(BaseModel):
     version: str
 
 
+class ModelChoice(BaseModel):
+    provider: str
+    id: str = Field(min_length=1, max_length=200)
+
+    @field_validator("provider")
+    @classmethod
+    def known_provider(cls, value: str) -> str:
+        from snorlax_runtime.providers import known_provider
+
+        return known_provider(value)
+
+    @field_validator("id")
+    @classmethod
+    def clean_id(cls, value: str) -> str:
+        from snorlax_runtime.providers import clean_model_id
+
+        return clean_model_id(value)
+
+
 class Agent(BaseModel):
     id: str
     name: str
@@ -23,6 +42,7 @@ class Agent(BaseModel):
     kind: str
     memberIds: list[str]
     sharedProject: bool = False
+    model: ModelChoice | None = None
     createdAt: str
     updatedAt: str
 
@@ -59,6 +79,12 @@ class AgentPatch(BaseModel):
         description=(
             "Channel shared-project toggle. Default off. Seed channel may "
             "PATCH this field only; identity fields stay 409."
+        ),
+    )
+    model: ModelChoice | None = Field(
+        default=None,
+        description=(
+            "Per-agent model. Null means Use default. kind=channel is 422."
         ),
     )
 
@@ -184,6 +210,8 @@ class Message(BaseModel):
     approve: ApproveCard | None = None
     approveStatus: str | None = None
     routineName: str | None = None
+    model: str | None = None
+    modelError: str | None = None
 
 
 class MessageCreate(BaseModel):
@@ -241,6 +269,41 @@ class MessageDelta(BaseModel):
     senderId: str | None = None
     senderName: str | None = None
     senderAvatar: str | None = None
+    model: str | None = None
+
+
+class ModelDefault(BaseModel):
+    provider: str
+    model: str
+
+
+class ModelDefaultPatch(BaseModel):
+    provider: str
+    model: str = Field(min_length=1, max_length=200)
+
+    @field_validator("provider")
+    @classmethod
+    def known_provider(cls, value: str) -> str:
+        from snorlax_runtime.providers import known_provider
+
+        return known_provider(value)
+
+    @field_validator("model")
+    @classmethod
+    def clean_model(cls, value: str) -> str:
+        from snorlax_runtime.providers import clean_model_id
+
+        return clean_model_id(value)
+
+
+class ProviderKeyStatus(BaseModel):
+    provider: str
+    configured: bool
+    masked: str | None = None
+
+
+class ProviderKeyWrite(BaseModel):
+    apiKey: str = Field(min_length=1, max_length=500)
 
 
 class ToolTrace(BaseModel):

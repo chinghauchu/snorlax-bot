@@ -95,7 +95,7 @@ def test_never_with_waiting_dots() -> None:
     assert "waitingStreak(agent: agent)" in CHAT
     assert "className=\"waiting\"" in DESKTOP_APP
     assert "className=\"streaming-caret\"" in DESKTOP_APP
-    md = DESKTOP_APP[DESKTOP_APP.find('className="assistant-md"') : DESKTOP_APP.find('className="assistant-md"') + 3600]
+    md = DESKTOP_APP[DESKTOP_APP.find('className="assistant-md"') : DESKTOP_APP.find('className="assistant-md"') + 4800]
     assert "streaming-caret" in md
     waiting_render = DESKTOP_APP[DESKTOP_APP.find("{showWaiting ? (") :][:1400]
     assert "streaming-caret" not in waiting_render
@@ -143,9 +143,9 @@ def test_stick_multi_bubbles_waiting_stop_openapi() -> None:
     assert 'static let label = "Stop"' in STOP
     assert 'static let label = "···"' in WAITING
     assert "static func insert(" in OPT
-    assert "version: 0.18.0" in OPENAPI
-    assert "version: 0.18.0" in RUNTIME_OPENAPI
-    assert "version: 0.18.0" in DESKTOP_OPENAPI
+    assert "version: 0.19.0" in OPENAPI
+    assert "version: 0.19.0" in RUNTIME_OPENAPI
+    assert "version: 0.19.0" in DESKTOP_OPENAPI
     assert "v0.52" in OPENAPI
     assert "v0.52" in RUNTIME_OPENAPI
     assert "v0.52" in DESKTOP_OPENAPI

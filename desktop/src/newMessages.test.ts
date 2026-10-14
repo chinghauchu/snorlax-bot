@@ -320,10 +320,9 @@ test("desktop paints the line under a day separator and clears it on Send", () =
 });
 
 test("OpenAPI stays 0.18.0; last seen is local; no computerPane.ts", () => {
-  assert.match(openapi, /version: 0\.18\.0/);
-  assert.match(protocol, /version: 0\.18\.0/);
-  assert.match(runtimeOpenapi, /version: 0\.18\.0/);
-  assert.doesNotMatch(openapi, /version:\s*0\.19/);
+  assert.match(openapi, /version: 0\.19\.0/);
+  assert.match(protocol, /version: 0\.19\.0/);
+  assert.match(runtimeOpenapi, /version: 0\.19\.0/);
   assert.match(src, /localStorage/);
   assert.match(src, /CHAT_LAST_SEEN_KEY = "snorlax\.chatLastSeen"/);
   assert.doesNotMatch(src, /fetch\(/);

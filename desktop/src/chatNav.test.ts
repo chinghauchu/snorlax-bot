@@ -220,10 +220,9 @@ test("iOS hardware Option+Up/Down uses the same order; OpenAPI stays 0.18.0", ()
   assert.match(sheet, /ChatNav\.action/);
   assert.doesNotMatch(chat, /computerPane\.ts/);
 
-  assert.match(openapi, /version: 0\.18\.0/);
-  assert.match(protocol, /version: 0\.18\.0/);
-  assert.match(runtimeOpenapi, /version: 0\.18\.0/);
-  assert.doesNotMatch(openapi, /version:\s*0\.19/);
+  assert.match(openapi, /version: 0\.19\.0/);
+  assert.match(protocol, /version: 0\.19\.0/);
+  assert.match(runtimeOpenapi, /version: 0\.19\.0/);
   assert.match(pkg, /"version": "0\.18\.0"/);
   assert.match(pkg, /chatNav\.test\.ts/);
   assert.match(ci, /test_ios_chat_nav\.py/);

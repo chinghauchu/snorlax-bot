@@ -190,10 +190,9 @@ def test_ios_wires_done_open_focus_and_row() -> None:
 
 
 def test_openapi_roadmap_ci_no_computer_pane() -> None:
-    assert "version: 0.18.0" in OPENAPI
-    assert "version: 0.18.0" in RUNTIME_OPENAPI
-    assert "version: 0.18.0" in DESKTOP_OPENAPI
-    assert "version: 0.19" not in OPENAPI
+    assert "version: 0.19.0" in OPENAPI
+    assert "version: 0.19.0" in RUNTIME_OPENAPI
+    assert "version: 0.19.0" in DESKTOP_OPENAPI
     assert PHRASE in ROADMAP
     assert f'static let storageKey = "{STORAGE_KEY}"' in UNREAD
     assert "UserDefaults" in UNREAD

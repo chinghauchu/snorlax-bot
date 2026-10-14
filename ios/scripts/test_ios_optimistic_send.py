@@ -136,9 +136,9 @@ def test_upload_first_block_second_send_regenerate_unchanged() -> None:
 def test_stick_multi_bubbles_openapi_no_computer_pane() -> None:
     assert "static let nearBottom: CGFloat = 64" in STICK
     assert "static func bubbles(in text: String, completed: Bool)" in MARKDOWN
-    assert "version: 0.18.0" in OPENAPI
-    assert "version: 0.18.0" in RUNTIME_OPENAPI
-    assert "version: 0.18.0" in DESKTOP_OPENAPI
+    assert "version: 0.19.0" in OPENAPI
+    assert "version: 0.19.0" in RUNTIME_OPENAPI
+    assert "version: 0.19.0" in DESKTOP_OPENAPI
     assert "v0.49" in OPENAPI
     assert "v0.49" in RUNTIME_OPENAPI
     assert "v0.49" in DESKTOP_OPENAPI

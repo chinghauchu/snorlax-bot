@@ -67,6 +67,7 @@ async def fire_routine_now(
     routine: dict[str, Any],
     *,
     max_tool_rounds: int | None = None,
+    models: Any | None = None,
 ) -> dict[str, Any] | None:
     """Run one routine's skill into that agent's 1:1. No-op if paused.
 
@@ -88,6 +89,7 @@ async def fire_routine_now(
         backend,
         routine,
         max_tool_rounds=max_tool_rounds,
+        models=models,
     )
 
 
@@ -97,6 +99,7 @@ async def fire_due_routines(
     *,
     now: datetime | None = None,
     max_tool_rounds: int | None = None,
+    models: Any | None = None,
 ) -> list[dict[str, Any]]:
     """Run every enabled routine whose cron matches ``now`` in Asia/Taipei.
 
@@ -117,6 +120,7 @@ async def fire_due_routines(
                 backend,
                 routine,
                 max_tool_rounds=max_tool_rounds,
+                models=models,
             )
         except Exception:
             log.exception("routine %s failed", routine.get("id"))
@@ -137,6 +141,7 @@ async def run_scheduler(app: Any, *, interval: float = DEFAULT_INTERVAL_SECONDS)
                 store,
                 backend,
                 max_tool_rounds=getattr(settings, "tool_max_rounds", None),
+                models=getattr(app.state, "models", None),
             )
         except asyncio.CancelledError:
             raise

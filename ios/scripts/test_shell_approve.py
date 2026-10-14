@@ -75,8 +75,8 @@ def test_no_new_route_or_composer_or_settings() -> None:
     assert "/v1/approve" not in CHAT
     assert "computerPane.ts" not in CARD
     assert "computerPane.ts" not in CHAT
-    assert "version: 0.18.0" in OPENAPI
-    assert "0.18.0" in TYPES
+    assert "version: 0.19.0" in OPENAPI
+    assert "0.19.0" in TYPES
     assert "kind=approve" in OPENAPI
     assert "approveReply" in OPENAPI
 

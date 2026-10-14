@@ -110,9 +110,9 @@ def test_composer_drop_adds_chips_and_does_not_send() -> None:
 
 
 def test_openapi_stays_0180_and_no_computer_pane() -> None:
-    assert "version: 0.18.0" in OPENAPI
-    assert "version: 0.18.0" in RUNTIME_OPENAPI
-    assert "version: 0.18.0" in DESKTOP_OPENAPI
+    assert "version: 0.19.0" in OPENAPI
+    assert "version: 0.19.0" in RUNTIME_OPENAPI
+    assert "version: 0.19.0" in DESKTOP_OPENAPI
     assert PHRASE in ROADMAP
     assert "test_ios_chat_drop.py" in CI
     assert not DESKTOP_PANE.exists()

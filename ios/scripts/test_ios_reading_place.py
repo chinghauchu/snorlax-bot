@@ -143,9 +143,9 @@ def test_chat_restores_and_send_still_snaps() -> None:
 
 
 def test_openapi_stays_0180_and_no_computer_pane() -> None:
-    assert "version: 0.18.0" in OPENAPI
-    assert "version: 0.18.0" in RUNTIME_OPENAPI
-    assert "version: 0.18.0" in DESKTOP_OPENAPI
+    assert "version: 0.19.0" in OPENAPI
+    assert "version: 0.19.0" in RUNTIME_OPENAPI
+    assert "version: 0.19.0" in DESKTOP_OPENAPI
     assert PHRASE in ROADMAP
     assert "test_ios_reading_place.py" in CI
     assert not DESKTOP_PANE.exists()

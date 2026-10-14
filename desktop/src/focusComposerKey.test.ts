@@ -231,10 +231,9 @@ test("iOS hardware command-L focuses; OpenAPI stays 0.18.0", () => {
   assert.match(sheet, /Gestures & shortcuts/);
   assert.match(sheet, /Recall last message/);
 
-  assert.match(openapi, /version: 0\.18\.0/);
-  assert.match(protocol, /version: 0\.18\.0/);
-  assert.match(runtimeOpenapi, /version: 0\.18\.0/);
-  assert.doesNotMatch(openapi, /version:\s*0\.19/);
+  assert.match(openapi, /version: 0\.19\.0/);
+  assert.match(protocol, /version: 0\.19\.0/);
+  assert.match(runtimeOpenapi, /version: 0\.19\.0/);
   assert.match(pkg, /"version": "0\.18\.0"/);
   assert.match(pkg, /focusComposerKey\.test\.ts/);
   assert.match(ci, /test_ios_focus_composer\.py/);

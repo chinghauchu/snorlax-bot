@@ -2,6 +2,8 @@ import type {
   Agent,
   AgentPatch,
   ChatMessage,
+  ModelDefault,
+  ProviderKeyStatus,
   ImageIn,
   Attachment,
   MessageDelta,
@@ -139,6 +141,61 @@ export async function patchAgent(
     },
   );
   return json<Agent>(response);
+}
+
+export async function getModelDefault(session: Session): Promise<ModelDefault> {
+  const response = await fetch(`${session.baseUrl}/v1/settings/model`, {
+    headers: headers(session),
+  });
+  return json<ModelDefault>(response);
+}
+
+export async function patchModelDefault(
+  session: Session,
+  body: ModelDefault,
+): Promise<ModelDefault> {
+  const response = await fetch(`${session.baseUrl}/v1/settings/model`, {
+    method: "PATCH",
+    headers: headers(session, { "Content-Type": "application/json" }),
+    body: JSON.stringify(body),
+  });
+  return json<ModelDefault>(response);
+}
+
+export async function listProviderKeys(
+  session: Session,
+): Promise<ProviderKeyStatus[]> {
+  const response = await fetch(`${session.baseUrl}/v1/settings/keys`, {
+    headers: headers(session),
+  });
+  return asList<ProviderKeyStatus>(await json<unknown>(response), "keys");
+}
+
+export async function putProviderKey(
+  session: Session,
+  provider: string,
+  apiKey: string,
+): Promise<ProviderKeyStatus> {
+  const response = await fetch(
+    `${session.baseUrl}/v1/settings/keys/${encodeURIComponent(provider)}`,
+    {
+      method: "PUT",
+      headers: headers(session, { "Content-Type": "application/json" }),
+      body: JSON.stringify({ apiKey }),
+    },
+  );
+  return json<ProviderKeyStatus>(response);
+}
+
+export async function deleteProviderKey(
+  session: Session,
+  provider: string,
+): Promise<void> {
+  const response = await fetch(
+    `${session.baseUrl}/v1/settings/keys/${encodeURIComponent(provider)}`,
+    { method: "DELETE", headers: headers(session) },
+  );
+  if (!response.ok) throw await parseError(response);
 }
 
 export async function deleteAgent(
@@ -329,7 +386,12 @@ export type StreamHandlers = {
   onDelta: (
     messageId: string,
     delta: string,
-    sender?: { senderId?: string; senderName?: string; senderAvatar?: string | null },
+    sender?: {
+      senderId?: string;
+      senderName?: string;
+      senderAvatar?: string | null;
+      model?: string | null;
+    },
   ) => void;
   onDone: (message: ChatMessage | null) => void;
   onError: (code: string, message: string) => void;
@@ -488,6 +550,7 @@ function dispatchSse(raw: string, handlers: StreamHandlers): void {
       senderId: delta.senderId,
       senderName: delta.senderName,
       senderAvatar: delta.senderAvatar ?? null,
+      model: delta.model ?? null,
     });
   } else if (event === "message.done") {
     const messageRaw = isRecord(record.message) ? record.message : payload;

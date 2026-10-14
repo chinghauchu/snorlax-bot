@@ -32,12 +32,14 @@ def bind_runtime(
     backend: Any,
     get_mcp: Any,
     max_tool_rounds: int | None = None,
+    models: Any | None = None,
 ) -> None:
     """Attach the running Store / backend so MCP notifications can fire."""
     _bound["store"] = store
     _bound["backend"] = backend
     _bound["get_mcp"] = get_mcp
     _bound["max_tool_rounds"] = max_tool_rounds
+    _bound["models"] = models
 
 
 def unbind_runtime() -> None:
@@ -341,6 +343,7 @@ async def fire_inbound_event(
                 backend,
                 row,
                 max_tool_rounds=rounds,
+                models=_bound.get("models"),
             )
         except Exception:
             log.exception("inbound routine %s failed", row.get("id"))

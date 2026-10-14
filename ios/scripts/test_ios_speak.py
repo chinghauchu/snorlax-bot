@@ -128,10 +128,10 @@ def test_speak_uses_local_route() -> None:
 
 
 def test_openapi_stays_0180_and_no_computer_pane() -> None:
-    assert "version: 0.18.0" in OPENAPI
-    assert "version: 0.18.0" in RUNTIME_OPENAPI
+    assert "version: 0.19.0" in OPENAPI
+    assert "version: 0.19.0" in RUNTIME_OPENAPI
     assert "/v1/speak" in OPENAPI
-    assert "0.18.0" in TYPES
+    assert "0.19.0" in TYPES
     assert not DESKTOP_PANE.exists()
     assert "computerPane.ts" not in CHAT
     assert "computerPane.ts" not in MODEL

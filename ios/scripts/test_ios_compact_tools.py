@@ -172,13 +172,12 @@ def test_no_new_http_openapi_intact_stack() -> None:
     assert 'static let label = "···"' in WAITING
     assert "static func shouldShow(" in CARET
     assert "static func whileGenerating(busy: Bool)" in MUTED
-    assert "version: 0.18.0" in OPENAPI
-    assert "version: 0.18.0" in RUNTIME_OPENAPI
-    assert "version: 0.18.0" in DESKTOP_OPENAPI
+    assert "version: 0.19.0" in OPENAPI
+    assert "version: 0.19.0" in RUNTIME_OPENAPI
+    assert "version: 0.19.0" in DESKTOP_OPENAPI
     assert "v0.56" in OPENAPI
     assert "v0.56" in RUNTIME_OPENAPI
     assert "v0.56" in DESKTOP_OPENAPI
-    assert "0.19" not in OPENAPI.split("version:", 1)[-1][:40]
     assert "/v1/cancel" not in COMPACT
     assert "/v1/cancel" not in CHAT
     assert "/v1/cancel" not in DESKTOP

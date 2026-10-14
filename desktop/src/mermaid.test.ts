@@ -133,13 +133,12 @@ test("Speak treats mermaid fences like other fences", () => {
 });
 
 test("OpenAPI stays 0.18.0; no computerPane.ts; no new routes", () => {
-  assert.match(openapi, /version:\s*0\.18\.0/);
-  assert.match(protocol, /version:\s*0\.18\.0/);
-  assert.match(runtimeOpenapi, /version:\s*0\.18\.0/);
+  assert.match(openapi, /version:\s*0\.19\.0/);
+  assert.match(protocol, /version:\s*0\.19\.0/);
+  assert.match(runtimeOpenapi, /version:\s*0\.19\.0/);
   assert.match(openapi, /v0\.45/);
   assert.match(protocol, /v0\.45/);
   assert.match(runtimeOpenapi, /v0\.45/);
-  assert.doesNotMatch(openapi, /version:\s*0\.19/);
   assert.doesNotMatch(app, /computerPane\.ts/);
   assert.doesNotMatch(body, /computerPane\.ts/);
   assert.doesNotMatch(mermaidSrc, /computerPane\.ts/);

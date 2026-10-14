@@ -171,10 +171,9 @@ test("iOS Delete on an empty composer removes the last chip", () => {
 });
 
 test("OpenAPI stays 0.18.0; v0.87 is documented; no computerPane.ts", () => {
-  assert.match(openapi, /version: 0\.18\.0/);
-  assert.match(protocol, /version: 0\.18\.0/);
-  assert.match(runtimeOpenapi, /version: 0\.18\.0/);
-  assert.doesNotMatch(openapi, /version:\s*0\.19/);
+  assert.match(openapi, /version: 0\.19\.0/);
+  assert.match(protocol, /version: 0\.19\.0/);
+  assert.match(runtimeOpenapi, /version: 0\.19\.0/);
   assert.equal(existsSync(join(here, "computerPane.ts")), false);
   assert.ok(roadmap.includes(PHRASE));
   assert.ok(roadmap.includes("/ v0.87 "));

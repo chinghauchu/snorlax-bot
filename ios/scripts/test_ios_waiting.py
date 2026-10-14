@@ -137,9 +137,9 @@ def test_stick_multi_bubbles_stop_openapi() -> None:
     assert "static let nearBottom: CGFloat = 64" in STICK
     assert "static func bubbles(in text: String, completed: Bool)" in MARKDOWN
     assert "static let label = \"Stop\"" in STOP
-    assert "version: 0.18.0" in OPENAPI
-    assert "version: 0.18.0" in RUNTIME_OPENAPI
-    assert "version: 0.18.0" in DESKTOP_OPENAPI
+    assert "version: 0.19.0" in OPENAPI
+    assert "version: 0.19.0" in RUNTIME_OPENAPI
+    assert "version: 0.19.0" in DESKTOP_OPENAPI
     assert "v0.51" in OPENAPI
     assert "v0.51" in RUNTIME_OPENAPI
     assert "v0.51" in DESKTOP_OPENAPI

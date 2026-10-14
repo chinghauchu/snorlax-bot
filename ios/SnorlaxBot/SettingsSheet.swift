@@ -10,6 +10,7 @@ struct SettingsSheet: View {
     @State private var pendingRemove: Plugin?
     @State private var pendingMemory: String?
     @State private var catalogAdding: String?
+    @State private var keyDrafts: [String: String] = [:]
 
     var body: some View {
         @Bindable var model = model
@@ -119,6 +120,66 @@ struct SettingsSheet: View {
                 }
 
                 Section {
+                    Picker("Provider", selection: $model.modelDefaultProvider) {
+                        ForEach(ModelProvider.options) { option in
+                            if let provider = ModelDefault.Provider(rawValue: option.id) {
+                                Text(option.label).tag(provider)
+                            }
+                        }
+                    }
+                    .accessibilityLabel("Default model provider")
+                    TextField("Model id", text: $model.modelDefaultId)
+                        .textInputAutocapitalization(.never)
+                        .autocorrectionDisabled()
+                        .accessibilityLabel("Default model id")
+                    Button("Save default") {
+                        Task { await model.saveModelDefault() }
+                    }
+                    .disabled(!model.isConfigured || model.modelDefaultId.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                    ForEach(ModelProvider.keyProviders, id: \.self) { provider in
+                        let status = model.providerKeys.first { $0.provider.rawValue == provider }
+                        VStack(alignment: .leading, spacing: 6) {
+                            Text(ModelProvider.label(for: provider))
+                                .font(.system(size: 14))
+                            SecureField(status?.masked ?? "Not set", text: keyBinding(provider))
+                                .textInputAutocapitalization(.never)
+                                .autocorrectionDisabled()
+                                .accessibilityLabel("\(ModelProvider.label(for: provider)) API key")
+                            HStack {
+                                Button("Save") {
+                                    let draft = keyDrafts[provider] ?? ""
+                                    Task {
+                                        await model.saveProviderKey(provider: provider, apiKey: draft)
+                                        keyDrafts[provider] = ""
+                                    }
+                                }
+                                .disabled(!model.isConfigured || (keyDrafts[provider] ?? "").trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                                if status?.configured == true {
+                                    Button("Clear") {
+                                        Task { await model.clearProviderKey(provider: provider) }
+                                    }
+                                }
+                            }
+                            .font(.system(size: 12))
+                        }
+                        .padding(.vertical, 4)
+                    }
+                    if let note = model.modelSettingsNote, !note.isEmpty {
+                        Text(note)
+                            .font(.system(size: 12))
+                            .foregroundStyle(.red)
+                    }
+                } header: {
+                    Text("Default model")
+                        .font(.system(size: 12))
+                        .foregroundStyle(.secondary)
+                        .textCase(nil)
+                } footer: {
+                    Text("API keys stay on this runtime. Settings shows a mask, never the full key.")
+                        .font(.system(size: 12))
+                }
+
+                Section {
                     if model.plugins.isEmpty {
                         Text("No plugins yet.")
                             .font(.system(size: 12))
@@ -190,6 +251,7 @@ struct SettingsSheet: View {
             }
             .font(.system(size: 14))
             .navigationTitle("Settings")
+            .task { await model.loadModelSettings() }
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) {
@@ -240,6 +302,13 @@ struct SettingsSheet: View {
         .onDisappear {
             Task { await model.bootstrap() }
         }
+    }
+
+    private func keyBinding(_ provider: String) -> Binding<String> {
+        Binding(
+            get: { keyDrafts[provider] ?? "" },
+            set: { keyDrafts[provider] = $0 }
+        )
     }
 }
 

@@ -240,13 +240,12 @@ test("kind=widget / approve / connect never fold into the tool stack", () => {
 });
 
 test("OpenAPI stays 0.18.0; v0.56 is documented; no new HTTP", () => {
-  assert.match(openapi, /version: 0\.18\.0/);
-  assert.match(protocol, /version: 0\.18\.0/);
-  assert.match(runtimeOpenapi, /version: 0\.18\.0/);
+  assert.match(openapi, /version: 0\.19\.0/);
+  assert.match(protocol, /version: 0\.19\.0/);
+  assert.match(runtimeOpenapi, /version: 0\.19\.0/);
   assert.match(openapi, /v0\.56/);
   assert.match(protocol, /v0\.56/);
   assert.match(runtimeOpenapi, /v0\.56/);
-  assert.doesNotMatch(openapi, /version:\s*0\.19/);
   assert.doesNotMatch(src, /\/v1\/cancel/);
   assert.doesNotMatch(app, /\/v1\/cancel/);
   assert.doesNotMatch(src, /\/v1\/chats\//);

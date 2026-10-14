@@ -240,13 +240,12 @@ def test_openapi_stays_0180_and_intact_stack() -> None:
     assert "static func shouldRenderMarkdown" in PLAIN
     assert "shouldFocusComposerAfterAbort" in STOP
     assert "escapeJumps" in STICK
-    assert "version: 0.18.0" in OPENAPI
-    assert "version: 0.18.0" in RUNTIME_OPENAPI
-    assert "version: 0.18.0" in DESKTOP_OPENAPI
+    assert "version: 0.19.0" in OPENAPI
+    assert "version: 0.19.0" in RUNTIME_OPENAPI
+    assert "version: 0.19.0" in DESKTOP_OPENAPI
     assert "v0.63" in OPENAPI
     assert "v0.63" in RUNTIME_OPENAPI
     assert "v0.63" in DESKTOP_OPENAPI
-    assert "version: 0.19" not in OPENAPI
     assert "/v1/cancel" not in STICK
     assert "/v1/cancel" not in MODEL
     assert "/v1/cancel" not in DESKTOP_STICK

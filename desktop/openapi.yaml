@@ -1,8 +1,21 @@
 openapi: 3.1.0
 info:
   title: Snorlax-Bot
-  version: 0.18.0
+  version: 0.19.0
   description: |
+    v0.98 per-agent model. GET/PATCH /v1/settings/model is the global
+    Default model (provider + free-text model id). Until that PATCH,
+    the default stays the current local model (oMLX, or Spark vLLM
+    when that backend is configured). A mock process keeps using mock
+    until a default is saved or an agent overrides. Agent.model is
+    null (Use default) or { provider, id }. kind=channel PATCH model
+    is 422. GET/PUT/DELETE /v1/settings/keys stores cloud API keys in
+    the runtime secrets file mode 0600. Responses are masked. The raw
+    key is never returned and never logged. Message.model is the model
+    id on that assistant reply. Message.modelError is missing_key or
+    invalid_key; the reply text points at Settings. Clients never call
+    the provider.
+
     Locked v0.18 LAN contract. Clients use SNORLAX_URL + SNORLAX_TOKEN.
     They never call vLLM, never call tools, never call MCP, and never read
     the Spark filesystem. Additive workspace GETs are runtime reads of the
@@ -1254,6 +1267,117 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Health"
+
+  /v1/settings/model:
+    get:
+      summary: Global default model
+      operationId: getModelDefault
+      description: |
+        v0.98. Provider plus free-text model id. Before a PATCH, this
+        is the current local model (oMLX, or Spark vLLM when that
+        backend is configured). Agents with model null use it.
+      responses:
+        "200":
+          description: Current default
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ModelDefault"
+        "401":
+          $ref: "#/components/responses/Error"
+    patch:
+      summary: Set the global default model
+      operationId: patchModelDefault
+      description: |
+        v0.98. Saving a default is what switches a mock process onto
+        that adapter. omlx stays `http://127.0.0.1:8000/v1` unless the
+        process oMLX URL is configured. vllm uses the Spark vLLM URL.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ModelDefaultPatch"
+      responses:
+        "200":
+          description: Saved default
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ModelDefault"
+        "401":
+          $ref: "#/components/responses/Error"
+        "422":
+          $ref: "#/components/responses/Error"
+
+  /v1/settings/keys:
+    get:
+      summary: Masked provider key status
+      operationId: listProviderKeys
+      description: |
+        v0.98. openai, anthropic, gemini, grok. Local oMLX and Spark
+        vLLM are omitted (no key). masked is never the full key.
+      responses:
+        "200":
+          description: One row per cloud provider
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ProviderKeyStatus"
+        "401":
+          $ref: "#/components/responses/Error"
+
+  /v1/settings/keys/{provider}:
+    put:
+      summary: Store a provider API key
+      operationId: putProviderKey
+      description: |
+        v0.98. Write-only. The runtime stores the key in
+        `{data}/secrets/provider-keys.json` mode 0600. The response
+        is masked. The key is never logged.
+      parameters:
+        - name: provider
+          in: path
+          required: true
+          schema:
+            type: string
+            enum: [openai, anthropic, gemini, grok]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ProviderKeyWrite"
+      responses:
+        "200":
+          description: Masked status. The request apiKey is not echoed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProviderKeyStatus"
+        "401":
+          $ref: "#/components/responses/Error"
+        "422":
+          $ref: "#/components/responses/Error"
+    delete:
+      summary: Forget a provider API key
+      operationId: deleteProviderKey
+      parameters:
+        - name: provider
+          in: path
+          required: true
+          schema:
+            type: string
+            enum: [openai, anthropic, gemini, grok]
+      responses:
+        "204":
+          description: Key removed
+        "401":
+          $ref: "#/components/responses/Error"
+        "422":
+          $ref: "#/components/responses/Error"
 
   /v1/agents:
     get:
@@ -2664,6 +2788,13 @@ components:
             / handoff turns use workspaces/channels/{id}/. When false, the
             speaking agent's workspace. Ignored (always false) on kind=agent.
             Not a picker for a folder on the host Mac.
+        model:
+          oneOf:
+            - $ref: "#/components/schemas/ModelChoice"
+            - type: "null"
+          description: |
+            v0.98. Null means Use default (the global Default model).
+            Set on kind=agent only. Channels are null.
         createdAt:
           type: string
           format: date-time
@@ -2734,6 +2865,83 @@ components:
           description: |
             Channel shared-project toggle. Seed channel may PATCH this
             field only. kind=agent returns 422.
+        model:
+          oneOf:
+            - $ref: "#/components/schemas/ModelChoice"
+            - type: "null"
+          description: |
+            v0.98. Omit to leave the override alone. Null clears it
+            (Use default). `{ provider, id }` sets it. kind=channel
+            is 422, including the seed channel.
+
+    ModelChoice:
+      type: object
+      required: [provider, id]
+      properties:
+        provider:
+          type: string
+          enum: [omlx, vllm, openai, anthropic, gemini, grok]
+          description: |
+            omlx is local OpenAI-compatible oMLX
+            (`http://127.0.0.1:8000/v1` unless configured). vllm is
+            Spark vLLM. openai, anthropic, gemini, and grok are cloud
+            adapters. anthropic is the Messages API. gemini is the
+            native stream. openai and grok are OpenAI-compatible.
+        id:
+          type: string
+          minLength: 1
+          maxLength: 200
+          description: Free-text model id. Not a catalog.
+
+    ModelDefault:
+      type: object
+      required: [provider, model]
+      properties:
+        provider:
+          type: string
+          enum: [omlx, vllm, openai, anthropic, gemini, grok]
+        model:
+          type: string
+          description: Free-text model id. The unset default is the current local model.
+
+    ModelDefaultPatch:
+      type: object
+      required: [provider, model]
+      properties:
+        provider:
+          type: string
+          enum: [omlx, vllm, openai, anthropic, gemini, grok]
+        model:
+          type: string
+          minLength: 1
+          maxLength: 200
+
+    ProviderKeyStatus:
+      type: object
+      required: [provider, configured]
+      properties:
+        provider:
+          type: string
+          enum: [openai, anthropic, gemini, grok]
+        configured:
+          type: boolean
+        masked:
+          type: [string, "null"]
+          description: |
+            A hint such as `sk-…abcd`. Never the full key. Null when
+            configured is false.
+
+    ProviderKeyWrite:
+      type: object
+      required: [apiKey]
+      properties:
+        apiKey:
+          type: string
+          minLength: 1
+          maxLength: 500
+          description: |
+            Write-only. Stored in the runtime secrets file mode 0600.
+            The response is ProviderKeyStatus, never this value.
 
     ImageOut:
       type: object
@@ -2966,6 +3174,18 @@ components:
             (cron or webhook). 12px kicker under the sender name.
             12px muted kicker under the sender name. Absent on ordinary
             turns. Not a channel post.
+        model:
+          type: [string, "null"]
+          description: |
+            v0.98. Model id that produced this assistant reply. Clients
+            show it as a muted label on that agent's bubble or header.
+            Null on user rows and on tool, widget, connect, and approve.
+        modelError:
+          type: [string, "null"]
+          description: |
+            v0.98. Set when this assistant reply is the inline key
+            error. content is the sentence; clients render a Settings
+            link and do not crash. Null on a normal reply.
 
     WidgetOption:
       type: object
@@ -3223,6 +3443,11 @@ components:
           type: string
         senderAvatar:
           type: [string, "null"]
+        model:
+          type: [string, "null"]
+          description: |
+            v0.98. Model id for this streaming assistant reply, so the
+            live bubble can show it before message.done.
 
     ToolTrace:
       type: object

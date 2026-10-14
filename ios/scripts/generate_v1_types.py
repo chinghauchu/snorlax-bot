@@ -59,6 +59,16 @@ def ref_name(schema: dict) -> str | None:
 
 
 def swift_type(schema: dict, schemas: dict, hint: str) -> str:
+    union = schema.get("oneOf") or schema.get("anyOf")
+    if isinstance(union, list):
+        refs = [item for item in union if isinstance(item, dict) and item.get("$ref")]
+        nulls = [
+            item
+            for item in union
+            if isinstance(item, dict) and (item.get("type") == "null" or item.get("type") == ["null"])
+        ]
+        if len(refs) == 1 and nulls and len(refs) + len(nulls) == len(union):
+            return f"{ref_name(refs[0])}?"
     schema, nullable = unwrap_nullable(schema)
     name = ref_name(schema)
     if name:

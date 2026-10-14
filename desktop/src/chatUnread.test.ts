@@ -250,10 +250,9 @@ test("desktop marks from message.done, clears on open, and paints the existing d
 });
 
 test("OpenAPI stays 0.18.0; unread is local; no computerPane.ts", () => {
-  assert.match(openapi, /version: 0\.18\.0/);
-  assert.match(protocol, /version: 0\.18\.0/);
-  assert.match(runtimeOpenapi, /version: 0\.18\.0/);
-  assert.doesNotMatch(openapi, /version:\s*0\.19/);
+  assert.match(openapi, /version: 0\.19\.0/);
+  assert.match(protocol, /version: 0\.19\.0/);
+  assert.match(runtimeOpenapi, /version: 0\.19\.0/);
   assert.match(src, /localStorage/);
   assert.match(src, /CHAT_UNREAD_KEY = "snorlax\.chatUnread"/);
   assert.doesNotMatch(src, /fetch\(/);

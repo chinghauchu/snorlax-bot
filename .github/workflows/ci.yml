@@ -119,3 +119,4 @@ jobs:
           python3 ios/scripts/test_ios_focus_composer.py
           python3 ios/scripts/test_ios_copy_last_reply.py
           python3 ios/scripts/test_ios_mark_all_read.py
+          python3 ios/scripts/test_ios_model_provider.py
