@@ -86,8 +86,20 @@ struct AgentListView: View {
         }
             .searchable(text: $chatQuery, prompt: ChatSwitcher.placeholder)
             .accessibilityInputLabels([ChatSwitcher.inputLabel])
+            .onAppear {
+                model.archiveListShowing = showArchived
+            }
+            .onDisappear {
+                model.archiveListShowing = false
+            }
+            .onChange(of: showArchived) { _, showing in
+                model.archiveListShowing = showing
+            }
             .onKeyPress(phases: .down) { press in
-                newChatKey(press)
+                if jumpChatKey(press) == .handled {
+                    return .handled
+                }
+                return newChatKey(press)
             }
             .toolbar {
                 if model.hasAnyUnreadChat {
@@ -140,6 +152,33 @@ struct AgentListView: View {
                 }
                 Button("Cancel", role: .cancel) { pendingDelete = nil }
             }
+    }
+
+    /// Hardware ⌘1–⌘9 / ⌃1–⌃9 from the chat list. The order is the
+    /// list on screen: the main roster, or the Archived list when
+    /// that screen is showing. Search, rename, and the channel sheet
+    /// own the key. ⌘9 opens the last row.
+    private func jumpChatKey(_ press: KeyPress) -> KeyPress.Result {
+        guard let slot = ChatJump.slot(
+            key: press.key.character,
+            characters: press.characters,
+            command: press.modifiers.contains(.command),
+            control: press.modifiers.contains(.control),
+            option: press.modifiers.contains(.option),
+            shift: press.modifiers.contains(.shift)
+        ) else { return .ignored }
+        if renamingID != nil || showCreateChannel { return .ignored }
+        if model.showSettings || model.showProfile || model.computerTakeoverOpen {
+            return .ignored
+        }
+        if ChatJump.overlayTextFieldOwnsChord(
+            textFieldFocused: TranscriptScroll.textInputIsFirstResponder(),
+            composerFocused: false
+        ) {
+            return .ignored
+        }
+        model.openChatAtJumpSlot(slot)
+        return .handled
     }
 
     /// Hardware ⌘N / ⌃N from the chat list. The New agent item is the

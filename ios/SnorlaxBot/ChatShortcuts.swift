@@ -4,11 +4,12 @@ import SwiftUI
 /// v0.73: gestures and hardware-keyboard shortcuts that already exist
 /// on the chat screen. Long-press actions come from the message menu
 /// and the approve-command copy. Hardware keys are `UIKeyCommand`
-/// (Escape, Up, Option+Up/Down, ⌘L / ⌃L, ⌘N / ⌃N, ⌘⇧C / ⌃⇧C), `.onKeyPress`
-/// (Page Up / Page Down, ⌘↑ / ⌘↓, ⌘N), `.keyboardShortcut` (Cmd-F), and
+/// (Escape, Up, Option+Up/Down, ⌘L / ⌃L, ⌘N / ⌃N, ⌘1–⌘9 / ⌃1–⌃9, ⌘⇧C / ⌃⇧C), `.onKeyPress`
+/// (Page Up / Page Down, ⌘↑ / ⌘↓, ⌘N, ⌘1–⌘9), `.keyboardShortcut` (Cmd-F), and
 /// the composer Return / Shift-Return presses. ⌘L focuses the composer
 /// and does not insert or send. ⌘N starts a new chat through New agent
-/// and does not send. ⌘⇧C copies the last assistant reply
+/// and does not send. ⌘1–⌘8 opens that chat and ⌘9 opens the last one.
+/// ⌘⇧C copies the last assistant reply
 /// and does not send. Page Up / Page Down scroll the transcript.
 /// ⌘↑ / ⌘↓ jump to the oldest or latest messages. No Cmd-K on iOS
 /// (the switcher is the chat-list search field). No HTTP.
@@ -66,6 +67,7 @@ enum ChatShortcuts {
         Row(id: "escape", keys: "Esc", action: "Stop, close, or jump"),
         Row(id: "recall", keys: "↑", action: "Recall last message"),
         Row(id: "chat-nav", keys: ChatNav.keysLabel, action: ChatNav.action),
+        Row(id: "jump-chat", keys: ChatJump.keysLabel, action: ChatJump.action),
         Row(id: "focus", keys: FocusComposer.keysLabel, action: FocusComposer.action),
         Row(id: "new-chat", keys: NewChat.keysLabel, action: NewChat.action),
         Row(id: "copy-last", keys: CopyLastReply.keysLabel, action: CopyLastReply.action),
