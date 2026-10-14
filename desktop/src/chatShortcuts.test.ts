@@ -121,6 +121,7 @@ test("the overlay lists only shortcuts that already have handlers", () => {
       "send",
       "newline",
       "focus",
+      "new-chat",
       "copy-last",
       "page",
       "transcript-edge",
@@ -140,6 +141,7 @@ test("the overlay lists only shortcuts that already have handlers", () => {
   assert.equal(action.send, "Send");
   assert.equal(action.newline, "New line");
   assert.equal(action.focus, "Focus the composer");
+  assert.equal(action["new-chat"], "New chat");
   assert.equal(action["copy-last"], "Copy the last reply");
   assert.equal(action.page, "Scroll the transcript");
   assert.equal(action["transcript-edge"], "Oldest or latest messages");
@@ -168,7 +170,9 @@ test("the overlay lists only shortcuts that already have handlers", () => {
   assert.match(app, /event\.key === "Tab"/);
   assert.match(app, /pickMention/);
   assert.match(app, /pickSkill/);
-  assert.doesNotMatch(CHAT_SHORTCUTS.map((row) => row.keys).join(" "), /Cmd N|Ctrl N|Cmd B/);
+  assert.match(CHAT_SHORTCUTS.map((row) => row.keys).join(" "), /Cmd\/Ctrl N/);
+  assert.match(app, /isNewChatChord/);
+  assert.doesNotMatch(CHAT_SHORTCUTS.map((row) => row.keys).join(" "), /Cmd B/);
 
   const chord = sliceFn(app, "const onShortcutsChord", "window.addEventListener");
   assert.match(chord, /isShortcutsChord/);

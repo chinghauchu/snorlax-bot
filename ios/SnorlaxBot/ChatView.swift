@@ -66,6 +66,7 @@ struct ChatView: View {
                 focused: $composerFocused,
                 showJump: stick.showJump,
                 onCopyLastReply: { copyLastAssistantReply() },
+                onNewChat: { newChatFromComposer() },
                 onEscapeFind: {
                     guard findOpen else { return false }
                     closeFind()
@@ -83,6 +84,9 @@ struct ChatView: View {
             )
         )
         .onKeyPress(phases: .down) { press in
+            if newChatKey(press) == .handled {
+                return .handled
+            }
             if chatNavKey(press) == .handled {
                 return .handled
             }
@@ -254,6 +258,45 @@ struct ChatView: View {
         withTransaction(transaction) {
             transcriptPosition.scrollTo(point: CGPoint(x: 0, y: next))
         }
+    }
+
+    /// Hardware ⌘N / ⌃N when the composer is not first responder.
+    /// The text view handles the same chord and keeps IME marked text.
+    /// Find, rename, search, and other text fields own the key.
+    private func newChatKey(_ press: KeyPress) -> KeyPress.Result {
+        guard NewChat.isChord(
+            key: press.key.character,
+            characters: press.characters,
+            command: press.modifiers.contains(.command),
+            control: press.modifiers.contains(.control),
+            option: press.modifiers.contains(.option),
+            shift: press.modifiers.contains(.shift)
+        ) else { return .ignored }
+        if composerFocused { return .ignored }
+        if findOpen || findFieldFocused || lightbox != nil || shortcutsOpen {
+            return .ignored
+        }
+        if model.computerTakeoverOpen || model.showProfile || model.showSettings {
+            return .ignored
+        }
+        if model.skillMenuOpen() { return .ignored }
+        if NewChat.overlayTextFieldOwnsChord(
+            textFieldFocused: TranscriptScroll.textInputIsFirstResponder(),
+            composerFocused: false
+        ) {
+            return .ignored
+        }
+        model.createAgentFromChord()
+        return .handled
+    }
+
+    /// Composer ⌘N. Mention and skill menus are checked by the bar.
+    /// Find, the shortcuts sheet, and the lightbox keep the key.
+    private func newChatFromComposer() {
+        if findOpen || findFieldFocused || lightbox != nil || shortcutsOpen { return }
+        if model.computerTakeoverOpen || model.showProfile || model.showSettings { return }
+        if model.skillMenuOpen() { return }
+        model.createAgentFromChord()
     }
 
     /// Hardware Option+Up / Option+Down when the composer is not first
@@ -1280,6 +1323,7 @@ private struct ComposerBar: View {
     var focused: FocusState<Bool>.Binding
     var showJump = false
     var onCopyLastReply: () -> Void = {}
+    var onNewChat: () -> Void = {}
     var onEscapeFind: () -> Bool = { false }
     @Environment(AppModel.self) private var model
     @State private var pickerItem: PhotosPickerItem?
@@ -1442,6 +1486,10 @@ private struct ComposerBar: View {
                         model.openAdjacentChat(direction: direction)
                     },
                     onCopyLastReply: onCopyLastReply,
+                    onNewChat: {
+                        if mentionQuery != nil || model.skillMenuOpen() { return }
+                        onNewChat()
+                    },
                     onBackspaceRemoveChip: {
                         model.removeLastPendingChipFromBackspace()
                     },

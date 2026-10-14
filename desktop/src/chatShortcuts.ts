@@ -28,7 +28,9 @@ export type ChatShortcut = {
  * and does not insert (v0.99). Cmd/Ctrl-Shift-C copies the last
  * assistant reply (v1.00). Page Up / Page Down scroll the transcript
  * one viewport; Cmd/Ctrl-Home / Cmd/Ctrl-End jump to the oldest or
- * latest loaded messages (v1.03). Find's Enter / Shift-Enter steps matches.
+ * latest loaded messages (v1.03). Cmd/Ctrl-N starts a new chat
+ * through the sidebar New agent path (v1.04). Find's Enter /
+ * Shift-Enter steps matches.
  * The switcher uses Up / Down / Enter. Mention and skill menus use
  * Up / Down / Enter / Tab.
  */
@@ -36,6 +38,7 @@ export const CHAT_SHORTCUTS: readonly ChatShortcut[] = [
   { id: "send", keys: "Enter", action: "Send" },
   { id: "newline", keys: "Shift Enter", action: "New line" },
   { id: "focus", keys: "Cmd/Ctrl L", action: "Focus the composer" },
+  { id: "new-chat", keys: "Cmd/Ctrl N", action: "New chat" },
   { id: "copy-last", keys: "Cmd/Ctrl Shift C", action: "Copy the last reply" },
   { id: "page", keys: "Page Up / Page Down", action: "Scroll the transcript" },
   { id: "transcript-edge", keys: "Cmd/Ctrl Home / End", action: "Oldest or latest messages" },

@@ -25,6 +25,9 @@ struct ComposerTextView: UIViewRepresentable {
     var onChatNav: ((Int) -> Void)? = nil
     /// v1.00: ⌘⇧C / ⌃⇧C copies the last assistant reply. Does not send.
     var onCopyLastReply: (() -> Void)? = nil
+    /// v1.04: ⌘N / ⌃N starts a new chat. Does not insert or send.
+    /// IME marked text keeps the key.
+    var onNewChat: (() -> Void)? = nil
     /// v0.87: empty composer + Delete removes the last pending chip.
     /// Hardware Delete and the on-screen keyboard both call `deleteBackward`.
     /// Returns true when a chip was removed.
@@ -58,6 +61,9 @@ struct ComposerTextView: UIViewRepresentable {
         }
         view.onCopyLastReply = { [coordinator = context.coordinator] in
             coordinator.parent.onCopyLastReply?()
+        }
+        view.onNewChat = { [coordinator = context.coordinator] in
+            coordinator.parent.onNewChat?()
         }
         view.onBackspaceRemoveChip = { [coordinator = context.coordinator] in
             coordinator.parent.onBackspaceRemoveChip?() ?? false
@@ -98,6 +104,9 @@ struct ComposerTextView: UIViewRepresentable {
         }
         view.onCopyLastReply = { [coordinator = context.coordinator] in
             coordinator.parent.onCopyLastReply?()
+        }
+        view.onNewChat = { [coordinator = context.coordinator] in
+            coordinator.parent.onNewChat?()
         }
         view.onBackspaceRemoveChip = { [coordinator = context.coordinator] in
             coordinator.parent.onBackspaceRemoveChip?() ?? false
@@ -258,6 +267,7 @@ final class ComposerUITextView: UITextView {
     var onArrowUpRecall: (() -> Void)?
     var onChatNav: ((Int) -> Void)?
     var onCopyLastReply: (() -> Void)?
+    var onNewChat: (() -> Void)?
     var onBackspaceRemoveChip: (() -> Bool)?
     var sendMuted = false
     /// Hardware Delete with Shift/Alt/Cmd/Ctrl. Software Delete leaves this false.
@@ -327,6 +337,7 @@ final class ComposerUITextView: UITextView {
             commands.append(contentsOf: chatNavCommands())
             commands.append(contentsOf: focusComposerCommands())
             commands.append(contentsOf: copyLastReplyCommands())
+            commands.append(contentsOf: newChatCommands())
         }
         return commands
     }
@@ -370,6 +381,25 @@ final class ComposerUITextView: UITextView {
         return [command, control]
     }
 
+    /// ⌘N / ⌃N. Starts a new chat. Does not insert or send.
+    private func newChatCommands() -> [UIKeyCommand] {
+        let command = UIKeyCommand(
+            title: NewChat.action,
+            action: #selector(newChatFromShortcut),
+            input: "n",
+            modifierFlags: .command
+        )
+        let control = UIKeyCommand(
+            title: NewChat.action,
+            action: #selector(newChatFromShortcut),
+            input: "n",
+            modifierFlags: .control
+        )
+        command.wantsPriorityOverSystemBehavior = true
+        control.wantsPriorityOverSystemBehavior = true
+        return [command, control]
+    }
+
     /// Option+Up / Option+Down. Plain Up stays the recall command above.
     private func chatNavCommands() -> [UIKeyCommand] {
         let up = UIKeyCommand(
@@ -407,6 +437,11 @@ final class ComposerUITextView: UITextView {
     @objc private func copyLastReplyFromShortcut() {
         if markedTextRange != nil { return }
         onCopyLastReply?()
+    }
+
+    @objc private func newChatFromShortcut() {
+        if markedTextRange != nil { return }
+        onNewChat?()
     }
 
     @objc private func chatNavUp() {
