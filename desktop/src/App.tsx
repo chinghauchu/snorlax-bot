@@ -400,6 +400,10 @@ import {
   writeChatPins,
 } from "./chatPins";
 import {
+  CHATS_SECTION_LABEL,
+  rosterSectionHeaders,
+} from "./chatSections";
+import {
   RENAME_FIELD_LABEL,
   RENAME_LABEL,
   browserNameStorage,
@@ -4279,6 +4283,10 @@ export function App() {
     pinnedChatIds,
     (agent) => agent.id,
   );
+  const rosterHeaders = rosterSectionHeaders(
+    pinnedAgents.length,
+    restAgents.length,
+  );
   const archivedAgents = agents.filter((agent) =>
     isChatArchived(archivedChatIds, agent.id),
   );
@@ -4710,10 +4718,14 @@ export function App() {
           {showUnreadEmpty(chatListFilter, unreadRosterCount) ? (
             <li className="roster-empty">{UNREAD_EMPTY_LABEL}</li>
           ) : null}
-          {pinnedAgents.length > 0 ? (
+          {rosterHeaders.includes("pinned") ? (
             <li className="roster-group">{PINNED_GROUP_LABEL}</li>
           ) : null}
-          {[...pinnedAgents, ...restAgents].map((agent) => renderChatRow(agent, false))}
+          {pinnedAgents.map((agent) => renderChatRow(agent, false))}
+          {rosterHeaders.includes("chats") ? (
+            <li className="roster-group">{CHATS_SECTION_LABEL}</li>
+          ) : null}
+          {restAgents.map((agent) => renderChatRow(agent, false))}
         </ul>
         {archivedAgents.length > 0 ? (
           <div className="roster-archive">
