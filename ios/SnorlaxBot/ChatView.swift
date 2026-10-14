@@ -67,6 +67,7 @@ struct ChatView: View {
                 showJump: stick.showJump,
                 onCopyLastReply: { copyLastAssistantReply() },
                 onNewChat: { newChatFromComposer() },
+                onJumpChat: { slot in jumpChatFromComposer(slot) },
                 onEscapeFind: {
                     guard findOpen else { return false }
                     closeFind()
@@ -84,6 +85,9 @@ struct ChatView: View {
             )
         )
         .onKeyPress(phases: .down) { press in
+            if jumpChatKey(press) == .handled {
+                return .handled
+            }
             if newChatKey(press) == .handled {
                 return .handled
             }
@@ -258,6 +262,46 @@ struct ChatView: View {
         withTransaction(transaction) {
             transcriptPosition.scrollTo(point: CGPoint(x: 0, y: next))
         }
+    }
+
+    /// Hardware ⌘1–⌘9 / ⌃1–⌃9 when the composer is not first responder.
+    /// The text view handles the same chord and keeps IME marked text.
+    /// Find, rename, search, and a card text field own the key. ⌘9
+    /// opens the last chat in the list order.
+    private func jumpChatKey(_ press: KeyPress) -> KeyPress.Result {
+        guard let slot = ChatJump.slot(
+            key: press.key.character,
+            characters: press.characters,
+            command: press.modifiers.contains(.command),
+            control: press.modifiers.contains(.control),
+            option: press.modifiers.contains(.option),
+            shift: press.modifiers.contains(.shift)
+        ) else { return .ignored }
+        if composerFocused { return .ignored }
+        if findOpen || findFieldFocused || lightbox != nil || shortcutsOpen {
+            return .ignored
+        }
+        if model.computerTakeoverOpen || model.showProfile || model.showSettings {
+            return .ignored
+        }
+        if model.skillMenuOpen() { return .ignored }
+        if ChatJump.overlayTextFieldOwnsChord(
+            textFieldFocused: TranscriptScroll.textInputIsFirstResponder(),
+            composerFocused: false
+        ) {
+            return .ignored
+        }
+        model.openChatAtJumpSlot(slot)
+        return .handled
+    }
+
+    /// Composer ⌘1–⌘9. Mention and skill menus are checked by the bar.
+    /// Find, the shortcuts sheet, and the lightbox keep the key.
+    private func jumpChatFromComposer(_ slot: Int) {
+        if findOpen || findFieldFocused || lightbox != nil || shortcutsOpen { return }
+        if model.computerTakeoverOpen || model.showProfile || model.showSettings { return }
+        if model.skillMenuOpen() { return }
+        model.openChatAtJumpSlot(slot)
     }
 
     /// Hardware ⌘N / ⌃N when the composer is not first responder.
@@ -1324,6 +1368,7 @@ private struct ComposerBar: View {
     var showJump = false
     var onCopyLastReply: () -> Void = {}
     var onNewChat: () -> Void = {}
+    var onJumpChat: (Int) -> Void = { _ in }
     var onEscapeFind: () -> Bool = { false }
     @Environment(AppModel.self) private var model
     @State private var pickerItem: PhotosPickerItem?
@@ -1489,6 +1534,10 @@ private struct ComposerBar: View {
                     onNewChat: {
                         if mentionQuery != nil || model.skillMenuOpen() { return }
                         onNewChat()
+                    },
+                    onJumpChat: { slot in
+                        if mentionQuery != nil || model.skillMenuOpen() { return }
+                        onJumpChat(slot)
                     },
                     onBackspaceRemoveChip: {
                         model.removeLastPendingChipFromBackspace()

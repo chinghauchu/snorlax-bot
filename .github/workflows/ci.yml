@@ -122,3 +122,4 @@ jobs:
           python3 ios/scripts/test_ios_chat_mute.py
           python3 ios/scripts/test_ios_transcript_scroll.py
           python3 ios/scripts/test_ios_new_chat.py
+          python3 ios/scripts/test_ios_chat_jump.py

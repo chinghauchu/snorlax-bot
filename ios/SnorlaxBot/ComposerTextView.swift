@@ -28,6 +28,9 @@ struct ComposerTextView: UIViewRepresentable {
     /// v1.04: ⌘N / ⌃N starts a new chat. Does not insert or send.
     /// IME marked text keeps the key.
     var onNewChat: (() -> Void)? = nil
+    /// v1.05: ⌘1–⌘9 / ⌃1–⌃9 opens that visible chat. 9 is the last.
+    /// Does not insert or send. IME marked text keeps the key.
+    var onJumpChat: ((Int) -> Void)? = nil
     /// v0.87: empty composer + Delete removes the last pending chip.
     /// Hardware Delete and the on-screen keyboard both call `deleteBackward`.
     /// Returns true when a chip was removed.
@@ -64,6 +67,9 @@ struct ComposerTextView: UIViewRepresentable {
         }
         view.onNewChat = { [coordinator = context.coordinator] in
             coordinator.parent.onNewChat?()
+        }
+        view.onJumpChat = { [coordinator = context.coordinator] slot in
+            coordinator.parent.onJumpChat?(slot)
         }
         view.onBackspaceRemoveChip = { [coordinator = context.coordinator] in
             coordinator.parent.onBackspaceRemoveChip?() ?? false
@@ -107,6 +113,9 @@ struct ComposerTextView: UIViewRepresentable {
         }
         view.onNewChat = { [coordinator = context.coordinator] in
             coordinator.parent.onNewChat?()
+        }
+        view.onJumpChat = { [coordinator = context.coordinator] slot in
+            coordinator.parent.onJumpChat?(slot)
         }
         view.onBackspaceRemoveChip = { [coordinator = context.coordinator] in
             coordinator.parent.onBackspaceRemoveChip?() ?? false
@@ -268,6 +277,7 @@ final class ComposerUITextView: UITextView {
     var onChatNav: ((Int) -> Void)?
     var onCopyLastReply: (() -> Void)?
     var onNewChat: (() -> Void)?
+    var onJumpChat: ((Int) -> Void)?
     var onBackspaceRemoveChip: (() -> Bool)?
     var sendMuted = false
     /// Hardware Delete with Shift/Alt/Cmd/Ctrl. Software Delete leaves this false.
@@ -338,6 +348,7 @@ final class ComposerUITextView: UITextView {
             commands.append(contentsOf: focusComposerCommands())
             commands.append(contentsOf: copyLastReplyCommands())
             commands.append(contentsOf: newChatCommands())
+            commands.append(contentsOf: jumpChatCommands())
         }
         return commands
     }
@@ -400,6 +411,31 @@ final class ComposerUITextView: UITextView {
         return [command, control]
     }
 
+    /// ⌘1–⌘9 / ⌃1–⌃9. Opens that chat. Does not insert or send.
+    /// 9 is the last visible chat. IME keeps the key.
+    private func jumpChatCommands() -> [UIKeyCommand] {
+        var commands: [UIKeyCommand] = []
+        for digit in ["1", "2", "3", "4", "5", "6", "7", "8", "9"] {
+            let command = UIKeyCommand(
+                title: ChatJump.action,
+                action: #selector(jumpChatFromShortcut(_:)),
+                input: digit,
+                modifierFlags: .command
+            )
+            let control = UIKeyCommand(
+                title: ChatJump.action,
+                action: #selector(jumpChatFromShortcut(_:)),
+                input: digit,
+                modifierFlags: .control
+            )
+            command.wantsPriorityOverSystemBehavior = true
+            control.wantsPriorityOverSystemBehavior = true
+            commands.append(command)
+            commands.append(control)
+        }
+        return commands
+    }
+
     /// Option+Up / Option+Down. Plain Up stays the recall command above.
     private func chatNavCommands() -> [UIKeyCommand] {
         let up = UIKeyCommand(
@@ -442,6 +478,12 @@ final class ComposerUITextView: UITextView {
     @objc private func newChatFromShortcut() {
         if markedTextRange != nil { return }
         onNewChat?()
+    }
+
+    @objc private func jumpChatFromShortcut(_ sender: UIKeyCommand) {
+        if markedTextRange != nil { return }
+        guard let raw = sender.input, let slot = Int(raw), (1...9).contains(slot) else { return }
+        onJumpChat?(slot)
     }
 
     @objc private func chatNavUp() {

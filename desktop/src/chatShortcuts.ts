@@ -29,8 +29,9 @@ export type ChatShortcut = {
  * assistant reply (v1.00). Page Up / Page Down scroll the transcript
  * one viewport; Cmd/Ctrl-Home / Cmd/Ctrl-End jump to the oldest or
  * latest loaded messages (v1.03). Cmd/Ctrl-N starts a new chat
- * through the sidebar New agent path (v1.04). Find's Enter /
- * Shift-Enter steps matches.
+ * through the sidebar New agent path (v1.04). Cmd/Ctrl-1 through
+ * Cmd/Ctrl-8 opens that visible chat; Cmd/Ctrl-9 opens the last
+ * one (v1.05). Find's Enter / Shift-Enter steps matches.
  * The switcher uses Up / Down / Enter. Mention and skill menus use
  * Up / Down / Enter / Tab.
  */
@@ -45,6 +46,7 @@ export const CHAT_SHORTCUTS: readonly ChatShortcut[] = [
   { id: "escape", keys: "Esc", action: "Stop, close, or jump" },
   { id: "recall", keys: "↑", action: "Recall last message" },
   { id: "chat-nav", keys: "Alt ↑ / Alt ↓", action: "Previous or next chat" },
+  { id: "jump-chat", keys: "Cmd/Ctrl 1-9", action: "Open a chat (9 is last)" },
   { id: "find", keys: "Cmd/Ctrl F", action: "Find in chat" },
   { id: "switch", keys: "Cmd/Ctrl K", action: "Switch chat" },
   { id: "info", keys: "Cmd/Ctrl Shift I", action: "Open info" },

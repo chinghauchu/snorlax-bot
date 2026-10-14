@@ -105,6 +105,12 @@ final class AppModel {
     var chatListFilter: ChatListFilter.Mode = .all {
         didSet { ChatListFilter.write(chatListFilter) }
     }
+    /// v1.05: the chat list is showing Archived instead of the main roster.
+    /// Not persisted. Cleared when that list leaves the screen.
+    var archiveListShowing = false
+    /// Same slot delivered by the list and the chat within one keypress.
+    private var jumpChordSlot = 0
+    private var jumpChordAt: TimeInterval = 0
     /// v0.89: pinned chat ids, in the order they were pinned. UserDefaults.
     var pinnedChatIDs: [String] = [] {
         didSet { ChatPins.write(pinnedChatIDs) }
@@ -419,6 +425,33 @@ final class AppModel {
         ) else { return }
         Task {
             await select(next, push: true)
+            wantsComposerFocus = true
+        }
+    }
+
+    /// Visible jump order. The main roster matches Option+Up / Option+Down.
+    /// The Archived screen replaces that roster. Section headers are not ids.
+    func jumpChatIds() -> [String] {
+        ChatJump.order(
+            mainIds: visibleChatOrder(),
+            archivedIds: archivedAgents.map(\.id),
+            archiveListShowing: archiveListShowing,
+            archiveReplacesMain: true
+        )
+    }
+
+    /// v1.05: hardware ⌘1–⌘9 / ⌃1–⌃9. Same open as tapping the row,
+    /// including the draft swap and composer focus. A slot past the
+    /// visible count does nothing. ⌘9 is the last chat.
+    func openChatAtJumpSlot(_ slot: Int) {
+        guard !computerTakeoverOpen else { return }
+        guard let id = ChatJump.target(ids: jumpChatIds(), slot: slot) else { return }
+        let now = Date().timeIntervalSinceReferenceDate
+        if slot == jumpChordSlot, now - jumpChordAt < 0.05 { return }
+        jumpChordSlot = slot
+        jumpChordAt = now
+        Task {
+            await select(id, push: true)
             wantsComposerFocus = true
         }
     }

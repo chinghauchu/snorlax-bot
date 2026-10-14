@@ -161,6 +161,13 @@ import {
   overlayTextFieldOwnsNewChat,
 } from "./newChatKey";
 import {
+  chatIdAtJumpSlot,
+  chatJumpBlocked,
+  chatJumpSlot,
+  overlayTextFieldOwnsChatJump,
+  visibleJumpIds,
+} from "./chatJump";
+import {
   loadInitialRuntimeUrl,
   normalizeRuntimeUrl,
 } from "./runtimeUrl";
@@ -4494,6 +4501,15 @@ export function App() {
   const visibleChatKey = [...pinnedAgents, ...restAgents]
     .map((agent) => agent.id)
     .join("\u0000");
+  // v1.05: same painted rows as Alt+Up/Down, plus the archive section
+  // while it is expanded. Section headers are not rows. Cmd/Ctrl-9
+  // is the last of this list.
+  const jumpChatIds = visibleJumpIds({
+    mainIds: [...pinnedAgents, ...restAgents].map((agent) => agent.id),
+    archivedIds: archivedAgents.map((agent) => agent.id),
+    archiveListShowing: archiveOpen,
+  });
+  const jumpChatKey = jumpChatIds.join("\u0000");
   const selectAgentRef = useRef(selectAgent);
   selectAgentRef.current = selectAgent;
 
@@ -4808,6 +4824,62 @@ export function App() {
     };
   }, [
     session,
+    findOpen,
+    switchOpen,
+    shortcutsOpen,
+    renamingId,
+    lightboxTarget,
+    contextMenu,
+    switcherBlocked,
+    mentionOpen,
+    skillMenuOpen,
+  ]);
+
+  // v1.05: Cmd/Ctrl-1..8 opens that visible chat. Cmd/Ctrl-9 opens
+  // the last one. The composer does not own the chord. Opening is
+  // the sidebar row click, so that chat's draft and reading place
+  // come back and the composer is focused. A missing slot does nothing.
+  useEffect(() => {
+    const ids = jumpChatKey ? jumpChatKey.split("\u0000") : [];
+    const onJumpChatKey = (event: globalThis.KeyboardEvent) => {
+      if (event.defaultPrevented) return;
+      const slot = chatJumpSlot({
+        key: event.key,
+        metaKey: event.metaKey,
+        ctrlKey: event.ctrlKey,
+        altKey: event.altKey,
+        shiftKey: event.shiftKey,
+        repeat: event.repeat,
+      });
+      if (slot == null) return;
+      const gate = {
+        composing: isComposerComposing(event),
+        overlayTextField: overlayTextFieldOwnsChatJump(
+          focusIsTextField(event.target),
+          event.target === composerRef.current,
+        ),
+        inCard: focusInsideCard(event.target),
+        findOpen,
+        switchOpen,
+        shortcutsOpen,
+        renaming: renamingId != null,
+        lightboxOpen: lightboxTarget != null,
+        menuOpen: contextMenu != null,
+        blocked: switcherBlocked || mentionOpen || skillMenuOpen,
+      };
+      if (chatJumpBlocked(gate)) return;
+      event.preventDefault();
+      event.stopPropagation();
+      const id = chatIdAtJumpSlot(ids, slot);
+      if (!id) return;
+      void selectAgentRef.current(id);
+    };
+    window.addEventListener("keydown", onJumpChatKey, true);
+    return () => {
+      window.removeEventListener("keydown", onJumpChatKey, true);
+    };
+  }, [
+    jumpChatKey,
     findOpen,
     switchOpen,
     shortcutsOpen,
