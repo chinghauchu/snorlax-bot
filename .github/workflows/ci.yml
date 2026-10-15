@@ -127,4 +127,5 @@ jobs:
           python3 ios/scripts/test_ios_clear_composer_draft.py
           python3 ios/scripts/test_ios_pin_open_chat.py
           python3 ios/scripts/test_ios_mute_open_chat.py
-          python3 ios/scripts/test_ios_mark_open_chat.py          python3 ios/scripts/test_ios_rename_open_chat.py
+          python3 ios/scripts/test_ios_mark_open_chat.py
+          python3 ios/scripts/test_ios_rename_open_chat.py
