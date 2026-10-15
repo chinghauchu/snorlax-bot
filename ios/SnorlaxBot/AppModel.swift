@@ -2393,6 +2393,23 @@ final class AppModel {
         attachError = nil
     }
 
+    /// v1.07: ⌘⇧⌫ / ⌃⇧⌫ clears this chat's unsent text and pending chips.
+    /// Nothing is sent. An already empty composer is a no-op. The stored
+    /// draft for the open chat is dropped so a later switch does not
+    /// bring the text back. Recall disarms because the field is empty.
+    func clearComposerDraftFromChord() {
+        let agentId = composerAgentID ?? selectedAgentID
+        guard let agentId, !agentId.isEmpty else { return }
+        guard !ClearComposerDraft.alreadyEmpty(text: draft, chipCount: pendingAttachments.count) else {
+            return
+        }
+        pendingAttachments = []
+        attachError = nil
+        if draft.isEmpty { return }
+        pendingComposerCaret = 0
+        draft = ""
+    }
+
     /// v0.87: hardware or on-screen Delete in an empty composer.
     /// One chip, the last one. Focus stays in the composer. No send.
     @discardableResult
