@@ -179,6 +179,12 @@ import {
   overlayTextFieldOwnsClearComposerDraft,
 } from "./clearComposerDraft";
 import {
+  isPinOpenChatChord,
+  overlayTextFieldOwnsPinOpenChat,
+  pinOpenChatBlocked,
+  pinOpenChatShouldToggle,
+} from "./pinOpenChat";
+import {
   loadInitialRuntimeUrl,
   normalizeRuntimeUrl,
 } from "./runtimeUrl";
@@ -1394,6 +1400,7 @@ export function App() {
   const createFromShortcutRef = useRef<() => void>(() => {});
   const archiveOpenChatRef = useRef<() => void>(() => {});
   const clearComposerDraftRef = useRef<() => void>(() => {});
+  const pinOpenChatRef = useRef<() => void>(() => {});
   useEffect(() => {
     return () => {
       if (shortcutCopyTimer.current != null) {
@@ -5049,6 +5056,71 @@ export function App() {
     window.addEventListener("keydown", onClearComposerDraft, true);
     return () => {
       window.removeEventListener("keydown", onClearComposerDraft, true);
+    };
+  }, [
+    active,
+    findOpen,
+    switchOpen,
+    shortcutsOpen,
+    renamingId,
+    lightboxTarget,
+    contextMenu,
+    switcherBlocked,
+    mentionOpen,
+    skillMenuOpen,
+  ]);
+
+  // v1.08: Cmd/Ctrl-Shift-P pins or unpins the open chat through the
+  // sidebar Pin action. The composer does not own the chord and the
+  // letter is not inserted. A modal or overlay text field does. IME
+  // keeps it. A key repeat does not flap Pin / Unpin. Nothing changes
+  // when no chat is open. Order and persistence are that same path.
+  pinOpenChatRef.current = () => {
+    const id = active?.id;
+    if (!id) return;
+    onTogglePin(id);
+  };
+
+  useEffect(() => {
+    const onPinOpenChat = (event: globalThis.KeyboardEvent) => {
+      if (event.defaultPrevented) return;
+      if (
+        !isPinOpenChatChord({
+          key: event.key,
+          metaKey: event.metaKey,
+          ctrlKey: event.ctrlKey,
+          altKey: event.altKey,
+          shiftKey: event.shiftKey,
+          repeat: event.repeat,
+        })
+      ) {
+        return;
+      }
+      const gate = {
+        chatOpen: active != null,
+        composing: isComposerComposing(event),
+        overlayTextField: overlayTextFieldOwnsPinOpenChat(
+          focusIsTextField(event.target),
+          event.target === composerRef.current,
+        ),
+        inCard: focusInsideCard(event.target),
+        findOpen,
+        switchOpen,
+        shortcutsOpen,
+        renaming: renamingId != null,
+        lightboxOpen: lightboxTarget != null,
+        menuOpen: contextMenu != null,
+        blocked: switcherBlocked || mentionOpen || skillMenuOpen,
+      };
+      if (pinOpenChatBlocked(gate)) return;
+      event.preventDefault();
+      event.stopPropagation();
+      if (!pinOpenChatShouldToggle({ repeat: event.repeat })) return;
+      pinOpenChatRef.current();
+    };
+    window.addEventListener("keydown", onPinOpenChat, true);
+    return () => {
+      window.removeEventListener("keydown", onPinOpenChat, true);
     };
   }, [
     active,

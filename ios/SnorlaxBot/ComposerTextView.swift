@@ -37,6 +37,9 @@ struct ComposerTextView: UIViewRepresentable {
     /// v1.07: ⌘⇧⌫ / ⌃⇧⌫ clears the composer draft. Does not send.
     /// IME marked text keeps the key.
     var onClearComposerDraft: (() -> Void)? = nil
+    /// v1.08: ⌘⇧P / ⌃⇧P pins or unpins the open chat. Does not insert or send.
+    /// IME marked text keeps the key. A key repeat does not flap the pin.
+    var onPinOpenChat: (() -> Void)? = nil
     /// v0.87: empty composer + Delete removes the last pending chip.
     /// Hardware Delete and the on-screen keyboard both call `deleteBackward`.
     /// Returns true when a chip was removed.
@@ -82,6 +85,9 @@ struct ComposerTextView: UIViewRepresentable {
         }
         view.onClearComposerDraft = { [coordinator = context.coordinator] in
             coordinator.parent.onClearComposerDraft?()
+        }
+        view.onPinOpenChat = { [coordinator = context.coordinator] in
+            coordinator.parent.onPinOpenChat?()
         }
         view.onBackspaceRemoveChip = { [coordinator = context.coordinator] in
             coordinator.parent.onBackspaceRemoveChip?() ?? false
@@ -134,6 +140,9 @@ struct ComposerTextView: UIViewRepresentable {
         }
         view.onClearComposerDraft = { [coordinator = context.coordinator] in
             coordinator.parent.onClearComposerDraft?()
+        }
+        view.onPinOpenChat = { [coordinator = context.coordinator] in
+            coordinator.parent.onPinOpenChat?()
         }
         view.onBackspaceRemoveChip = { [coordinator = context.coordinator] in
             coordinator.parent.onBackspaceRemoveChip?() ?? false
@@ -298,7 +307,10 @@ final class ComposerUITextView: UITextView {
     var onJumpChat: ((Int) -> Void)?
     var onArchiveOpenChat: (() -> Void)?
     var onClearComposerDraft: (() -> Void)?
+    var onPinOpenChat: (() -> Void)?
     var onBackspaceRemoveChip: (() -> Bool)?
+    /// v1.08: the first ⌘⇧P of a hold toggles. Further repeats do not.
+    private var pinOpenChatConsumed = false
     var sendMuted = false
     /// Hardware Delete with Shift/Alt/Cmd/Ctrl. Software Delete leaves this false.
     private var deleteModifierChord = false
@@ -377,6 +389,7 @@ final class ComposerUITextView: UITextView {
             commands.append(contentsOf: jumpChatCommands())
             commands.append(contentsOf: archiveOpenChatCommands())
             commands.append(contentsOf: clearComposerDraftCommands())
+            commands.append(contentsOf: pinOpenChatCommands())
         }
         return commands
     }
@@ -484,6 +497,26 @@ final class ComposerUITextView: UITextView {
         return [command, control]
     }
 
+    /// ⌘⇧P / ⌃⇧P. Pins or unpins the open chat. Does not insert or send.
+    /// IME keeps the key. A repeat of the held chord does not flap.
+    private func pinOpenChatCommands() -> [UIKeyCommand] {
+        let command = UIKeyCommand(
+            title: PinOpenChat.action,
+            action: #selector(pinOpenChatFromShortcut),
+            input: "p",
+            modifierFlags: [.command, .shift]
+        )
+        let control = UIKeyCommand(
+            title: PinOpenChat.action,
+            action: #selector(pinOpenChatFromShortcut),
+            input: "p",
+            modifierFlags: [.control, .shift]
+        )
+        command.wantsPriorityOverSystemBehavior = true
+        control.wantsPriorityOverSystemBehavior = true
+        return [command, control]
+    }
+
     /// ⌘⇧⌫ / ⌃⇧⌫. Clears the draft. Does not insert or send.
     /// IME keeps the key. An empty draft is ignored by the model.
     private func clearComposerDraftCommands() -> [UIKeyCommand] {
@@ -564,6 +597,15 @@ final class ComposerUITextView: UITextView {
         onClearComposerDraft?()
     }
 
+    /// The first press toggles. A repeat of this hold returns without
+    /// toggling again, so Pin / Unpin does not flap and p is not inserted.
+    @objc private func pinOpenChatFromShortcut() {
+        if markedTextRange != nil { return }
+        if pinOpenChatConsumed { return }
+        pinOpenChatConsumed = true
+        onPinOpenChat?()
+    }
+
     @objc private func chatNavUp() {
         performChatNav(-1)
     }
@@ -634,6 +676,12 @@ final class ComposerUITextView: UITextView {
     }
 
     override func pressesEnded(_ presses: Set<UIPress>, with event: UIPressesEvent?) {
+        if presses.contains(where: { press in
+            if press.key?.keyCode == .keyboardP { return true }
+            return press.key?.charactersIgnoringModifiers.lowercased() == "p"
+        }) {
+            pinOpenChatConsumed = false
+        }
         super.pressesEnded(presses, with: event)
         // If deleteBackward already ran it cleared the flag. If a chorded
         // Delete never reached it, drop the flag on the next turn so a
@@ -649,9 +697,28 @@ final class ComposerUITextView: UITextView {
         }
     }
 
+    override func pressesCancelled(_ presses: Set<UIPress>, with event: UIPressesEvent?) {
+        pinOpenChatConsumed = false
+        super.pressesCancelled(presses, with: event)
+    }
+
     override func pressesBegan(_ presses: Set<UIPress>, with event: UIPressesEvent?) {
         for press in presses {
             guard let key = press.key else { continue }
+            if key.keyCode == .keyboardP {
+                let mods = key.modifierFlags
+                if PinOpenChat.isChord(
+                    key: "p",
+                    characters: key.charactersIgnoringModifiers,
+                    command: mods.contains(.command),
+                    control: mods.contains(.control),
+                    option: mods.contains(.alternate),
+                    shift: mods.contains(.shift)
+                ), pinOpenChatConsumed {
+                    // Held ⌘⇧P. Do not insert p and do not toggle again.
+                    return
+                }
+            }
             if key.keyCode == .keyboardDeleteOrBackspace {
                 let mods = key.modifierFlags
                 backspaceCommand = mods.contains(.command)
