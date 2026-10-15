@@ -43,7 +43,8 @@ export type ChatShortcut = {
  * the sidebar Rename action (v1.11). Cmd/Ctrl-Shift-D asks to delete
  * the open chat with the sidebar Delete confirm (v1.12). Enter or
  * Delete confirms. Esc or Cancel aborts and focus returns to the
- * composer. A key repeat never confirms. Find's Enter /
+ * composer. A key repeat never confirms. Cmd/Ctrl-Shift-E copies the
+ * open chat's loaded transcript as plain text (v1.13). Find's Enter /
  * Shift-Enter steps matches.
  * The switcher uses Up / Down / Enter. Mention and skill menus use
  * Up / Down / Enter / Tab.
@@ -67,6 +68,7 @@ export const CHAT_SHORTCUTS: readonly ChatShortcut[] = [
   { id: "mark-unread", keys: "Cmd/Ctrl Shift U", action: "Mark as unread or read" },
   { id: "rename-chat", keys: "Cmd/Ctrl Shift R", action: "Rename this chat" },
   { id: "delete-chat", keys: "Cmd/Ctrl Shift D", action: "Ask to delete this chat" },
+  { id: "copy-transcript", keys: "Cmd/Ctrl Shift E", action: "Copy the transcript" },
   { id: "find", keys: "Cmd/Ctrl F", action: "Find in chat" },
   { id: "switch", keys: "Cmd/Ctrl K", action: "Switch chat" },
   { id: "info", keys: "Cmd/Ctrl Shift I", action: "Open info" },

@@ -37,6 +37,9 @@ struct ChatView: View {
     @State private var keyboardJumpToken = 0
     /// v1.12: chord opens the sidebar Delete confirm. Nil until then.
     @State private var pendingDeleteChatID: String?
+    /// v1.13: muted Copied beside the chat name after ⌘⇧E. Same 1.2s as Copy.
+    @State private var transcriptCopied = false
+    @State private var transcriptCopiedPulse = 0
 
     private var agent: Agent {
         model.visibleAgents.first(where: { $0.id == agentID })
@@ -77,6 +80,7 @@ struct ChatView: View {
                 onMarkOpenChat: { markOpenChatFromComposer() },
                 onRenameOpenChat: { renameOpenChatFromComposer() },
                 onDeleteOpenChat: { deleteOpenChatFromComposer() },
+                onCopyTranscript: { copyTranscriptFromComposer() },
                 deleteConfirmOpen: pendingDeleteChatID != nil,
                 onConfirmDeleteKey: { key in confirmDeleteOpenChat(key: key) },
                 onCancelDelete: { cancelDeleteOpenChat() },
@@ -128,6 +132,9 @@ struct ChatView: View {
                 return .handled
             }
             if deleteOpenChatKey(press) == .handled {
+                return .handled
+            }
+            if copyTranscriptKey(press) == .handled {
                 return .handled
             }
             if chatNavKey(press) == .handled {
@@ -187,6 +194,11 @@ struct ChatView: View {
                                 .font(.system(size: 14, weight: .semibold))
                                 .foregroundStyle(.primary)
                                 .lineLimit(1)
+                            if transcriptCopied {
+                                Text(CopyTranscript.copiedLabel)
+                                    .font(.system(size: 12, weight: .medium))
+                                    .foregroundStyle(.secondary)
+                            }
                         }
                     }
                     .accessibilityLabel(chatTitle)
@@ -240,6 +252,7 @@ struct ChatView: View {
             stick = StickToBottom.State.armed
             lastAssistantSig = ""
             expandedToolStacks = []
+            transcriptCopied = false
             closeFind()
             guard hasRealAgent || !model.isConfigured else { return }
             if !(model.selectedAgentID == agentID && model.threadID != nil) {
@@ -811,6 +824,75 @@ struct ChatView: View {
         if model.computerTakeoverOpen || model.showProfile || model.showSettings { return }
         if model.skillMenuOpen() { return }
         requestDeleteOpenChat()
+    }
+
+    /// Hardware ⌘⇧E / ⌃⇧E when the composer is not first responder.
+    /// The text view handles the same chord and keeps IME marked text.
+    /// Find, rename, search, a card text field, and an empty chat own the key.
+    /// A key repeat is swallowed so it does not copy again.
+    private func copyTranscriptKey(_ press: KeyPress) -> KeyPress.Result {
+        guard hasRealAgent else { return .ignored }
+        guard CopyTranscript.isChord(
+            key: press.key.character,
+            characters: press.characters,
+            command: press.modifiers.contains(.command),
+            control: press.modifiers.contains(.control),
+            option: press.modifiers.contains(.option),
+            shift: press.modifiers.contains(.shift)
+        ) else { return .ignored }
+        if composerFocused { return .ignored }
+        if copyTranscriptBlocked() { return .ignored }
+        if CopyTranscript.overlayTextFieldOwnsChord(
+            textFieldFocused: TranscriptScroll.textInputIsFirstResponder(),
+            composerFocused: false
+        ) {
+            return .ignored
+        }
+        if CopyTranscript.shouldIgnoreRepeat(press.`repeat`) {
+            return .handled
+        }
+        copyOpenTranscript()
+        return .handled
+    }
+
+    /// Composer ⌘⇧E. Mention and skill menus are checked by the bar.
+    /// Find, the shortcuts sheet, and the lightbox keep the key.
+    /// An empty chat does not copy. The text view swallows a key repeat.
+    private func copyTranscriptFromComposer() {
+        guard hasRealAgent else { return }
+        if copyTranscriptBlocked() { return }
+        copyOpenTranscript()
+    }
+
+    private func copyTranscriptBlocked() -> Bool {
+        if findOpen || findFieldFocused || lightbox != nil || shortcutsOpen {
+            return true
+        }
+        if model.computerTakeoverOpen || model.showProfile || model.showSettings {
+            return true
+        }
+        if model.skillMenuOpen() { return true }
+        if model.renameChatID != nil { return true }
+        return false
+    }
+
+    /// Copies loaded kind=message bodies. Chrome is skipped. An empty
+    /// transcript leaves the pasteboard alone and does not show Copied.
+    private func copyOpenTranscript() {
+        guard hasRealAgent else { return }
+        if copyTranscriptBlocked() { return }
+        let visible = model.visibleMessages(for: agent)
+        guard let text = CopyTranscript.plainText(messages: visible) else { return }
+        UIPasteboard.general.string = text
+        transcriptCopied = true
+        transcriptCopiedPulse += 1
+        let pulse = transcriptCopiedPulse
+        Task {
+            try? await Task.sleep(nanoseconds: CopyTranscript.feedbackNanoseconds)
+            if pulse == transcriptCopiedPulse {
+                transcriptCopied = false
+            }
+        }
     }
 
     /// Hardware Option+Up / Option+Down when the composer is not first
@@ -1846,6 +1928,7 @@ private struct ComposerBar: View {
     var onMarkOpenChat: () -> Void = {}
     var onRenameOpenChat: () -> Void = {}
     var onDeleteOpenChat: () -> Void = {}
+    var onCopyTranscript: () -> Void = {}
     var deleteConfirmOpen = false
     var onConfirmDeleteKey: (String) -> Void = { _ in }
     var onCancelDelete: () -> Void = {}
@@ -2046,6 +2129,10 @@ private struct ComposerBar: View {
                     onDeleteOpenChat: {
                         if mentionQuery != nil || model.skillMenuOpen() { return }
                         onDeleteOpenChat()
+                    },
+                    onCopyTranscript: {
+                        if mentionQuery != nil || model.skillMenuOpen() { return }
+                        onCopyTranscript()
                     },
                     deleteConfirmOpen: deleteConfirmOpen,
                     onConfirmDeleteKey: { key in

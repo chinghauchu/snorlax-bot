@@ -49,6 +49,9 @@ struct ComposerTextView: UIViewRepresentable {
     /// v1.12: ⌘⇧D / ⌃⇧D asks to delete the open chat. Does not insert or send.
     /// IME marked text keeps the key. A key repeat does not ask again.
     var onDeleteOpenChat: (() -> Void)? = nil
+    /// v1.13: ⌘⇧E / ⌃⇧E copies the open transcript. Does not insert or send.
+    /// IME marked text keeps the key. A key repeat does not copy again.
+    var onCopyTranscript: (() -> Void)? = nil
     /// True while the Delete confirm is on screen. Return and Delete confirm.
     /// Esc cancels. A key repeat never confirms.
     var deleteConfirmOpen: Bool = false
@@ -118,6 +121,9 @@ struct ComposerTextView: UIViewRepresentable {
         }
         view.onDeleteOpenChat = { [coordinator = context.coordinator] in
             coordinator.parent.onDeleteOpenChat?()
+        }
+        view.onCopyTranscript = { [coordinator = context.coordinator] in
+            coordinator.parent.onCopyTranscript?()
         }
         view.onConfirmDeleteKey = { [coordinator = context.coordinator] key in
             coordinator.parent.onConfirmDeleteKey?(key)
@@ -192,6 +198,9 @@ struct ComposerTextView: UIViewRepresentable {
         }
         view.onDeleteOpenChat = { [coordinator = context.coordinator] in
             coordinator.parent.onDeleteOpenChat?()
+        }
+        view.onCopyTranscript = { [coordinator = context.coordinator] in
+            coordinator.parent.onCopyTranscript?()
         }
         view.onConfirmDeleteKey = { [coordinator = context.coordinator] key in
             coordinator.parent.onConfirmDeleteKey?(key)
@@ -368,6 +377,7 @@ final class ComposerUITextView: UITextView {
     var onMarkOpenChat: (() -> Void)?
     var onRenameOpenChat: (() -> Void)?
     var onDeleteOpenChat: (() -> Void)?
+    var onCopyTranscript: (() -> Void)?
     var deleteConfirmOpen = false
     var onConfirmDeleteKey: ((String) -> Void)?
     var onCancelDelete: (() -> Void)?
@@ -381,6 +391,8 @@ final class ComposerUITextView: UITextView {
     private var renameOpenChatConsumed = false
     /// v1.12: the first ⌘⇧D of a hold asks. Further repeats do not.
     private var deleteOpenChatConsumed = false
+    /// v1.13: the first ⌘⇧E of a hold copies. Further repeats do not.
+    private var copyTranscriptConsumed = false
     /// v1.10: the first ⌘⇧U of a hold applies. Further repeats do not.
     private var markOpenChatConsumed = false
     var sendMuted = false
@@ -466,6 +478,7 @@ final class ComposerUITextView: UITextView {
             commands.append(contentsOf: markOpenChatCommands())
             commands.append(contentsOf: renameOpenChatCommands())
             commands.append(contentsOf: deleteOpenChatCommands())
+            commands.append(contentsOf: copyTranscriptCommands())
         }
         return commands
     }
@@ -675,6 +688,26 @@ final class ComposerUITextView: UITextView {
         return [command, control]
     }
 
+    /// ⌘⇧E / ⌃⇧E. Copies the open transcript. Does not insert or send.
+    /// IME keeps the key. A repeat of the held chord does not copy again.
+    private func copyTranscriptCommands() -> [UIKeyCommand] {
+        let command = UIKeyCommand(
+            title: CopyTranscript.action,
+            action: #selector(copyTranscriptFromShortcut),
+            input: "e",
+            modifierFlags: [.command, .shift]
+        )
+        let control = UIKeyCommand(
+            title: CopyTranscript.action,
+            action: #selector(copyTranscriptFromShortcut),
+            input: "e",
+            modifierFlags: [.control, .shift]
+        )
+        command.wantsPriorityOverSystemBehavior = true
+        control.wantsPriorityOverSystemBehavior = true
+        return [command, control]
+    }
+
     /// ⌘⇧⌫ / ⌃⇧⌫. Clears the draft. Does not insert or send.
     /// IME keeps the key. An empty draft is ignored by the model.
     private func clearComposerDraftCommands() -> [UIKeyCommand] {
@@ -805,6 +838,15 @@ final class ComposerUITextView: UITextView {
         if deleteOpenChatConsumed { return }
         deleteOpenChatConsumed = true
         onDeleteOpenChat?()
+    }
+
+    /// The first press copies. A repeat of this hold returns without
+    /// copying again, so e is not inserted.
+    @objc private func copyTranscriptFromShortcut() {
+        if markedTextRange != nil { return }
+        if copyTranscriptConsumed { return }
+        copyTranscriptConsumed = true
+        onCopyTranscript?()
     }
 
     @objc private func chatNavUp() {
@@ -964,6 +1006,12 @@ final class ComposerUITextView: UITextView {
         }) {
             deleteOpenChatConsumed = false
         }
+        if presses.contains(where: { press in
+            if press.key?.keyCode == .keyboardE { return true }
+            return press.key?.charactersIgnoringModifiers.lowercased() == "e"
+        }) {
+            copyTranscriptConsumed = false
+        }
         super.pressesEnded(presses, with: event)
         // If deleteBackward already ran it cleared the flag. If a chorded
         // Delete never reached it, drop the flag on the next turn so a
@@ -991,6 +1039,7 @@ final class ComposerUITextView: UITextView {
         markOpenChatConsumed = false
         renameOpenChatConsumed = false
         deleteOpenChatConsumed = false
+        copyTranscriptConsumed = false
         super.pressesCancelled(presses, with: event)
     }
 
@@ -1067,6 +1116,20 @@ final class ComposerUITextView: UITextView {
                     shift: mods.contains(.shift)
                 ), deleteOpenChatConsumed {
                     // Held ⌘⇧D. Do not insert d and do not delete again.
+                    return
+                }
+            }
+            if key.keyCode == .keyboardE {
+                let mods = key.modifierFlags
+                if CopyTranscript.isChord(
+                    key: "e",
+                    characters: key.charactersIgnoringModifiers,
+                    command: mods.contains(.command),
+                    control: mods.contains(.control),
+                    option: mods.contains(.alternate),
+                    shift: mods.contains(.shift)
+                ), copyTranscriptConsumed {
+                    // Held ⌘⇧E. Do not insert e and do not copy again.
                     return
                 }
             }
