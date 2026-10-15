@@ -124,3 +124,4 @@ jobs:
           python3 ios/scripts/test_ios_new_chat.py
           python3 ios/scripts/test_ios_chat_jump.py
           python3 ios/scripts/test_ios_archive_open_chat.py
+          python3 ios/scripts/test_ios_clear_composer_draft.py

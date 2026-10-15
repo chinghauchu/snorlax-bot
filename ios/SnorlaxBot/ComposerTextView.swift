@@ -34,6 +34,9 @@ struct ComposerTextView: UIViewRepresentable {
     /// v1.06: ⌘⇧A / ⌃⇧A archives the open chat. Does not insert or send.
     /// IME marked text keeps the key.
     var onArchiveOpenChat: (() -> Void)? = nil
+    /// v1.07: ⌘⇧⌫ / ⌃⇧⌫ clears the composer draft. Does not send.
+    /// IME marked text keeps the key.
+    var onClearComposerDraft: (() -> Void)? = nil
     /// v0.87: empty composer + Delete removes the last pending chip.
     /// Hardware Delete and the on-screen keyboard both call `deleteBackward`.
     /// Returns true when a chip was removed.
@@ -76,6 +79,9 @@ struct ComposerTextView: UIViewRepresentable {
         }
         view.onArchiveOpenChat = { [coordinator = context.coordinator] in
             coordinator.parent.onArchiveOpenChat?()
+        }
+        view.onClearComposerDraft = { [coordinator = context.coordinator] in
+            coordinator.parent.onClearComposerDraft?()
         }
         view.onBackspaceRemoveChip = { [coordinator = context.coordinator] in
             coordinator.parent.onBackspaceRemoveChip?() ?? false
@@ -125,6 +131,9 @@ struct ComposerTextView: UIViewRepresentable {
         }
         view.onArchiveOpenChat = { [coordinator = context.coordinator] in
             coordinator.parent.onArchiveOpenChat?()
+        }
+        view.onClearComposerDraft = { [coordinator = context.coordinator] in
+            coordinator.parent.onClearComposerDraft?()
         }
         view.onBackspaceRemoveChip = { [coordinator = context.coordinator] in
             coordinator.parent.onBackspaceRemoveChip?() ?? false
@@ -288,10 +297,17 @@ final class ComposerUITextView: UITextView {
     var onNewChat: (() -> Void)?
     var onJumpChat: ((Int) -> Void)?
     var onArchiveOpenChat: (() -> Void)?
+    var onClearComposerDraft: (() -> Void)?
     var onBackspaceRemoveChip: (() -> Bool)?
     var sendMuted = false
     /// Hardware Delete with Shift/Alt/Cmd/Ctrl. Software Delete leaves this false.
     private var deleteModifierChord = false
+    /// v1.07: the Delete that is currently down, so ⌘⇧⌫ can clear the draft
+    /// instead of deleting one character if the key command does not consume it.
+    private var backspaceCommand = false
+    private var backspaceControl = false
+    private var backspaceOption = false
+    private var backspaceShift = false
     var onGrowHeight: ((CGFloat) -> Void)?
     private var grewWidth: CGFloat = -1
     private var reportedHeight: CGFloat = -1
@@ -360,6 +376,7 @@ final class ComposerUITextView: UITextView {
             commands.append(contentsOf: newChatCommands())
             commands.append(contentsOf: jumpChatCommands())
             commands.append(contentsOf: archiveOpenChatCommands())
+            commands.append(contentsOf: clearComposerDraftCommands())
         }
         return commands
     }
@@ -467,6 +484,26 @@ final class ComposerUITextView: UITextView {
         return [command, control]
     }
 
+    /// ⌘⇧⌫ / ⌃⇧⌫. Clears the draft. Does not insert or send.
+    /// IME keeps the key. An empty draft is ignored by the model.
+    private func clearComposerDraftCommands() -> [UIKeyCommand] {
+        let command = UIKeyCommand(
+            title: ClearComposerDraft.action,
+            action: #selector(clearComposerDraftFromShortcut),
+            input: UIKeyCommand.inputDelete,
+            modifierFlags: [.command, .shift]
+        )
+        let control = UIKeyCommand(
+            title: ClearComposerDraft.action,
+            action: #selector(clearComposerDraftFromShortcut),
+            input: UIKeyCommand.inputDelete,
+            modifierFlags: [.control, .shift]
+        )
+        command.wantsPriorityOverSystemBehavior = true
+        control.wantsPriorityOverSystemBehavior = true
+        return [command, control]
+    }
+
     /// Option+Up / Option+Down. Plain Up stays the recall command above.
     private func chatNavCommands() -> [UIKeyCommand] {
         let up = UIKeyCommand(
@@ -522,6 +559,11 @@ final class ComposerUITextView: UITextView {
         onArchiveOpenChat?()
     }
 
+    @objc private func clearComposerDraftFromShortcut() {
+        if markedTextRange != nil { return }
+        onClearComposerDraft?()
+    }
+
     @objc private func chatNavUp() {
         performChatNav(-1)
     }
@@ -557,9 +599,29 @@ final class ComposerUITextView: UITextView {
     }
 
     /// v0.87: empty field removes the last chip. Text still deletes as usual.
+    /// v1.07: ⌘⇧⌫ / ⌃⇧⌫ clears the whole draft and does not delete one character.
     override func deleteBackward() {
+        let command = backspaceCommand
+        let control = backspaceControl
+        let option = backspaceOption
+        let shift = backspaceShift
         let chord = deleteModifierChord
         deleteModifierChord = false
+        backspaceCommand = false
+        backspaceControl = false
+        backspaceOption = false
+        backspaceShift = false
+        if markedTextRange == nil,
+           ClearComposerDraft.isChord(
+               command: command,
+               control: control,
+               option: option,
+               shift: shift,
+               delete: true
+           ) {
+            onClearComposerDraft?()
+            return
+        }
         let current = text ?? ""
         if BackspaceChip.composerAllowsRemove(
             composerText: current,
@@ -576,9 +638,13 @@ final class ComposerUITextView: UITextView {
         // If deleteBackward already ran it cleared the flag. If a chorded
         // Delete never reached it, drop the flag on the next turn so a
         // later on-screen Delete is not treated as a chord.
-        if deleteModifierChord {
+        if deleteModifierChord || backspaceCommand || backspaceControl || backspaceOption || backspaceShift {
             DispatchQueue.main.async { [weak self] in
                 self?.deleteModifierChord = false
+                self?.backspaceCommand = false
+                self?.backspaceControl = false
+                self?.backspaceOption = false
+                self?.backspaceShift = false
             }
         }
     }
@@ -588,10 +654,14 @@ final class ComposerUITextView: UITextView {
             guard let key = press.key else { continue }
             if key.keyCode == .keyboardDeleteOrBackspace {
                 let mods = key.modifierFlags
-                deleteModifierChord = mods.contains(.command)
-                    || mods.contains(.alternate)
-                    || mods.contains(.control)
-                    || mods.contains(.shift)
+                backspaceCommand = mods.contains(.command)
+                backspaceControl = mods.contains(.control)
+                backspaceOption = mods.contains(.alternate)
+                backspaceShift = mods.contains(.shift)
+                deleteModifierChord = backspaceCommand
+                    || backspaceOption
+                    || backspaceControl
+                    || backspaceShift
                 continue
             }
             if key.keyCode == .keyboardUpArrow {

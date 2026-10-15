@@ -69,6 +69,7 @@ struct ChatView: View {
                 onNewChat: { newChatFromComposer() },
                 onJumpChat: { slot in jumpChatFromComposer(slot) },
                 onArchiveOpenChat: { archiveOpenChatFromComposer() },
+                onClearComposerDraft: { clearComposerDraftFromComposer() },
                 onEscapeFind: {
                     guard findOpen else { return false }
                     closeFind()
@@ -93,6 +94,9 @@ struct ChatView: View {
                 return .handled
             }
             if archiveOpenChatKey(press) == .handled {
+                return .handled
+            }
+            if clearComposerDraftKey(press) == .handled {
                 return .handled
             }
             if chatNavKey(press) == .handled {
@@ -387,6 +391,49 @@ struct ChatView: View {
         if model.computerTakeoverOpen || model.showProfile || model.showSettings { return }
         if model.skillMenuOpen() { return }
         model.archiveChat(agent.id)
+    }
+
+    /// Hardware ⌘⇧⌫ / ⌃⇧⌫ when the composer is not first responder.
+    /// The text view handles the same chord and keeps IME marked text.
+    /// Find, rename, search, a card text field, and an empty chat own the key.
+    /// An already empty draft is a no-op inside the model.
+    private func clearComposerDraftKey(_ press: KeyPress) -> KeyPress.Result {
+        guard hasRealAgent else { return .ignored }
+        guard ClearComposerDraft.isChord(
+            characters: press.characters,
+            command: press.modifiers.contains(.command),
+            control: press.modifiers.contains(.control),
+            option: press.modifiers.contains(.option),
+            shift: press.modifiers.contains(.shift),
+            delete: press.key == .delete
+        ) else { return .ignored }
+        if composerFocused { return .ignored }
+        if findOpen || findFieldFocused || lightbox != nil || shortcutsOpen {
+            return .ignored
+        }
+        if model.computerTakeoverOpen || model.showProfile || model.showSettings {
+            return .ignored
+        }
+        if model.skillMenuOpen() { return .ignored }
+        if ClearComposerDraft.overlayTextFieldOwnsChord(
+            textFieldFocused: TranscriptScroll.textInputIsFirstResponder(),
+            composerFocused: false
+        ) {
+            return .ignored
+        }
+        model.clearComposerDraftFromChord()
+        return .handled
+    }
+
+    /// Composer ⌘⇧⌫. Mention and skill menus are checked by the bar.
+    /// Find, the shortcuts sheet, and the lightbox keep the key.
+    /// An empty chat does not clear. An already empty draft is a no-op.
+    private func clearComposerDraftFromComposer() {
+        guard hasRealAgent else { return }
+        if findOpen || findFieldFocused || lightbox != nil || shortcutsOpen { return }
+        if model.computerTakeoverOpen || model.showProfile || model.showSettings { return }
+        if model.skillMenuOpen() { return }
+        model.clearComposerDraftFromChord()
     }
 
     /// Hardware Option+Up / Option+Down when the composer is not first
@@ -1416,6 +1463,7 @@ private struct ComposerBar: View {
     var onNewChat: () -> Void = {}
     var onJumpChat: (Int) -> Void = { _ in }
     var onArchiveOpenChat: () -> Void = {}
+    var onClearComposerDraft: () -> Void = {}
     var onEscapeFind: () -> Bool = { false }
     @Environment(AppModel.self) private var model
     @State private var pickerItem: PhotosPickerItem?
@@ -1589,6 +1637,10 @@ private struct ComposerBar: View {
                     onArchiveOpenChat: {
                         if mentionQuery != nil || model.skillMenuOpen() { return }
                         onArchiveOpenChat()
+                    },
+                    onClearComposerDraft: {
+                        if mentionQuery != nil || model.skillMenuOpen() { return }
+                        onClearComposerDraft()
                     },
                     onBackspaceRemoveChip: {
                         model.removeLastPendingChipFromBackspace()

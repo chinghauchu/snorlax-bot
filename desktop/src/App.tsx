@@ -173,6 +173,12 @@ import {
   overlayTextFieldOwnsArchiveOpenChat,
 } from "./archiveOpenChat";
 import {
+  clearComposerDraftBlocked,
+  composerDraftAlreadyEmpty,
+  isClearComposerDraftChord,
+  overlayTextFieldOwnsClearComposerDraft,
+} from "./clearComposerDraft";
+import {
   loadInitialRuntimeUrl,
   normalizeRuntimeUrl,
 } from "./runtimeUrl";
@@ -1290,6 +1296,8 @@ export function App() {
   const [pendingAttachments, setPendingAttachments] = useState<
     PendingAttachment[]
   >([]);
+  const pendingAttachmentsRef = useRef(pendingAttachments);
+  pendingAttachmentsRef.current = pendingAttachments;
   const [attachError, setAttachError] = useState<string | null>(null);
   const [attachInFlight, setAttachInFlight] = useState(0);
   const [dropTarget, setDropTarget] = useState(false);
@@ -1385,6 +1393,7 @@ export function App() {
   const copyLastReplyRef = useRef<() => void>(() => {});
   const createFromShortcutRef = useRef<() => void>(() => {});
   const archiveOpenChatRef = useRef<() => void>(() => {});
+  const clearComposerDraftRef = useRef<() => void>(() => {});
   useEffect(() => {
     return () => {
       if (shortcutCopyTimer.current != null) {
@@ -4947,6 +4956,99 @@ export function App() {
     window.addEventListener("keydown", onArchiveOpenChat, true);
     return () => {
       window.removeEventListener("keydown", onArchiveOpenChat, true);
+    };
+  }, [
+    active,
+    findOpen,
+    switchOpen,
+    shortcutsOpen,
+    renamingId,
+    lightboxTarget,
+    contextMenu,
+    switcherBlocked,
+    mentionOpen,
+    skillMenuOpen,
+  ]);
+
+  // v1.07: Cmd/Ctrl-Shift-Backspace clears the open chat's composer
+  // draft (text and pending chips) without sending. The composer does
+  // not own the chord. A modal or overlay text field does. IME keeps
+  // it. An already empty composer is a no-op. Nothing is cleared when
+  // no chat is open. Plain Backspace still removes the last chip.
+  clearComposerDraftRef.current = () => {
+    if (!active) return;
+    const hadText = draftRef.current.length > 0;
+    if (
+      composerDraftAlreadyEmpty(
+        draftRef.current,
+        pendingAttachmentsRef.current.length,
+      )
+    ) {
+      return;
+    }
+    draftRef.current = "";
+    pendingAttachmentsRef.current = [];
+    const here = convoRef.current;
+    if (here.agentId) {
+      chatDrafts.current.clear(here.agentId, here.threadId);
+    }
+    // Only move the caret when the text actually changes. A chips-only
+    // clear leaves the empty field's caret alone, so the next keystroke
+    // is not pulled back to 0.
+    if (hadText && document.activeElement === composerRef.current) {
+      pendingCaret.current = 0;
+    }
+    setDraft("");
+    setRecallArmed(false);
+    syncComposerTriggers("", 0);
+    setAttachError(null);
+    setPendingAttachments((prev) => {
+      for (const row of prev) {
+        if (row.previewUrl) URL.revokeObjectURL(row.previewUrl);
+      }
+      return [];
+    });
+  };
+
+  useEffect(() => {
+    const onClearComposerDraft = (event: globalThis.KeyboardEvent) => {
+      if (event.defaultPrevented) return;
+      if (
+        !isClearComposerDraftChord({
+          key: event.key,
+          metaKey: event.metaKey,
+          ctrlKey: event.ctrlKey,
+          altKey: event.altKey,
+          shiftKey: event.shiftKey,
+          repeat: event.repeat,
+        })
+      ) {
+        return;
+      }
+      const gate = {
+        chatOpen: active != null,
+        composing: isComposerComposing(event),
+        overlayTextField: overlayTextFieldOwnsClearComposerDraft(
+          focusIsTextField(event.target),
+          event.target === composerRef.current,
+        ),
+        inCard: focusInsideCard(event.target),
+        findOpen,
+        switchOpen,
+        shortcutsOpen,
+        renaming: renamingId != null,
+        lightboxOpen: lightboxTarget != null,
+        menuOpen: contextMenu != null,
+        blocked: switcherBlocked || mentionOpen || skillMenuOpen,
+      };
+      if (clearComposerDraftBlocked(gate)) return;
+      event.preventDefault();
+      event.stopPropagation();
+      clearComposerDraftRef.current();
+    };
+    window.addEventListener("keydown", onClearComposerDraft, true);
+    return () => {
+      window.removeEventListener("keydown", onClearComposerDraft, true);
     };
   }, [
     active,
