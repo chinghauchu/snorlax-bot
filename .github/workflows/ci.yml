@@ -130,3 +130,4 @@ jobs:
           python3 ios/scripts/test_ios_mark_open_chat.py
           python3 ios/scripts/test_ios_rename_open_chat.py
           python3 ios/scripts/test_ios_delete_open_chat.py
+          python3 ios/scripts/test_ios_copy_transcript.py

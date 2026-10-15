@@ -211,6 +211,13 @@ import {
   overlayTextFieldOwnsDeleteOpenChat,
 } from "./deleteOpenChat";
 import {
+  copyTranscriptBlocked,
+  copyTranscriptShouldRun,
+  isCopyTranscriptChord,
+  overlayTextFieldOwnsCopyTranscript,
+  transcriptPlainText,
+} from "./copyTranscript";
+import {
   loadInitialRuntimeUrl,
   normalizeRuntimeUrl,
 } from "./runtimeUrl";
@@ -1432,7 +1439,10 @@ export function App() {
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
   const [shortcutCopiedId, setShortcutCopiedId] = useState<string | null>(null);
   const shortcutCopyTimer = useRef<number | null>(null);
+  const [transcriptCopiedId, setTranscriptCopiedId] = useState<string | null>(null);
+  const transcriptCopyTimer = useRef<number | null>(null);
   const copyLastReplyRef = useRef<() => void>(() => {});
+  const copyTranscriptRef = useRef<() => void>(() => {});
   const createFromShortcutRef = useRef<() => void>(() => {});
   const archiveOpenChatRef = useRef<() => void>(() => {});
   const clearComposerDraftRef = useRef<() => void>(() => {});
@@ -1446,6 +1456,9 @@ export function App() {
     return () => {
       if (shortcutCopyTimer.current != null) {
         window.clearTimeout(shortcutCopyTimer.current);
+      }
+      if (transcriptCopyTimer.current != null) {
+        window.clearTimeout(transcriptCopyTimer.current);
       }
     };
   }, []);
@@ -5490,6 +5503,25 @@ export function App() {
     setPendingDelete(agent);
   };
 
+  // v1.13: Cmd/Ctrl-Shift-E copies the loaded transcript. kind=message
+  // bodies only, in order. Chrome rows are skipped. Nothing useful
+  // leaves the clipboard alone. Copied sits beside the chat name.
+  copyTranscriptRef.current = () => {
+    if (!active) return;
+    const text = transcriptPlainText(visibleMessages);
+    if (!text) return;
+    void copyText(text);
+    const copiedId = active.id;
+    setTranscriptCopiedId(copiedId);
+    if (transcriptCopyTimer.current != null) {
+      window.clearTimeout(transcriptCopyTimer.current);
+    }
+    transcriptCopyTimer.current = window.setTimeout(() => {
+      setTranscriptCopiedId((current) => (current === copiedId ? null : current));
+      transcriptCopyTimer.current = null;
+    }, MESSAGE_COPY_FEEDBACK_MS);
+  };
+
   useEffect(() => {
     const onDeleteOpenChat = (event: globalThis.KeyboardEvent) => {
       if (event.defaultPrevented) return;
@@ -5530,6 +5562,64 @@ export function App() {
     window.addEventListener("keydown", onDeleteOpenChat, true);
     return () => {
       window.removeEventListener("keydown", onDeleteOpenChat, true);
+    };
+  }, [
+    active,
+    findOpen,
+    switchOpen,
+    shortcutsOpen,
+    renamingId,
+    lightboxTarget,
+    contextMenu,
+    switcherBlocked,
+    mentionOpen,
+    skillMenuOpen,
+  ]);
+
+  // v1.13: Cmd/Ctrl-Shift-E copies the open chat's loaded transcript.
+  // The composer does not own the chord and the letter is not inserted.
+  // A key repeat is swallowed and does not copy again. IME keeps it.
+  // Nothing is copied when no chat is open or nothing useful is loaded.
+  useEffect(() => {
+    const onCopyTranscript = (event: globalThis.KeyboardEvent) => {
+      if (event.defaultPrevented) return;
+      if (
+        !isCopyTranscriptChord({
+          key: event.key,
+          metaKey: event.metaKey,
+          ctrlKey: event.ctrlKey,
+          altKey: event.altKey,
+          shiftKey: event.shiftKey,
+          repeat: event.repeat,
+        })
+      ) {
+        return;
+      }
+      const gate = {
+        chatOpen: active != null,
+        composing: isComposerComposing(event),
+        overlayTextField: overlayTextFieldOwnsCopyTranscript(
+          focusIsTextField(event.target),
+          event.target === composerRef.current,
+        ),
+        inCard: focusInsideCard(event.target),
+        findOpen,
+        switchOpen,
+        shortcutsOpen,
+        renaming: renamingId != null,
+        lightboxOpen: lightboxTarget != null,
+        menuOpen: contextMenu != null,
+        blocked: switcherBlocked || mentionOpen || skillMenuOpen,
+      };
+      if (copyTranscriptBlocked(gate)) return;
+      event.preventDefault();
+      event.stopPropagation();
+      if (!copyTranscriptShouldRun({ repeat: event.repeat })) return;
+      copyTranscriptRef.current();
+    };
+    window.addEventListener("keydown", onCopyTranscript, true);
+    return () => {
+      window.removeEventListener("keydown", onCopyTranscript, true);
     };
   }, [
     active,
@@ -5964,6 +6054,11 @@ export function App() {
                   session={session}
                 />
                 <span>{activeLabel}</span>
+                {copiedFeedbackLabel(transcriptCopiedId === active.id) ? (
+                  <span className="message-copied" aria-live="polite">
+                    {copiedFeedbackLabel(transcriptCopiedId === active.id)}
+                  </span>
+                ) : null}
               </button>
             </>
           ) : (
