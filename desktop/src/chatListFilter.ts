@@ -95,3 +95,12 @@ export function rosterForFilter<T>(
   if (filter !== FILTER_UNREAD) return [...rows];
   return rows.filter((row) => hasUnreadDot(row));
 }
+
+/**
+ * The other choice on the All / Unread control. All becomes Unread.
+ * Unread becomes All. Pins, archives, and the empty state stay with
+ * the existing filter. v1.15's keyboard chord uses this.
+ */
+export function nextChatListFilter(filter: ChatListFilter): ChatListFilter {
+  return filter === FILTER_UNREAD ? FILTER_ALL : FILTER_UNREAD;
+}

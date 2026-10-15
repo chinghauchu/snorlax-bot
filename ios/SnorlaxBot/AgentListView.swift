@@ -102,7 +102,13 @@ struct AgentListView: View {
                 guard let id, model.isChatArchived(id) else { return }
                 showArchived = true
             }
-            .onKeyPress(phases: .down) { press in
+            .onKeyPress(phases: [.down, .repeat]) { press in
+                if chatListFilterKey(press) == .handled {
+                    return .handled
+                }
+                if press.phase != .down {
+                    return .ignored
+                }
                 if jumpChatKey(press) == .handled {
                     return .handled
                 }
@@ -160,6 +166,35 @@ struct AgentListView: View {
                 }
                 Button("Cancel", role: .cancel) { pendingDelete = nil }
             }
+    }
+
+    /// Hardware ⌘⇧F / ⌃⇧F from the chat list. The same All / Unread
+    /// choice as the segmented control. Search, rename, and the
+    /// channel sheet own the key. A key repeat does not flap.
+    private func chatListFilterKey(_ press: KeyPress) -> KeyPress.Result {
+        guard ChatListFilterKey.isChord(
+            key: press.key.character,
+            characters: press.characters,
+            command: press.modifiers.contains(.command),
+            control: press.modifiers.contains(.control),
+            option: press.modifiers.contains(.option),
+            shift: press.modifiers.contains(.shift)
+        ) else { return .ignored }
+        if renamingID != nil || showCreateChannel || pendingDelete != nil { return .ignored }
+        if model.showSettings || model.showProfile || model.computerTakeoverOpen {
+            return .ignored
+        }
+        if ChatListFilterKey.overlayTextFieldOwnsChord(
+            textFieldFocused: TranscriptScroll.textInputIsFirstResponder(),
+            composerFocused: false
+        ) {
+            return .ignored
+        }
+        if ChatListFilterKey.shouldIgnoreRepeat(press.`repeat`) {
+            return .handled
+        }
+        model.toggleChatListFilterFromChord()
+        return .handled
     }
 
     /// Hardware ⌘1–⌘9 / ⌃1–⌃9 from the chat list. The order is the
