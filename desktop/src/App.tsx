@@ -168,6 +168,11 @@ import {
   visibleJumpIds,
 } from "./chatJump";
 import {
+  archiveOpenChatBlocked,
+  isArchiveOpenChatChord,
+  overlayTextFieldOwnsArchiveOpenChat,
+} from "./archiveOpenChat";
+import {
   loadInitialRuntimeUrl,
   normalizeRuntimeUrl,
 } from "./runtimeUrl";
@@ -1379,6 +1384,7 @@ export function App() {
   const shortcutCopyTimer = useRef<number | null>(null);
   const copyLastReplyRef = useRef<() => void>(() => {});
   const createFromShortcutRef = useRef<() => void>(() => {});
+  const archiveOpenChatRef = useRef<() => void>(() => {});
   useEffect(() => {
     return () => {
       if (shortcutCopyTimer.current != null) {
@@ -4880,6 +4886,70 @@ export function App() {
     };
   }, [
     jumpChatKey,
+    findOpen,
+    switchOpen,
+    shortcutsOpen,
+    renamingId,
+    lightboxTarget,
+    contextMenu,
+    switcherBlocked,
+    mentionOpen,
+    skillMenuOpen,
+  ]);
+
+  // v1.06: Cmd/Ctrl-Shift-A archives the open chat through the sidebar
+  // Archive action. The composer does not own the chord. A modal or
+  // overlay text field does. IME keeps it. Nothing is archived when
+  // no chat is open. The next visible chat, or the empty state, is
+  // the same path the sidebar already uses.
+  archiveOpenChatRef.current = () => {
+    const id = active?.id;
+    if (!id) return;
+    onArchive(id);
+  };
+
+  useEffect(() => {
+    const onArchiveOpenChat = (event: globalThis.KeyboardEvent) => {
+      if (event.defaultPrevented) return;
+      if (
+        !isArchiveOpenChatChord({
+          key: event.key,
+          metaKey: event.metaKey,
+          ctrlKey: event.ctrlKey,
+          altKey: event.altKey,
+          shiftKey: event.shiftKey,
+          repeat: event.repeat,
+        })
+      ) {
+        return;
+      }
+      const gate = {
+        chatOpen: active != null,
+        composing: isComposerComposing(event),
+        overlayTextField: overlayTextFieldOwnsArchiveOpenChat(
+          focusIsTextField(event.target),
+          event.target === composerRef.current,
+        ),
+        inCard: focusInsideCard(event.target),
+        findOpen,
+        switchOpen,
+        shortcutsOpen,
+        renaming: renamingId != null,
+        lightboxOpen: lightboxTarget != null,
+        menuOpen: contextMenu != null,
+        blocked: switcherBlocked || mentionOpen || skillMenuOpen,
+      };
+      if (archiveOpenChatBlocked(gate)) return;
+      event.preventDefault();
+      event.stopPropagation();
+      archiveOpenChatRef.current();
+    };
+    window.addEventListener("keydown", onArchiveOpenChat, true);
+    return () => {
+      window.removeEventListener("keydown", onArchiveOpenChat, true);
+    };
+  }, [
+    active,
     findOpen,
     switchOpen,
     shortcutsOpen,
