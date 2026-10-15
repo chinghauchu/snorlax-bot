@@ -209,6 +209,8 @@ final class AppModel {
     private var speakEpoch = 0
     /// v1.04: collapses a held ⌘N and a second listener in the same moment.
     @ObservationIgnored private var newChatChordAt: TimeInterval = 0
+    /// v1.12: a delete already in flight must not start another.
+    @ObservationIgnored private var deleteOpenChatBusy = false
 
     init() {
         runtimeURL = UserDefaults.standard.string(forKey: Keys.runtimeURL) ?? ""
@@ -629,7 +631,14 @@ final class AppModel {
         }
     }
 
-    func delete(_ agent: Agent) async {
+    /// Sidebar confirm passes no visible next and keeps nextRosterSelection.
+    /// The keyboard chord passes the next Option+Up/Down row, or nil for
+    /// the empty state, and still uses this same DELETE plus cleanup.
+    func delete(
+        _ agent: Agent,
+        visibleNext: String? = nil,
+        preferVisibleNext: Bool = false
+    ) async {
         guard let client else { return }
         do {
             try await client.deleteAgent(id: agent.id)
@@ -649,13 +658,26 @@ final class AppModel {
             for index in agents.indices where agents[index].isChannel {
                 agents[index].memberIds.removeAll { $0 == agent.id }
             }
-            if selectedAgentID == agent.id {
-                if let next = Agent.nextRosterSelection(
-                    in: agents,
-                    removedId: agent.id,
-                    currentId: selectedAgentID
-                ) {
-                    await select(next.id, push: true)
+            let deletingOpen = preferVisibleNext
+                ? (onScreenChatID() == agent.id || selectedAgentID == agent.id)
+                : selectedAgentID == agent.id
+            if deletingOpen {
+                let nextId: String?
+                if preferVisibleNext {
+                    if let visibleNext, agents.contains(where: { $0.id == visibleNext }) {
+                        nextId = visibleNext
+                    } else {
+                        nextId = nil
+                    }
+                } else {
+                    nextId = Agent.nextRosterSelection(
+                        in: agents,
+                        removedId: agent.id,
+                        currentId: selectedAgentID
+                    )?.id
+                }
+                if let nextId {
+                    await select(nextId, push: true)
                 } else {
                     adoptComposerDraft(agentId: nil, threadId: nil)
                     selectedAgentID = nil
@@ -667,6 +689,24 @@ final class AppModel {
             showProfile = false
         } catch {
             errorMessage = error.localizedDescription
+        }
+    }
+
+    /// v1.12: keyboard delete. Same removal as confirming sidebar Delete.
+    /// A repeat or a second call while that removal is in flight does nothing.
+    /// The next open chat is the following visible row, or the empty state.
+    func deleteOpenChat(_ id: String) {
+        guard !id.isEmpty, !deleteOpenChatBusy else { return }
+        guard isConfigured, client != nil else { return }
+        guard let agent = agents.first(where: { $0.id == id }) else { return }
+        let next = DeleteOpenChat.nextId(
+            visibleIds: visibleChatOrder(),
+            openId: onScreenChatID()
+        )
+        deleteOpenChatBusy = true
+        Task {
+            await delete(agent, visibleNext: next, preferVisibleNext: true)
+            deleteOpenChatBusy = false
         }
     }
 

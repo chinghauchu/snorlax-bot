@@ -203,6 +203,14 @@ import {
   renameOpenChatShouldStart,
 } from "./renameOpenChat";
 import {
+  deleteConfirmAction,
+  deleteOpenChatBlocked,
+  deleteOpenChatShouldRun,
+  isDeleteOpenChatChord,
+  nextOpenChatAfterDelete,
+  overlayTextFieldOwnsDeleteOpenChat,
+} from "./deleteOpenChat";
+import {
   loadInitialRuntimeUrl,
   normalizeRuntimeUrl,
 } from "./runtimeUrl";
@@ -1065,6 +1073,16 @@ export function App() {
   const [profileEditing, setProfileEditing] = useState(false);
   const [contextMenu, setContextMenu] = useState<ContextMenu | null>(null);
   const [pendingDelete, setPendingDelete] = useState<Agent | null>(null);
+  const pendingDeleteRef = useRef<Agent | null>(null);
+  pendingDeleteRef.current = pendingDelete;
+  /** Chord confirm uses the Alt+Up/Down next row. Sidebar confirm does not. */
+  const deleteConfirmFromChord = useRef(false);
+  const confirmDeleteRef = useRef<() => void>(() => {});
+  const cancelDeleteRef = useRef<() => void>(() => {});
+  /** Next Alt+Up/Down row for a chord confirm. Assigned after the roster lists exist. */
+  const chordDeleteNextRef = useRef<(id: string) => string | null>(() => null);
+  /** The confirm key is swallowed until keyup so a hold cannot confirm again. */
+  const blockKeyUntilUp = useRef<string | null>(null);
 
   const [agents, setAgents] = useState<Agent[]>([PLACEHOLDER_CHANNEL, PLACEHOLDER_SEED]);
   const [activeId, setActiveId] = useState<string | null>(SEED_CHANNEL_ID);
@@ -1422,6 +1440,8 @@ export function App() {
   const muteOpenChatRef = useRef<() => void>(() => {});
   const markOpenChatRef = useRef<() => void>(() => {});
   const renameOpenChatRef = useRef<() => void>(() => {});
+  const deleteOpenChatRef = useRef<() => void>(() => {});
+  const deleteRosterBusy = useRef(false);
   useEffect(() => {
     return () => {
       if (shortcutCopyTimer.current != null) {
@@ -2863,10 +2883,90 @@ export function App() {
     }
   }
 
+  function cancelDelete() {
+    deleteConfirmFromChord.current = false;
+    setPendingDelete(null);
+    focusComposer();
+  }
+
   async function confirmDelete() {
     if (!session || !pendingDelete) return;
     const doomed = pendingDelete;
+    const fromChord = deleteConfirmFromChord.current;
+    deleteConfirmFromChord.current = false;
     setPendingDelete(null);
+    if (fromChord) {
+      const nextOpen = chordDeleteNextRef.current(doomed.id);
+      await deleteRosterChat(doomed, nextOpen);
+    } else {
+      await deleteRosterChat(doomed);
+    }
+  }
+
+  confirmDeleteRef.current = () => {
+    void confirmDelete();
+  };
+  cancelDeleteRef.current = () => {
+    cancelDelete();
+  };
+
+  useEffect(() => {
+    const onDeleteConfirmKey = (event: globalThis.KeyboardEvent) => {
+      const held = blockKeyUntilUp.current;
+      if (held && event.key === held) {
+        event.preventDefault();
+        event.stopPropagation();
+        event.stopImmediatePropagation();
+        return;
+      }
+      if (!pendingDeleteRef.current) return;
+      const action = deleteConfirmAction({
+        key: event.key,
+        metaKey: event.metaKey,
+        ctrlKey: event.ctrlKey,
+        altKey: event.altKey,
+        shiftKey: event.shiftKey,
+        repeat: event.repeat,
+        isComposing: event.isComposing,
+      });
+      if (action == null) return;
+      event.preventDefault();
+      event.stopPropagation();
+      event.stopImmediatePropagation();
+      if (action === "swallow") return;
+      if (action === "confirm") {
+        blockKeyUntilUp.current = event.key;
+        confirmDeleteRef.current();
+        return;
+      }
+      if (action === "cancel") {
+        blockKeyUntilUp.current = event.key;
+        cancelDeleteRef.current();
+      }
+    };
+    const onDeleteConfirmKeyUp = (event: globalThis.KeyboardEvent) => {
+      if (blockKeyUntilUp.current === event.key) {
+        blockKeyUntilUp.current = null;
+      }
+    };
+    window.addEventListener("keydown", onDeleteConfirmKey, true);
+    window.addEventListener("keyup", onDeleteConfirmKeyUp, true);
+    return () => {
+      window.removeEventListener("keydown", onDeleteConfirmKey, true);
+      window.removeEventListener("keyup", onDeleteConfirmKeyUp, true);
+    };
+  }, []);
+
+  // Sidebar confirm omits explicitNext and keeps the roster fallback.
+  // The keyboard chord passes the next Alt+Up/Down row, or null for
+  // the empty state, and still uses this same DELETE plus cleanup.
+  // A removal already in flight does not start another.
+  async function deleteRosterChat(
+    doomed: Agent,
+    explicitNext?: string | null,
+  ) {
+    if (!session || deleteRosterBusy.current) return;
+    deleteRosterBusy.current = true;
     try {
       await deleteAgent(session, doomed.id);
       const roster = agents
@@ -2895,7 +2995,12 @@ export function App() {
       retainArchives(rosterIds);
       retainNames(rosterIds);
       if (activeId === doomed.id) {
-        const next = nextRosterSelection(roster, doomed.id, activeId);
+        const next =
+          explicitNext !== undefined
+            ? explicitNext && roster.some((row) => row.id === explicitNext)
+              ? explicitNext
+              : null
+            : nextRosterSelection(roster, doomed.id, activeId);
         if (next) chatUnread.current.clear(next);
         moveComposer(next, null);
         previewLive.current = false;
@@ -2922,6 +3027,8 @@ export function App() {
       }
     } catch (err) {
       setLoadError(describeError(err));
+    } finally {
+      deleteRosterBusy.current = false;
     }
   }
 
@@ -5365,6 +5472,78 @@ export function App() {
     skillMenuOpen,
   ]);
 
+  // v1.12: Cmd/Ctrl-Shift-D opens the sidebar Delete confirm. It does
+  // not delete on the chord. Enter or Delete confirms and then runs
+  // the existing removal. Esc or Cancel aborts and focus returns to
+  // the composer. A key repeat never confirms. The composer does not
+  // own the chord and the letter is not inserted. IME keeps it.
+  // Nothing is deleted when no chat is open. After confirm, the next
+  // visible chat, or the empty state, follows Alt+Up/Down order.
+  chordDeleteNextRef.current = (id: string) => {
+    const visibleIds = [...pinnedAgents, ...restAgents].map((row) => row.id);
+    return nextOpenChatAfterDelete(visibleIds, id);
+  };
+  deleteOpenChatRef.current = () => {
+    const agent = active;
+    if (!agent || !session) return;
+    deleteConfirmFromChord.current = true;
+    setPendingDelete(agent);
+  };
+
+  useEffect(() => {
+    const onDeleteOpenChat = (event: globalThis.KeyboardEvent) => {
+      if (event.defaultPrevented) return;
+      if (
+        !isDeleteOpenChatChord({
+          key: event.key,
+          metaKey: event.metaKey,
+          ctrlKey: event.ctrlKey,
+          altKey: event.altKey,
+          shiftKey: event.shiftKey,
+          repeat: event.repeat,
+        })
+      ) {
+        return;
+      }
+      const gate = {
+        chatOpen: active != null,
+        composing: isComposerComposing(event),
+        overlayTextField: overlayTextFieldOwnsDeleteOpenChat(
+          focusIsTextField(event.target),
+          event.target === composerRef.current,
+        ),
+        inCard: focusInsideCard(event.target),
+        findOpen,
+        switchOpen,
+        shortcutsOpen,
+        renaming: renamingId != null,
+        lightboxOpen: lightboxTarget != null,
+        menuOpen: contextMenu != null,
+        blocked: switcherBlocked || mentionOpen || skillMenuOpen,
+      };
+      if (deleteOpenChatBlocked(gate)) return;
+      event.preventDefault();
+      event.stopPropagation();
+      if (!deleteOpenChatShouldRun({ repeat: event.repeat })) return;
+      deleteOpenChatRef.current();
+    };
+    window.addEventListener("keydown", onDeleteOpenChat, true);
+    return () => {
+      window.removeEventListener("keydown", onDeleteOpenChat, true);
+    };
+  }, [
+    active,
+    findOpen,
+    switchOpen,
+    shortcutsOpen,
+    renamingId,
+    lightboxTarget,
+    contextMenu,
+    switcherBlocked,
+    mentionOpen,
+    skillMenuOpen,
+  ]);
+
   useLayoutEffect(() => {
     if (!switchOpen || !activeSwitch) return;
     const row = document.querySelector(
@@ -7175,6 +7354,7 @@ export function App() {
               role="menuitem"
               className="danger"
               onClick={() => {
+                deleteConfirmFromChord.current = false;
                 setPendingDelete(contextMenu.agent);
                 setContextMenu(null);
               }}
@@ -7186,10 +7366,7 @@ export function App() {
       ) : null}
 
       {pendingDelete ? (
-        <div
-          className="modal-backdrop"
-          onClick={() => setPendingDelete(null)}
-        >
+        <div className="modal-backdrop" onClick={() => cancelDelete()}>
           <div
             className="modal confirm"
             role="dialog"
@@ -7202,7 +7379,7 @@ export function App() {
               chat.
             </p>
             <div className="confirm-actions">
-              <button type="button" onClick={() => setPendingDelete(null)}>
+              <button type="button" onClick={() => cancelDelete()}>
                 Cancel
               </button>
               <button

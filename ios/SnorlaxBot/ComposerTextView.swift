@@ -46,6 +46,14 @@ struct ComposerTextView: UIViewRepresentable {
     /// v1.11: ⌘⇧R / ⌃⇧R starts rename on the open chat. Does not insert or send.
     /// IME marked text keeps the key. A key repeat does not start another rename.
     var onRenameOpenChat: (() -> Void)? = nil
+    /// v1.12: ⌘⇧D / ⌃⇧D asks to delete the open chat. Does not insert or send.
+    /// IME marked text keeps the key. A key repeat does not ask again.
+    var onDeleteOpenChat: (() -> Void)? = nil
+    /// True while the Delete confirm is on screen. Return and Delete confirm.
+    /// Esc cancels. A key repeat never confirms.
+    var deleteConfirmOpen: Bool = false
+    var onConfirmDeleteKey: ((String) -> Void)? = nil
+    var onCancelDelete: (() -> Void)? = nil
     /// v1.10: ⌘⇧U / ⌃⇧U marks the open chat unread, or read when it already
     /// shows the unread dot. Does not insert or send. IME marked text keeps
     /// the key. A key repeat does not flap the mark.
@@ -108,6 +116,16 @@ struct ComposerTextView: UIViewRepresentable {
         view.onRenameOpenChat = { [coordinator = context.coordinator] in
             coordinator.parent.onRenameOpenChat?()
         }
+        view.onDeleteOpenChat = { [coordinator = context.coordinator] in
+            coordinator.parent.onDeleteOpenChat?()
+        }
+        view.onConfirmDeleteKey = { [coordinator = context.coordinator] key in
+            coordinator.parent.onConfirmDeleteKey?(key)
+        }
+        view.onCancelDelete = { [coordinator = context.coordinator] in
+            coordinator.parent.onCancelDelete?()
+        }
+        view.deleteConfirmOpen = deleteConfirmOpen
         view.onBackspaceRemoveChip = { [coordinator = context.coordinator] in
             coordinator.parent.onBackspaceRemoveChip?() ?? false
         }
@@ -172,6 +190,16 @@ struct ComposerTextView: UIViewRepresentable {
         view.onRenameOpenChat = { [coordinator = context.coordinator] in
             coordinator.parent.onRenameOpenChat?()
         }
+        view.onDeleteOpenChat = { [coordinator = context.coordinator] in
+            coordinator.parent.onDeleteOpenChat?()
+        }
+        view.onConfirmDeleteKey = { [coordinator = context.coordinator] key in
+            coordinator.parent.onConfirmDeleteKey?(key)
+        }
+        view.onCancelDelete = { [coordinator = context.coordinator] in
+            coordinator.parent.onCancelDelete?()
+        }
+        view.deleteConfirmOpen = deleteConfirmOpen
         view.onBackspaceRemoveChip = { [coordinator = context.coordinator] in
             coordinator.parent.onBackspaceRemoveChip?() ?? false
         }
@@ -339,6 +367,11 @@ final class ComposerUITextView: UITextView {
     var onMuteOpenChat: (() -> Void)?
     var onMarkOpenChat: (() -> Void)?
     var onRenameOpenChat: (() -> Void)?
+    var onDeleteOpenChat: (() -> Void)?
+    var deleteConfirmOpen = false
+    var onConfirmDeleteKey: ((String) -> Void)?
+    var onCancelDelete: (() -> Void)?
+    private var heldConfirmKeys = Set<UIKeyboardHIDUsage>()
     var onBackspaceRemoveChip: (() -> Bool)?
     /// v1.08: the first ⌘⇧P of a hold toggles. Further repeats do not.
     private var pinOpenChatConsumed = false
@@ -346,6 +379,8 @@ final class ComposerUITextView: UITextView {
     private var muteOpenChatConsumed = false
     /// v1.11: the first ⌘⇧R of a hold starts rename. Further repeats do not.
     private var renameOpenChatConsumed = false
+    /// v1.12: the first ⌘⇧D of a hold asks. Further repeats do not.
+    private var deleteOpenChatConsumed = false
     /// v1.10: the first ⌘⇧U of a hold applies. Further repeats do not.
     private var markOpenChatConsumed = false
     var sendMuted = false
@@ -430,6 +465,7 @@ final class ComposerUITextView: UITextView {
             commands.append(contentsOf: muteOpenChatCommands())
             commands.append(contentsOf: markOpenChatCommands())
             commands.append(contentsOf: renameOpenChatCommands())
+            commands.append(contentsOf: deleteOpenChatCommands())
         }
         return commands
     }
@@ -619,6 +655,26 @@ final class ComposerUITextView: UITextView {
         return [command, control]
     }
 
+    /// ⌘⇧D / ⌃⇧D. Asks to delete the open chat. Does not insert or send.
+    /// IME keeps the key. A repeat of the held chord does not ask again.
+    private func deleteOpenChatCommands() -> [UIKeyCommand] {
+        let command = UIKeyCommand(
+            title: DeleteOpenChat.action,
+            action: #selector(deleteOpenChatFromShortcut),
+            input: "d",
+            modifierFlags: [.command, .shift]
+        )
+        let control = UIKeyCommand(
+            title: DeleteOpenChat.action,
+            action: #selector(deleteOpenChatFromShortcut),
+            input: "d",
+            modifierFlags: [.control, .shift]
+        )
+        command.wantsPriorityOverSystemBehavior = true
+        control.wantsPriorityOverSystemBehavior = true
+        return [command, control]
+    }
+
     /// ⌘⇧⌫ / ⌃⇧⌫. Clears the draft. Does not insert or send.
     /// IME keeps the key. An empty draft is ignored by the model.
     private func clearComposerDraftCommands() -> [UIKeyCommand] {
@@ -659,6 +715,10 @@ final class ComposerUITextView: UITextView {
     }
 
     @objc private func stopGeneratingFromEscape() {
+        if deleteConfirmOpen {
+            onCancelDelete?()
+            return
+        }
         // IME: do not steal Esc while marked text is composing.
         let composing = markedTextRange != nil
         onEscapeStop?(composing)
@@ -738,6 +798,15 @@ final class ComposerUITextView: UITextView {
         onRenameOpenChat?()
     }
 
+    /// The first press asks. A repeat of this hold returns without
+    /// asking again, so d is not inserted and the confirm is not accepted.
+    @objc private func deleteOpenChatFromShortcut() {
+        if markedTextRange != nil { return }
+        if deleteOpenChatConsumed { return }
+        deleteOpenChatConsumed = true
+        onDeleteOpenChat?()
+    }
+
     @objc private func chatNavUp() {
         performChatNav(-1)
     }
@@ -772,9 +841,61 @@ final class ComposerUITextView: UITextView {
         return super.canPerformAction(action, withSender: sender)
     }
 
+    /// Enter or Delete confirms while the dialog is up. A repeat is swallowed
+    /// and does not confirm. After confirm, the key stays swallowed until
+    /// release so the next chat does not send or delete a character.
+    private func confirmKind(_ code: UIKeyboardHIDUsage) -> String? {
+        switch code {
+        case .keyboardReturn, .keyboardReturnOrEnter:
+            return "return"
+        case .keyboardDeleteOrBackspace, .keyboardDeleteForward:
+            return "delete"
+        default:
+            return nil
+        }
+    }
+
+    private func handleDeleteConfirm(_ key: UIKey) -> Bool {
+        let code = key.keyCode
+        let modified = key.modifierFlags.contains(.command)
+            || key.modifierFlags.contains(.control)
+            || key.modifierFlags.contains(.alternate)
+            || key.modifierFlags.contains(.shift)
+        if code == .keyboardEscape {
+            guard deleteConfirmOpen, !modified else { return false }
+            onCancelDelete?()
+            return true
+        }
+        guard let kind = confirmKind(code), !modified else { return false }
+        if DeleteOpenChat.confirmKeyBlocked(kind) {
+            heldConfirmKeys.insert(code)
+            return true
+        }
+        guard deleteConfirmOpen else { return false }
+        let repeatPress = heldConfirmKeys.contains(code)
+        if !repeatPress {
+            heldConfirmKeys.insert(code)
+        }
+        if repeatPress {
+            return true
+        }
+        onConfirmDeleteKey?(kind)
+        return true
+    }
+
+    private func releaseConfirmKey(_ code: UIKeyboardHIDUsage) {
+        heldConfirmKeys.remove(code)
+        if let kind = confirmKind(code) {
+            DeleteOpenChat.releaseConfirmKey(kind)
+        }
+    }
+
     /// v0.87: empty field removes the last chip. Text still deletes as usual.
     /// v1.07: ⌘⇧⌫ / ⌃⇧⌫ clears the whole draft and does not delete one character.
     override func deleteBackward() {
+        if deleteConfirmOpen || DeleteOpenChat.confirmKeyBlocked("delete") {
+            return
+        }
         let command = backspaceCommand
         let control = backspaceControl
         let option = backspaceOption
@@ -808,6 +929,11 @@ final class ComposerUITextView: UITextView {
     }
 
     override func pressesEnded(_ presses: Set<UIPress>, with event: UIPressesEvent?) {
+        for press in presses {
+            if let code = press.key?.keyCode {
+                releaseConfirmKey(code)
+            }
+        }
         if presses.contains(where: { press in
             if press.key?.keyCode == .keyboardP { return true }
             return press.key?.charactersIgnoringModifiers.lowercased() == "p"
@@ -832,6 +958,12 @@ final class ComposerUITextView: UITextView {
         }) {
             renameOpenChatConsumed = false
         }
+        if presses.contains(where: { press in
+            if press.key?.keyCode == .keyboardD { return true }
+            return press.key?.charactersIgnoringModifiers.lowercased() == "d"
+        }) {
+            deleteOpenChatConsumed = false
+        }
         super.pressesEnded(presses, with: event)
         // If deleteBackward already ran it cleared the flag. If a chorded
         // Delete never reached it, drop the flag on the next turn so a
@@ -848,16 +980,26 @@ final class ComposerUITextView: UITextView {
     }
 
     override func pressesCancelled(_ presses: Set<UIPress>, with event: UIPressesEvent?) {
+        for press in presses {
+            if let code = press.key?.keyCode {
+                releaseConfirmKey(code)
+            }
+        }
+        heldConfirmKeys.removeAll()
         pinOpenChatConsumed = false
         muteOpenChatConsumed = false
         markOpenChatConsumed = false
         renameOpenChatConsumed = false
+        deleteOpenChatConsumed = false
         super.pressesCancelled(presses, with: event)
     }
 
     override func pressesBegan(_ presses: Set<UIPress>, with event: UIPressesEvent?) {
         for press in presses {
             guard let key = press.key else { continue }
+            if handleDeleteConfirm(key) {
+                return
+            }
             if key.keyCode == .keyboardP {
                 let mods = key.modifierFlags
                 if PinOpenChat.isChord(
@@ -911,6 +1053,20 @@ final class ComposerUITextView: UITextView {
                     shift: mods.contains(.shift)
                 ), renameOpenChatConsumed {
                     // Held ⌘⇧R. Do not insert r and do not start another rename.
+                    return
+                }
+            }
+            if key.keyCode == .keyboardD {
+                let mods = key.modifierFlags
+                if DeleteOpenChat.isChord(
+                    key: "d",
+                    characters: key.charactersIgnoringModifiers,
+                    command: mods.contains(.command),
+                    control: mods.contains(.control),
+                    option: mods.contains(.alternate),
+                    shift: mods.contains(.shift)
+                ), deleteOpenChatConsumed {
+                    // Held ⌘⇧D. Do not insert d and do not delete again.
                     return
                 }
             }
