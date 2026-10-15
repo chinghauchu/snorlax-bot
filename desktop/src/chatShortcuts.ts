@@ -35,7 +35,9 @@ export type ChatShortcut = {
  * sidebar Archive action (v1.06). Cmd/Ctrl-Shift-Backspace clears the
  * open chat's composer draft, text and pending chips, without sending
  * (v1.07). Cmd/Ctrl-Shift-P pins or unpins the open chat through the
- * sidebar Pin action (v1.08). Find's Enter / Shift-Enter steps matches.
+ * sidebar Pin action (v1.08). Cmd/Ctrl-Shift-M mutes or unmutes the
+ * open chat through the sidebar Mute action (v1.09). Find's Enter /
+ * Shift-Enter steps matches.
  * The switcher uses Up / Down / Enter. Mention and skill menus use
  * Up / Down / Enter / Tab.
  */
@@ -54,6 +56,7 @@ export const CHAT_SHORTCUTS: readonly ChatShortcut[] = [
   { id: "archive-chat", keys: "Cmd/Ctrl Shift A", action: "Archive this chat" },
   { id: "clear-draft", keys: "Cmd/Ctrl Shift Backspace", action: "Clear the draft" },
   { id: "pin-chat", keys: "Cmd/Ctrl Shift P", action: "Pin or unpin this chat" },
+  { id: "mute-chat", keys: "Cmd/Ctrl Shift M", action: "Mute or unmute this chat" },
   { id: "find", keys: "Cmd/Ctrl F", action: "Find in chat" },
   { id: "switch", keys: "Cmd/Ctrl K", action: "Switch chat" },
   { id: "info", keys: "Cmd/Ctrl Shift I", action: "Open info" },
