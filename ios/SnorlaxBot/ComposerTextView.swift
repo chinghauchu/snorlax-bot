@@ -46,6 +46,10 @@ struct ComposerTextView: UIViewRepresentable {
     /// v1.11: ⌘⇧R / ⌃⇧R starts rename on the open chat. Does not insert or send.
     /// IME marked text keeps the key. A key repeat does not start another rename.
     var onRenameOpenChat: (() -> Void)? = nil
+    /// v1.10: ⌘⇧U / ⌃⇧U marks the open chat unread, or read when it already
+    /// shows the unread dot. Does not insert or send. IME marked text keeps
+    /// the key. A key repeat does not flap the mark.
+    var onMarkOpenChat: (() -> Void)? = nil
     /// v0.87: empty composer + Delete removes the last pending chip.
     /// Hardware Delete and the on-screen keyboard both call `deleteBackward`.
     /// Returns true when a chip was removed.
@@ -97,6 +101,9 @@ struct ComposerTextView: UIViewRepresentable {
         }
         view.onMuteOpenChat = { [coordinator = context.coordinator] in
             coordinator.parent.onMuteOpenChat?()
+        }
+        view.onMarkOpenChat = { [coordinator = context.coordinator] in
+            coordinator.parent.onMarkOpenChat?()
         }
         view.onRenameOpenChat = { [coordinator = context.coordinator] in
             coordinator.parent.onRenameOpenChat?()
@@ -158,6 +165,9 @@ struct ComposerTextView: UIViewRepresentable {
         }
         view.onMuteOpenChat = { [coordinator = context.coordinator] in
             coordinator.parent.onMuteOpenChat?()
+        }
+        view.onMarkOpenChat = { [coordinator = context.coordinator] in
+            coordinator.parent.onMarkOpenChat?()
         }
         view.onRenameOpenChat = { [coordinator = context.coordinator] in
             coordinator.parent.onRenameOpenChat?()
@@ -327,6 +337,7 @@ final class ComposerUITextView: UITextView {
     var onClearComposerDraft: (() -> Void)?
     var onPinOpenChat: (() -> Void)?
     var onMuteOpenChat: (() -> Void)?
+    var onMarkOpenChat: (() -> Void)?
     var onRenameOpenChat: (() -> Void)?
     var onBackspaceRemoveChip: (() -> Bool)?
     /// v1.08: the first ⌘⇧P of a hold toggles. Further repeats do not.
@@ -335,6 +346,8 @@ final class ComposerUITextView: UITextView {
     private var muteOpenChatConsumed = false
     /// v1.11: the first ⌘⇧R of a hold starts rename. Further repeats do not.
     private var renameOpenChatConsumed = false
+    /// v1.10: the first ⌘⇧U of a hold applies. Further repeats do not.
+    private var markOpenChatConsumed = false
     var sendMuted = false
     /// Hardware Delete with Shift/Alt/Cmd/Ctrl. Software Delete leaves this false.
     private var deleteModifierChord = false
@@ -415,6 +428,7 @@ final class ComposerUITextView: UITextView {
             commands.append(contentsOf: clearComposerDraftCommands())
             commands.append(contentsOf: pinOpenChatCommands())
             commands.append(contentsOf: muteOpenChatCommands())
+            commands.append(contentsOf: markOpenChatCommands())
             commands.append(contentsOf: renameOpenChatCommands())
         }
         return commands
@@ -563,6 +577,28 @@ final class ComposerUITextView: UITextView {
         return [command, control]
     }
 
+    /// ⌘⇧U / ⌃⇧U. Marks the open chat unread, or read when it already
+    /// shows the unread dot. Does not insert or send. IME keeps the key.
+    /// A repeat of the held chord does not flap.
+    private func markOpenChatCommands() -> [UIKeyCommand] {
+        let command = UIKeyCommand(
+            title: MarkOpenChat.action,
+            action: #selector(markOpenChatFromShortcut),
+            input: "u",
+            modifierFlags: [.command, .shift]
+        )
+        let control = UIKeyCommand(
+            title: MarkOpenChat.action,
+            action: #selector(markOpenChatFromShortcut),
+            input: "u",
+            modifierFlags: [.control, .shift]
+        )
+        command.wantsPriorityOverSystemBehavior = true
+        control.wantsPriorityOverSystemBehavior = true
+        return [command, control]
+    }
+
+
     /// ⌘⇧R / ⌃⇧R. Starts rename on the open chat. Does not insert or send.
     /// IME keeps the key. A repeat of the held chord does not start another.
     private func renameOpenChatCommands() -> [UIKeyCommand] {
@@ -681,6 +717,17 @@ final class ComposerUITextView: UITextView {
         onMuteOpenChat?()
     }
 
+    /// The first press applies the sidebar mark. A repeat of this hold
+    /// returns without applying again, so the mark does not flap and u
+    /// is not inserted.
+    @objc private func markOpenChatFromShortcut() {
+        if markedTextRange != nil { return }
+        if markOpenChatConsumed { return }
+        markOpenChatConsumed = true
+        onMarkOpenChat?()
+    }
+
+
     /// The first press starts rename. A repeat of this hold returns
     /// without starting another, so the field does not flap and r is
     /// not inserted.
@@ -774,6 +821,12 @@ final class ComposerUITextView: UITextView {
             muteOpenChatConsumed = false
         }
         if presses.contains(where: { press in
+            if press.key?.keyCode == .keyboardU { return true }
+            return press.key?.charactersIgnoringModifiers.lowercased() == "u"
+        }) {
+            markOpenChatConsumed = false
+        }
+        if presses.contains(where: { press in
             if press.key?.keyCode == .keyboardR { return true }
             return press.key?.charactersIgnoringModifiers.lowercased() == "r"
         }) {
@@ -797,6 +850,7 @@ final class ComposerUITextView: UITextView {
     override func pressesCancelled(_ presses: Set<UIPress>, with event: UIPressesEvent?) {
         pinOpenChatConsumed = false
         muteOpenChatConsumed = false
+        markOpenChatConsumed = false
         renameOpenChatConsumed = false
         super.pressesCancelled(presses, with: event)
     }
@@ -829,6 +883,20 @@ final class ComposerUITextView: UITextView {
                     shift: mods.contains(.shift)
                 ), muteOpenChatConsumed {
                     // Held ⌘⇧M. Do not insert m and do not toggle again.
+                    return
+                }
+            }
+            if key.keyCode == .keyboardU {
+                let mods = key.modifierFlags
+                if MarkOpenChat.isChord(
+                    key: "u",
+                    characters: key.charactersIgnoringModifiers,
+                    command: mods.contains(.command),
+                    control: mods.contains(.control),
+                    option: mods.contains(.alternate),
+                    shift: mods.contains(.shift)
+                ), markOpenChatConsumed {
+                    // Held ⌘⇧U. Do not insert u and do not apply again.
                     return
                 }
             }

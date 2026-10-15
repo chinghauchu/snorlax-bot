@@ -191,6 +191,12 @@ import {
   overlayTextFieldOwnsMuteOpenChat,
 } from "./muteOpenChat";
 import {
+  isMarkOpenChatChord,
+  markOpenChatBlocked,
+  markOpenChatShouldApply,
+  overlayTextFieldOwnsMarkOpenChat,
+} from "./markOpenChat";
+import {
   isRenameOpenChatChord,
   overlayTextFieldOwnsRenameOpenChat,
   renameOpenChatBlocked,
@@ -1414,6 +1420,7 @@ export function App() {
   const clearComposerDraftRef = useRef<() => void>(() => {});
   const pinOpenChatRef = useRef<() => void>(() => {});
   const muteOpenChatRef = useRef<() => void>(() => {});
+  const markOpenChatRef = useRef<() => void>(() => {});
   const renameOpenChatRef = useRef<() => void>(() => {});
   useEffect(() => {
     return () => {
@@ -5213,6 +5220,74 @@ export function App() {
     mentionOpen,
     skillMenuOpen,
   ]);
+
+  // v1.10: Cmd/Ctrl-Shift-U marks the open chat unread through the
+  // sidebar Mark as unread action. A chat that already shows the
+  // unread dot is marked read, which is that same menu item. The
+  // composer does not own the chord and the letter is not inserted.
+  // A modal or overlay text field does. IME keeps it. A key repeat
+  // does not flap the mark. Nothing changes when no chat is open.
+  // Persistence, the accent dot, and the unread count are that path.
+  markOpenChatRef.current = () => {
+    const id = active?.id;
+    if (!id) return;
+    onToggleRead(id);
+  };
+
+  useEffect(() => {
+    const onMarkOpenChat = (event: globalThis.KeyboardEvent) => {
+      if (event.defaultPrevented) return;
+      if (
+        !isMarkOpenChatChord({
+          key: event.key,
+          metaKey: event.metaKey,
+          ctrlKey: event.ctrlKey,
+          altKey: event.altKey,
+          shiftKey: event.shiftKey,
+          repeat: event.repeat,
+        })
+      ) {
+        return;
+      }
+      const gate = {
+        chatOpen: active != null,
+        composing: isComposerComposing(event),
+        overlayTextField: overlayTextFieldOwnsMarkOpenChat(
+          focusIsTextField(event.target),
+          event.target === composerRef.current,
+        ),
+        inCard: focusInsideCard(event.target),
+        findOpen,
+        switchOpen,
+        shortcutsOpen,
+        renaming: renamingId != null,
+        lightboxOpen: lightboxTarget != null,
+        menuOpen: contextMenu != null,
+        blocked: switcherBlocked || mentionOpen || skillMenuOpen,
+      };
+      if (markOpenChatBlocked(gate)) return;
+      event.preventDefault();
+      event.stopPropagation();
+      if (!markOpenChatShouldApply({ repeat: event.repeat })) return;
+      markOpenChatRef.current();
+    };
+    window.addEventListener("keydown", onMarkOpenChat, true);
+    return () => {
+      window.removeEventListener("keydown", onMarkOpenChat, true);
+    };
+  }, [
+    active,
+    findOpen,
+    switchOpen,
+    shortcutsOpen,
+    renamingId,
+    lightboxTarget,
+    contextMenu,
+    switcherBlocked,
+    mentionOpen,
+    skillMenuOpen,
+  ]);
+
 
   // v1.11: Cmd/Ctrl-Shift-R starts rename on the open chat through the
   // sidebar Rename action. The composer does not own the chord and the

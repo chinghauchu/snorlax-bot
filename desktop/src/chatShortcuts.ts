@@ -36,9 +36,11 @@ export type ChatShortcut = {
  * open chat's composer draft, text and pending chips, without sending
  * (v1.07). Cmd/Ctrl-Shift-P pins or unpins the open chat through the
  * sidebar Pin action (v1.08). Cmd/Ctrl-Shift-M mutes or unmutes the
- * open chat through the sidebar Mute action (v1.09). Cmd/Ctrl-Shift-R
- * starts rename on the open chat through the sidebar Rename action
- * (v1.11). Find's Enter /
+ * open chat through the sidebar Mute action (v1.09).
+ * Cmd/Ctrl-Shift-U marks the open chat unread, or read when it
+ * already shows the unread dot, through the sidebar Mark action
+ * (v1.10). Cmd/Ctrl-Shift-R starts rename on the open chat through
+ * the sidebar Rename action (v1.11). Find's Enter /
  * Shift-Enter steps matches.
  * The switcher uses Up / Down / Enter. Mention and skill menus use
  * Up / Down / Enter / Tab.
@@ -59,6 +61,7 @@ export const CHAT_SHORTCUTS: readonly ChatShortcut[] = [
   { id: "clear-draft", keys: "Cmd/Ctrl Shift Backspace", action: "Clear the draft" },
   { id: "pin-chat", keys: "Cmd/Ctrl Shift P", action: "Pin or unpin this chat" },
   { id: "mute-chat", keys: "Cmd/Ctrl Shift M", action: "Mute or unmute this chat" },
+  { id: "mark-unread", keys: "Cmd/Ctrl Shift U", action: "Mark as unread or read" },
   { id: "rename-chat", keys: "Cmd/Ctrl Shift R", action: "Rename this chat" },
   { id: "find", keys: "Cmd/Ctrl F", action: "Find in chat" },
   { id: "switch", keys: "Cmd/Ctrl K", action: "Switch chat" },
