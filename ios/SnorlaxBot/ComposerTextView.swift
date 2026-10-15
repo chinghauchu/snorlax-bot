@@ -40,6 +40,9 @@ struct ComposerTextView: UIViewRepresentable {
     /// v1.08: ⌘⇧P / ⌃⇧P pins or unpins the open chat. Does not insert or send.
     /// IME marked text keeps the key. A key repeat does not flap the pin.
     var onPinOpenChat: (() -> Void)? = nil
+    /// v1.09: ⌘⇧M / ⌃⇧M mutes or unmutes the open chat. Does not insert or send.
+    /// IME marked text keeps the key. A key repeat does not flap Mute / Unmute.
+    var onMuteOpenChat: (() -> Void)? = nil
     /// v0.87: empty composer + Delete removes the last pending chip.
     /// Hardware Delete and the on-screen keyboard both call `deleteBackward`.
     /// Returns true when a chip was removed.
@@ -88,6 +91,9 @@ struct ComposerTextView: UIViewRepresentable {
         }
         view.onPinOpenChat = { [coordinator = context.coordinator] in
             coordinator.parent.onPinOpenChat?()
+        }
+        view.onMuteOpenChat = { [coordinator = context.coordinator] in
+            coordinator.parent.onMuteOpenChat?()
         }
         view.onBackspaceRemoveChip = { [coordinator = context.coordinator] in
             coordinator.parent.onBackspaceRemoveChip?() ?? false
@@ -143,6 +149,9 @@ struct ComposerTextView: UIViewRepresentable {
         }
         view.onPinOpenChat = { [coordinator = context.coordinator] in
             coordinator.parent.onPinOpenChat?()
+        }
+        view.onMuteOpenChat = { [coordinator = context.coordinator] in
+            coordinator.parent.onMuteOpenChat?()
         }
         view.onBackspaceRemoveChip = { [coordinator = context.coordinator] in
             coordinator.parent.onBackspaceRemoveChip?() ?? false
@@ -308,9 +317,12 @@ final class ComposerUITextView: UITextView {
     var onArchiveOpenChat: (() -> Void)?
     var onClearComposerDraft: (() -> Void)?
     var onPinOpenChat: (() -> Void)?
+    var onMuteOpenChat: (() -> Void)?
     var onBackspaceRemoveChip: (() -> Bool)?
     /// v1.08: the first ⌘⇧P of a hold toggles. Further repeats do not.
     private var pinOpenChatConsumed = false
+    /// v1.09: the first ⌘⇧M of a hold toggles. Further repeats do not.
+    private var muteOpenChatConsumed = false
     var sendMuted = false
     /// Hardware Delete with Shift/Alt/Cmd/Ctrl. Software Delete leaves this false.
     private var deleteModifierChord = false
@@ -390,6 +402,7 @@ final class ComposerUITextView: UITextView {
             commands.append(contentsOf: archiveOpenChatCommands())
             commands.append(contentsOf: clearComposerDraftCommands())
             commands.append(contentsOf: pinOpenChatCommands())
+            commands.append(contentsOf: muteOpenChatCommands())
         }
         return commands
     }
@@ -517,6 +530,26 @@ final class ComposerUITextView: UITextView {
         return [command, control]
     }
 
+    /// ⌘⇧M / ⌃⇧M. Mutes or unmutes the open chat. Does not insert or send.
+    /// IME keeps the key. A repeat of the held chord does not flap.
+    private func muteOpenChatCommands() -> [UIKeyCommand] {
+        let command = UIKeyCommand(
+            title: MuteOpenChat.action,
+            action: #selector(muteOpenChatFromShortcut),
+            input: "m",
+            modifierFlags: [.command, .shift]
+        )
+        let control = UIKeyCommand(
+            title: MuteOpenChat.action,
+            action: #selector(muteOpenChatFromShortcut),
+            input: "m",
+            modifierFlags: [.control, .shift]
+        )
+        command.wantsPriorityOverSystemBehavior = true
+        control.wantsPriorityOverSystemBehavior = true
+        return [command, control]
+    }
+
     /// ⌘⇧⌫ / ⌃⇧⌫. Clears the draft. Does not insert or send.
     /// IME keeps the key. An empty draft is ignored by the model.
     private func clearComposerDraftCommands() -> [UIKeyCommand] {
@@ -606,6 +639,15 @@ final class ComposerUITextView: UITextView {
         onPinOpenChat?()
     }
 
+    /// The first press toggles. A repeat of this hold returns without
+    /// toggling again, so Mute / Unmute does not flap and m is not inserted.
+    @objc private func muteOpenChatFromShortcut() {
+        if markedTextRange != nil { return }
+        if muteOpenChatConsumed { return }
+        muteOpenChatConsumed = true
+        onMuteOpenChat?()
+    }
+
     @objc private func chatNavUp() {
         performChatNav(-1)
     }
@@ -682,6 +724,12 @@ final class ComposerUITextView: UITextView {
         }) {
             pinOpenChatConsumed = false
         }
+        if presses.contains(where: { press in
+            if press.key?.keyCode == .keyboardM { return true }
+            return press.key?.charactersIgnoringModifiers.lowercased() == "m"
+        }) {
+            muteOpenChatConsumed = false
+        }
         super.pressesEnded(presses, with: event)
         // If deleteBackward already ran it cleared the flag. If a chorded
         // Delete never reached it, drop the flag on the next turn so a
@@ -699,6 +747,7 @@ final class ComposerUITextView: UITextView {
 
     override func pressesCancelled(_ presses: Set<UIPress>, with event: UIPressesEvent?) {
         pinOpenChatConsumed = false
+        muteOpenChatConsumed = false
         super.pressesCancelled(presses, with: event)
     }
 
@@ -716,6 +765,20 @@ final class ComposerUITextView: UITextView {
                     shift: mods.contains(.shift)
                 ), pinOpenChatConsumed {
                     // Held ⌘⇧P. Do not insert p and do not toggle again.
+                    return
+                }
+            }
+            if key.keyCode == .keyboardM {
+                let mods = key.modifierFlags
+                if MuteOpenChat.isChord(
+                    key: "m",
+                    characters: key.charactersIgnoringModifiers,
+                    command: mods.contains(.command),
+                    control: mods.contains(.control),
+                    option: mods.contains(.alternate),
+                    shift: mods.contains(.shift)
+                ), muteOpenChatConsumed {
+                    // Held ⌘⇧M. Do not insert m and do not toggle again.
                     return
                 }
             }

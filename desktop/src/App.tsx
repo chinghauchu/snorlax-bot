@@ -185,6 +185,12 @@ import {
   pinOpenChatShouldToggle,
 } from "./pinOpenChat";
 import {
+  isMuteOpenChatChord,
+  muteOpenChatBlocked,
+  muteOpenChatShouldToggle,
+  overlayTextFieldOwnsMuteOpenChat,
+} from "./muteOpenChat";
+import {
   loadInitialRuntimeUrl,
   normalizeRuntimeUrl,
 } from "./runtimeUrl";
@@ -1401,6 +1407,7 @@ export function App() {
   const archiveOpenChatRef = useRef<() => void>(() => {});
   const clearComposerDraftRef = useRef<() => void>(() => {});
   const pinOpenChatRef = useRef<() => void>(() => {});
+  const muteOpenChatRef = useRef<() => void>(() => {});
   useEffect(() => {
     return () => {
       if (shortcutCopyTimer.current != null) {
@@ -5121,6 +5128,71 @@ export function App() {
     window.addEventListener("keydown", onPinOpenChat, true);
     return () => {
       window.removeEventListener("keydown", onPinOpenChat, true);
+    };
+  }, [
+    active,
+    findOpen,
+    switchOpen,
+    shortcutsOpen,
+    renamingId,
+    lightboxTarget,
+    contextMenu,
+    switcherBlocked,
+    mentionOpen,
+    skillMenuOpen,
+  ]);
+
+  // v1.09: Cmd/Ctrl-Shift-M mutes or unmutes the open chat through the
+  // sidebar Mute action. The composer does not own the chord and the
+  // letter is not inserted. A modal or overlay text field does. IME
+  // keeps it. A key repeat does not flap Mute / Unmute. Nothing changes
+  // when no chat is open. Persistence and unread clearing are that path.
+  muteOpenChatRef.current = () => {
+    const id = active?.id;
+    if (!id) return;
+    onToggleMute(id);
+  };
+
+  useEffect(() => {
+    const onMuteOpenChat = (event: globalThis.KeyboardEvent) => {
+      if (event.defaultPrevented) return;
+      if (
+        !isMuteOpenChatChord({
+          key: event.key,
+          metaKey: event.metaKey,
+          ctrlKey: event.ctrlKey,
+          altKey: event.altKey,
+          shiftKey: event.shiftKey,
+          repeat: event.repeat,
+        })
+      ) {
+        return;
+      }
+      const gate = {
+        chatOpen: active != null,
+        composing: isComposerComposing(event),
+        overlayTextField: overlayTextFieldOwnsMuteOpenChat(
+          focusIsTextField(event.target),
+          event.target === composerRef.current,
+        ),
+        inCard: focusInsideCard(event.target),
+        findOpen,
+        switchOpen,
+        shortcutsOpen,
+        renaming: renamingId != null,
+        lightboxOpen: lightboxTarget != null,
+        menuOpen: contextMenu != null,
+        blocked: switcherBlocked || mentionOpen || skillMenuOpen,
+      };
+      if (muteOpenChatBlocked(gate)) return;
+      event.preventDefault();
+      event.stopPropagation();
+      if (!muteOpenChatShouldToggle({ repeat: event.repeat })) return;
+      muteOpenChatRef.current();
+    };
+    window.addEventListener("keydown", onMuteOpenChat, true);
+    return () => {
+      window.removeEventListener("keydown", onMuteOpenChat, true);
     };
   }, [
     active,

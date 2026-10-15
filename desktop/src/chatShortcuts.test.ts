@@ -132,6 +132,7 @@ test("the overlay lists only shortcuts that already have handlers", () => {
       "archive-chat",
       "clear-draft",
       "pin-chat",
+      "mute-chat",
       "find",
       "switch",
       "info",
@@ -156,6 +157,7 @@ test("the overlay lists only shortcuts that already have handlers", () => {
   assert.equal(action["archive-chat"], "Archive this chat");
   assert.equal(action["clear-draft"], "Clear the draft");
   assert.equal(action["pin-chat"], "Pin or unpin this chat");
+  assert.equal(action["mute-chat"], "Mute or unmute this chat");
   assert.equal(action.find, "Find in chat");
   assert.equal(action.switch, "Switch chat");
   assert.equal(action.info, "Open info");

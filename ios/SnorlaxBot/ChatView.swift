@@ -71,6 +71,7 @@ struct ChatView: View {
                 onArchiveOpenChat: { archiveOpenChatFromComposer() },
                 onClearComposerDraft: { clearComposerDraftFromComposer() },
                 onPinOpenChat: { pinOpenChatFromComposer() },
+                onMuteOpenChat: { muteOpenChatFromComposer() },
                 onEscapeFind: {
                     guard findOpen else { return false }
                     closeFind()
@@ -101,6 +102,9 @@ struct ChatView: View {
                 return .handled
             }
             if pinOpenChatKey(press) == .handled {
+                return .handled
+            }
+            if muteOpenChatKey(press) == .handled {
                 return .handled
             }
             if chatNavKey(press) == .handled {
@@ -484,6 +488,52 @@ struct ChatView: View {
         if model.computerTakeoverOpen || model.showProfile || model.showSettings { return }
         if model.skillMenuOpen() { return }
         model.toggleChatPin(agent.id)
+    }
+
+    /// Hardware ⌘⇧M / ⌃⇧M when the composer is not first responder.
+    /// The text view handles the same chord and keeps IME marked text.
+    /// Find, rename, search, a card text field, and an empty chat own the key.
+    /// A key repeat is swallowed so Mute / Unmute does not flap.
+    private func muteOpenChatKey(_ press: KeyPress) -> KeyPress.Result {
+        guard hasRealAgent else { return .ignored }
+        guard MuteOpenChat.isChord(
+            key: press.key.character,
+            characters: press.characters,
+            command: press.modifiers.contains(.command),
+            control: press.modifiers.contains(.control),
+            option: press.modifiers.contains(.option),
+            shift: press.modifiers.contains(.shift)
+        ) else { return .ignored }
+        if composerFocused { return .ignored }
+        if findOpen || findFieldFocused || lightbox != nil || shortcutsOpen {
+            return .ignored
+        }
+        if model.computerTakeoverOpen || model.showProfile || model.showSettings {
+            return .ignored
+        }
+        if model.skillMenuOpen() { return .ignored }
+        if MuteOpenChat.overlayTextFieldOwnsChord(
+            textFieldFocused: TranscriptScroll.textInputIsFirstResponder(),
+            composerFocused: false
+        ) {
+            return .ignored
+        }
+        if MuteOpenChat.shouldIgnoreRepeat(press.`repeat`) {
+            return .handled
+        }
+        model.toggleChatMute(agent.id)
+        return .handled
+    }
+
+    /// Composer ⌘⇧M. Mention and skill menus are checked by the bar.
+    /// Find, the shortcuts sheet, and the lightbox keep the key.
+    /// An empty chat does not mute. The text view swallows a key repeat.
+    private func muteOpenChatFromComposer() {
+        guard hasRealAgent else { return }
+        if findOpen || findFieldFocused || lightbox != nil || shortcutsOpen { return }
+        if model.computerTakeoverOpen || model.showProfile || model.showSettings { return }
+        if model.skillMenuOpen() { return }
+        model.toggleChatMute(agent.id)
     }
 
     /// Hardware Option+Up / Option+Down when the composer is not first
@@ -1515,6 +1565,7 @@ private struct ComposerBar: View {
     var onArchiveOpenChat: () -> Void = {}
     var onClearComposerDraft: () -> Void = {}
     var onPinOpenChat: () -> Void = {}
+    var onMuteOpenChat: () -> Void = {}
     var onEscapeFind: () -> Bool = { false }
     @Environment(AppModel.self) private var model
     @State private var pickerItem: PhotosPickerItem?
@@ -1696,6 +1747,10 @@ private struct ComposerBar: View {
                     onPinOpenChat: {
                         if mentionQuery != nil || model.skillMenuOpen() { return }
                         onPinOpenChat()
+                    },
+                    onMuteOpenChat: {
+                        if mentionQuery != nil || model.skillMenuOpen() { return }
+                        onMuteOpenChat()
                     },
                     onBackspaceRemoveChip: {
                         model.removeLastPendingChipFromBackspace()
