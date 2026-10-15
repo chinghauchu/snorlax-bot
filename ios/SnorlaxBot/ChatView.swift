@@ -81,6 +81,7 @@ struct ChatView: View {
                 onRenameOpenChat: { renameOpenChatFromComposer() },
                 onDeleteOpenChat: { deleteOpenChatFromComposer() },
                 onCopyTranscript: { copyTranscriptFromComposer() },
+                onToggleToolTraces: { toggleToolTracesFromComposer() },
                 deleteConfirmOpen: pendingDeleteChatID != nil,
                 onConfirmDeleteKey: { key in confirmDeleteOpenChat(key: key) },
                 onCancelDelete: { cancelDeleteOpenChat() },
@@ -135,6 +136,9 @@ struct ChatView: View {
                 return .handled
             }
             if copyTranscriptKey(press) == .handled {
+                return .handled
+            }
+            if toolTraceGroupsKey(press) == .handled {
                 return .handled
             }
             if chatNavKey(press) == .handled {
@@ -893,6 +897,96 @@ struct ChatView: View {
                 transcriptCopied = false
             }
         }
+    }
+
+    /// Hardware ⌘⇧G / ⌃⇧G when the composer is not first responder.
+    /// The text view handles the same chord and keeps IME marked text.
+    /// Find, rename, search, a card text field, and an empty chat own the key.
+    /// A key repeat is swallowed so it does not flap.
+    private func toolTraceGroupsKey(_ press: KeyPress) -> KeyPress.Result {
+        guard hasRealAgent else { return .ignored }
+        guard ToolTraceGroups.isChord(
+            key: press.key.character,
+            characters: press.characters,
+            command: press.modifiers.contains(.command),
+            control: press.modifiers.contains(.control),
+            option: press.modifiers.contains(.option),
+            shift: press.modifiers.contains(.shift)
+        ) else { return .ignored }
+        if composerFocused { return .ignored }
+        if toolTraceGroupsBlocked() { return .ignored }
+        if ToolTraceGroups.overlayTextFieldOwnsChord(
+            textFieldFocused: TranscriptScroll.textInputIsFirstResponder(),
+            composerFocused: false
+        ) {
+            return .ignored
+        }
+        if ToolTraceGroups.shouldIgnoreRepeat(press.`repeat`) {
+            return .handled
+        }
+        toggleAllToolTraceGroups()
+        return .handled
+    }
+
+    /// Composer ⌘⇧G. Mention and skill menus are checked by the bar.
+    /// Find, the shortcuts sheet, and the lightbox keep the key.
+    /// An empty chat does not toggle. The text view swallows a key repeat.
+    private func toggleToolTracesFromComposer() {
+        guard hasRealAgent else { return }
+        if toolTraceGroupsBlocked() { return }
+        toggleAllToolTraceGroups()
+    }
+
+    private func toolTraceGroupsBlocked() -> Bool {
+        if findOpen || findFieldFocused || lightbox != nil || shortcutsOpen {
+            return true
+        }
+        if model.computerTakeoverOpen || model.showProfile || model.showSettings {
+            return true
+        }
+        if model.skillMenuOpen() { return true }
+        if model.renameChatID != nil { return true }
+        return false
+    }
+
+    /// Same stacks the transcript paints. A single tool is not a group.
+    /// No group leaves the chevrons alone.
+    private func toggleAllToolTraceGroups() {
+        guard hasRealAgent else { return }
+        if toolTraceGroupsBlocked() { return }
+        guard let next = CompactToolTraces.toggleAll(
+            expanded: expandedToolStacks,
+            stacks: openChatToolStacks()
+        ) else { return }
+        expandedToolStacks = next
+    }
+
+    private func openChatToolStacks() -> [CompactToolTraces.Stack] {
+        let visible = model.visibleMessages(for: agent)
+        let persistedToolIds = Set(visible.filter(\.isToolLine).map(\.id))
+        let liveTraces = model.toolTraces.filter { !persistedToolIds.contains($0.id) }
+        let lastUserIdx = visible.lastIndex(where: \.isFromUser)
+        let liveAssistantIdx = visible.indices.first { index in
+            guard let lastUserIdx else { return false }
+            let message = visible[index]
+            return index > lastUserIdx
+                && message.role == .assistant
+                && !message.isHandoffRoot
+                && !message.isToolLine
+                && !message.isWidget
+                && !message.isConnect
+                && !message.isApprove
+        }
+        let liveAt: Int? = {
+            guard !liveTraces.isEmpty else { return nil }
+            if let liveAssistantIdx { return liveAssistantIdx }
+            return visible.count
+        }()
+        return CompactToolTraces.stacks(
+            messages: visible,
+            liveTraces: liveTraces,
+            liveAt: liveAt
+        )
     }
 
     /// Hardware Option+Up / Option+Down when the composer is not first
@@ -1929,6 +2023,7 @@ private struct ComposerBar: View {
     var onRenameOpenChat: () -> Void = {}
     var onDeleteOpenChat: () -> Void = {}
     var onCopyTranscript: () -> Void = {}
+    var onToggleToolTraces: () -> Void = {}
     var deleteConfirmOpen = false
     var onConfirmDeleteKey: (String) -> Void = { _ in }
     var onCancelDelete: () -> Void = {}
@@ -2133,6 +2228,10 @@ private struct ComposerBar: View {
                     onCopyTranscript: {
                         if mentionQuery != nil || model.skillMenuOpen() { return }
                         onCopyTranscript()
+                    },
+                    onToggleToolTraces: {
+                        if mentionQuery != nil || model.skillMenuOpen() { return }
+                        onToggleToolTraces()
                     },
                     deleteConfirmOpen: deleteConfirmOpen,
                     onConfirmDeleteKey: { key in

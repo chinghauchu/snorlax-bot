@@ -52,6 +52,10 @@ struct ComposerTextView: UIViewRepresentable {
     /// v1.13: ⌘⇧E / ⌃⇧E copies the open transcript. Does not insert or send.
     /// IME marked text keeps the key. A key repeat does not copy again.
     var onCopyTranscript: (() -> Void)? = nil
+    /// v1.14: ⌘⇧G / ⌃⇧G collapses or expands every tool-trace group.
+    /// Does not insert or send. IME marked text keeps the key.
+    /// A key repeat does not flap.
+    var onToggleToolTraces: (() -> Void)? = nil
     /// True while the Delete confirm is on screen. Return and Delete confirm.
     /// Esc cancels. A key repeat never confirms.
     var deleteConfirmOpen: Bool = false
@@ -124,6 +128,9 @@ struct ComposerTextView: UIViewRepresentable {
         }
         view.onCopyTranscript = { [coordinator = context.coordinator] in
             coordinator.parent.onCopyTranscript?()
+        }
+        view.onToggleToolTraces = { [coordinator = context.coordinator] in
+            coordinator.parent.onToggleToolTraces?()
         }
         view.onConfirmDeleteKey = { [coordinator = context.coordinator] key in
             coordinator.parent.onConfirmDeleteKey?(key)
@@ -201,6 +208,9 @@ struct ComposerTextView: UIViewRepresentable {
         }
         view.onCopyTranscript = { [coordinator = context.coordinator] in
             coordinator.parent.onCopyTranscript?()
+        }
+        view.onToggleToolTraces = { [coordinator = context.coordinator] in
+            coordinator.parent.onToggleToolTraces?()
         }
         view.onConfirmDeleteKey = { [coordinator = context.coordinator] key in
             coordinator.parent.onConfirmDeleteKey?(key)
@@ -378,6 +388,7 @@ final class ComposerUITextView: UITextView {
     var onRenameOpenChat: (() -> Void)?
     var onDeleteOpenChat: (() -> Void)?
     var onCopyTranscript: (() -> Void)?
+    var onToggleToolTraces: (() -> Void)?
     var deleteConfirmOpen = false
     var onConfirmDeleteKey: ((String) -> Void)?
     var onCancelDelete: (() -> Void)?
@@ -393,6 +404,8 @@ final class ComposerUITextView: UITextView {
     private var deleteOpenChatConsumed = false
     /// v1.13: the first ⌘⇧E of a hold copies. Further repeats do not.
     private var copyTranscriptConsumed = false
+    /// v1.14: the first ⌘⇧G of a hold toggled. Repeats of that hold do not.
+    private var toolTraceGroupsConsumed = false
     /// v1.10: the first ⌘⇧U of a hold applies. Further repeats do not.
     private var markOpenChatConsumed = false
     var sendMuted = false
@@ -479,6 +492,7 @@ final class ComposerUITextView: UITextView {
             commands.append(contentsOf: renameOpenChatCommands())
             commands.append(contentsOf: deleteOpenChatCommands())
             commands.append(contentsOf: copyTranscriptCommands())
+            commands.append(contentsOf: toolTraceGroupCommands())
         }
         return commands
     }
@@ -708,6 +722,26 @@ final class ComposerUITextView: UITextView {
         return [command, control]
     }
 
+    /// ⌘⇧G / ⌃⇧G. Collapses or expands every tool-trace group.
+    /// Does not insert or send. IME keeps the key. A repeat does not flap.
+    private func toolTraceGroupCommands() -> [UIKeyCommand] {
+        let command = UIKeyCommand(
+            title: ToolTraceGroups.action,
+            action: #selector(toggleToolTracesFromShortcut),
+            input: "g",
+            modifierFlags: [.command, .shift]
+        )
+        let control = UIKeyCommand(
+            title: ToolTraceGroups.action,
+            action: #selector(toggleToolTracesFromShortcut),
+            input: "g",
+            modifierFlags: [.control, .shift]
+        )
+        command.wantsPriorityOverSystemBehavior = true
+        control.wantsPriorityOverSystemBehavior = true
+        return [command, control]
+    }
+
     /// ⌘⇧⌫ / ⌃⇧⌫. Clears the draft. Does not insert or send.
     /// IME keeps the key. An empty draft is ignored by the model.
     private func clearComposerDraftCommands() -> [UIKeyCommand] {
@@ -847,6 +881,15 @@ final class ComposerUITextView: UITextView {
         if copyTranscriptConsumed { return }
         copyTranscriptConsumed = true
         onCopyTranscript?()
+    }
+
+    /// The first press toggles. A repeat of this hold returns without
+    /// toggling again, so g is not inserted and the groups do not flap.
+    @objc private func toggleToolTracesFromShortcut() {
+        if markedTextRange != nil { return }
+        if toolTraceGroupsConsumed { return }
+        toolTraceGroupsConsumed = true
+        onToggleToolTraces?()
     }
 
     @objc private func chatNavUp() {
@@ -1012,6 +1055,12 @@ final class ComposerUITextView: UITextView {
         }) {
             copyTranscriptConsumed = false
         }
+        if presses.contains(where: { press in
+            if press.key?.keyCode == .keyboardG { return true }
+            return press.key?.charactersIgnoringModifiers.lowercased() == "g"
+        }) {
+            toolTraceGroupsConsumed = false
+        }
         super.pressesEnded(presses, with: event)
         // If deleteBackward already ran it cleared the flag. If a chorded
         // Delete never reached it, drop the flag on the next turn so a
@@ -1040,6 +1089,7 @@ final class ComposerUITextView: UITextView {
         renameOpenChatConsumed = false
         deleteOpenChatConsumed = false
         copyTranscriptConsumed = false
+        toolTraceGroupsConsumed = false
         super.pressesCancelled(presses, with: event)
     }
 
@@ -1130,6 +1180,20 @@ final class ComposerUITextView: UITextView {
                     shift: mods.contains(.shift)
                 ), copyTranscriptConsumed {
                     // Held ⌘⇧E. Do not insert e and do not copy again.
+                    return
+                }
+            }
+            if key.keyCode == .keyboardG {
+                let mods = key.modifierFlags
+                if ToolTraceGroups.isChord(
+                    key: "g",
+                    characters: key.charactersIgnoringModifiers,
+                    command: mods.contains(.command),
+                    control: mods.contains(.control),
+                    option: mods.contains(.alternate),
+                    shift: mods.contains(.shift)
+                ), toolTraceGroupsConsumed {
+                    // Held ⌘⇧G. Do not insert g and do not flap the groups.
                     return
                 }
             }
