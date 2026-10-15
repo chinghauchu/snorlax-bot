@@ -8,6 +8,7 @@ import { CHAT_SHORTCUTS } from "./chatShortcuts.ts";
 import {
   DELETE_OPEN_CHAT_ACTION,
   DELETE_OPEN_CHAT_KEYS,
+  deleteConfirmAction,
   deleteOpenChatBlocked,
   deleteOpenChatShouldRun,
   isDeleteOpenChatChord,
@@ -60,7 +61,7 @@ const model = readFileSync(
 );
 
 const PHRASE =
-  "v1.12 delete the open chat from the keyboard (Cmd/Ctrl-Shift-D deletes the currently open chat through the same path as the sidebar Delete action; after that delete, the next chat in the Alt+Up/Down visible order opens, or the empty state; the chord still works from the composer and does not insert text; IME composition keeps the key; a key repeat does not double-delete; find, the quick switcher, the shortcuts list, rename, the lightbox, a modal or overlay text field, and a focused widget, approve, or connect card keep the key; nothing is deleted when no chat is open; Cmd/Ctrl-K, Cmd/Ctrl-F, Cmd/Ctrl-L, Cmd/Ctrl-N, Cmd/Ctrl-Shift-C, Cmd/Ctrl-Shift-A, Cmd/Ctrl-Shift-Backspace, Cmd/Ctrl-Shift-P, Cmd/Ctrl-Shift-M, Cmd/Ctrl-Shift-U, Cmd/Ctrl-Shift-R, Cmd/Ctrl-/, Cmd/Ctrl-1..9, Alt+Up/Down, PageUp/PageDown, Cmd/Ctrl-Home/End, Esc, and Up-arrow recall stay; the shortcuts list includes Cmd/Ctrl Shift D; iOS hardware command-shift-D deletes the open chat the same way and is listed in Gestures & shortcuts; no new HTTP)";
+  "v1.12 delete the open chat from the keyboard (Cmd/Ctrl-Shift-D opens the same confirm as the sidebar Delete… menu and does not delete until that confirm; Enter or Delete confirms, Esc or Cancel aborts, and focus returns to the composer on cancel; a key repeat never confirms; only on confirm does the existing delete path run, then the next chat in the Alt+Up/Down visible order opens, or the empty state; the chord still works from the composer and does not insert text; IME composition keeps the key; find, the quick switcher, the shortcuts list, rename, the lightbox, a modal or overlay text field, and a focused widget, approve, or connect card keep the key; nothing is deleted when no chat is open; Cmd/Ctrl-K, Cmd/Ctrl-F, Cmd/Ctrl-L, Cmd/Ctrl-N, Cmd/Ctrl-Shift-C, Cmd/Ctrl-Shift-A, Cmd/Ctrl-Shift-Backspace, Cmd/Ctrl-Shift-P, Cmd/Ctrl-Shift-M, Cmd/Ctrl-Shift-U, Cmd/Ctrl-Shift-R, Cmd/Ctrl-/, Cmd/Ctrl-1..9, Alt+Up/Down, PageUp/PageDown, Cmd/Ctrl-Home/End, Esc, and Up-arrow recall stay; the shortcuts list includes Cmd/Ctrl Shift D; iOS hardware command-shift-D opens that same confirm and is listed in Gestures & shortcuts; no new HTTP)";
 
 const openGate = {
   chatOpen: true,
@@ -125,7 +126,21 @@ test("Cmd/Ctrl-Shift-D deletes; other chords do not", () => {
   assert.equal(deleteOpenChatShouldRun({}), true);
   assert.equal(deleteOpenChatShouldRun({ repeat: true }), false);
   assert.equal(DELETE_OPEN_CHAT_KEYS, "Cmd/Ctrl Shift D");
-  assert.equal(DELETE_OPEN_CHAT_ACTION, "Delete this chat");
+  assert.equal(DELETE_OPEN_CHAT_ACTION, "Ask to delete this chat");
+  assert.equal(deleteConfirmAction({ key: "Enter" }), "confirm");
+  assert.equal(deleteConfirmAction({ key: "Delete" }), "confirm");
+  assert.equal(deleteConfirmAction({ key: "Backspace" }), "confirm");
+  assert.equal(deleteConfirmAction({ key: "Enter", repeat: true }), "swallow");
+  assert.equal(deleteConfirmAction({ key: "Delete", repeat: true }), "swallow");
+  assert.equal(deleteConfirmAction({ key: "Backspace", repeat: true }), "swallow");
+  assert.equal(deleteConfirmAction({ key: "Escape" }), "cancel");
+  assert.equal(deleteConfirmAction({ key: "Escape", repeat: true }), "cancel");
+  assert.equal(deleteConfirmAction({ key: "Enter", shiftKey: true }), null);
+  assert.equal(deleteConfirmAction({ key: "Enter", metaKey: true }), null);
+  assert.equal(deleteConfirmAction({ key: "d", metaKey: true, shiftKey: true }), null);
+  assert.equal(deleteConfirmAction({ key: "d", metaKey: true, shiftKey: true, repeat: true }), null);
+  assert.equal(deleteConfirmAction({ key: "Enter", isComposing: true }), null);
+  assert.equal(deleteConfirmAction({ key: "a" }), null);
 });
 
 test("the composer does not own the chord; an empty chat and overlays do", () => {
@@ -164,7 +179,7 @@ test("after delete, the next visible chat opens, or the empty state", () => {
   assert.equal(deleteOpenChatShouldRun({ repeat: true }), false);
 });
 
-test("desktop wires Cmd/Ctrl-Shift-D to the existing sidebar Delete removal", () => {
+test("desktop wires Cmd/Ctrl-Shift-D to the sidebar Delete confirm", () => {
   const block = sliceFn(
     app,
     "const onDeleteOpenChat",
@@ -196,19 +211,44 @@ test("desktop wires Cmd/Ctrl-Shift-D to the existing sidebar Delete removal", ()
   assert.ok(preventAt >= 0 && startAt > preventAt && callAt > startAt);
   assert.doesNotMatch(block, /onSend\(/);
   assert.doesNotMatch(block, /setDraft\(/);
-  assert.doesNotMatch(block, /setPendingDelete/);
+  assert.doesNotMatch(block, /deleteRosterChat\(/);
 
   const call = sliceFn(app, "deleteOpenChatRef.current = () => {", "useEffect(() => {");
-  assert.match(call, /\[\.\.\.pinnedAgents, \.\.\.restAgents\]/);
-  assert.match(call, /nextOpenChatAfterDelete\(visibleIds, agent\.id\)/);
-  assert.match(call, /deleteRosterChat\(agent, nextOpen\)/);
-  assert.doesNotMatch(call, /nextRosterSelection/);
-  assert.doesNotMatch(call, /setPendingDelete/);
+  assert.match(call, /deleteConfirmFromChord\.current = true/);
+  assert.match(call, /setPendingDelete\(agent\)/);
+  assert.doesNotMatch(call, /deleteRosterChat\(/);
   assert.doesNotMatch(call, /onSend\(/);
+  assert.match(app, /chordDeleteNextRef\.current = \(id: string\)/);
+  assert.match(app, /\[\.\.\.pinnedAgents, \.\.\.restAgents\]/);
+  assert.match(app, /nextOpenChatAfterDelete\(visibleIds, id\)/);
+
+  const cancel = sliceFn(app, "function cancelDelete()", "async function confirmDelete()");
+  assert.match(cancel, /deleteConfirmFromChord\.current = false/);
+  assert.match(cancel, /setPendingDelete\(null\)/);
+  assert.match(cancel, /focusComposer\(\)/);
 
   const confirm = sliceFn(app, "async function confirmDelete()", "async function deleteRosterChat(");
+  assert.match(confirm, /deleteConfirmFromChord\.current/);
+  assert.match(confirm, /chordDeleteNextRef\.current\(doomed\.id\)/);
+  assert.match(confirm, /deleteRosterChat\(doomed, nextOpen\)/);
   assert.match(confirm, /deleteRosterChat\(doomed\)/);
   assert.doesNotMatch(confirm, /nextRosterSelection/);
+  const keys = sliceFn(
+    app,
+    "const onDeleteConfirmKey = ",
+    'window.addEventListener("keydown", onDeleteConfirmKey, true)',
+  );
+  assert.match(keys, /deleteConfirmAction\(/);
+  assert.match(keys, /blockKeyUntilUp/);
+  assert.match(keys, /action === "confirm"/);
+  assert.match(keys, /action === "cancel"/);
+  assert.match(keys, /action === "swallow"/);
+  const swallowAt = keys.indexOf('action === "swallow"');
+  const confirmAt = keys.indexOf('action === "confirm"');
+  assert.ok(swallowAt >= 0 && confirmAt > swallowAt);
+  assert.match(app, /const onDeleteConfirmKeyUp/);
+  assert.match(app, /deleteConfirmFromChord\.current = false/);
+  assert.match(app, /onClick=\{\(\) => cancelDelete\(\)\}/);
   const remove = sliceFn(app, "async function deleteRosterChat(", "function commitTranscript(");
   assert.match(remove, /deleteAgent\(session, doomed\.id\)/);
   assert.match(remove, /explicitNext !== undefined/);
@@ -229,7 +269,7 @@ test("desktop wires Cmd/Ctrl-Shift-D to the existing sidebar Delete removal", ()
   assert.equal(shortcut.keys, DELETE_OPEN_CHAT_KEYS);
   assert.equal(shortcut.action, DELETE_OPEN_CHAT_ACTION);
   assert.match(shortcuts, /Cmd\/Ctrl Shift D/);
-  assert.match(shortcuts, /Delete this chat/);
+  assert.match(shortcuts, /Ask to delete this chat/);
   assert.match(shortcuts, /v1\.12/);
   assert.doesNotMatch(src, /fetch\(/);
   assert.doesNotMatch(src, /\/v1\//);
@@ -240,7 +280,7 @@ test("desktop wires Cmd/Ctrl-Shift-D to the existing sidebar Delete removal", ()
 
 test("iOS command-shift-D uses the existing delete path; OpenAPI stays 0.18.0", () => {
   assert.match(swift, /static let keysLabel = "⌘⇧D"/);
-  assert.match(swift, /static let action = "Delete this chat"/);
+  assert.match(swift, /static let action = "Ask to delete this chat"/);
   assert.match(swift, /static func isChord/);
   assert.match(swift, /static func shouldIgnoreRepeat/);
   assert.match(swift, /static func nextId/);
@@ -251,7 +291,8 @@ test("iOS command-shift-D uses the existing delete path; OpenAPI stays 0.18.0", 
 
   assert.match(chat, /func deleteOpenChatKey/);
   assert.match(chat, /DeleteOpenChat\.isChord/);
-  assert.match(chat, /model\.deleteOpenChat\(agent\.id\)/);
+  assert.match(chat, /requestDeleteOpenChat\(\)/);
+  assert.match(chat, /model\.deleteOpenChat\(id\)/);
   assert.match(chat, /composerFocused/);
   assert.match(chat, /findOpen/);
   assert.match(chat, /shortcutsOpen/);
@@ -260,13 +301,33 @@ test("iOS command-shift-D uses the existing delete path; OpenAPI stays 0.18.0", 
   assert.match(chat, /hasRealAgent/);
   const keyFn = sliceFn(chat, "func deleteOpenChatKey", "func deleteOpenChatFromComposer");
   assert.match(keyFn, /shouldIgnoreRepeat/);
+  assert.match(keyFn, /requestDeleteOpenChat\(\)/);
   const repeatAt = keyFn.indexOf("shouldIgnoreRepeat");
-  const callAt = keyFn.indexOf("model.deleteOpenChat");
-  assert.ok(repeatAt >= 0 && callAt > repeatAt);
+  const askAt = keyFn.indexOf("requestDeleteOpenChat()");
+  assert.ok(repeatAt >= 0 && askAt > repeatAt);
+  assert.doesNotMatch(keyFn, /model\.deleteOpenChat/);
   assert.doesNotMatch(keyFn, /model\.send\(/);
   const fromComposer = sliceFn(chat, "func deleteOpenChatFromComposer", "func chatNavKey");
-  assert.match(fromComposer, /model\.deleteOpenChat\(agent\.id\)/);
+  assert.match(fromComposer, /requestDeleteOpenChat\(\)/);
+  assert.doesNotMatch(fromComposer, /model\.deleteOpenChat/);
   assert.doesNotMatch(fromComposer, /model\.send\(/);
+  const confirmKey = sliceFn(chat, "func deleteConfirmKey", "func deleteOpenChatKey");
+  assert.match(confirmKey, /DeleteOpenChat\.confirmAction/);
+  assert.match(confirmKey, /confirmDeleteOpenChat\(key: name\)/);
+  assert.match(confirmKey, /cancelDeleteOpenChat\(\)/);
+  assert.match(confirmKey, /confirmKeyBlocked/);
+  const ask = sliceFn(chat, "func requestDeleteOpenChat()", "func confirmDeleteOpenChat");
+  assert.match(ask, /pendingDeleteChatID = agent\.id/);
+  assert.doesNotMatch(ask, /model\.deleteOpenChat/);
+  const accept = sliceFn(chat, "func confirmDeleteOpenChat", "func cancelDeleteOpenChat");
+  assert.match(accept, /model\.deleteOpenChat\(id\)/);
+  assert.match(accept, /blockConfirmKey/);
+  const abort = sliceFn(chat, "func cancelDeleteOpenChat()", "func deleteConfirmKeyName");
+  assert.match(abort, /composerFocused = true/);
+  assert.doesNotMatch(abort, /model\.deleteOpenChat/);
+  assert.match(chat, /DeleteOpenChat\.confirmTitle/);
+  assert.match(chat, /\.keyboardShortcut\(\.defaultAction\)/);
+  assert.match(chat, /\.keyboardShortcut\(\.cancelAction\)/);
 
   const commands = sliceFn(composer, "func deleteOpenChatCommands", "func clearComposerDraftCommands");
   assert.match(commands, /input: "d"/);

@@ -35,6 +35,8 @@ struct ChatView: View {
     @State private var commandedY: CGFloat?
     @State private var previousGeometryY: CGFloat = 0
     @State private var keyboardJumpToken = 0
+    /// v1.12: chord opens the sidebar Delete confirm. Nil until then.
+    @State private var pendingDeleteChatID: String?
 
     private var agent: Agent {
         model.visibleAgents.first(where: { $0.id == agentID })
@@ -75,6 +77,9 @@ struct ChatView: View {
                 onMarkOpenChat: { markOpenChatFromComposer() },
                 onRenameOpenChat: { renameOpenChatFromComposer() },
                 onDeleteOpenChat: { deleteOpenChatFromComposer() },
+                deleteConfirmOpen: pendingDeleteChatID != nil,
+                onConfirmDeleteKey: { key in confirmDeleteOpenChat(key: key) },
+                onCancelDelete: { cancelDeleteOpenChat() },
                 onEscapeFind: {
                     guard findOpen else { return false }
                     closeFind()
@@ -91,7 +96,13 @@ struct ChatView: View {
                 activeEnd: activeHit?.end ?? -1
             )
         )
-        .onKeyPress(phases: .down) { press in
+        .onKeyPress(phases: [.down, .up, .`repeat`]) { press in
+            if deleteConfirmKey(press) == .handled {
+                return .handled
+            }
+            if press.phase != .down && !press.phase.contains(.`repeat`) {
+                return .ignored
+            }
             if jumpChatKey(press) == .handled {
                 return .handled
             }
@@ -193,6 +204,25 @@ struct ChatView: View {
         }
         .sheet(isPresented: $shortcutsOpen) {
             ChatShortcutsSheet()
+        }
+        .confirmationDialog(
+            pendingDeleteAgent.map { row in
+                DeleteOpenChat.confirmTitle(
+                    name: model.chatDisplayName(for: row),
+                    isChannel: row.isChannel
+                )
+            } ?? "",
+            isPresented: deleteConfirmPresented,
+            titleVisibility: .visible
+        ) {
+            Button("Delete", role: .destructive) {
+                confirmDeleteOpenChat(key: nil)
+            }
+            .keyboardShortcut(.defaultAction)
+            Button("Cancel", role: .cancel) {
+                cancelDeleteOpenChat()
+            }
+            .keyboardShortcut(.cancelAction)
         }
         .overlay {
             if lightboxPaint.mounted, let frame = lightboxFrame {
@@ -645,10 +675,102 @@ struct ChatView: View {
         model.beginRenameOpenChat(agent.id)
     }
 
+    private var pendingDeleteAgent: Agent? {
+        guard let id = pendingDeleteChatID else { return nil }
+        return model.visibleAgents.first(where: { $0.id == id })
+            ?? model.agents.first(where: { $0.id == id })
+    }
+
+    private var deleteConfirmPresented: Binding<Bool> {
+        Binding(
+            get: { pendingDeleteChatID != nil },
+            set: { presented in
+                if presented { return }
+                if pendingDeleteChatID != nil {
+                    cancelDeleteOpenChat()
+                }
+            }
+        )
+    }
+
+    /// ⌘⇧D opens the confirm. It does not delete.
+    private func requestDeleteOpenChat() {
+        guard hasRealAgent else { return }
+        guard pendingDeleteChatID == nil else { return }
+        pendingDeleteChatID = agent.id
+    }
+
+    /// Enter, Delete, or the Delete button. A nil key is the button.
+    /// A key blocks itself until release so a hold cannot confirm again.
+    private func confirmDeleteOpenChat(key: String?) {
+        guard let id = pendingDeleteChatID else { return }
+        pendingDeleteChatID = nil
+        if let key {
+            DeleteOpenChat.blockConfirmKey(key)
+        }
+        model.deleteOpenChat(id)
+    }
+
+    /// Esc or Cancel. Focus returns to the composer.
+    private func cancelDeleteOpenChat() {
+        guard pendingDeleteChatID != nil else { return }
+        pendingDeleteChatID = nil
+        composerFocused = true
+    }
+
+    private func deleteConfirmKeyName(_ press: KeyPress) -> String? {
+        switch press.key {
+        case .escape:
+            return "escape"
+        case .return:
+            return "return"
+        case .delete, .deleteForward:
+            return "delete"
+        default:
+            return nil
+        }
+    }
+
+    /// Enter or Delete confirms. Esc cancels. A key repeat never confirms.
+    /// Key-up releases the swallow so the next press can type or send.
+    private func deleteConfirmKey(_ press: KeyPress) -> KeyPress.Result {
+        guard let name = deleteConfirmKeyName(press) else { return .ignored }
+        if press.phase == .up {
+            if name == "return" || name == "delete" {
+                DeleteOpenChat.releaseConfirmKey(name)
+            }
+            return .ignored
+        }
+        if pendingDeleteChatID == nil && !DeleteOpenChat.confirmKeyBlocked(name) {
+            return .ignored
+        }
+        let isRepeat = press.`repeat` || press.phase.contains(.`repeat`)
+        guard let action = DeleteOpenChat.confirmAction(
+            key: name,
+            command: press.modifiers.contains(.command),
+            control: press.modifiers.contains(.control),
+            option: press.modifiers.contains(.option),
+            shift: press.modifiers.contains(.shift),
+            isRepeat: isRepeat
+        ) else { return .ignored }
+        if action == "swallow" || DeleteOpenChat.confirmKeyBlocked(name) {
+            return .handled
+        }
+        if action == "cancel" {
+            cancelDeleteOpenChat()
+            return .handled
+        }
+        if action == "confirm" {
+            confirmDeleteOpenChat(key: name)
+            return .handled
+        }
+        return .ignored
+    }
+
     /// Hardware ⌘⇧D / ⌃⇧D when the composer is not first responder.
     /// The text view handles the same chord and keeps IME marked text.
     /// Find, rename, search, a card text field, and an empty chat own the key.
-    /// A key repeat is swallowed so the next chat is not deleted too.
+    /// A key repeat is swallowed so it cannot confirm.
     private func deleteOpenChatKey(_ press: KeyPress) -> KeyPress.Result {
         guard hasRealAgent else { return .ignored }
         guard DeleteOpenChat.isChord(
@@ -676,19 +798,19 @@ struct ChatView: View {
         if DeleteOpenChat.shouldIgnoreRepeat(press.`repeat`) {
             return .handled
         }
-        model.deleteOpenChat(agent.id)
+        requestDeleteOpenChat()
         return .handled
     }
 
     /// Composer ⌘⇧D. Mention and skill menus are checked by the bar.
     /// Find, the shortcuts sheet, and the lightbox keep the key.
-    /// An empty chat does not delete. The text view swallows a key repeat.
+    /// An empty chat does not ask. The text view swallows a key repeat.
     private func deleteOpenChatFromComposer() {
         guard hasRealAgent else { return }
         if findOpen || findFieldFocused || lightbox != nil || shortcutsOpen { return }
         if model.computerTakeoverOpen || model.showProfile || model.showSettings { return }
         if model.skillMenuOpen() { return }
-        model.deleteOpenChat(agent.id)
+        requestDeleteOpenChat()
     }
 
     /// Hardware Option+Up / Option+Down when the composer is not first
@@ -1724,6 +1846,9 @@ private struct ComposerBar: View {
     var onMarkOpenChat: () -> Void = {}
     var onRenameOpenChat: () -> Void = {}
     var onDeleteOpenChat: () -> Void = {}
+    var deleteConfirmOpen = false
+    var onConfirmDeleteKey: (String) -> Void = { _ in }
+    var onCancelDelete: () -> Void = {}
     var onEscapeFind: () -> Bool = { false }
     @Environment(AppModel.self) private var model
     @State private var pickerItem: PhotosPickerItem?
@@ -1921,6 +2046,13 @@ private struct ComposerBar: View {
                     onDeleteOpenChat: {
                         if mentionQuery != nil || model.skillMenuOpen() { return }
                         onDeleteOpenChat()
+                    },
+                    deleteConfirmOpen: deleteConfirmOpen,
+                    onConfirmDeleteKey: { key in
+                        onConfirmDeleteKey(key)
+                    },
+                    onCancelDelete: {
+                        onCancelDelete()
                     },
                     onBackspaceRemoveChip: {
                         model.removeLastPendingChipFromBackspace()

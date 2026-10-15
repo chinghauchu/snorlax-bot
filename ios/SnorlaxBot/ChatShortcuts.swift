@@ -5,7 +5,7 @@ import SwiftUI
 /// on the chat screen. Long-press actions come from the message menu
 /// and the approve-command copy. Hardware keys are `UIKeyCommand`
 /// (Escape, Up, Option+Up/Down, ⌘L / ⌃L, ⌘N / ⌃N, ⌘1–⌘9 / ⌃1–⌃9, ⌘⇧C / ⌃⇧C, ⌘⇧A / ⌃⇧A, ⌘⇧P / ⌃⇧P, ⌘⇧M / ⌃⇧M, ⌘⇧U / ⌃⇧U, ⌘⇧R / ⌃⇧R, ⌘⇧D / ⌃⇧D), `.onKeyPress`
-/// (Page Up / Page Down, ⌘↑ / ⌘↓, ⌘N, ⌘1–⌘9, ⌘⇧A, ⌘⇧⌫, ⌘⇧P, ⌘⇧M, ⌘⇧U, ⌘⇧R, ⌘⇧D), `.keyboardShortcut` (Cmd-F), and
+/// (Page Up / Page Down, ⌘↑ / ⌘↓, ⌘N, ⌘1–⌘9, ⌘⇧A, ⌘⇧⌫, ⌘⇧P, ⌘⇧M, ⌘⇧U, ⌘⇧R, ⌘⇧D, and Enter / Delete / Esc on the delete confirm), `.keyboardShortcut` (Cmd-F), and
 /// the composer Return / Shift-Return presses. ⌘L focuses the composer
 /// and does not insert or send. ⌘N starts a new chat through New agent
 /// and does not send. ⌘1–⌘8 opens that chat and ⌘9 opens the last one.
@@ -17,7 +17,10 @@ import SwiftUI
 /// ⌘⇧U marks the open chat unread, or read when it already shows the
 /// unread dot, and does not insert or send.
 /// ⌘⇧R starts rename on the open chat and does not insert or send.
-/// ⌘⇧D deletes the open chat and does not insert or send.
+/// ⌘⇧D asks to delete the open chat with the same confirm as sidebar
+/// Delete. Enter or Delete confirms. Esc or Cancel aborts and focus
+/// returns to the composer. A key repeat never confirms. The chord
+/// does not insert or send.
 /// Page Up / Page Down scroll the transcript.
 /// ⌘↑ / ⌘↓ jump to the oldest or latest messages. No Cmd-K on iOS
 /// (the switcher is the chat-list search field). No HTTP.

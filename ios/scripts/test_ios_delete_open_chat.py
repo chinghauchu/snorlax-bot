@@ -2,12 +2,14 @@
 # SPDX-License-Identifier: Apache-2.0
 """v1.12 delete the open chat from the keyboard.
 
-Hardware command-shift-D or control-shift-D deletes the open chat
-through the same removal as confirming sidebar Delete. After that,
-the next chat in the Option+Up/Down visible order opens, or the
-empty state. The composer does not own the chord and does not insert
-the letter. IME and any other text field do. A key repeat does not
-delete again. Nothing is deleted when no chat is open. No new HTTP.
+Hardware command-shift-D or control-shift-D opens the same confirm
+as sidebar Delete. It does not delete until that confirm. Enter or
+Delete confirms. Esc or Cancel aborts, and focus returns to the
+composer. A key repeat never confirms. Only the confirm runs the
+existing removal. After that, the next chat in the Option+Up/Down
+visible order opens, or the empty state. The composer does not own
+the chord and does not insert the letter. IME and any other text
+field do. Nothing is deleted when no chat is open. No new HTTP.
 OpenAPI stays 0.18.0. Never reintroduce computerPane.ts.
 """
 
@@ -34,22 +36,23 @@ CI = (ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
 PANE = ROOT / "desktop" / "src" / "computerPane.ts"
 
 PHRASE = (
-    "v1.12 delete the open chat from the keyboard (Cmd/Ctrl-Shift-D deletes "
-    "the currently open chat through the same path as the sidebar Delete "
-    "action; after that delete, the next chat in the Alt+Up/Down visible "
-    "order opens, or the empty state; the chord still works from the composer "
-    "and does not insert text; IME composition keeps the key; a key repeat "
-    "does not double-delete; find, the quick switcher, the shortcuts list, "
-    "rename, the lightbox, a modal or overlay text field, and a focused "
-    "widget, approve, or connect card keep the key; nothing is deleted when "
-    "no chat is open; Cmd/Ctrl-K, Cmd/Ctrl-F, Cmd/Ctrl-L, Cmd/Ctrl-N, "
+    "v1.12 delete the open chat from the keyboard (Cmd/Ctrl-Shift-D opens "
+    "the same confirm as the sidebar Delete… menu and does not delete until "
+    "that confirm; Enter or Delete confirms, Esc or Cancel aborts, and "
+    "focus returns to the composer on cancel; a key repeat never confirms; "
+    "only on confirm does the existing delete path run, then the next chat "
+    "in the Alt+Up/Down visible order opens, or the empty state; the chord "
+    "still works from the composer and does not insert text; IME composition "
+    "keeps the key; find, the quick switcher, the shortcuts list, rename, "
+    "the lightbox, a modal or overlay text field, and a focused widget, "
+    "approve, or connect card keep the key; nothing is deleted when no chat "
+    "is open; Cmd/Ctrl-K, Cmd/Ctrl-F, Cmd/Ctrl-L, Cmd/Ctrl-N, "
     "Cmd/Ctrl-Shift-C, Cmd/Ctrl-Shift-A, Cmd/Ctrl-Shift-Backspace, "
     "Cmd/Ctrl-Shift-P, Cmd/Ctrl-Shift-M, Cmd/Ctrl-Shift-U, Cmd/Ctrl-Shift-R, "
     "Cmd/Ctrl-/, Cmd/Ctrl-1..9, Alt+Up/Down, PageUp/PageDown, "
     "Cmd/Ctrl-Home/End, Esc, and Up-arrow recall stay; the shortcuts list "
-    "includes Cmd/Ctrl Shift D; iOS hardware command-shift-D deletes the "
-    "open chat the same way and is listed in Gestures & shortcuts; "
-    "no new HTTP)"
+    "includes Cmd/Ctrl Shift D; iOS hardware command-shift-D opens that "
+    "same confirm and is listed in Gestures & shortcuts; no new HTTP)"
 )
 
 
@@ -89,7 +92,11 @@ def test_chord_repeat_and_field() -> None:
     assert overlay_owns(True, False) is True
     assert overlay_owns(False, False) is False
     assert 'static let keysLabel = "⌘⇧D"' in SWIFT
-    assert 'static let action = "Delete this chat"' in SWIFT
+    assert 'static let action = "Ask to delete this chat"' in SWIFT
+    assert "func confirmAction(" in SWIFT
+    assert "func confirmTitle(" in SWIFT
+    assert "func blockConfirmKey(" in SWIFT
+    assert 'return isRepeat ? "swallow" : "confirm"' in SWIFT
     assert "shouldIgnoreRepeat" in SWIFT
     assert "func nextId" in SWIFT
     assert "ChatArchive.selectionAfterArchive" in SWIFT
@@ -114,13 +121,24 @@ def test_existing_delete_path() -> None:
     assert "shortcutsOpen" in key
     assert "lightbox != nil" in key
     assert "shouldIgnoreRepeat" in key
-    assert "model.deleteOpenChat(agent.id)" in key
-    assert key.index("shouldIgnoreRepeat") < key.index("model.deleteOpenChat")
+    assert "requestDeleteOpenChat()" in key
+    assert "model.deleteOpenChat" not in key
+    assert key.index("shouldIgnoreRepeat") < key.index("requestDeleteOpenChat()")
     assert "model.send(" not in key
     follow = CHAT[end : CHAT.index("func chatNavKey", end)]
-    assert "model.deleteOpenChat(agent.id)" in follow
+    assert "requestDeleteOpenChat()" in follow
+    assert "model.deleteOpenChat" not in follow
     assert "hasRealAgent" in follow
     assert "model.send(" not in follow
+    assert "func confirmDeleteOpenChat" in CHAT
+    assert "model.deleteOpenChat(id)" in CHAT
+    assert "func cancelDeleteOpenChat" in CHAT
+    assert "composerFocused = true" in CHAT
+    assert "DeleteOpenChat.confirmTitle" in CHAT
+    assert "DeleteOpenChat.confirmAction" in CHAT
+    assert ".keyboardShortcut(.defaultAction)" in CHAT
+    assert ".keyboardShortcut(.cancelAction)" in CHAT
+    assert "confirmationDialog" in CHAT
     start_fn = MODEL[
         MODEL.index("func deleteOpenChat(_ id: String)") : MODEL.index("func saveProfile")
     ]
@@ -152,7 +170,10 @@ def test_existing_delete_path() -> None:
     assert selector.index("deleteOpenChatConsumed = true") < selector.index("onDeleteOpenChat?()")
     assert "model.send(" not in commands
     assert "const onDeleteOpenChat" in APP
-    assert "deleteRosterChat(agent, nextOpen)" in APP
+    assert "setPendingDelete(agent)" in APP
+    assert "deleteRosterChat(doomed, nextOpen)" in APP
+    assert "function cancelDelete()" in APP
+    assert "deleteConfirmAction(" in APP
     assert "nextOpenChatAfterDelete" in APP
     assert 'addEventListener("keydown", onDeleteOpenChat, true)' in APP
     assert "deleteOpenChatShouldRun" in APP

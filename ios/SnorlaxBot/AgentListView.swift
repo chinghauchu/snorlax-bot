@@ -144,9 +144,10 @@ struct AgentListView: View {
             }
             .confirmationDialog(
                 pendingDelete.map {
-                    let kind = $0.isChannel ? "channel" : "agent"
-                    let label = model.chatDisplayName(for: $0)
-                    return "Delete \(label)? This removes the \(kind) and its chat."
+                    DeleteOpenChat.confirmTitle(
+                        name: model.chatDisplayName(for: $0),
+                        isChannel: $0.isChannel
+                    )
                 } ?? "",
                 isPresented: deletePresented,
                 titleVisibility: .visible

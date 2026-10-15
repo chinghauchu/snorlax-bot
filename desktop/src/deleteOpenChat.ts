@@ -2,24 +2,26 @@
 
 /**
  * v1.12: delete the currently open chat from the keyboard.
- * Cmd/Ctrl-Shift-D runs the same removal as confirming the sidebar
- * Delete action: the existing DELETE for that roster row, then the
- * local pin, mute, archive, name, and unread cleanup. It does not
- * open the confirm dialog, so a held key cannot delete the chat that
- * opens next. After the row is gone, the next chat in the Alt+Up/Down
- * visible order opens, or the empty state. The composer does not own
- * the chord and the letter is not inserted. IME composition keeps the
- * key. Find, the quick switcher, the shortcuts list, rename, the
- * lightbox, a modal or overlay text field, and a focused widget,
- * approve, or connect card keep the key. Nothing is deleted when no
- * chat is open. No new HTTP.
+ * Cmd/Ctrl-Shift-D opens the same confirm the sidebar Delete… menu
+ * uses. It does not delete on the chord. Enter or Delete confirms.
+ * Esc or Cancel aborts, and focus returns to the composer. A key
+ * repeat never confirms, so holding the chord, Enter, or Delete
+ * cannot delete the chat that opens next. Only the confirm runs the
+ * existing removal: the DELETE for that roster row, then the local
+ * pin, mute, archive, name, and unread cleanup. After the row is
+ * gone, the next chat in the Alt+Up/Down visible order opens, or the
+ * empty state. The composer does not own the chord and the letter is
+ * not inserted. IME composition keeps the key. Find, the quick
+ * switcher, the shortcuts list, rename, the lightbox, a modal or
+ * overlay text field, and a focused widget, approve, or connect card
+ * keep the key. Nothing is deleted when no chat is open. No new HTTP.
  * Keep in lockstep with `ios/SnorlaxBot/DeleteOpenChat.swift`.
  */
 
 import { selectionAfterArchive } from "./chatArchive.ts";
 
 export const DELETE_OPEN_CHAT_KEYS = "Cmd/Ctrl Shift D";
-export const DELETE_OPEN_CHAT_ACTION = "Delete this chat";
+export const DELETE_OPEN_CHAT_ACTION = "Ask to delete this chat";
 
 export type DeleteOpenChatEvent = {
   key: string;
@@ -69,11 +71,45 @@ export function isDeleteOpenChatChord(event: DeleteOpenChatEvent): boolean {
 }
 
 /**
- * The first press deletes. A repeat of the held chord does not, so
- * the next visible chat cannot be deleted by the same hold.
+ * The first press opens the confirm. A repeat of the held chord does
+ * not open it again and does not confirm.
  */
 export function deleteOpenChatShouldRun(event: { repeat?: boolean }): boolean {
   return !event.repeat;
+}
+
+export type DeleteConfirmEvent = {
+  key: string;
+  metaKey?: boolean;
+  ctrlKey?: boolean;
+  altKey?: boolean;
+  shiftKey?: boolean;
+  repeat?: boolean;
+  /** IME composition keeps Enter and Delete. */
+  isComposing?: boolean;
+};
+
+/**
+ * While the Delete confirm is open. Enter or Delete confirms. Esc
+ * cancels. A key repeat never confirms (`swallow`): the event is
+ * eaten and the chat stays. Backspace counts as Delete because that
+ * is the key a Mac keyboard labels Delete. Shift, Alt, Cmd, and Ctrl
+ * stay with their own chords. IME composition keeps the key.
+ */
+export function deleteConfirmAction(
+  event: DeleteConfirmEvent,
+): "confirm" | "cancel" | "swallow" | null {
+  if (event.isComposing) return null;
+  const modified = Boolean(
+    event.metaKey || event.ctrlKey || event.altKey || event.shiftKey,
+  );
+  if (modified) return null;
+  if (event.key === "Escape") return "cancel";
+  const confirmKey =
+    event.key === "Enter" || event.key === "Delete" || event.key === "Backspace";
+  if (!confirmKey) return null;
+  if (event.repeat) return "swallow";
+  return "confirm";
 }
 
 /**
