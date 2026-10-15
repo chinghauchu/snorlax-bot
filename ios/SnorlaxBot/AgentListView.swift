@@ -7,7 +7,10 @@ struct AgentListView: View {
     @State private var showCreateChannel = false
     @State private var showArchived = false
     @State private var chatQuery = ""
-    @State private var renamingID: String?
+
+    /// v0.95 / v1.11: the list inline field. Sidebar Rename and the
+    /// keyboard chord both write `renameChatID`.
+    private var renamingID: String? { model.renameChatID }
 
     /// Chats still in the main list. Archived chats live in the Archived list.
     private var mainAgents: [Agent] {
@@ -94,6 +97,10 @@ struct AgentListView: View {
             }
             .onChange(of: showArchived) { _, showing in
                 model.archiveListShowing = showing
+            }
+            .onChange(of: model.renameChatID) { _, id in
+                guard let id, model.isChatArchived(id) else { return }
+                showArchived = true
             }
             .onKeyPress(phases: .down) { press in
                 if jumpChatKey(press) == .handled {
@@ -411,14 +418,10 @@ struct AgentListView: View {
             showsPinGlyph: showsPinGlyph,
             onCommit: { draft in
                 model.commitChatName(agent.id, draft: draft, serverName: agent.name)
-                if renamingID == agent.id {
-                    renamingID = nil
-                }
+                model.endRename(agent.id)
             },
             onCancel: {
-                if renamingID == agent.id {
-                    renamingID = nil
-                }
+                model.endRename(agent.id)
             }
         )
         if UIDevice.current.userInterfaceIdiom == .pad || renamingID == agent.id {
@@ -431,7 +434,7 @@ struct AgentListView: View {
     }
 
     private func beginRename(_ agent: Agent) {
-        renamingID = agent.id
+        model.noteListRename(agent.id)
     }
 
     private var deletePresented: Binding<Bool> {
