@@ -46,6 +46,9 @@ struct ComposerTextView: UIViewRepresentable {
     /// v1.11: ⌘⇧R / ⌃⇧R starts rename on the open chat. Does not insert or send.
     /// IME marked text keeps the key. A key repeat does not start another rename.
     var onRenameOpenChat: (() -> Void)? = nil
+    /// v1.12: ⌘⇧D / ⌃⇧D deletes the open chat. Does not insert or send.
+    /// IME marked text keeps the key. A key repeat does not delete again.
+    var onDeleteOpenChat: (() -> Void)? = nil
     /// v1.10: ⌘⇧U / ⌃⇧U marks the open chat unread, or read when it already
     /// shows the unread dot. Does not insert or send. IME marked text keeps
     /// the key. A key repeat does not flap the mark.
@@ -107,6 +110,9 @@ struct ComposerTextView: UIViewRepresentable {
         }
         view.onRenameOpenChat = { [coordinator = context.coordinator] in
             coordinator.parent.onRenameOpenChat?()
+        }
+        view.onDeleteOpenChat = { [coordinator = context.coordinator] in
+            coordinator.parent.onDeleteOpenChat?()
         }
         view.onBackspaceRemoveChip = { [coordinator = context.coordinator] in
             coordinator.parent.onBackspaceRemoveChip?() ?? false
@@ -171,6 +177,9 @@ struct ComposerTextView: UIViewRepresentable {
         }
         view.onRenameOpenChat = { [coordinator = context.coordinator] in
             coordinator.parent.onRenameOpenChat?()
+        }
+        view.onDeleteOpenChat = { [coordinator = context.coordinator] in
+            coordinator.parent.onDeleteOpenChat?()
         }
         view.onBackspaceRemoveChip = { [coordinator = context.coordinator] in
             coordinator.parent.onBackspaceRemoveChip?() ?? false
@@ -339,6 +348,7 @@ final class ComposerUITextView: UITextView {
     var onMuteOpenChat: (() -> Void)?
     var onMarkOpenChat: (() -> Void)?
     var onRenameOpenChat: (() -> Void)?
+    var onDeleteOpenChat: (() -> Void)?
     var onBackspaceRemoveChip: (() -> Bool)?
     /// v1.08: the first ⌘⇧P of a hold toggles. Further repeats do not.
     private var pinOpenChatConsumed = false
@@ -346,6 +356,8 @@ final class ComposerUITextView: UITextView {
     private var muteOpenChatConsumed = false
     /// v1.11: the first ⌘⇧R of a hold starts rename. Further repeats do not.
     private var renameOpenChatConsumed = false
+    /// v1.12: the first ⌘⇧D of a hold deletes. Further repeats do not.
+    private var deleteOpenChatConsumed = false
     /// v1.10: the first ⌘⇧U of a hold applies. Further repeats do not.
     private var markOpenChatConsumed = false
     var sendMuted = false
@@ -430,6 +442,7 @@ final class ComposerUITextView: UITextView {
             commands.append(contentsOf: muteOpenChatCommands())
             commands.append(contentsOf: markOpenChatCommands())
             commands.append(contentsOf: renameOpenChatCommands())
+            commands.append(contentsOf: deleteOpenChatCommands())
         }
         return commands
     }
@@ -619,6 +632,26 @@ final class ComposerUITextView: UITextView {
         return [command, control]
     }
 
+    /// ⌘⇧D / ⌃⇧D. Deletes the open chat. Does not insert or send.
+    /// IME keeps the key. A repeat of the held chord does not delete again.
+    private func deleteOpenChatCommands() -> [UIKeyCommand] {
+        let command = UIKeyCommand(
+            title: DeleteOpenChat.action,
+            action: #selector(deleteOpenChatFromShortcut),
+            input: "d",
+            modifierFlags: [.command, .shift]
+        )
+        let control = UIKeyCommand(
+            title: DeleteOpenChat.action,
+            action: #selector(deleteOpenChatFromShortcut),
+            input: "d",
+            modifierFlags: [.control, .shift]
+        )
+        command.wantsPriorityOverSystemBehavior = true
+        control.wantsPriorityOverSystemBehavior = true
+        return [command, control]
+    }
+
     /// ⌘⇧⌫ / ⌃⇧⌫. Clears the draft. Does not insert or send.
     /// IME keeps the key. An empty draft is ignored by the model.
     private func clearComposerDraftCommands() -> [UIKeyCommand] {
@@ -738,6 +771,15 @@ final class ComposerUITextView: UITextView {
         onRenameOpenChat?()
     }
 
+    /// The first press deletes. A repeat of this hold returns without
+    /// deleting again, so the next chat stays and d is not inserted.
+    @objc private func deleteOpenChatFromShortcut() {
+        if markedTextRange != nil { return }
+        if deleteOpenChatConsumed { return }
+        deleteOpenChatConsumed = true
+        onDeleteOpenChat?()
+    }
+
     @objc private func chatNavUp() {
         performChatNav(-1)
     }
@@ -832,6 +874,12 @@ final class ComposerUITextView: UITextView {
         }) {
             renameOpenChatConsumed = false
         }
+        if presses.contains(where: { press in
+            if press.key?.keyCode == .keyboardD { return true }
+            return press.key?.charactersIgnoringModifiers.lowercased() == "d"
+        }) {
+            deleteOpenChatConsumed = false
+        }
         super.pressesEnded(presses, with: event)
         // If deleteBackward already ran it cleared the flag. If a chorded
         // Delete never reached it, drop the flag on the next turn so a
@@ -852,6 +900,7 @@ final class ComposerUITextView: UITextView {
         muteOpenChatConsumed = false
         markOpenChatConsumed = false
         renameOpenChatConsumed = false
+        deleteOpenChatConsumed = false
         super.pressesCancelled(presses, with: event)
     }
 
@@ -911,6 +960,20 @@ final class ComposerUITextView: UITextView {
                     shift: mods.contains(.shift)
                 ), renameOpenChatConsumed {
                     // Held ⌘⇧R. Do not insert r and do not start another rename.
+                    return
+                }
+            }
+            if key.keyCode == .keyboardD {
+                let mods = key.modifierFlags
+                if DeleteOpenChat.isChord(
+                    key: "d",
+                    characters: key.charactersIgnoringModifiers,
+                    command: mods.contains(.command),
+                    control: mods.contains(.control),
+                    option: mods.contains(.alternate),
+                    shift: mods.contains(.shift)
+                ), deleteOpenChatConsumed {
+                    // Held ⌘⇧D. Do not insert d and do not delete again.
                     return
                 }
             }

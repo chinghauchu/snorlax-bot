@@ -74,6 +74,7 @@ struct ChatView: View {
                 onMuteOpenChat: { muteOpenChatFromComposer() },
                 onMarkOpenChat: { markOpenChatFromComposer() },
                 onRenameOpenChat: { renameOpenChatFromComposer() },
+                onDeleteOpenChat: { deleteOpenChatFromComposer() },
                 onEscapeFind: {
                     guard findOpen else { return false }
                     closeFind()
@@ -113,6 +114,9 @@ struct ChatView: View {
                 return .handled
             }
             if renameOpenChatKey(press) == .handled {
+                return .handled
+            }
+            if deleteOpenChatKey(press) == .handled {
                 return .handled
             }
             if chatNavKey(press) == .handled {
@@ -639,6 +643,52 @@ struct ChatView: View {
         if model.computerTakeoverOpen || model.showProfile || model.showSettings { return }
         if model.skillMenuOpen() { return }
         model.beginRenameOpenChat(agent.id)
+    }
+
+    /// Hardware ⌘⇧D / ⌃⇧D when the composer is not first responder.
+    /// The text view handles the same chord and keeps IME marked text.
+    /// Find, rename, search, a card text field, and an empty chat own the key.
+    /// A key repeat is swallowed so the next chat is not deleted too.
+    private func deleteOpenChatKey(_ press: KeyPress) -> KeyPress.Result {
+        guard hasRealAgent else { return .ignored }
+        guard DeleteOpenChat.isChord(
+            key: press.key.character,
+            characters: press.characters,
+            command: press.modifiers.contains(.command),
+            control: press.modifiers.contains(.control),
+            option: press.modifiers.contains(.option),
+            shift: press.modifiers.contains(.shift)
+        ) else { return .ignored }
+        if composerFocused { return .ignored }
+        if findOpen || findFieldFocused || lightbox != nil || shortcutsOpen {
+            return .ignored
+        }
+        if model.computerTakeoverOpen || model.showProfile || model.showSettings {
+            return .ignored
+        }
+        if model.skillMenuOpen() { return .ignored }
+        if DeleteOpenChat.overlayTextFieldOwnsChord(
+            textFieldFocused: TranscriptScroll.textInputIsFirstResponder(),
+            composerFocused: false
+        ) {
+            return .ignored
+        }
+        if DeleteOpenChat.shouldIgnoreRepeat(press.`repeat`) {
+            return .handled
+        }
+        model.deleteOpenChat(agent.id)
+        return .handled
+    }
+
+    /// Composer ⌘⇧D. Mention and skill menus are checked by the bar.
+    /// Find, the shortcuts sheet, and the lightbox keep the key.
+    /// An empty chat does not delete. The text view swallows a key repeat.
+    private func deleteOpenChatFromComposer() {
+        guard hasRealAgent else { return }
+        if findOpen || findFieldFocused || lightbox != nil || shortcutsOpen { return }
+        if model.computerTakeoverOpen || model.showProfile || model.showSettings { return }
+        if model.skillMenuOpen() { return }
+        model.deleteOpenChat(agent.id)
     }
 
     /// Hardware Option+Up / Option+Down when the composer is not first
@@ -1673,6 +1723,7 @@ private struct ComposerBar: View {
     var onMuteOpenChat: () -> Void = {}
     var onMarkOpenChat: () -> Void = {}
     var onRenameOpenChat: () -> Void = {}
+    var onDeleteOpenChat: () -> Void = {}
     var onEscapeFind: () -> Bool = { false }
     @Environment(AppModel.self) private var model
     @State private var pickerItem: PhotosPickerItem?
@@ -1866,6 +1917,10 @@ private struct ComposerBar: View {
                     onRenameOpenChat: {
                         if mentionQuery != nil || model.skillMenuOpen() { return }
                         onRenameOpenChat()
+                    },
+                    onDeleteOpenChat: {
+                        if mentionQuery != nil || model.skillMenuOpen() { return }
+                        onDeleteOpenChat()
                     },
                     onBackspaceRemoveChip: {
                         model.removeLastPendingChipFromBackspace()

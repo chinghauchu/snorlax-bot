@@ -203,6 +203,13 @@ import {
   renameOpenChatShouldStart,
 } from "./renameOpenChat";
 import {
+  deleteOpenChatBlocked,
+  deleteOpenChatShouldRun,
+  isDeleteOpenChatChord,
+  nextOpenChatAfterDelete,
+  overlayTextFieldOwnsDeleteOpenChat,
+} from "./deleteOpenChat";
+import {
   loadInitialRuntimeUrl,
   normalizeRuntimeUrl,
 } from "./runtimeUrl";
@@ -1422,6 +1429,8 @@ export function App() {
   const muteOpenChatRef = useRef<() => void>(() => {});
   const markOpenChatRef = useRef<() => void>(() => {});
   const renameOpenChatRef = useRef<() => void>(() => {});
+  const deleteOpenChatRef = useRef<() => void>(() => {});
+  const deleteRosterBusy = useRef(false);
   useEffect(() => {
     return () => {
       if (shortcutCopyTimer.current != null) {
@@ -2867,6 +2876,19 @@ export function App() {
     if (!session || !pendingDelete) return;
     const doomed = pendingDelete;
     setPendingDelete(null);
+    await deleteRosterChat(doomed);
+  }
+
+  // Sidebar confirm omits explicitNext and keeps the roster fallback.
+  // The keyboard chord passes the next Alt+Up/Down row, or null for
+  // the empty state, and still uses this same DELETE plus cleanup.
+  // A removal already in flight does not start another.
+  async function deleteRosterChat(
+    doomed: Agent,
+    explicitNext?: string | null,
+  ) {
+    if (!session || deleteRosterBusy.current) return;
+    deleteRosterBusy.current = true;
     try {
       await deleteAgent(session, doomed.id);
       const roster = agents
@@ -2895,7 +2917,12 @@ export function App() {
       retainArchives(rosterIds);
       retainNames(rosterIds);
       if (activeId === doomed.id) {
-        const next = nextRosterSelection(roster, doomed.id, activeId);
+        const next =
+          explicitNext !== undefined
+            ? explicitNext && roster.some((row) => row.id === explicitNext)
+              ? explicitNext
+              : null
+            : nextRosterSelection(roster, doomed.id, activeId);
         if (next) chatUnread.current.clear(next);
         moveComposer(next, null);
         previewLive.current = false;
@@ -2922,6 +2949,8 @@ export function App() {
       }
     } catch (err) {
       setLoadError(describeError(err));
+    } finally {
+      deleteRosterBusy.current = false;
     }
   }
 
@@ -5351,6 +5380,74 @@ export function App() {
     window.addEventListener("keydown", onRenameOpenChat, true);
     return () => {
       window.removeEventListener("keydown", onRenameOpenChat, true);
+    };
+  }, [
+    active,
+    findOpen,
+    switchOpen,
+    shortcutsOpen,
+    renamingId,
+    lightboxTarget,
+    contextMenu,
+    switcherBlocked,
+    mentionOpen,
+    skillMenuOpen,
+  ]);
+
+  // v1.12: Cmd/Ctrl-Shift-D deletes the open chat through the sidebar
+  // Delete removal (existing DELETE plus local cleanup). The composer
+  // does not own the chord and the letter is not inserted. A modal or
+  // overlay text field does. IME keeps it. A key repeat does not delete
+  // the chat that then opens. Nothing is deleted when no chat is open.
+  // The next visible chat, or the empty state, follows Alt+Up/Down order.
+  deleteOpenChatRef.current = () => {
+    const agent = active;
+    if (!agent || !session) return;
+    const visibleIds = [...pinnedAgents, ...restAgents].map((row) => row.id);
+    const nextOpen = nextOpenChatAfterDelete(visibleIds, agent.id);
+    void deleteRosterChat(agent, nextOpen);
+  };
+
+  useEffect(() => {
+    const onDeleteOpenChat = (event: globalThis.KeyboardEvent) => {
+      if (event.defaultPrevented) return;
+      if (
+        !isDeleteOpenChatChord({
+          key: event.key,
+          metaKey: event.metaKey,
+          ctrlKey: event.ctrlKey,
+          altKey: event.altKey,
+          shiftKey: event.shiftKey,
+          repeat: event.repeat,
+        })
+      ) {
+        return;
+      }
+      const gate = {
+        chatOpen: active != null,
+        composing: isComposerComposing(event),
+        overlayTextField: overlayTextFieldOwnsDeleteOpenChat(
+          focusIsTextField(event.target),
+          event.target === composerRef.current,
+        ),
+        inCard: focusInsideCard(event.target),
+        findOpen,
+        switchOpen,
+        shortcutsOpen,
+        renaming: renamingId != null,
+        lightboxOpen: lightboxTarget != null,
+        menuOpen: contextMenu != null,
+        blocked: switcherBlocked || mentionOpen || skillMenuOpen,
+      };
+      if (deleteOpenChatBlocked(gate)) return;
+      event.preventDefault();
+      event.stopPropagation();
+      if (!deleteOpenChatShouldRun({ repeat: event.repeat })) return;
+      deleteOpenChatRef.current();
+    };
+    window.addEventListener("keydown", onDeleteOpenChat, true);
+    return () => {
+      window.removeEventListener("keydown", onDeleteOpenChat, true);
     };
   }, [
     active,

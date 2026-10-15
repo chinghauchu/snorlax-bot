@@ -4,8 +4,8 @@ import SwiftUI
 /// v0.73: gestures and hardware-keyboard shortcuts that already exist
 /// on the chat screen. Long-press actions come from the message menu
 /// and the approve-command copy. Hardware keys are `UIKeyCommand`
-/// (Escape, Up, Option+Up/Down, ⌘L / ⌃L, ⌘N / ⌃N, ⌘1–⌘9 / ⌃1–⌃9, ⌘⇧C / ⌃⇧C, ⌘⇧A / ⌃⇧A, ⌘⇧P / ⌃⇧P, ⌘⇧M / ⌃⇧M, ⌘⇧U / ⌃⇧U, ⌘⇧R / ⌃⇧R), `.onKeyPress`
-/// (Page Up / Page Down, ⌘↑ / ⌘↓, ⌘N, ⌘1–⌘9, ⌘⇧A, ⌘⇧⌫, ⌘⇧P, ⌘⇧M, ⌘⇧U, ⌘⇧R), `.keyboardShortcut` (Cmd-F), and
+/// (Escape, Up, Option+Up/Down, ⌘L / ⌃L, ⌘N / ⌃N, ⌘1–⌘9 / ⌃1–⌃9, ⌘⇧C / ⌃⇧C, ⌘⇧A / ⌃⇧A, ⌘⇧P / ⌃⇧P, ⌘⇧M / ⌃⇧M, ⌘⇧U / ⌃⇧U, ⌘⇧R / ⌃⇧R, ⌘⇧D / ⌃⇧D), `.onKeyPress`
+/// (Page Up / Page Down, ⌘↑ / ⌘↓, ⌘N, ⌘1–⌘9, ⌘⇧A, ⌘⇧⌫, ⌘⇧P, ⌘⇧M, ⌘⇧U, ⌘⇧R, ⌘⇧D), `.keyboardShortcut` (Cmd-F), and
 /// the composer Return / Shift-Return presses. ⌘L focuses the composer
 /// and does not insert or send. ⌘N starts a new chat through New agent
 /// and does not send. ⌘1–⌘8 opens that chat and ⌘9 opens the last one.
@@ -17,6 +17,7 @@ import SwiftUI
 /// ⌘⇧U marks the open chat unread, or read when it already shows the
 /// unread dot, and does not insert or send.
 /// ⌘⇧R starts rename on the open chat and does not insert or send.
+/// ⌘⇧D deletes the open chat and does not insert or send.
 /// Page Up / Page Down scroll the transcript.
 /// ⌘↑ / ⌘↓ jump to the oldest or latest messages. No Cmd-K on iOS
 /// (the switcher is the chat-list search field). No HTTP.
@@ -81,6 +82,7 @@ enum ChatShortcuts {
         Row(id: "mute-chat", keys: MuteOpenChat.keysLabel, action: MuteOpenChat.action),
         Row(id: "mark-unread", keys: MarkOpenChat.keysLabel, action: MarkOpenChat.action),
         Row(id: "rename-chat", keys: RenameOpenChat.keysLabel, action: RenameOpenChat.action),
+        Row(id: "delete-chat", keys: DeleteOpenChat.keysLabel, action: DeleteOpenChat.action),
         Row(id: "focus", keys: FocusComposer.keysLabel, action: FocusComposer.action),
         Row(id: "new-chat", keys: NewChat.keysLabel, action: NewChat.action),
         Row(id: "copy-last", keys: CopyLastReply.keysLabel, action: CopyLastReply.action),
