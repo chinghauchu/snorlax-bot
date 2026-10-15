@@ -46,8 +46,9 @@ export type ChatShortcut = {
  * composer. A key repeat never confirms. Cmd/Ctrl-Shift-E copies the
  * open chat's loaded transcript as plain text (v1.13).
  * Cmd/Ctrl-Shift-G collapses every expanded tool-trace group, or
- * expands every group when all are collapsed (v1.14). Find's Enter /
- * Shift-Enter steps matches.
+ * expands every group when all are collapsed (v1.14).
+ * Cmd/Ctrl-Shift-F toggles the sidebar All / Unread filter (v1.15).
+ * Cmd/Ctrl-F still finds. Find's Enter / Shift-Enter steps matches.
  * The switcher uses Up / Down / Enter. Mention and skill menus use
  * Up / Down / Enter / Tab.
  */
@@ -72,6 +73,7 @@ export const CHAT_SHORTCUTS: readonly ChatShortcut[] = [
   { id: "delete-chat", keys: "Cmd/Ctrl Shift D", action: "Ask to delete this chat" },
   { id: "copy-transcript", keys: "Cmd/Ctrl Shift E", action: "Copy the transcript" },
   { id: "tool-traces", keys: "Cmd/Ctrl Shift G", action: "Collapse or expand tool traces" },
+  { id: "unread-filter", keys: "Cmd/Ctrl Shift F", action: "Toggle All / Unread" },
   { id: "find", keys: "Cmd/Ctrl F", action: "Find in chat" },
   { id: "switch", keys: "Cmd/Ctrl K", action: "Switch chat" },
   { id: "info", keys: "Cmd/Ctrl Shift I", action: "Open info" },

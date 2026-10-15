@@ -224,6 +224,12 @@ import {
   toolTraceGroupsShouldToggle,
 } from "./toolTraceGroups";
 import {
+  chatListFilterKeyBlocked,
+  chatListFilterShouldToggle,
+  isChatListFilterChord,
+  overlayTextFieldOwnsChatListFilter,
+} from "./chatListFilterKey";
+import {
   loadInitialRuntimeUrl,
   normalizeRuntimeUrl,
 } from "./runtimeUrl";
@@ -472,6 +478,7 @@ import {
   UNREAD_EMPTY_LABEL,
   browserFilterStorage,
   chatVisibleInFilter,
+  nextChatListFilter,
   readChatListFilter,
   showUnreadEmpty,
   writeChatListFilter,
@@ -1451,6 +1458,7 @@ export function App() {
   const copyLastReplyRef = useRef<() => void>(() => {});
   const copyTranscriptRef = useRef<() => void>(() => {});
   const toggleToolTracesRef = useRef<() => void>(() => {});
+  const toggleChatListFilterRef = useRef<() => void>(() => {});
   const createFromShortcutRef = useRef<() => void>(() => {});
   const archiveOpenChatRef = useRef<() => void>(() => {});
   const clearComposerDraftRef = useRef<() => void>(() => {});
@@ -5697,6 +5705,67 @@ export function App() {
     };
   }, [
     active,
+    findOpen,
+    switchOpen,
+    shortcutsOpen,
+    renamingId,
+    lightboxTarget,
+    contextMenu,
+    switcherBlocked,
+    mentionOpen,
+    skillMenuOpen,
+  ]);
+
+  // v1.15: Cmd/Ctrl-Shift-F toggles the sidebar All / Unread control.
+  // The same choice as clicking All or Unread, including persistence.
+  // The composer does not own the chord and the letter is not inserted.
+  // A key repeat is swallowed and does not flap. IME keeps it. The
+  // empty state still toggles, because the sidebar control does.
+  toggleChatListFilterRef.current = () => {
+    chooseChatListFilter(nextChatListFilter(chatListFilter));
+  };
+
+  useEffect(() => {
+    const onToggleChatListFilter = (event: globalThis.KeyboardEvent) => {
+      if (event.defaultPrevented) return;
+      if (
+        !isChatListFilterChord({
+          key: event.key,
+          metaKey: event.metaKey,
+          ctrlKey: event.ctrlKey,
+          altKey: event.altKey,
+          shiftKey: event.shiftKey,
+          repeat: event.repeat,
+        })
+      ) {
+        return;
+      }
+      const gate = {
+        composing: isComposerComposing(event),
+        overlayTextField: overlayTextFieldOwnsChatListFilter(
+          focusIsTextField(event.target),
+          event.target === composerRef.current,
+        ),
+        inCard: focusInsideCard(event.target),
+        findOpen,
+        switchOpen,
+        shortcutsOpen,
+        renaming: renamingId != null,
+        lightboxOpen: lightboxTarget != null,
+        menuOpen: contextMenu != null,
+        blocked: switcherBlocked || mentionOpen || skillMenuOpen,
+      };
+      if (chatListFilterKeyBlocked(gate)) return;
+      event.preventDefault();
+      event.stopPropagation();
+      if (!chatListFilterShouldToggle({ repeat: event.repeat })) return;
+      toggleChatListFilterRef.current();
+    };
+    window.addEventListener("keydown", onToggleChatListFilter, true);
+    return () => {
+      window.removeEventListener("keydown", onToggleChatListFilter, true);
+    };
+  }, [
     findOpen,
     switchOpen,
     shortcutsOpen,

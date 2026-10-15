@@ -82,6 +82,7 @@ struct ChatView: View {
                 onDeleteOpenChat: { deleteOpenChatFromComposer() },
                 onCopyTranscript: { copyTranscriptFromComposer() },
                 onToggleToolTraces: { toggleToolTracesFromComposer() },
+                onToggleChatListFilter: { toggleChatListFilterFromComposer() },
                 deleteConfirmOpen: pendingDeleteChatID != nil,
                 onConfirmDeleteKey: { key in confirmDeleteOpenChat(key: key) },
                 onCancelDelete: { cancelDeleteOpenChat() },
@@ -139,6 +140,9 @@ struct ChatView: View {
                 return .handled
             }
             if toolTraceGroupsKey(press) == .handled {
+                return .handled
+            }
+            if chatListFilterKey(press) == .handled {
                 return .handled
             }
             if chatNavKey(press) == .handled {
@@ -987,6 +991,56 @@ struct ChatView: View {
             liveTraces: liveTraces,
             liveAt: liveAt
         )
+    }
+
+    /// Hardware ⌘⇧F / ⌃⇧F when the composer is not first responder.
+    /// The text view handles the same chord and keeps IME marked text.
+    /// Find, rename, search, and a card text field own the key.
+    /// An empty chat still toggles: the All / Unread control does.
+    /// A key repeat is swallowed so the filter does not flap.
+    private func chatListFilterKey(_ press: KeyPress) -> KeyPress.Result {
+        guard ChatListFilterKey.isChord(
+            key: press.key.character,
+            characters: press.characters,
+            command: press.modifiers.contains(.command),
+            control: press.modifiers.contains(.control),
+            option: press.modifiers.contains(.option),
+            shift: press.modifiers.contains(.shift)
+        ) else { return .ignored }
+        if composerFocused { return .ignored }
+        if chatListFilterKeyBlocked() { return .ignored }
+        if ChatListFilterKey.overlayTextFieldOwnsChord(
+            textFieldFocused: TranscriptScroll.textInputIsFirstResponder(),
+            composerFocused: false
+        ) {
+            return .ignored
+        }
+        if ChatListFilterKey.shouldIgnoreRepeat(press.`repeat`) {
+            return .handled
+        }
+        model.toggleChatListFilterFromChord()
+        return .handled
+    }
+
+    /// Composer ⌘⇧F. Mention and skill menus are checked by the bar.
+    /// Find, the shortcuts sheet, and the lightbox keep the key.
+    /// The text view swallows a key repeat so f is not inserted.
+    private func toggleChatListFilterFromComposer() {
+        if chatListFilterKeyBlocked() { return }
+        model.toggleChatListFilterFromChord()
+    }
+
+    private func chatListFilterKeyBlocked() -> Bool {
+        if findOpen || findFieldFocused || lightbox != nil || shortcutsOpen {
+            return true
+        }
+        if pendingDeleteChatID != nil { return true }
+        if model.computerTakeoverOpen || model.showProfile || model.showSettings {
+            return true
+        }
+        if model.skillMenuOpen() { return true }
+        if model.renameChatID != nil { return true }
+        return false
     }
 
     /// Hardware Option+Up / Option+Down when the composer is not first
@@ -2024,6 +2078,7 @@ private struct ComposerBar: View {
     var onDeleteOpenChat: () -> Void = {}
     var onCopyTranscript: () -> Void = {}
     var onToggleToolTraces: () -> Void = {}
+    var onToggleChatListFilter: () -> Void = {}
     var deleteConfirmOpen = false
     var onConfirmDeleteKey: (String) -> Void = { _ in }
     var onCancelDelete: () -> Void = {}
@@ -2232,6 +2287,10 @@ private struct ComposerBar: View {
                     onToggleToolTraces: {
                         if mentionQuery != nil || model.skillMenuOpen() { return }
                         onToggleToolTraces()
+                    },
+                    onToggleChatListFilter: {
+                        if mentionQuery != nil || model.skillMenuOpen() { return }
+                        onToggleChatListFilter()
                     },
                     deleteConfirmOpen: deleteConfirmOpen,
                     onConfirmDeleteKey: { key in

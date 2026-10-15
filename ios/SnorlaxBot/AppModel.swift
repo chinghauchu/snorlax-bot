@@ -209,6 +209,9 @@ final class AppModel {
     private var speakEpoch = 0
     /// v1.04: collapses a held ⌘N and a second listener in the same moment.
     @ObservationIgnored private var newChatChordAt: TimeInterval = 0
+    /// v1.15: the list and the chat can both see one ⌘⇧F. The second
+    /// delivery inside this window does not flip the filter back.
+    @ObservationIgnored private var filterChordAt: TimeInterval = 0
     /// v1.12: a delete already in flight must not start another.
     @ObservationIgnored private var deleteOpenChatBusy = false
 
@@ -612,6 +615,17 @@ final class AppModel {
         if now - newChatChordAt < 0.4 { return }
         newChatChordAt = now
         Task { await createAgent() }
+    }
+
+    /// v1.15: the same All / Unread choice as the segmented control.
+    /// All shows every chat. Unread keeps rows that paint the accent
+    /// dot. Persistence stays on `chatListFilter`'s didSet. A second
+    /// view that sees the same key does not flap. No HTTP.
+    func toggleChatListFilterFromChord() {
+        let now = Date().timeIntervalSinceReferenceDate
+        if now - filterChordAt < 0.05 { return }
+        filterChordAt = now
+        chatListFilter = ChatListFilter.toggled(chatListFilter)
     }
 
     func createChannel(name: String, memberIds: [String]) async {

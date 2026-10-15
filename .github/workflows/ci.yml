@@ -132,3 +132,4 @@ jobs:
           python3 ios/scripts/test_ios_delete_open_chat.py
           python3 ios/scripts/test_ios_copy_transcript.py
           python3 ios/scripts/test_ios_tool_trace_groups.py
+          python3 ios/scripts/test_ios_chat_list_filter_key.py

@@ -36,6 +36,12 @@ enum ChatListFilter {
         defaults.set(raw, forKey: storageKey)
     }
 
+    /// The other choice. All becomes Unread. Unread becomes All.
+    /// Pins, archives, and the empty state stay with the existing filter.
+    static func toggled(_ mode: Mode) -> Mode {
+        mode == .unread ? .all : .unread
+    }
+
     /// Unread hides a chat that is not painting the accent dot.
     static func includes(filter: Mode, hasUnreadDot: Bool) -> Bool {
         filter != .unread || hasUnreadDot
