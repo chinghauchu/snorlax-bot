@@ -230,6 +230,13 @@ import {
   overlayTextFieldOwnsChatListFilter,
 } from "./chatListFilterKey";
 import {
+  archiveListBlocked,
+  archiveListShouldToggle,
+  isArchiveListChord,
+  nextArchiveListOpen,
+  overlayTextFieldOwnsArchiveList,
+} from "./archiveListKey";
+import {
   loadInitialRuntimeUrl,
   normalizeRuntimeUrl,
 } from "./runtimeUrl";
@@ -1459,6 +1466,7 @@ export function App() {
   const copyTranscriptRef = useRef<() => void>(() => {});
   const toggleToolTracesRef = useRef<() => void>(() => {});
   const toggleChatListFilterRef = useRef<() => void>(() => {});
+  const toggleArchiveListRef = useRef<() => void>(() => {});
   const createFromShortcutRef = useRef<() => void>(() => {});
   const archiveOpenChatRef = useRef<() => void>(() => {});
   const clearComposerDraftRef = useRef<() => void>(() => {});
@@ -5546,6 +5554,14 @@ export function App() {
     setExpandedToolStacks((prev) => toggleAllToolTraceGroups(prev, toolStacks) ?? prev);
   };
 
+  // v1.16: Cmd/Ctrl-Shift-H toggles the sidebar Archived list. The
+  // same flag the Archived (n) control writes. Opening needs at least
+  // one archived chat. Closing always returns to the main list. A
+  // chat does not have to be open.
+  toggleArchiveListRef.current = () => {
+    setArchiveOpen((open) => nextArchiveListOpen(open, archivedAgents.length));
+  };
+
   useEffect(() => {
     const onDeleteOpenChat = (event: globalThis.KeyboardEvent) => {
       if (event.defaultPrevented) return;
@@ -5764,6 +5780,62 @@ export function App() {
     window.addEventListener("keydown", onToggleChatListFilter, true);
     return () => {
       window.removeEventListener("keydown", onToggleChatListFilter, true);
+    };
+  }, [
+    findOpen,
+    switchOpen,
+    shortcutsOpen,
+    renamingId,
+    lightboxTarget,
+    contextMenu,
+    switcherBlocked,
+    mentionOpen,
+    skillMenuOpen,
+  ]);
+
+  // v1.16: Cmd/Ctrl-Shift-H opens or closes the Archived list. The
+  // composer does not own the chord and the letter is not inserted.
+  // A key repeat is swallowed and does not flap. IME keeps it. The
+  // chord still runs when no chat is open, same as the sidebar control.
+  useEffect(() => {
+    const onToggleArchiveList = (event: globalThis.KeyboardEvent) => {
+      if (event.defaultPrevented) return;
+      if (
+        !isArchiveListChord({
+          key: event.key,
+          metaKey: event.metaKey,
+          ctrlKey: event.ctrlKey,
+          altKey: event.altKey,
+          shiftKey: event.shiftKey,
+          repeat: event.repeat,
+        })
+      ) {
+        return;
+      }
+      const gate = {
+        composing: isComposerComposing(event),
+        overlayTextField: overlayTextFieldOwnsArchiveList(
+          focusIsTextField(event.target),
+          event.target === composerRef.current,
+        ),
+        inCard: focusInsideCard(event.target),
+        findOpen,
+        switchOpen,
+        shortcutsOpen,
+        renaming: renamingId != null,
+        lightboxOpen: lightboxTarget != null,
+        menuOpen: contextMenu != null,
+        blocked: switcherBlocked || mentionOpen || skillMenuOpen,
+      };
+      if (archiveListBlocked(gate)) return;
+      event.preventDefault();
+      event.stopPropagation();
+      if (!archiveListShouldToggle({ repeat: event.repeat })) return;
+      toggleArchiveListRef.current();
+    };
+    window.addEventListener("keydown", onToggleArchiveList, true);
+    return () => {
+      window.removeEventListener("keydown", onToggleArchiveList, true);
     };
   }, [
     findOpen,

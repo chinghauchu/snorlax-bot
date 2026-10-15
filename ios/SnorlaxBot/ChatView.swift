@@ -83,6 +83,7 @@ struct ChatView: View {
                 onCopyTranscript: { copyTranscriptFromComposer() },
                 onToggleToolTraces: { toggleToolTracesFromComposer() },
                 onToggleChatListFilter: { toggleChatListFilterFromComposer() },
+                onToggleArchiveList: { toggleArchiveListFromComposer() },
                 deleteConfirmOpen: pendingDeleteChatID != nil,
                 onConfirmDeleteKey: { key in confirmDeleteOpenChat(key: key) },
                 onCancelDelete: { cancelDeleteOpenChat() },
@@ -143,6 +144,9 @@ struct ChatView: View {
                 return .handled
             }
             if chatListFilterKey(press) == .handled {
+                return .handled
+            }
+            if archiveListKey(press) == .handled {
                 return .handled
             }
             if chatNavKey(press) == .handled {
@@ -1041,6 +1045,60 @@ struct ChatView: View {
         if model.skillMenuOpen() { return true }
         if model.renameChatID != nil { return true }
         return false
+    }
+
+    /// Hardware ⌘⇧H / ⌃⇧H when the composer is not first responder.
+    /// The text view handles the same chord and keeps IME marked text.
+    /// Find, rename, search, and a card text field own the key. A chat
+    /// does not have to be open. A key repeat is swallowed so it does not flap.
+    private func archiveListKey(_ press: KeyPress) -> KeyPress.Result {
+        guard ArchiveListKey.isChord(
+            key: press.key.character,
+            characters: press.characters,
+            command: press.modifiers.contains(.command),
+            control: press.modifiers.contains(.control),
+            option: press.modifiers.contains(.option),
+            shift: press.modifiers.contains(.shift)
+        ) else { return .ignored }
+        if composerFocused { return .ignored }
+        if archiveListBlocked() { return .ignored }
+        if ArchiveListKey.overlayTextFieldOwnsChord(
+            textFieldFocused: TranscriptScroll.textInputIsFirstResponder(),
+            composerFocused: false
+        ) {
+            return .ignored
+        }
+        if ArchiveListKey.shouldIgnoreRepeat(press.`repeat`) {
+            return .handled
+        }
+        toggleArchivedList()
+        return .handled
+    }
+
+    /// Composer ⌘⇧H. Mention and skill menus are checked by the bar.
+    /// Find, the shortcuts sheet, and the lightbox keep the key.
+    /// An empty chat still toggles. The text view swallows a key repeat.
+    private func toggleArchiveListFromComposer() {
+        if archiveListBlocked() { return }
+        toggleArchivedList()
+    }
+
+    private func archiveListBlocked() -> Bool {
+        if findOpen || findFieldFocused || lightbox != nil || shortcutsOpen {
+            return true
+        }
+        if model.computerTakeoverOpen || model.showProfile || model.showSettings {
+            return true
+        }
+        if model.skillMenuOpen() { return true }
+        if model.renameChatID != nil { return true }
+        return false
+    }
+
+    /// Same flag as the Archived (n) control. Works with or without an open chat.
+    private func toggleArchivedList() {
+        if archiveListBlocked() { return }
+        model.toggleArchivedListFromChord()
     }
 
     /// Hardware Option+Up / Option+Down when the composer is not first
@@ -2079,6 +2137,7 @@ private struct ComposerBar: View {
     var onCopyTranscript: () -> Void = {}
     var onToggleToolTraces: () -> Void = {}
     var onToggleChatListFilter: () -> Void = {}
+    var onToggleArchiveList: () -> Void = {}
     var deleteConfirmOpen = false
     var onConfirmDeleteKey: (String) -> Void = { _ in }
     var onCancelDelete: () -> Void = {}
@@ -2291,6 +2350,10 @@ private struct ComposerBar: View {
                     onToggleChatListFilter: {
                         if mentionQuery != nil || model.skillMenuOpen() { return }
                         onToggleChatListFilter()
+                    },
+                    onToggleArchiveList: {
+                        if mentionQuery != nil || model.skillMenuOpen() { return }
+                        onToggleArchiveList()
                     },
                     deleteConfirmOpen: deleteConfirmOpen,
                     onConfirmDeleteKey: { key in

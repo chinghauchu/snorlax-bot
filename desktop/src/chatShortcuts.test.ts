@@ -139,6 +139,7 @@ test("the overlay lists only shortcuts that already have handlers", () => {
       "copy-transcript",
       "tool-traces",
       "unread-filter",
+      "archive-list",
       "find",
       "switch",
       "info",
@@ -170,6 +171,7 @@ test("the overlay lists only shortcuts that already have handlers", () => {
   assert.equal(action["copy-transcript"], "Copy the transcript");
   assert.equal(action["tool-traces"], "Collapse or expand tool traces");
   assert.equal(action["unread-filter"], "Toggle All / Unread");
+  assert.equal(action["archive-list"], "Open or close Archived chats");
   assert.equal(action.find, "Find in chat");
   assert.equal(action.switch, "Switch chat");
   assert.equal(action.info, "Open info");
