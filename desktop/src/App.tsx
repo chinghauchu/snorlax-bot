@@ -218,6 +218,12 @@ import {
   transcriptPlainText,
 } from "./copyTranscript";
 import {
+  isToolTraceGroupsChord,
+  overlayTextFieldOwnsToolTraceGroups,
+  toolTraceGroupsBlocked,
+  toolTraceGroupsShouldToggle,
+} from "./toolTraceGroups";
+import {
   loadInitialRuntimeUrl,
   normalizeRuntimeUrl,
 } from "./runtimeUrl";
@@ -397,6 +403,7 @@ import {
   showStackHeader,
   stackCollapsed,
   stackForMessageIndex,
+  toggleAllToolTraceGroups,
   toggleExpanded,
 } from "./compactToolTraces";
 import { catalogInstallBody, isConnect, isPendingConnect, parsePluginArgs, pluginStatusLabel } from "./connect";
@@ -1443,6 +1450,7 @@ export function App() {
   const transcriptCopyTimer = useRef<number | null>(null);
   const copyLastReplyRef = useRef<() => void>(() => {});
   const copyTranscriptRef = useRef<() => void>(() => {});
+  const toggleToolTracesRef = useRef<() => void>(() => {});
   const createFromShortcutRef = useRef<() => void>(() => {});
   const archiveOpenChatRef = useRef<() => void>(() => {});
   const clearComposerDraftRef = useRef<() => void>(() => {});
@@ -5522,6 +5530,14 @@ export function App() {
     }, MESSAGE_COPY_FEEDBACK_MS);
   };
 
+  // v1.14: Cmd/Ctrl-Shift-G toggles every compact tool-trace group.
+  // If any group is expanded, collapse all. If every group is collapsed,
+  // expand all. A single tool line is not a group. No groups is a no-op.
+  toggleToolTracesRef.current = () => {
+    if (!active) return;
+    setExpandedToolStacks((prev) => toggleAllToolTraceGroups(prev, toolStacks) ?? prev);
+  };
+
   useEffect(() => {
     const onDeleteOpenChat = (event: globalThis.KeyboardEvent) => {
       if (event.defaultPrevented) return;
@@ -5620,6 +5636,64 @@ export function App() {
     window.addEventListener("keydown", onCopyTranscript, true);
     return () => {
       window.removeEventListener("keydown", onCopyTranscript, true);
+    };
+  }, [
+    active,
+    findOpen,
+    switchOpen,
+    shortcutsOpen,
+    renamingId,
+    lightboxTarget,
+    contextMenu,
+    switcherBlocked,
+    mentionOpen,
+    skillMenuOpen,
+  ]);
+
+  // v1.14: Cmd/Ctrl-Shift-G collapses or expands every tool-trace group.
+  // The composer does not own the chord and the letter is not inserted.
+  // A key repeat is swallowed and does not flap. IME keeps it. Nothing
+  // changes when no chat is open or there is no group.
+  useEffect(() => {
+    const onToggleToolTraces = (event: globalThis.KeyboardEvent) => {
+      if (event.defaultPrevented) return;
+      if (
+        !isToolTraceGroupsChord({
+          key: event.key,
+          metaKey: event.metaKey,
+          ctrlKey: event.ctrlKey,
+          altKey: event.altKey,
+          shiftKey: event.shiftKey,
+          repeat: event.repeat,
+        })
+      ) {
+        return;
+      }
+      const gate = {
+        chatOpen: active != null,
+        composing: isComposerComposing(event),
+        overlayTextField: overlayTextFieldOwnsToolTraceGroups(
+          focusIsTextField(event.target),
+          event.target === composerRef.current,
+        ),
+        inCard: focusInsideCard(event.target),
+        findOpen,
+        switchOpen,
+        shortcutsOpen,
+        renaming: renamingId != null,
+        lightboxOpen: lightboxTarget != null,
+        menuOpen: contextMenu != null,
+        blocked: switcherBlocked || mentionOpen || skillMenuOpen,
+      };
+      if (toolTraceGroupsBlocked(gate)) return;
+      event.preventDefault();
+      event.stopPropagation();
+      if (!toolTraceGroupsShouldToggle({ repeat: event.repeat })) return;
+      toggleToolTracesRef.current();
+    };
+    window.addEventListener("keydown", onToggleToolTraces, true);
+    return () => {
+      window.removeEventListener("keydown", onToggleToolTraces, true);
     };
   }, [
     active,

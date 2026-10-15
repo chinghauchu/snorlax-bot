@@ -144,6 +144,22 @@ enum CompactToolTraces {
         return next
     }
 
+    /// v1.14: groups are 2+ consecutive kind=tool runs. A single tool
+    /// is not a group. If any group is expanded, collapse every group.
+    /// If every group is collapsed, expand every group. Nil when there
+    /// is no group, so the caller leaves the expanded set alone.
+    static func toggleAll(expanded: Set<String>, stacks: [Stack]) -> Set<String>? {
+        let ids = stacks.filter { shouldCollapse(count: $0.items.count) }.map(\.id)
+        guard !ids.isEmpty else { return nil }
+        var next = expanded
+        if ids.contains(where: { expanded.contains($0) }) {
+            for id in ids { next.remove(id) }
+        } else {
+            for id in ids { next.insert(id) }
+        }
+        return next
+    }
+
     static func stack(for index: Int, in stacks: [Stack]) -> Stack? {
         stacks.first { $0.messageIndexes.contains(index) }
     }

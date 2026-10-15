@@ -137,6 +137,7 @@ test("the overlay lists only shortcuts that already have handlers", () => {
       "rename-chat",
       "delete-chat",
       "copy-transcript",
+      "tool-traces",
       "find",
       "switch",
       "info",
@@ -166,6 +167,7 @@ test("the overlay lists only shortcuts that already have handlers", () => {
   assert.equal(action["rename-chat"], "Rename this chat");
   assert.equal(action["delete-chat"], "Ask to delete this chat");
   assert.equal(action["copy-transcript"], "Copy the transcript");
+  assert.equal(action["tool-traces"], "Collapse or expand tool traces");
   assert.equal(action.find, "Find in chat");
   assert.equal(action.switch, "Switch chat");
   assert.equal(action.info, "Open info");

@@ -164,6 +164,29 @@ export function toggleExpanded(
   return next;
 }
 
+/**
+ * v1.14: groups are 2+ consecutive kind=tool runs. A single tool is
+ * not a group. If any group is expanded, collapse every group. If
+ * every group is collapsed, expand every group. Null when there is
+ * no group, so the caller leaves the expanded set alone.
+ */
+export function toggleAllToolTraceGroups(
+  expanded: ReadonlySet<string>,
+  stacks: readonly CompactToolStack[],
+): Set<string> | null {
+  const ids = stacks
+    .filter((stack) => shouldCollapseToolRun(stack.items.length))
+    .map((stack) => stack.id);
+  if (ids.length === 0) return null;
+  const next = new Set(expanded);
+  if (ids.some((id) => expanded.has(id))) {
+    for (const id of ids) next.delete(id);
+  } else {
+    for (const id of ids) next.add(id);
+  }
+  return next;
+}
+
 export function stackForMessageIndex(
   stacks: CompactToolStack[],
   index: number,
