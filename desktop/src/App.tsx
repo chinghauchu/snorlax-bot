@@ -191,6 +191,12 @@ import {
   overlayTextFieldOwnsMuteOpenChat,
 } from "./muteOpenChat";
 import {
+  isRenameOpenChatChord,
+  overlayTextFieldOwnsRenameOpenChat,
+  renameOpenChatBlocked,
+  renameOpenChatShouldStart,
+} from "./renameOpenChat";
+import {
   loadInitialRuntimeUrl,
   normalizeRuntimeUrl,
 } from "./runtimeUrl";
@@ -1408,6 +1414,7 @@ export function App() {
   const clearComposerDraftRef = useRef<() => void>(() => {});
   const pinOpenChatRef = useRef<() => void>(() => {});
   const muteOpenChatRef = useRef<() => void>(() => {});
+  const renameOpenChatRef = useRef<() => void>(() => {});
   useEffect(() => {
     return () => {
       if (shortcutCopyTimer.current != null) {
@@ -5193,6 +5200,82 @@ export function App() {
     window.addEventListener("keydown", onMuteOpenChat, true);
     return () => {
       window.removeEventListener("keydown", onMuteOpenChat, true);
+    };
+  }, [
+    active,
+    findOpen,
+    switchOpen,
+    shortcutsOpen,
+    renamingId,
+    lightboxTarget,
+    contextMenu,
+    switcherBlocked,
+    mentionOpen,
+    skillMenuOpen,
+  ]);
+
+  // v1.11: Cmd/Ctrl-Shift-R starts rename on the open chat through the
+  // sidebar Rename action. The composer does not own the chord and the
+  // letter is not inserted. A modal or overlay text field does. IME
+  // keeps it. A key repeat does not start a second rename. If a rename
+  // is already in progress, this does not flap. Nothing changes when
+  // no chat is open. Enter, blur, and Escape stay on that inline field.
+  renameOpenChatRef.current = () => {
+    const agent = active;
+    if (!agent || renamingIdRef.current != null) return;
+    if (isChatArchived(archivedChatIds, agent.id)) {
+      if (!archiveOpen) setArchiveOpen(true);
+    } else if (
+      !pinnedAgents.some((row) => row.id === agent.id) &&
+      !restAgents.some((row) => row.id === agent.id)
+    ) {
+      chooseChatListFilter(FILTER_ALL);
+    }
+    beginRename(agent);
+  };
+
+  useEffect(() => {
+    const onRenameOpenChat = (event: globalThis.KeyboardEvent) => {
+      if (event.defaultPrevented) return;
+      if (
+        !isRenameOpenChatChord({
+          key: event.key,
+          metaKey: event.metaKey,
+          ctrlKey: event.ctrlKey,
+          altKey: event.altKey,
+          shiftKey: event.shiftKey,
+          repeat: event.repeat,
+        })
+      ) {
+        return;
+      }
+      const gate = {
+        chatOpen: active != null,
+        composing: isComposerComposing(event),
+        overlayTextField: overlayTextFieldOwnsRenameOpenChat(
+          focusIsTextField(event.target),
+          event.target === composerRef.current,
+        ),
+        inCard: focusInsideCard(event.target),
+        findOpen,
+        switchOpen,
+        shortcutsOpen,
+        renaming: renamingId != null,
+        lightboxOpen: lightboxTarget != null,
+        menuOpen: contextMenu != null,
+        blocked: switcherBlocked || mentionOpen || skillMenuOpen,
+      };
+      if (renameOpenChatBlocked(gate)) return;
+      event.preventDefault();
+      event.stopPropagation();
+      if (!renameOpenChatShouldStart({ repeat: event.repeat }, renamingId != null)) {
+        return;
+      }
+      renameOpenChatRef.current();
+    };
+    window.addEventListener("keydown", onRenameOpenChat, true);
+    return () => {
+      window.removeEventListener("keydown", onRenameOpenChat, true);
     };
   }, [
     active,

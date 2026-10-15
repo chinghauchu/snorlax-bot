@@ -119,6 +119,9 @@ final class AppModel {
     var chatNames: [String: String] = [:] {
         didSet { ChatNames.write(chatNames) }
     }
+    /// v1.11: the chat whose list row is the inline rename field.
+    /// Not persisted. A second keyboard start does not replace it.
+    var renameChatID: String? = nil
     /// v0.96: archived chat ids. UserDefaults. Pin ids stay so Unarchive restores them.
     var archivedChatIDs: [String] = [] {
         didSet { ChatArchive.write(archivedChatIDs) }
@@ -1913,6 +1916,40 @@ final class AppModel {
 
     func commitChatName(_ id: String, draft: String, serverName: String) {
         chatNames = ChatNames.commit(chatNames, id: id, draft: draft, serverName: serverName)
+    }
+
+    /// v1.11: keyboard rename. The list's inline field is the editor.
+    /// A rename already in progress does not start another and does not
+    /// reset the draft. On iPhone the list comes forward so that field
+    /// is on screen. No HTTP.
+    func beginRenameOpenChat(_ id: String) {
+        guard !id.isEmpty else { return }
+        if renameChatID != nil { return }
+        if !isChatArchived(id), chatListFilter == .unread {
+            if let agent = agents.first(where: { $0.id == id }) {
+                if !showsUnreadDot(agent) {
+                    chatListFilter = .all
+                }
+            } else {
+                chatListFilter = .all
+            }
+        }
+        renameChatID = id
+        if !navigationPath.isEmpty {
+            navigationPath = []
+        }
+    }
+
+    /// Sidebar Rename. May move the inline field to another row.
+    func noteListRename(_ id: String) {
+        guard !id.isEmpty else { return }
+        renameChatID = id
+    }
+
+    /// The inline field committed or cancelled. Another row's rename stays.
+    func endRename(_ id: String) {
+        guard renameChatID == id else { return }
+        renameChatID = nil
     }
 
     private func dropChatName(_ id: String) {

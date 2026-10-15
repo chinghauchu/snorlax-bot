@@ -4,8 +4,8 @@ import SwiftUI
 /// v0.73: gestures and hardware-keyboard shortcuts that already exist
 /// on the chat screen. Long-press actions come from the message menu
 /// and the approve-command copy. Hardware keys are `UIKeyCommand`
-/// (Escape, Up, Option+Up/Down, ⌘L / ⌃L, ⌘N / ⌃N, ⌘1–⌘9 / ⌃1–⌃9, ⌘⇧C / ⌃⇧C, ⌘⇧A / ⌃⇧A, ⌘⇧P / ⌃⇧P, ⌘⇧M / ⌃⇧M), `.onKeyPress`
-/// (Page Up / Page Down, ⌘↑ / ⌘↓, ⌘N, ⌘1–⌘9, ⌘⇧A, ⌘⇧⌫, ⌘⇧P, ⌘⇧M), `.keyboardShortcut` (Cmd-F), and
+/// (Escape, Up, Option+Up/Down, ⌘L / ⌃L, ⌘N / ⌃N, ⌘1–⌘9 / ⌃1–⌃9, ⌘⇧C / ⌃⇧C, ⌘⇧A / ⌃⇧A, ⌘⇧P / ⌃⇧P, ⌘⇧M / ⌃⇧M, ⌘⇧R / ⌃⇧R), `.onKeyPress`
+/// (Page Up / Page Down, ⌘↑ / ⌘↓, ⌘N, ⌘1–⌘9, ⌘⇧A, ⌘⇧⌫, ⌘⇧P, ⌘⇧M, ⌘⇧R), `.keyboardShortcut` (Cmd-F), and
 /// the composer Return / Shift-Return presses. ⌘L focuses the composer
 /// and does not insert or send. ⌘N starts a new chat through New agent
 /// and does not send. ⌘1–⌘8 opens that chat and ⌘9 opens the last one.
@@ -14,6 +14,7 @@ import SwiftUI
 /// ⌘⇧⌫ clears the open chat's composer draft and does not send.
 /// ⌘⇧P pins or unpins the open chat and does not insert or send.
 /// ⌘⇧M mutes or unmutes the open chat and does not insert or send.
+/// ⌘⇧R starts rename on the open chat and does not insert or send.
 /// Page Up / Page Down scroll the transcript.
 /// ⌘↑ / ⌘↓ jump to the oldest or latest messages. No Cmd-K on iOS
 /// (the switcher is the chat-list search field). No HTTP.
@@ -76,6 +77,7 @@ enum ChatShortcuts {
         Row(id: "clear-draft", keys: ClearComposerDraft.keysLabel, action: ClearComposerDraft.action),
         Row(id: "pin-chat", keys: PinOpenChat.keysLabel, action: PinOpenChat.action),
         Row(id: "mute-chat", keys: MuteOpenChat.keysLabel, action: MuteOpenChat.action),
+        Row(id: "rename-chat", keys: RenameOpenChat.keysLabel, action: RenameOpenChat.action),
         Row(id: "focus", keys: FocusComposer.keysLabel, action: FocusComposer.action),
         Row(id: "new-chat", keys: NewChat.keysLabel, action: NewChat.action),
         Row(id: "copy-last", keys: CopyLastReply.keysLabel, action: CopyLastReply.action),
