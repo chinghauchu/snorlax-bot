@@ -130,6 +130,9 @@ final class AppModel {
     var sidebarFocusChatID: String?
     /// The chat view and the composer can both see one ⌘⇧S.
     private var sidebarFocusChordAt: TimeInterval = 0
+    /// The list and the open chat can both see one ⌘⇧O. The second
+    /// delivery inside this window does not clear again.
+    private var markAllReadChordAt: TimeInterval = 0
     /// v0.89: pinned chat ids, in the order they were pinned. UserDefaults.
     var pinnedChatIDs: [String] = [] {
         didSet { ChatPins.write(pinnedChatIDs) }
@@ -538,6 +541,18 @@ final class AppModel {
         if UIDevice.current.userInterfaceIdiom != .pad {
             navigationPath = []
         }
+    }
+
+    /// v1.20: hardware ⌘⇧O / ⌃⇧O. The same clear as Mark all as read:
+    /// every reply dot and every channel handoff dot, including
+    /// archived chats. Nothing unread is a no-op. A second view that
+    /// sees the same key does not clear again. No HTTP.
+    func markAllChatsReadFromChord() {
+        let now = Date().timeIntervalSinceReferenceDate
+        if now - markAllReadChordAt < 0.05 { return }
+        markAllReadChordAt = now
+        guard hasAnyUnreadChat else { return }
+        markAllChatsRead()
     }
 
     func openJump(channelId: String, threadId: String) async {

@@ -155,7 +155,7 @@ test("a handoff-only dot still offers the control and leaves with it", () => {
   assert.deepEqual(visible, []);
 });
 
-test("the sidebar shows the control and does not add a shortcut or HTTP", () => {
+test("the sidebar shows the control and the clear does not add HTTP", () => {
   const markAll = sliceFn(app, "function onMarkAllRead(", "function retainPins(");
   assert.match(markAll, /chatUnread\.current\.clearAll\(\)/);
   assert.match(markAll, /setUnreadIds\(\(prev\) => \(prev\.size === 0 \? prev : new Set<string>\(\)\)\)/);
@@ -177,8 +177,8 @@ test("the sidebar shows the control and does not add a shortcut or HTTP", () => 
   assert.doesNotMatch(paint, /transition|animation/);
   assert.match(css, /v1\.01: muted Mark all as read/);
 
-  assert.doesNotMatch(shortcuts, /Mark all as read/);
-  assert.doesNotMatch(iosShortcuts, /Mark all as read/);
+  assert.match(shortcuts, /Cmd\/Ctrl Shift O/);
+  assert.match(iosShortcuts, /⌘⇧O/);
   assert.doesNotMatch(src, /fetch\(/);
   assert.doesNotMatch(src, /\/v1\//);
   assert.doesNotMatch(src, /computerPane\.ts/);

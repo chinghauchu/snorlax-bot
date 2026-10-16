@@ -55,6 +55,8 @@ export type ChatShortcut = {
  * Cmd/Ctrl-Shift-Y regenerates the latest completed assistant LEFT
  * through the Regenerate hover control (v1.18).
  * Cmd/Ctrl-Shift-S moves focus into the sidebar chat list (v1.19).
+ * Cmd/Ctrl-Shift-O marks every chat read through the Mark all as
+ * read control (v1.20).
  * Find's Enter / Shift-Enter steps matches.
  * The switcher uses Up / Down / Enter. Mention and skill menus use
  * Up / Down / Enter / Tab.
@@ -85,6 +87,7 @@ export const CHAT_SHORTCUTS: readonly ChatShortcut[] = [
   { id: "next-unread", keys: "Cmd/Ctrl Shift J", action: "Next unread chat" },
   { id: "regenerate-last", keys: "Cmd/Ctrl Shift Y", action: "Regenerate the last reply" },
   { id: "focus-sidebar", keys: "Cmd/Ctrl Shift S", action: "Focus the chat list" },
+  { id: "mark-all-read", keys: "Cmd/Ctrl Shift O", action: "Mark all as read" },
   { id: "find", keys: "Cmd/Ctrl F", action: "Find in chat" },
   { id: "switch", keys: "Cmd/Ctrl K", action: "Switch chat" },
   { id: "info", keys: "Cmd/Ctrl Shift I", action: "Open info" },
