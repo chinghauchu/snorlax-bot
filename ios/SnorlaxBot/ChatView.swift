@@ -85,6 +85,7 @@ struct ChatView: View {
                 onToggleChatListFilter: { toggleChatListFilterFromComposer() },
                 onToggleArchiveList: { toggleArchiveListFromComposer() },
                 onNextUnread: { nextUnreadFromComposer() },
+                onPreviousUnread: { previousUnreadFromComposer() },
                 onRegenerateLastReply: { regenerateLastReplyFromComposer() },
                 onFocusSidebarList: { focusSidebarFromComposer() },
                 onMarkAllRead: { markAllReadFromComposer() },
@@ -154,6 +155,9 @@ struct ChatView: View {
                 return .handled
             }
             if nextUnreadKey(press) == .handled {
+                return .handled
+            }
+            if previousUnreadKey(press) == .handled {
                 return .handled
             }
             if regenerateLastReplyKey(press) == .handled {
@@ -1181,6 +1185,62 @@ struct ChatView: View {
     private func openNextUnread() {
         if nextUnreadBlocked() { return }
         model.openNextUnreadChat()
+    }
+
+    /// Hardware ⌘⇧K / ⌃⇧K when the composer is not first responder.
+    /// The text view handles the same chord and keeps IME marked text.
+    /// Find, rename, search, and a card text field own the key. A chat
+    /// does not have to be open: the last unread row can still open.
+    /// A key repeat is swallowed so it does not jump again.
+    /// ⌘K without Shift is not this chord.
+    private func previousUnreadKey(_ press: KeyPress) -> KeyPress.Result {
+        guard PreviousUnreadChat.isChord(
+            key: press.key.character,
+            characters: press.characters,
+            command: press.modifiers.contains(.command),
+            control: press.modifiers.contains(.control),
+            option: press.modifiers.contains(.option),
+            shift: press.modifiers.contains(.shift)
+        ) else { return .ignored }
+        if composerFocused { return .ignored }
+        if previousUnreadBlocked() { return .ignored }
+        if PreviousUnreadChat.overlayTextFieldOwnsChord(
+            textFieldFocused: TranscriptScroll.textInputIsFirstResponder(),
+            composerFocused: false
+        ) {
+            return .ignored
+        }
+        if PreviousUnreadChat.shouldIgnoreRepeat(press.`repeat`) {
+            return .handled
+        }
+        openPreviousUnread()
+        return .handled
+    }
+
+    /// Composer ⌘⇧K. Mention and skill menus are checked by the bar.
+    /// Find, the shortcuts sheet, and the lightbox keep the key.
+    /// The text view swallows a key repeat so k is not inserted.
+    private func previousUnreadFromComposer() {
+        if previousUnreadBlocked() { return }
+        openPreviousUnread()
+    }
+
+    private func previousUnreadBlocked() -> Bool {
+        if findOpen || findFieldFocused || lightbox != nil || shortcutsOpen {
+            return true
+        }
+        if model.computerTakeoverOpen || model.showProfile || model.showSettings {
+            return true
+        }
+        if model.skillMenuOpen() { return true }
+        if model.renameChatID != nil { return true }
+        return false
+    }
+
+    /// Same open as tapping the row. No unread row leaves the chat put.
+    private func openPreviousUnread() {
+        if previousUnreadBlocked() { return }
+        model.openPreviousUnreadChat()
     }
 
     /// Hardware Option+Up / Option+Down when the composer is not first
@@ -2425,6 +2485,7 @@ private struct ComposerBar: View {
     var onToggleChatListFilter: () -> Void = {}
     var onToggleArchiveList: () -> Void = {}
     var onNextUnread: () -> Void = {}
+    var onPreviousUnread: () -> Void = {}
     var onRegenerateLastReply: () -> Void = {}
     var onFocusSidebarList: () -> Void = {}
     var onMarkAllRead: () -> Void = {}
@@ -2648,6 +2709,10 @@ private struct ComposerBar: View {
                     onNextUnread: {
                         if mentionQuery != nil || model.skillMenuOpen() { return }
                         onNextUnread()
+                    },
+                    onPreviousUnread: {
+                        if mentionQuery != nil || model.skillMenuOpen() { return }
+                        onPreviousUnread()
                     },
                     onRegenerateLastReply: {
                         if mentionQuery != nil || model.skillMenuOpen() { return }

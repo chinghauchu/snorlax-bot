@@ -67,6 +67,11 @@ struct ComposerTextView: UIViewRepresentable {
     /// send. IME marked text keeps the key. A key repeat does not jump
     /// again. No unread row leaves the open chat put.
     var onNextUnread: (() -> Void)? = nil
+    /// v1.21: ⌘⇧K / ⌃⇧K opens the previous unread chat. Does not insert
+    /// or send. IME marked text keeps the key. A key repeat does not
+    /// jump again. No unread row leaves the open chat put.
+    /// ⌘K without Shift is not this chord.
+    var onPreviousUnread: (() -> Void)? = nil
     /// v1.18: ⌘⇧Y / ⌃⇧Y regenerates the latest completed assistant reply.
     /// Does not insert or send. IME marked text keeps the key.
     /// A key repeat does not regenerate again.
@@ -163,6 +168,9 @@ struct ComposerTextView: UIViewRepresentable {
         }
         view.onNextUnread = { [coordinator = context.coordinator] in
             coordinator.parent.onNextUnread?()
+        }
+        view.onPreviousUnread = { [coordinator = context.coordinator] in
+            coordinator.parent.onPreviousUnread?()
         }
         view.onRegenerateLastReply = { [coordinator = context.coordinator] in
             coordinator.parent.onRegenerateLastReply?()
@@ -261,6 +269,9 @@ struct ComposerTextView: UIViewRepresentable {
         }
         view.onNextUnread = { [coordinator = context.coordinator] in
             coordinator.parent.onNextUnread?()
+        }
+        view.onPreviousUnread = { [coordinator = context.coordinator] in
+            coordinator.parent.onPreviousUnread?()
         }
         view.onRegenerateLastReply = { [coordinator = context.coordinator] in
             coordinator.parent.onRegenerateLastReply?()
@@ -451,6 +462,7 @@ final class ComposerUITextView: UITextView {
     var onToggleChatListFilter: (() -> Void)?
     var onToggleArchiveList: (() -> Void)?
     var onNextUnread: (() -> Void)?
+    var onPreviousUnread: (() -> Void)?
     var onRegenerateLastReply: (() -> Void)?
     var onFocusSidebarList: (() -> Void)?
     var onMarkAllRead: (() -> Void)?
@@ -478,6 +490,9 @@ final class ComposerUITextView: UITextView {
     /// v1.17: the first ⌘⇧J of a hold opened the next unread chat.
     /// Repeats of that hold do not.
     private var nextUnreadConsumed = false
+    /// v1.21: the first ⌘⇧K of a hold opened the previous unread chat.
+    /// Repeats of that hold do not.
+    private var previousUnreadConsumed = false
     /// v1.18: the first ⌘⇧Y of a hold regenerated. Repeats of that hold do not.
     private var regenerateLastReplyConsumed = false
     /// v1.19: the first ⌘⇧S of a hold moved focus. Repeats of that hold do not.
@@ -574,6 +589,7 @@ final class ComposerUITextView: UITextView {
             commands.append(contentsOf: chatListFilterCommands())
             commands.append(contentsOf: archiveListCommands())
             commands.append(contentsOf: nextUnreadCommands())
+            commands.append(contentsOf: previousUnreadCommands())
             commands.append(contentsOf: regenerateLastReplyCommands())
             commands.append(contentsOf: focusSidebarCommands())
             commands.append(contentsOf: markAllReadCommands())
@@ -886,6 +902,27 @@ final class ComposerUITextView: UITextView {
         return [command, control]
     }
 
+    /// ⌘⇧K / ⌃⇧K. Opens the previous unread chat. Does not insert or send.
+    /// IME keeps the key. A repeat of the held chord does not jump again.
+    /// ⌘K without Shift stays out of this chord.
+    private func previousUnreadCommands() -> [UIKeyCommand] {
+        let command = UIKeyCommand(
+            title: PreviousUnreadChat.action,
+            action: #selector(previousUnreadFromShortcut),
+            input: "k",
+            modifierFlags: [.command, .shift]
+        )
+        let control = UIKeyCommand(
+            title: PreviousUnreadChat.action,
+            action: #selector(previousUnreadFromShortcut),
+            input: "k",
+            modifierFlags: [.control, .shift]
+        )
+        command.wantsPriorityOverSystemBehavior = true
+        control.wantsPriorityOverSystemBehavior = true
+        return [command, control]
+    }
+
     /// ⌘⇧Y / ⌃⇧Y. Regenerates the latest completed assistant reply.
     /// Does not insert or send. IME keeps the key. A repeat does not regenerate again.
     private func regenerateLastReplyCommands() -> [UIKeyCommand] {
@@ -1123,6 +1160,15 @@ final class ComposerUITextView: UITextView {
         onNextUnread?()
     }
 
+    /// The first press opens the previous unread chat. A repeat of this
+    /// hold returns without jumping again, so k is not inserted.
+    @objc private func previousUnreadFromShortcut() {
+        if markedTextRange != nil { return }
+        if previousUnreadConsumed { return }
+        previousUnreadConsumed = true
+        onPreviousUnread?()
+    }
+
     /// The first press regenerates. A repeat of this hold returns
     /// without regenerating again, so y is not inserted.
     @objc private func regenerateLastReplyFromShortcut() {
@@ -1338,6 +1384,12 @@ final class ComposerUITextView: UITextView {
             nextUnreadConsumed = false
         }
         if presses.contains(where: { press in
+            if press.key?.keyCode == .keyboardK { return true }
+            return press.key?.charactersIgnoringModifiers.lowercased() == "k"
+        }) {
+            previousUnreadConsumed = false
+        }
+        if presses.contains(where: { press in
             if press.key?.keyCode == .keyboardY { return true }
             return press.key?.charactersIgnoringModifiers.lowercased() == "y"
         }) {
@@ -1387,6 +1439,7 @@ final class ComposerUITextView: UITextView {
         chatListFilterConsumed = false
         archiveListConsumed = false
         nextUnreadConsumed = false
+        previousUnreadConsumed = false
         regenerateLastReplyConsumed = false
         focusSidebarConsumed = false
         markAllReadConsumed = false
@@ -1536,6 +1589,20 @@ final class ComposerUITextView: UITextView {
                     shift: mods.contains(.shift)
                 ), nextUnreadConsumed {
                     // Held ⌘⇧J. Do not insert j and do not jump again.
+                    return
+                }
+            }
+            if key.keyCode == .keyboardK {
+                let mods = key.modifierFlags
+                if PreviousUnreadChat.isChord(
+                    key: "k",
+                    characters: key.charactersIgnoringModifiers,
+                    command: mods.contains(.command),
+                    control: mods.contains(.control),
+                    option: mods.contains(.alternate),
+                    shift: mods.contains(.shift)
+                ), previousUnreadConsumed {
+                    // Held ⌘⇧K. Do not insert k and do not jump again.
                     return
                 }
             }

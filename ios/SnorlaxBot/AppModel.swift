@@ -122,6 +122,10 @@ final class AppModel {
     /// delivery inside this window does not open that chat again.
     private var nextUnreadChordId = ""
     private var nextUnreadChordAt: TimeInterval = 0
+    /// The chat view and the composer can both see one ⌘⇧K. The second
+    /// delivery inside this window does not open that chat again.
+    private var previousUnreadChordId = ""
+    private var previousUnreadChordAt: TimeInterval = 0
     /// v1.19: the chat list keeps keyboard focus after ⌘⇧S. iPad arrow
     /// selection must not yank focus back to the composer.
     var sidebarKeyboardFocus = false
@@ -512,6 +516,36 @@ final class AppModel {
         nextUnreadChordAt = now
         Task {
             await select(next, push: true)
+            wantsComposerFocus = true
+        }
+    }
+
+    /// v1.21: hardware ⌘⇧K / ⌃⇧K. The previous unread row before the open
+    /// chat, in the same order as Option+Up / Option+Down and ⌘1–⌘9,
+    /// wrapping. Same open as tapping the row, including the draft
+    /// swap, the reading place, and composer focus. No unread row
+    /// leaves the open chat put. The open chat is not selected again
+    /// when it is the only unread row.
+    func openPreviousUnreadChat() {
+        guard !computerTakeoverOpen else { return }
+        let ids = jumpChatIds()
+        var unread = Set<String>()
+        for id in ids {
+            if let agent = agents.first(where: { $0.id == id }), showsUnreadDot(agent) {
+                unread.insert(id)
+            }
+        }
+        guard let previous = PreviousUnreadChat.target(
+            ids: ids,
+            currentId: selectedAgentID,
+            unread: unread
+        ) else { return }
+        let now = Date().timeIntervalSinceReferenceDate
+        if previous == previousUnreadChordId, now - previousUnreadChordAt < 0.05 { return }
+        previousUnreadChordId = previous
+        previousUnreadChordAt = now
+        Task {
+            await select(previous, push: true)
             wantsComposerFocus = true
         }
     }
