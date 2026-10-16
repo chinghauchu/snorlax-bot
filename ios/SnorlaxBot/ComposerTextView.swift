@@ -47,6 +47,11 @@ struct ComposerTextView: UIViewRepresentable {
     /// ⌘0 resets it. Does not insert or send. IME marked text keeps
     /// the key. A key repeat does not step again.
     var onTranscriptText: ((TranscriptTextScale.Step) -> Void)? = nil
+    /// v1.25: ⌘⇧↑ / ⌃⇧↑ and ⌘⇧↓ / ⌃⇧↓ jump to the previous or next
+    /// message you sent. Offered only while the field is empty, so a
+    /// field that already has text keeps selecting. Does not send.
+    /// IME marked text keeps the key. A key repeat does not jump again.
+    var onUserMessageJump: ((UserMessageJump.Direction) -> Void)? = nil
     /// v1.07: ⌘⇧⌫ / ⌃⇧⌫ clears the composer draft. Does not send.
     /// IME marked text keeps the key.
     var onClearComposerDraft: (() -> Void)? = nil
@@ -158,6 +163,9 @@ struct ComposerTextView: UIViewRepresentable {
         view.onTranscriptText = { [coordinator = context.coordinator] step in
             coordinator.parent.onTranscriptText?(step)
         }
+        view.onUserMessageJump = { [coordinator = context.coordinator] direction in
+            coordinator.parent.onUserMessageJump?(direction)
+        }
         view.onClearComposerDraft = { [coordinator = context.coordinator] in
             coordinator.parent.onClearComposerDraft?()
         }
@@ -267,6 +275,9 @@ struct ComposerTextView: UIViewRepresentable {
         }
         view.onTranscriptText = { [coordinator = context.coordinator] step in
             coordinator.parent.onTranscriptText?(step)
+        }
+        view.onUserMessageJump = { [coordinator = context.coordinator] direction in
+            coordinator.parent.onUserMessageJump?(direction)
         }
         view.onClearComposerDraft = { [coordinator = context.coordinator] in
             coordinator.parent.onClearComposerDraft?()
@@ -485,6 +496,7 @@ final class ComposerUITextView: UITextView {
     var onUnarchiveOpenChat: (() -> Void)?
     var onChatHistory: ((String) -> Void)?
     var onTranscriptText: ((TranscriptTextScale.Step) -> Void)?
+    var onUserMessageJump: ((UserMessageJump.Direction) -> Void)?
     var onClearComposerDraft: (() -> Void)?
     var onPinOpenChat: (() -> Void)?
     var onMuteOpenChat: (() -> Void)?
@@ -545,6 +557,10 @@ final class ComposerUITextView: UITextView {
     private var transcriptTextSmallerConsumed = false
     /// v1.24: the first ⌘0 of a hold reset the text. Repeats of that hold do not.
     private var transcriptTextResetConsumed = false
+    /// v1.25: the first ⌘⇧↑ of a hold jumped. Repeats of that hold do not.
+    private var userJumpUpConsumed = false
+    /// v1.25: the first ⌘⇧↓ of a hold jumped. Repeats of that hold do not.
+    private var userJumpDownConsumed = false
     /// v1.10: the first ⌘⇧U of a hold applies. Further repeats do not.
     private var markOpenChatConsumed = false
     var sendMuted = false
@@ -615,6 +631,8 @@ final class ComposerUITextView: UITextView {
             )
             up.wantsPriorityOverSystemBehavior = true
             commands.append(up)
+            // ⌘⇧↑ / ⌘⇧↓ select text once the field has any. Empty keeps the jump.
+            commands.append(contentsOf: userMessageJumpCommands())
         }
         // IME keeps Option+arrows and ⌘L while marked text is composing.
         if markedTextRange == nil {
@@ -824,6 +842,54 @@ final class ComposerUITextView: UITextView {
             command.wantsPriorityOverSystemBehavior = true
             return command
         }
+    }
+
+    /// ⌘⇧↑ / ⌃⇧↑ and ⌘⇧↓ / ⌃⇧↓ while the composer is empty.
+    /// Does not move the caret and does not send. A field with text
+    /// does not offer these, so selection stays. IME keeps the key.
+    private func userMessageJumpCommands() -> [UIKeyCommand] {
+        let pairs: [(String, UIKeyModifierFlags)] = [
+            (UIKeyCommand.inputUpArrow, [.command, .shift]),
+            (UIKeyCommand.inputUpArrow, [.control, .shift]),
+            (UIKeyCommand.inputDownArrow, [.command, .shift]),
+            (UIKeyCommand.inputDownArrow, [.control, .shift]),
+        ]
+        return pairs.map { input, flags in
+            let command = UIKeyCommand(
+                title: UserMessageJump.action,
+                action: #selector(userMessageJumpFromShortcut(_:)),
+                input: input,
+                modifierFlags: flags
+            )
+            command.wantsPriorityOverSystemBehavior = true
+            return command
+        }
+    }
+
+    /// The first press of each direction jumps. A repeat of that hold
+    /// returns without jumping again.
+    @objc private func userMessageJumpFromShortcut(_ sender: UIKeyCommand) {
+        if markedTextRange != nil { return }
+        if !text.isEmpty { return }
+        let input = sender.input ?? ""
+        let flags = sender.modifierFlags
+        guard let direction = UserMessageJump.direction(
+            up: input == UIKeyCommand.inputUpArrow,
+            down: input == UIKeyCommand.inputDownArrow,
+            command: flags.contains(.command),
+            control: flags.contains(.control),
+            option: flags.contains(.alternate),
+            shift: flags.contains(.shift)
+        ) else { return }
+        switch direction {
+        case .previous:
+            if userJumpUpConsumed { return }
+            userJumpUpConsumed = true
+        case .next:
+            if userJumpDownConsumed { return }
+            userJumpDownConsumed = true
+        }
+        onUserMessageJump?(direction)
     }
 
     /// The first press of each step changes the size. A repeat of that
@@ -1570,6 +1636,12 @@ final class ComposerUITextView: UITextView {
                 releaseTranscriptText(key)
             }
         }
+        if presses.contains(where: { $0.key?.keyCode == .keyboardUpArrow }) {
+            userJumpUpConsumed = false
+        }
+        if presses.contains(where: { $0.key?.keyCode == .keyboardDownArrow }) {
+            userJumpDownConsumed = false
+        }
         if presses.contains(where: { press in
             if press.key?.keyCode == .keyboardP { return true }
             return press.key?.charactersIgnoringModifiers.lowercased() == "p"
@@ -1683,6 +1755,8 @@ final class ComposerUITextView: UITextView {
         transcriptTextLargerConsumed = false
         transcriptTextSmallerConsumed = false
         transcriptTextResetConsumed = false
+        userJumpUpConsumed = false
+        userJumpDownConsumed = false
         muteOpenChatConsumed = false
         markOpenChatConsumed = false
         renameOpenChatConsumed = false
@@ -1750,6 +1824,25 @@ final class ComposerUITextView: UITextView {
             if transcriptTextHoldShouldSwallow(key) {
                 // Held ⌘= / ⌘- / ⌘0. Do not insert the character and do not step again.
                 return
+            }
+            if key.keyCode == .keyboardUpArrow || key.keyCode == .keyboardDownArrow {
+                let mods = key.modifierFlags
+                if UserMessageJump.direction(
+                    up: key.keyCode == .keyboardUpArrow,
+                    down: key.keyCode == .keyboardDownArrow,
+                    command: mods.contains(.command),
+                    control: mods.contains(.control),
+                    option: mods.contains(.alternate),
+                    shift: mods.contains(.shift)
+                ) != nil, text.isEmpty {
+                    let consumed = key.keyCode == .keyboardUpArrow
+                        ? userJumpUpConsumed
+                        : userJumpDownConsumed
+                    if consumed {
+                        // Held ⌘⇧↑ / ⌘⇧↓. Do not jump again.
+                        return
+                    }
+                }
             }
             if key.keyCode == .keyboardP {
                 let mods = key.modifierFlags

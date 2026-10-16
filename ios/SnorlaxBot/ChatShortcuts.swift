@@ -41,6 +41,9 @@ import SwiftUI
 /// ⌘= / ⌃= and ⌘+ / ⌃+ make the transcript text one step larger.
 /// ⌘- / ⌃- make it one step smaller. ⌘0 / ⌃0 resets to 100%.
 /// Dynamic Type is the base. The steps persist in UserDefaults.
+/// ⌘⇧↑ / ⌃⇧↑ jumps to the previous message you sent. ⌘⇧↓ / ⌃⇧↓ jumps
+/// to the next one. An empty composer does not own that chord. A
+/// composer that already has text keeps selecting.
 /// ⌘↑ / ⌘↓ jump to the oldest or latest messages. No Cmd-K on iOS
 /// (the switcher is the chat-list search field). No HTTP.
 /// Keep in lockstep with `desktop/src/chatShortcuts.ts`.
@@ -121,6 +124,7 @@ enum ChatShortcuts {
         Row(id: "copy-last", keys: CopyLastReply.keysLabel, action: CopyLastReply.action),
         Row(id: "page", keys: TranscriptScroll.pageKeysLabel, action: TranscriptScroll.pageAction),
         Row(id: "transcript-edge", keys: TranscriptScroll.edgeKeysLabel, action: TranscriptScroll.edgeAction),
+        Row(id: "user-jump", keys: UserMessageJump.keysLabel, action: UserMessageJump.action),
         Row(id: "transcript-text", keys: TranscriptTextScale.keysLabel, action: TranscriptTextScale.action),
         Row(id: "find", keys: "⌘F", action: "Find in chat"),
         Row(
