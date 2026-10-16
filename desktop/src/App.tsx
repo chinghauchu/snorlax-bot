@@ -244,6 +244,13 @@ import {
   overlayTextFieldOwnsNextUnread,
 } from "./nextUnreadChat";
 import {
+  isRegenerateLastReplyChord,
+  overlayTextFieldOwnsRegenerateLastReply,
+  regenerateLastReplyAllowed,
+  regenerateLastReplyBlocked,
+  regenerateLastReplyShouldRun,
+} from "./regenerateLastReply";
+import {
   loadInitialRuntimeUrl,
   normalizeRuntimeUrl,
 } from "./runtimeUrl";
@@ -1474,6 +1481,7 @@ export function App() {
   const toggleToolTracesRef = useRef<() => void>(() => {});
   const toggleChatListFilterRef = useRef<() => void>(() => {});
   const toggleArchiveListRef = useRef<() => void>(() => {});
+  const regenerateLastReplyRef = useRef<() => void>(() => {});
   const createFromShortcutRef = useRef<() => void>(() => {});
   const archiveOpenChatRef = useRef<() => void>(() => {});
   const clearComposerDraftRef = useRef<() => void>(() => {});
@@ -5920,6 +5928,81 @@ export function App() {
     mutedChatIds,
     unreadIds,
     replyUnreadIds,
+    findOpen,
+    switchOpen,
+    shortcutsOpen,
+    renamingId,
+    lightboxTarget,
+    contextMenu,
+    switcherBlocked,
+    mentionOpen,
+    skillMenuOpen,
+  ]);
+
+  // v1.18: Cmd/Ctrl-Shift-Y regenerates the latest completed LEFT
+  // through the same path as the Regenerate hover control. The
+  // composer does not own the chord and the letter is not inserted.
+  // A key repeat is swallowed and does not regenerate again. IME
+  // keeps it. Nothing is sent when no chat is open, the chat is a
+  // channel, a reply is still streaming, or Regenerate would not show.
+  regenerateLastReplyRef.current = () => {
+    if (
+      !regenerateLastReplyAllowed({
+        chatOpen: active != null,
+        isChannel: active?.kind === "channel",
+        streaming: busy,
+        messages: visibleMessages,
+        liveAssistantIdx,
+      })
+    ) {
+      return;
+    }
+    void onRegenerate();
+  };
+
+  useEffect(() => {
+    const onRegenerateLastReply = (event: globalThis.KeyboardEvent) => {
+      if (event.defaultPrevented) return;
+      if (
+        !isRegenerateLastReplyChord({
+          key: event.key,
+          metaKey: event.metaKey,
+          ctrlKey: event.ctrlKey,
+          altKey: event.altKey,
+          shiftKey: event.shiftKey,
+          repeat: event.repeat,
+        })
+      ) {
+        return;
+      }
+      const gate = {
+        chatOpen: active != null,
+        composing: isComposerComposing(event),
+        overlayTextField: overlayTextFieldOwnsRegenerateLastReply(
+          focusIsTextField(event.target),
+          event.target === composerRef.current,
+        ),
+        inCard: focusInsideCard(event.target),
+        findOpen,
+        switchOpen,
+        shortcutsOpen,
+        renaming: renamingId != null,
+        lightboxOpen: lightboxTarget != null,
+        menuOpen: contextMenu != null,
+        blocked: switcherBlocked || mentionOpen || skillMenuOpen,
+      };
+      if (regenerateLastReplyBlocked(gate)) return;
+      event.preventDefault();
+      event.stopPropagation();
+      if (!regenerateLastReplyShouldRun({ repeat: event.repeat })) return;
+      regenerateLastReplyRef.current();
+    };
+    window.addEventListener("keydown", onRegenerateLastReply, true);
+    return () => {
+      window.removeEventListener("keydown", onRegenerateLastReply, true);
+    };
+  }, [
+    active,
     findOpen,
     switchOpen,
     shortcutsOpen,

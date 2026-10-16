@@ -52,6 +52,8 @@ export type ChatShortcut = {
  * Archived chats list through the sidebar Archived control (v1.16).
  * Cmd/Ctrl-Shift-J opens the next unread chat after the one that is
  * open, in that same visible order, wrapping (v1.17).
+ * Cmd/Ctrl-Shift-Y regenerates the latest completed assistant LEFT
+ * through the Regenerate hover control (v1.18).
  * Find's Enter / Shift-Enter steps matches.
  * The switcher uses Up / Down / Enter. Mention and skill menus use
  * Up / Down / Enter / Tab.
@@ -80,6 +82,7 @@ export const CHAT_SHORTCUTS: readonly ChatShortcut[] = [
   { id: "unread-filter", keys: "Cmd/Ctrl Shift F", action: "Toggle All / Unread" },
   { id: "archive-list", keys: "Cmd/Ctrl Shift H", action: "Open or close Archived chats" },
   { id: "next-unread", keys: "Cmd/Ctrl Shift J", action: "Next unread chat" },
+  { id: "regenerate-last", keys: "Cmd/Ctrl Shift Y", action: "Regenerate the last reply" },
   { id: "find", keys: "Cmd/Ctrl F", action: "Find in chat" },
   { id: "switch", keys: "Cmd/Ctrl K", action: "Switch chat" },
   { id: "info", keys: "Cmd/Ctrl Shift I", action: "Open info" },

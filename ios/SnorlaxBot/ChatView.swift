@@ -85,6 +85,7 @@ struct ChatView: View {
                 onToggleChatListFilter: { toggleChatListFilterFromComposer() },
                 onToggleArchiveList: { toggleArchiveListFromComposer() },
                 onNextUnread: { nextUnreadFromComposer() },
+                onRegenerateLastReply: { regenerateLastReplyFromComposer() },
                 deleteConfirmOpen: pendingDeleteChatID != nil,
                 onConfirmDeleteKey: { key in confirmDeleteOpenChat(key: key) },
                 onCancelDelete: { cancelDeleteOpenChat() },
@@ -151,6 +152,9 @@ struct ChatView: View {
                 return .handled
             }
             if nextUnreadKey(press) == .handled {
+                return .handled
+            }
+            if regenerateLastReplyKey(press) == .handled {
                 return .handled
             }
             if chatNavKey(press) == .handled {
@@ -1249,6 +1253,98 @@ struct ChatView: View {
         }
     }
 
+    /// Hardware ⌘⇧Y / ⌃⇧Y when the composer is not first responder.
+    /// The text view handles the same chord and keeps IME marked text.
+    /// Find, rename, search, and a card text field own the key. A chat
+    /// has to be open. A key repeat is swallowed so it does not regenerate again.
+    private func regenerateLastReplyKey(_ press: KeyPress) -> KeyPress.Result {
+        guard RegenerateLastReply.isChord(
+            key: press.key.character,
+            characters: press.characters,
+            command: press.modifiers.contains(.command),
+            control: press.modifiers.contains(.control),
+            option: press.modifiers.contains(.option),
+            shift: press.modifiers.contains(.shift)
+        ) else { return .ignored }
+        guard hasRealAgent else { return .ignored }
+        if composerFocused { return .ignored }
+        if regenerateLastReplyBlocked() { return .ignored }
+        if RegenerateLastReply.overlayTextFieldOwnsChord(
+            textFieldFocused: TranscriptScroll.textInputIsFirstResponder(),
+            composerFocused: false
+        ) {
+            return .ignored
+        }
+        if RegenerateLastReply.shouldIgnoreRepeat(press.`repeat`) {
+            return .handled
+        }
+        regenerateLastReplyFromChord()
+        return .handled
+    }
+
+    /// Composer ⌘⇧Y. Mention and skill menus are checked by the bar.
+    /// Find, the shortcuts sheet, and the lightbox keep the key.
+    /// The text view swallows a key repeat so y is not inserted.
+    private func regenerateLastReplyFromComposer() {
+        guard hasRealAgent else { return }
+        if regenerateLastReplyBlocked() { return }
+        regenerateLastReplyFromChord()
+    }
+
+    private func regenerateLastReplyBlocked() -> Bool {
+        if findOpen || findFieldFocused || lightbox != nil || shortcutsOpen {
+            return true
+        }
+        if pendingDeleteChatID != nil { return true }
+        if model.computerTakeoverOpen || model.showProfile || model.showSettings {
+            return true
+        }
+        if model.skillMenuOpen() { return true }
+        if model.renameChatID != nil { return true }
+        return false
+    }
+
+    /// Same path as the Regenerate control: only when that control would
+    /// show on the latest completed LEFT in this 1:1 chat.
+    private func regenerateLastReplyFromChord() {
+        guard hasRealAgent, !agent.isChannel, !model.isSending else { return }
+        let visible = model.visibleMessages(for: agent)
+        let lastUserIdx = visible.lastIndex(where: \.isFromUser)
+        let liveAssistantIdx = visible.indices.first { index in
+            guard let lastUserIdx else { return false }
+            let message = visible[index]
+            return index > lastUserIdx
+                && message.role == .assistant
+                && !message.isHandoffRoot
+                && !message.isToolLine
+                && !message.isWidget
+                && !message.isConnect
+                && !message.isApprove
+        }
+        let lastLeftIdx = visible.indices.last { index in
+            let message = visible[index]
+            let inFlight = model.isSending && index == liveAssistantIdx
+            return !message.isFromUser
+                && message.isKindMessage
+                && !message.isToolLine
+                && !message.isWidget
+                && !message.isConnect
+                && !message.isApprove
+                && !message.isHandoffRoot
+                && !inFlight
+        }
+        guard let lastLeftIdx else { return }
+        guard Self.showsRegenerate(
+            visible[lastLeftIdx],
+            index: lastLeftIdx,
+            lastLeftIdx: lastLeftIdx,
+            isChannel: agent.isChannel,
+            liveAssistantIdx: liveAssistantIdx,
+            sending: model.isSending
+        ) else { return }
+        Task { await model.regenerate() }
+    }
+
     /// Hardware ⌘L / ⌃L focuses the composer and does not insert or send.
     /// Plain letters stay where they are. Find, the shortcuts sheet, the
     /// lightbox, and an already-focused composer keep the key. The name
@@ -2198,6 +2294,7 @@ private struct ComposerBar: View {
     var onToggleChatListFilter: () -> Void = {}
     var onToggleArchiveList: () -> Void = {}
     var onNextUnread: () -> Void = {}
+    var onRegenerateLastReply: () -> Void = {}
     var deleteConfirmOpen = false
     var onConfirmDeleteKey: (String) -> Void = { _ in }
     var onCancelDelete: () -> Void = {}
@@ -2418,6 +2515,10 @@ private struct ComposerBar: View {
                     onNextUnread: {
                         if mentionQuery != nil || model.skillMenuOpen() { return }
                         onNextUnread()
+                    },
+                    onRegenerateLastReply: {
+                        if mentionQuery != nil || model.skillMenuOpen() { return }
+                        onRegenerateLastReply()
                     },
                     deleteConfirmOpen: deleteConfirmOpen,
                     onConfirmDeleteKey: { key in
