@@ -172,6 +172,14 @@ enum TranscriptScroll {
         guard let responder = UIResponder.snorlaxFirstResponder else { return false }
         return responder is UITextField || responder is UITextView
     }
+
+    /// v1.26: the composer, find, rename, and card fields keep ⌘L.
+    /// A quotable message text view does not, so the chord can quote.
+    static func nonQuoteTextFieldIsFirstResponder() -> Bool {
+        guard let responder = UIResponder.snorlaxFirstResponder else { return false }
+        if responder is QuoteTextView { return false }
+        return responder is UITextField || responder is UITextView
+    }
 }
 
 private extension UIResponder {

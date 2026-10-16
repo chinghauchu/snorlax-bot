@@ -25,7 +25,9 @@ export type ChatShortcut = {
  * (Option on macOS) opens the previous or next visible chat.
  * Cmd/Ctrl-F finds. Cmd/Ctrl-K switches. Cmd/Ctrl-Shift-I opens info.
  * Cmd/Ctrl-V pastes an image or file. Cmd/Ctrl-L focuses the composer
- * and does not insert (v0.99). Cmd/Ctrl-Shift-C copies the last
+ * and does not insert (v0.99). The same chord quotes a transcript
+ * selection into the composer when one quotable message owns it
+ * (v1.26). Cmd/Ctrl-Shift-C copies the last
  * assistant reply (v1.00). Page Up / Page Down scroll the transcript
  * one viewport; Cmd/Ctrl-Home / Cmd/Ctrl-End jump to the oldest or
  * latest loaded messages (v1.03). Cmd/Ctrl-Shift-Up /
@@ -80,6 +82,7 @@ export const CHAT_SHORTCUTS: readonly ChatShortcut[] = [
   { id: "send", keys: "Enter", action: "Send" },
   { id: "newline", keys: "Shift Enter", action: "New line" },
   { id: "focus", keys: "Cmd/Ctrl L", action: "Focus the composer" },
+  { id: "quote-selection", keys: "Cmd/Ctrl L", action: "Quote the selection" },
   { id: "new-chat", keys: "Cmd/Ctrl N", action: "New chat" },
   { id: "copy-last", keys: "Cmd/Ctrl Shift C", action: "Copy the last reply" },
   { id: "page", keys: "Page Up / Page Down", action: "Scroll the transcript" },

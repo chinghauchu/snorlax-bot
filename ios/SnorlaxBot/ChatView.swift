@@ -118,6 +118,7 @@ struct ChatView: View {
             )
         )
         .environment(\.transcriptTextPercent, model.transcriptTextPercent)
+        .environment(\.quoteChordBlocked, quoteChordBlocked)
         .onKeyPress(phases: [.down, .up, .`repeat`]) { press in
             if deleteConfirmKey(press) == .handled {
                 return .handled
@@ -1712,9 +1713,11 @@ struct ChatView: View {
     }
 
     /// Hardware ⌘L / ⌃L focuses the composer and does not insert or send.
-    /// Plain letters stay where they are. Find, the shortcuts sheet, the
-    /// lightbox, and an already-focused composer keep the key. The name
-    /// field and widget text fields are first responder, so they keep it too.
+    /// When a quotable transcript selection is active, the same chord
+    /// quotes it (v1.26) and then focuses the composer. Plain letters
+    /// stay where they are. Find, the shortcuts sheet, the lightbox, and
+    /// an already-focused composer keep the key. The name field and widget
+    /// text fields are first responder, so they keep it too.
     private func focusComposerKey(_ press: KeyPress) -> KeyPress.Result {
         guard hasRealAgent else { return .ignored }
         guard model.canCompose || model.isSending else { return .ignored }
@@ -1730,10 +1733,41 @@ struct ChatView: View {
             option: press.modifiers.contains(.option),
             shift: press.modifiers.contains(.shift)
         ) else { return .ignored }
+        if quoteChordBlocked { return .ignored }
+        if TranscriptScroll.nonQuoteTextFieldIsFirstResponder() { return .ignored }
+        if quoteSelectionFromChord(press) { return .handled }
         model.pendingComposerCaret = (model.draft as NSString).length
         model.sidebarKeyboardFocus = false
         composerFocused = true
         return .handled
+    }
+
+    /// v1.26: ⌘L / ⌃L quotes the transcript selection when one message owns it.
+    /// A repeat of the hold does not quote again. The composer and any other
+    /// text field keep the key. Nothing is sent.
+    private func quoteSelectionFromChord(_ press: KeyPress) -> Bool {
+        if quoteChordBlocked { return false }
+        if TranscriptScroll.nonQuoteTextFieldIsFirstResponder() { return false }
+        guard let quoted = QuoteSelectionKey.selectionToQuote(
+            inTextField: false,
+            selection: QuoteSelection.menuSelection()
+        ) else { return false }
+        if press.`repeat` { return true }
+        guard QuoteSelectionKey.claimTurn() else { return true }
+        model.quoteIntoComposer(quoted)
+        QuoteTextView.clearActiveSelection()
+        model.sidebarKeyboardFocus = false
+        return true
+    }
+
+    /// Find, shortcuts, rename, the lightbox, settings, and a confirm own ⌘L.
+    private var quoteChordBlocked: Bool {
+        if findOpen || findFieldFocused || shortcutsOpen || lightbox != nil { return true }
+        if model.renameChatID != nil { return true }
+        if model.showSettings || model.showProfile || model.computerTakeoverOpen { return true }
+        if pendingDeleteChatID != nil { return true }
+        if model.skillMenuOpen() { return true }
+        return false
     }
 
     /// Hardware ⌘⇧S / ⌃⇧S when the composer is not first responder.
