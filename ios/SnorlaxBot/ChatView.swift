@@ -84,6 +84,7 @@ struct ChatView: View {
                 onToggleToolTraces: { toggleToolTracesFromComposer() },
                 onToggleChatListFilter: { toggleChatListFilterFromComposer() },
                 onToggleArchiveList: { toggleArchiveListFromComposer() },
+                onNextUnread: { nextUnreadFromComposer() },
                 deleteConfirmOpen: pendingDeleteChatID != nil,
                 onConfirmDeleteKey: { key in confirmDeleteOpenChat(key: key) },
                 onCancelDelete: { cancelDeleteOpenChat() },
@@ -147,6 +148,9 @@ struct ChatView: View {
                 return .handled
             }
             if archiveListKey(press) == .handled {
+                return .handled
+            }
+            if nextUnreadKey(press) == .handled {
                 return .handled
             }
             if chatNavKey(press) == .handled {
@@ -1099,6 +1103,61 @@ struct ChatView: View {
     private func toggleArchivedList() {
         if archiveListBlocked() { return }
         model.toggleArchivedListFromChord()
+    }
+
+    /// Hardware ⌘⇧J / ⌃⇧J when the composer is not first responder.
+    /// The text view handles the same chord and keeps IME marked text.
+    /// Find, rename, search, and a card text field own the key. A chat
+    /// does not have to be open: the first unread row can still open.
+    /// A key repeat is swallowed so it does not jump again.
+    private func nextUnreadKey(_ press: KeyPress) -> KeyPress.Result {
+        guard NextUnreadChat.isChord(
+            key: press.key.character,
+            characters: press.characters,
+            command: press.modifiers.contains(.command),
+            control: press.modifiers.contains(.control),
+            option: press.modifiers.contains(.option),
+            shift: press.modifiers.contains(.shift)
+        ) else { return .ignored }
+        if composerFocused { return .ignored }
+        if nextUnreadBlocked() { return .ignored }
+        if NextUnreadChat.overlayTextFieldOwnsChord(
+            textFieldFocused: TranscriptScroll.textInputIsFirstResponder(),
+            composerFocused: false
+        ) {
+            return .ignored
+        }
+        if NextUnreadChat.shouldIgnoreRepeat(press.`repeat`) {
+            return .handled
+        }
+        openNextUnread()
+        return .handled
+    }
+
+    /// Composer ⌘⇧J. Mention and skill menus are checked by the bar.
+    /// Find, the shortcuts sheet, and the lightbox keep the key.
+    /// The text view swallows a key repeat so j is not inserted.
+    private func nextUnreadFromComposer() {
+        if nextUnreadBlocked() { return }
+        openNextUnread()
+    }
+
+    private func nextUnreadBlocked() -> Bool {
+        if findOpen || findFieldFocused || lightbox != nil || shortcutsOpen {
+            return true
+        }
+        if model.computerTakeoverOpen || model.showProfile || model.showSettings {
+            return true
+        }
+        if model.skillMenuOpen() { return true }
+        if model.renameChatID != nil { return true }
+        return false
+    }
+
+    /// Same open as tapping the row. No unread row leaves the chat put.
+    private func openNextUnread() {
+        if nextUnreadBlocked() { return }
+        model.openNextUnreadChat()
     }
 
     /// Hardware Option+Up / Option+Down when the composer is not first
@@ -2138,6 +2197,7 @@ private struct ComposerBar: View {
     var onToggleToolTraces: () -> Void = {}
     var onToggleChatListFilter: () -> Void = {}
     var onToggleArchiveList: () -> Void = {}
+    var onNextUnread: () -> Void = {}
     var deleteConfirmOpen = false
     var onConfirmDeleteKey: (String) -> Void = { _ in }
     var onCancelDelete: () -> Void = {}
@@ -2354,6 +2414,10 @@ private struct ComposerBar: View {
                     onToggleArchiveList: {
                         if mentionQuery != nil || model.skillMenuOpen() { return }
                         onToggleArchiveList()
+                    },
+                    onNextUnread: {
+                        if mentionQuery != nil || model.skillMenuOpen() { return }
+                        onNextUnread()
                     },
                     deleteConfirmOpen: deleteConfirmOpen,
                     onConfirmDeleteKey: { key in
