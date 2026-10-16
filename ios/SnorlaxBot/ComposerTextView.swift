@@ -59,6 +59,10 @@ struct ComposerTextView: UIViewRepresentable {
     /// v1.15: ⌘⇧F / ⌃⇧F toggles All / Unread. Does not insert or send.
     /// IME marked text keeps the key. A key repeat does not flap.
     var onToggleChatListFilter: (() -> Void)? = nil
+    /// v1.16: ⌘⇧H / ⌃⇧H opens or closes the Archived chats list.
+    /// Does not insert or send. IME marked text keeps the key.
+    /// A key repeat does not flap. A chat does not have to be open.
+    var onToggleArchiveList: (() -> Void)? = nil
     /// True while the Delete confirm is on screen. Return and Delete confirm.
     /// Esc cancels. A key repeat never confirms.
     var deleteConfirmOpen: Bool = false
@@ -137,6 +141,9 @@ struct ComposerTextView: UIViewRepresentable {
         }
         view.onToggleChatListFilter = { [coordinator = context.coordinator] in
             coordinator.parent.onToggleChatListFilter?()
+        }
+        view.onToggleArchiveList = { [coordinator = context.coordinator] in
+            coordinator.parent.onToggleArchiveList?()
         }
         view.onConfirmDeleteKey = { [coordinator = context.coordinator] key in
             coordinator.parent.onConfirmDeleteKey?(key)
@@ -220,6 +227,9 @@ struct ComposerTextView: UIViewRepresentable {
         }
         view.onToggleChatListFilter = { [coordinator = context.coordinator] in
             coordinator.parent.onToggleChatListFilter?()
+        }
+        view.onToggleArchiveList = { [coordinator = context.coordinator] in
+            coordinator.parent.onToggleArchiveList?()
         }
         view.onConfirmDeleteKey = { [coordinator = context.coordinator] key in
             coordinator.parent.onConfirmDeleteKey?(key)
@@ -399,6 +409,7 @@ final class ComposerUITextView: UITextView {
     var onCopyTranscript: (() -> Void)?
     var onToggleToolTraces: (() -> Void)?
     var onToggleChatListFilter: (() -> Void)?
+    var onToggleArchiveList: (() -> Void)?
     var deleteConfirmOpen = false
     var onConfirmDeleteKey: ((String) -> Void)?
     var onCancelDelete: (() -> Void)?
@@ -418,6 +429,8 @@ final class ComposerUITextView: UITextView {
     private var toolTraceGroupsConsumed = false
     /// v1.15: the first ⌘⇧F of a hold toggled. Repeats of that hold do not.
     private var chatListFilterConsumed = false
+    /// v1.16: the first ⌘⇧H of a hold toggled. Repeats of that hold do not.
+    private var archiveListConsumed = false
     /// v1.10: the first ⌘⇧U of a hold applies. Further repeats do not.
     private var markOpenChatConsumed = false
     var sendMuted = false
@@ -506,6 +519,7 @@ final class ComposerUITextView: UITextView {
             commands.append(contentsOf: copyTranscriptCommands())
             commands.append(contentsOf: toolTraceGroupCommands())
             commands.append(contentsOf: chatListFilterCommands())
+            commands.append(contentsOf: archiveListCommands())
         }
         return commands
     }
@@ -775,6 +789,26 @@ final class ComposerUITextView: UITextView {
         return [command, control]
     }
 
+    /// ⌘⇧H / ⌃⇧H. Opens or closes the Archived chats list.
+    /// Does not insert or send. IME keeps the key. A repeat does not flap.
+    private func archiveListCommands() -> [UIKeyCommand] {
+        let command = UIKeyCommand(
+            title: ArchiveListKey.action,
+            action: #selector(toggleArchiveListFromShortcut),
+            input: "h",
+            modifierFlags: [.command, .shift]
+        )
+        let control = UIKeyCommand(
+            title: ArchiveListKey.action,
+            action: #selector(toggleArchiveListFromShortcut),
+            input: "h",
+            modifierFlags: [.control, .shift]
+        )
+        command.wantsPriorityOverSystemBehavior = true
+        control.wantsPriorityOverSystemBehavior = true
+        return [command, control]
+    }
+
     /// ⌘⇧⌫ / ⌃⇧⌫. Clears the draft. Does not insert or send.
     /// IME keeps the key. An empty draft is ignored by the model.
     private func clearComposerDraftCommands() -> [UIKeyCommand] {
@@ -932,6 +966,15 @@ final class ComposerUITextView: UITextView {
         if chatListFilterConsumed { return }
         chatListFilterConsumed = true
         onToggleChatListFilter?()
+    }
+
+    /// The first press toggles. A repeat of this hold returns without
+    /// toggling again, so h is not inserted and the list does not flap.
+    @objc private func toggleArchiveListFromShortcut() {
+        if markedTextRange != nil { return }
+        if archiveListConsumed { return }
+        archiveListConsumed = true
+        onToggleArchiveList?()
     }
 
     @objc private func chatNavUp() {
@@ -1109,6 +1152,12 @@ final class ComposerUITextView: UITextView {
         }) {
             chatListFilterConsumed = false
         }
+        if presses.contains(where: { press in
+            if press.key?.keyCode == .keyboardH { return true }
+            return press.key?.charactersIgnoringModifiers.lowercased() == "h"
+        }) {
+            archiveListConsumed = false
+        }
         super.pressesEnded(presses, with: event)
         // If deleteBackward already ran it cleared the flag. If a chorded
         // Delete never reached it, drop the flag on the next turn so a
@@ -1139,6 +1188,7 @@ final class ComposerUITextView: UITextView {
         copyTranscriptConsumed = false
         toolTraceGroupsConsumed = false
         chatListFilterConsumed = false
+        archiveListConsumed = false
         super.pressesCancelled(presses, with: event)
     }
 
@@ -1257,6 +1307,20 @@ final class ComposerUITextView: UITextView {
                     shift: mods.contains(.shift)
                 ), chatListFilterConsumed {
                     // Held ⌘⇧F. Do not insert f and do not flap All / Unread.
+                    return
+                }
+            }
+            if key.keyCode == .keyboardH {
+                let mods = key.modifierFlags
+                if ArchiveListKey.isChord(
+                    key: "h",
+                    characters: key.charactersIgnoringModifiers,
+                    command: mods.contains(.command),
+                    control: mods.contains(.control),
+                    option: mods.contains(.alternate),
+                    shift: mods.contains(.shift)
+                ), archiveListConsumed {
+                    // Held ⌘⇧H. Do not insert h and do not flap the list.
                     return
                 }
             }

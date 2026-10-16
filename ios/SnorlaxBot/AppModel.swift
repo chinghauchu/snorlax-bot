@@ -108,6 +108,13 @@ final class AppModel {
     /// v1.05: the chat list is showing Archived instead of the main roster.
     /// Not persisted. Cleared when that list leaves the screen.
     var archiveListShowing = false
+    /// v1.16: Archived list chrome. The sidebar Archived (n) control and
+    /// ⌘⇧H both write this. Not persisted. Jump order reads
+    /// `archiveListShowing`, which the list sets only while it is on screen.
+    var showArchivedList = false
+    /// The list and the open chat can both see one ⌘⇧H. The second
+    /// delivery inside this window does not flap the list.
+    private var archiveListChordAt: TimeInterval = 0
     /// Same slot delivered by the list and the chat within one keypress.
     private var jumpChordSlot = 0
     private var jumpChordAt: TimeInterval = 0
@@ -1903,6 +1910,19 @@ final class AppModel {
         if next != mutedChatIDs {
             mutedChatIDs = next
         }
+    }
+
+    /// v1.16: same open/close as the Archived (n) control. A second
+    /// delivery of the same chord does not flap. Nothing opens when
+    /// no chat is archived and the list is already closed.
+    func toggleArchivedListFromChord() {
+        let now = Date().timeIntervalSinceReferenceDate
+        if now - archiveListChordAt < 0.05 { return }
+        archiveListChordAt = now
+        showArchivedList = ArchiveListKey.nextOpen(
+            open: showArchivedList,
+            archivedCount: archivedAgents.count
+        )
     }
 
     /// Archived chats still on the roster, in roster order. Pins are kept but not shown here.

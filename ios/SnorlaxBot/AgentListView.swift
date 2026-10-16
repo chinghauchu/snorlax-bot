@@ -5,7 +5,8 @@ struct AgentListView: View {
     @Environment(AppModel.self) private var model
     @State private var pendingDelete: Agent?
     @State private var showCreateChannel = false
-    @State private var showArchived = false
+    /// The list is on screen. Jump order follows the Archived flag only then.
+    @State private var archiveListOnScreen = false
     @State private var chatQuery = ""
 
     /// v0.95 / v1.11: the list inline field. Sidebar Rename and the
@@ -58,9 +59,9 @@ struct AgentListView: View {
     var body: some View {
         @Bindable var model = model
         VStack(spacing: 0) {
-            if showArchived {
+            if model.showArchivedList {
                 Button {
-                    showArchived = false
+                    model.showArchivedList = false
                 } label: {
                     HStack(spacing: 4) {
                         Image(systemName: "chevron.left")
@@ -90,20 +91,27 @@ struct AgentListView: View {
             .searchable(text: $chatQuery, prompt: ChatSwitcher.placeholder)
             .accessibilityInputLabels([ChatSwitcher.inputLabel])
             .onAppear {
+                archiveListOnScreen = true
+                let showArchived = model.showArchivedList
                 model.archiveListShowing = showArchived
             }
             .onDisappear {
+                archiveListOnScreen = false
                 model.archiveListShowing = false
             }
-            .onChange(of: showArchived) { _, showing in
-                model.archiveListShowing = showing
+            .onChange(of: model.showArchivedList) { _, showArchived in
+                guard archiveListOnScreen else { return }
+                model.archiveListShowing = showArchived
             }
             .onChange(of: model.renameChatID) { _, id in
                 guard let id, model.isChatArchived(id) else { return }
-                showArchived = true
+                model.showArchivedList = true
             }
             .onKeyPress(phases: [.down, .repeat]) { press in
                 if chatListFilterKey(press) == .handled {
+                    return .handled
+                }
+                if archiveListKey(press) == .handled {
                     return .handled
                 }
                 if press.phase != .down {
@@ -249,6 +257,35 @@ struct AgentListView: View {
         return .handled
     }
 
+    /// Hardware ⌘⇧H / ⌃⇧H from the chat list, including when no chat is
+    /// open. The same Archived (n) / Back control. Search, rename, and
+    /// the channel sheet own the key. A key repeat does not flap.
+    private func archiveListKey(_ press: KeyPress) -> KeyPress.Result {
+        guard ArchiveListKey.isChord(
+            key: press.key.character,
+            characters: press.characters,
+            command: press.modifiers.contains(.command),
+            control: press.modifiers.contains(.control),
+            option: press.modifiers.contains(.option),
+            shift: press.modifiers.contains(.shift)
+        ) else { return .ignored }
+        if renamingID != nil || showCreateChannel { return .ignored }
+        if model.showSettings || model.showProfile || model.computerTakeoverOpen {
+            return .ignored
+        }
+        if ArchiveListKey.overlayTextFieldOwnsChord(
+            textFieldFocused: TranscriptScroll.textInputIsFirstResponder(),
+            composerFocused: false
+        ) {
+            return .ignored
+        }
+        if ArchiveListKey.shouldIgnoreRepeat(press.`repeat`) {
+            return .handled
+        }
+        model.toggleArchivedListFromChord()
+        return .handled
+    }
+
     @ViewBuilder
     private var styledList: some View {
         if UIDevice.current.userInterfaceIdiom == .pad {
@@ -266,7 +303,7 @@ struct AgentListView: View {
 
     @ViewBuilder
     private var listBody: some View {
-        if showArchived {
+        if model.showArchivedList {
             archivedRows
         } else {
             rows
@@ -343,12 +380,12 @@ struct AgentListView: View {
                 }
             }
         }
-        if !showArchived,
+        if !model.showArchivedList,
            !ChatSwitcher.queryActive(chatQuery),
            !model.archivedAgents.isEmpty {
             Section {
                 Button {
-                    showArchived = true
+                    model.showArchivedList = true
                 } label: {
                     Text(ChatArchive.sectionTitle(count: model.archivedAgents.count))
                         .font(.system(size: 12, weight: .medium))

@@ -133,3 +133,4 @@ jobs:
           python3 ios/scripts/test_ios_copy_transcript.py
           python3 ios/scripts/test_ios_tool_trace_groups.py
           python3 ios/scripts/test_ios_chat_list_filter_key.py
+          python3 ios/scripts/test_ios_archive_list_key.py
