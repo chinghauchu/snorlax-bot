@@ -57,6 +57,9 @@ export type ChatShortcut = {
  * Cmd/Ctrl-Shift-S moves focus into the sidebar chat list (v1.19).
  * Cmd/Ctrl-Shift-O marks every chat read through the Mark all as
  * read control (v1.20).
+ * Cmd/Ctrl-Shift-K opens the previous unread chat before the one
+ * that is open, in that same visible order, wrapping (v1.21).
+ * Cmd/Ctrl-K without Shift still opens the switcher.
  * Find's Enter / Shift-Enter steps matches.
  * The switcher uses Up / Down / Enter. Mention and skill menus use
  * Up / Down / Enter / Tab.
@@ -88,6 +91,7 @@ export const CHAT_SHORTCUTS: readonly ChatShortcut[] = [
   { id: "regenerate-last", keys: "Cmd/Ctrl Shift Y", action: "Regenerate the last reply" },
   { id: "focus-sidebar", keys: "Cmd/Ctrl Shift S", action: "Focus the chat list" },
   { id: "mark-all-read", keys: "Cmd/Ctrl Shift O", action: "Mark all as read" },
+  { id: "previous-unread", keys: "Cmd/Ctrl Shift K", action: "Previous unread chat" },
   { id: "find", keys: "Cmd/Ctrl F", action: "Find in chat" },
   { id: "switch", keys: "Cmd/Ctrl K", action: "Switch chat" },
   { id: "info", keys: "Cmd/Ctrl Shift I", action: "Open info" },

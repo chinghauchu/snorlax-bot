@@ -244,6 +244,13 @@ import {
   overlayTextFieldOwnsNextUnread,
 } from "./nextUnreadChat";
 import {
+  isPreviousUnreadChord,
+  overlayTextFieldOwnsPreviousUnread,
+  previousUnreadBlocked,
+  previousUnreadChatId,
+  previousUnreadShouldOpen,
+} from "./previousUnreadChat";
+import {
   isRegenerateLastReplyChord,
   overlayTextFieldOwnsRegenerateLastReply,
   regenerateLastReplyAllowed,
@@ -5959,6 +5966,82 @@ export function App() {
     window.addEventListener("keydown", onNextUnread, true);
     return () => {
       window.removeEventListener("keydown", onNextUnread, true);
+    };
+  }, [
+    jumpChatKey,
+    activeId,
+    mutedChatIds,
+    unreadIds,
+    replyUnreadIds,
+    findOpen,
+    switchOpen,
+    shortcutsOpen,
+    renamingId,
+    lightboxTarget,
+    contextMenu,
+    switcherBlocked,
+    mentionOpen,
+    skillMenuOpen,
+  ]);
+
+  // v1.21: Cmd/Ctrl-Shift-K opens the previous unread chat before the
+  // one that is open, in the same visible order as Alt+Up/Down and
+  // Cmd/Ctrl-1..9, wrapping. Opening is the sidebar row click, so
+  // that chat's draft and reading place come back and the composer
+  // is focused. No unread row leaves the open chat put. The composer
+  // does not own the chord and k is not inserted. A key repeat is
+  // swallowed and does not jump again. Cmd/Ctrl-K without Shift stays
+  // the quick switcher.
+  useEffect(() => {
+    const ids = jumpChatKey ? jumpChatKey.split("\u0000") : [];
+    const onPreviousUnread = (event: globalThis.KeyboardEvent) => {
+      if (event.defaultPrevented) return;
+      if (
+        !isPreviousUnreadChord({
+          key: event.key,
+          metaKey: event.metaKey,
+          ctrlKey: event.ctrlKey,
+          altKey: event.altKey,
+          shiftKey: event.shiftKey,
+          repeat: event.repeat,
+        })
+      ) {
+        return;
+      }
+      const gate = {
+        composing: isComposerComposing(event),
+        overlayTextField: overlayTextFieldOwnsPreviousUnread(
+          focusIsTextField(event.target),
+          event.target === composerRef.current,
+        ),
+        inCard: focusInsideCard(event.target),
+        findOpen,
+        switchOpen,
+        shortcutsOpen,
+        renaming: renamingId != null,
+        lightboxOpen: lightboxTarget != null,
+        menuOpen: contextMenu != null,
+        blocked: switcherBlocked || mentionOpen || skillMenuOpen,
+      };
+      if (previousUnreadBlocked(gate)) return;
+      event.preventDefault();
+      event.stopPropagation();
+      if (!previousUnreadShouldOpen({ repeat: event.repeat })) return;
+      const unread = new Set(
+        ids.filter((id) =>
+          paintsUnreadAccent(
+            isChatMuted(mutedChatIds, id),
+            unreadIds.has(id) || replyUnreadIds.has(id),
+          ),
+        ),
+      );
+      const previous = previousUnreadChatId(ids, activeId, unread);
+      if (!previous) return;
+      void selectAgentRef.current(previous);
+    };
+    window.addEventListener("keydown", onPreviousUnread, true);
+    return () => {
+      window.removeEventListener("keydown", onPreviousUnread, true);
     };
   }, [
     jumpChatKey,
