@@ -118,6 +118,10 @@ final class AppModel {
     /// Same slot delivered by the list and the chat within one keypress.
     private var jumpChordSlot = 0
     private var jumpChordAt: TimeInterval = 0
+    /// The chat view and the composer can both see one ⌘⇧J. The second
+    /// delivery inside this window does not open that chat again.
+    private var nextUnreadChordId = ""
+    private var nextUnreadChordAt: TimeInterval = 0
     /// v0.89: pinned chat ids, in the order they were pinned. UserDefaults.
     var pinnedChatIDs: [String] = [] {
         didSet { ChatPins.write(pinnedChatIDs) }
@@ -467,6 +471,36 @@ final class AppModel {
         jumpChordAt = now
         Task {
             await select(id, push: true)
+            wantsComposerFocus = true
+        }
+    }
+
+    /// v1.17: hardware ⌘⇧J / ⌃⇧J. The next unread row after the open
+    /// chat, in the same order as Option+Up / Option+Down and ⌘1–⌘9,
+    /// wrapping. Same open as tapping the row, including the draft
+    /// swap, the reading place, and composer focus. No unread row
+    /// leaves the open chat put. The open chat is not selected again
+    /// when it is the only unread row.
+    func openNextUnreadChat() {
+        guard !computerTakeoverOpen else { return }
+        let ids = jumpChatIds()
+        var unread = Set<String>()
+        for id in ids {
+            if let agent = agents.first(where: { $0.id == id }), showsUnreadDot(agent) {
+                unread.insert(id)
+            }
+        }
+        guard let next = NextUnreadChat.target(
+            ids: ids,
+            currentId: selectedAgentID,
+            unread: unread
+        ) else { return }
+        let now = Date().timeIntervalSinceReferenceDate
+        if next == nextUnreadChordId, now - nextUnreadChordAt < 0.05 { return }
+        nextUnreadChordId = next
+        nextUnreadChordAt = now
+        Task {
+            await select(next, push: true)
             wantsComposerFocus = true
         }
     }

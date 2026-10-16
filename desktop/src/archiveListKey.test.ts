@@ -108,6 +108,8 @@ test("Cmd/Ctrl-Shift-H toggles the list; other chords do not", () => {
   );
   assert.equal(isArchiveListChord({ key: "h" }), false);
   assert.equal(isArchiveListChord({ key: "g", metaKey: true, shiftKey: true }), false);
+  assert.equal(isArchiveListChord({ key: "j", metaKey: true, shiftKey: true }), false);
+  assert.equal(isArchiveListChord({ key: "J", ctrlKey: true, shiftKey: true }), false);
   assert.equal(isArchiveListChord({ key: "a", metaKey: true, shiftKey: true }), false);
   assert.equal(isArchiveListChord({ key: "i", metaKey: true, shiftKey: true }), false);
   assert.equal(isArchiveListChord({ key: "k", metaKey: true }), false);

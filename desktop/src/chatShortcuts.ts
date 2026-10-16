@@ -50,6 +50,8 @@ export type ChatShortcut = {
  * Cmd/Ctrl-Shift-F toggles the sidebar All / Unread filter (v1.15).
  * Cmd/Ctrl-F still finds. Cmd/Ctrl-Shift-H opens or closes the
  * Archived chats list through the sidebar Archived control (v1.16).
+ * Cmd/Ctrl-Shift-J opens the next unread chat after the one that is
+ * open, in that same visible order, wrapping (v1.17).
  * Find's Enter / Shift-Enter steps matches.
  * The switcher uses Up / Down / Enter. Mention and skill menus use
  * Up / Down / Enter / Tab.
@@ -77,6 +79,7 @@ export const CHAT_SHORTCUTS: readonly ChatShortcut[] = [
   { id: "tool-traces", keys: "Cmd/Ctrl Shift G", action: "Collapse or expand tool traces" },
   { id: "unread-filter", keys: "Cmd/Ctrl Shift F", action: "Toggle All / Unread" },
   { id: "archive-list", keys: "Cmd/Ctrl Shift H", action: "Open or close Archived chats" },
+  { id: "next-unread", keys: "Cmd/Ctrl Shift J", action: "Next unread chat" },
   { id: "find", keys: "Cmd/Ctrl F", action: "Find in chat" },
   { id: "switch", keys: "Cmd/Ctrl K", action: "Switch chat" },
   { id: "info", keys: "Cmd/Ctrl Shift I", action: "Open info" },

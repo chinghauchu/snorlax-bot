@@ -63,6 +63,10 @@ struct ComposerTextView: UIViewRepresentable {
     /// Does not insert or send. IME marked text keeps the key.
     /// A key repeat does not flap. A chat does not have to be open.
     var onToggleArchiveList: (() -> Void)? = nil
+    /// v1.17: ⌘⇧J / ⌃⇧J opens the next unread chat. Does not insert or
+    /// send. IME marked text keeps the key. A key repeat does not jump
+    /// again. No unread row leaves the open chat put.
+    var onNextUnread: (() -> Void)? = nil
     /// True while the Delete confirm is on screen. Return and Delete confirm.
     /// Esc cancels. A key repeat never confirms.
     var deleteConfirmOpen: Bool = false
@@ -144,6 +148,9 @@ struct ComposerTextView: UIViewRepresentable {
         }
         view.onToggleArchiveList = { [coordinator = context.coordinator] in
             coordinator.parent.onToggleArchiveList?()
+        }
+        view.onNextUnread = { [coordinator = context.coordinator] in
+            coordinator.parent.onNextUnread?()
         }
         view.onConfirmDeleteKey = { [coordinator = context.coordinator] key in
             coordinator.parent.onConfirmDeleteKey?(key)
@@ -230,6 +237,9 @@ struct ComposerTextView: UIViewRepresentable {
         }
         view.onToggleArchiveList = { [coordinator = context.coordinator] in
             coordinator.parent.onToggleArchiveList?()
+        }
+        view.onNextUnread = { [coordinator = context.coordinator] in
+            coordinator.parent.onNextUnread?()
         }
         view.onConfirmDeleteKey = { [coordinator = context.coordinator] key in
             coordinator.parent.onConfirmDeleteKey?(key)
@@ -410,6 +420,7 @@ final class ComposerUITextView: UITextView {
     var onToggleToolTraces: (() -> Void)?
     var onToggleChatListFilter: (() -> Void)?
     var onToggleArchiveList: (() -> Void)?
+    var onNextUnread: (() -> Void)?
     var deleteConfirmOpen = false
     var onConfirmDeleteKey: ((String) -> Void)?
     var onCancelDelete: (() -> Void)?
@@ -431,6 +442,9 @@ final class ComposerUITextView: UITextView {
     private var chatListFilterConsumed = false
     /// v1.16: the first ⌘⇧H of a hold toggled. Repeats of that hold do not.
     private var archiveListConsumed = false
+    /// v1.17: the first ⌘⇧J of a hold opened the next unread chat.
+    /// Repeats of that hold do not.
+    private var nextUnreadConsumed = false
     /// v1.10: the first ⌘⇧U of a hold applies. Further repeats do not.
     private var markOpenChatConsumed = false
     var sendMuted = false
@@ -520,6 +534,7 @@ final class ComposerUITextView: UITextView {
             commands.append(contentsOf: toolTraceGroupCommands())
             commands.append(contentsOf: chatListFilterCommands())
             commands.append(contentsOf: archiveListCommands())
+            commands.append(contentsOf: nextUnreadCommands())
         }
         return commands
     }
@@ -809,6 +824,26 @@ final class ComposerUITextView: UITextView {
         return [command, control]
     }
 
+    /// ⌘⇧J / ⌃⇧J. Opens the next unread chat. Does not insert or send.
+    /// IME keeps the key. A repeat of the held chord does not jump again.
+    private func nextUnreadCommands() -> [UIKeyCommand] {
+        let command = UIKeyCommand(
+            title: NextUnreadChat.action,
+            action: #selector(nextUnreadFromShortcut),
+            input: "j",
+            modifierFlags: [.command, .shift]
+        )
+        let control = UIKeyCommand(
+            title: NextUnreadChat.action,
+            action: #selector(nextUnreadFromShortcut),
+            input: "j",
+            modifierFlags: [.control, .shift]
+        )
+        command.wantsPriorityOverSystemBehavior = true
+        control.wantsPriorityOverSystemBehavior = true
+        return [command, control]
+    }
+
     /// ⌘⇧⌫ / ⌃⇧⌫. Clears the draft. Does not insert or send.
     /// IME keeps the key. An empty draft is ignored by the model.
     private func clearComposerDraftCommands() -> [UIKeyCommand] {
@@ -975,6 +1010,15 @@ final class ComposerUITextView: UITextView {
         if archiveListConsumed { return }
         archiveListConsumed = true
         onToggleArchiveList?()
+    }
+
+    /// The first press opens the next unread chat. A repeat of this hold
+    /// returns without jumping again, so j is not inserted.
+    @objc private func nextUnreadFromShortcut() {
+        if markedTextRange != nil { return }
+        if nextUnreadConsumed { return }
+        nextUnreadConsumed = true
+        onNextUnread?()
     }
 
     @objc private func chatNavUp() {
@@ -1158,6 +1202,12 @@ final class ComposerUITextView: UITextView {
         }) {
             archiveListConsumed = false
         }
+        if presses.contains(where: { press in
+            if press.key?.keyCode == .keyboardJ { return true }
+            return press.key?.charactersIgnoringModifiers.lowercased() == "j"
+        }) {
+            nextUnreadConsumed = false
+        }
         super.pressesEnded(presses, with: event)
         // If deleteBackward already ran it cleared the flag. If a chorded
         // Delete never reached it, drop the flag on the next turn so a
@@ -1189,6 +1239,7 @@ final class ComposerUITextView: UITextView {
         toolTraceGroupsConsumed = false
         chatListFilterConsumed = false
         archiveListConsumed = false
+        nextUnreadConsumed = false
         super.pressesCancelled(presses, with: event)
     }
 
@@ -1321,6 +1372,20 @@ final class ComposerUITextView: UITextView {
                     shift: mods.contains(.shift)
                 ), archiveListConsumed {
                     // Held ⌘⇧H. Do not insert h and do not flap the list.
+                    return
+                }
+            }
+            if key.keyCode == .keyboardJ {
+                let mods = key.modifierFlags
+                if NextUnreadChat.isChord(
+                    key: "j",
+                    characters: key.charactersIgnoringModifiers,
+                    command: mods.contains(.command),
+                    control: mods.contains(.control),
+                    option: mods.contains(.alternate),
+                    shift: mods.contains(.shift)
+                ), nextUnreadConsumed {
+                    // Held ⌘⇧J. Do not insert j and do not jump again.
                     return
                 }
             }

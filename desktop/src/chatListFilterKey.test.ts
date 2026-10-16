@@ -125,6 +125,8 @@ test("Cmd/Ctrl-Shift-F toggles the filter; find and other chords do not", () => 
   assert.equal(isChatListFilterChord({ key: "g", metaKey: true, shiftKey: true }), false);
   assert.equal(isChatListFilterChord({ key: "h", metaKey: true, shiftKey: true }), false);
   assert.equal(isChatListFilterChord({ key: "H", ctrlKey: true, shiftKey: true }), false);
+  assert.equal(isChatListFilterChord({ key: "j", metaKey: true, shiftKey: true }), false);
+  assert.equal(isChatListFilterChord({ key: "J", ctrlKey: true, shiftKey: true }), false);
   assert.equal(isChatListFilterChord({ key: "u", metaKey: true, shiftKey: true }), false);
   assert.equal(isChatListFilterChord({ key: "k", metaKey: true }), false);
   assert.equal(isChatListFilterChord({ key: "l", metaKey: true }), false);
