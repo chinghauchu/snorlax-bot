@@ -75,6 +75,7 @@ struct ChatView: View {
                 onJumpChat: { slot in jumpChatFromComposer(slot) },
                 onArchiveOpenChat: { archiveOpenChatFromComposer() },
                 onUnarchiveOpenChat: { unarchiveOpenChatFromComposer() },
+                onChatHistory: { direction in chatHistoryFromComposer(direction) },
                 onClearComposerDraft: { clearComposerDraftFromComposer() },
                 onPinOpenChat: { pinOpenChatFromComposer() },
                 onMuteOpenChat: { muteOpenChatFromComposer() },
@@ -126,6 +127,9 @@ struct ChatView: View {
                 return .handled
             }
             if unarchiveOpenChatKey(press) == .handled {
+                return .handled
+            }
+            if chatHistoryKey(press) == .handled {
                 return .handled
             }
             if clearComposerDraftKey(press) == .handled {
@@ -543,6 +547,57 @@ struct ChatView: View {
         if unarchiveOpenChatBlocked() { return }
         guard model.isChatArchived(agent.id) else { return }
         model.unarchiveChat(agent.id)
+    }
+
+    /// Hardware ⌘[ / ⌃[ and ⌘] / ⌃] when the composer is not first responder.
+    /// The text view handles the same chord and keeps IME marked text.
+    /// Find, rename, search, a card text field, and the shortcuts sheet
+    /// own the key. A key repeat is swallowed so the bracket is not
+    /// inserted and history does not step again. Either end is a no-op.
+    /// An empty chat can still go back to the chat that was just closed.
+    private func chatHistoryKey(_ press: KeyPress) -> KeyPress.Result {
+        guard let direction = ChatOpenHistory.direction(
+            key: press.key.character,
+            characters: press.characters,
+            command: press.modifiers.contains(.command),
+            control: press.modifiers.contains(.control),
+            option: press.modifiers.contains(.option),
+            shift: press.modifiers.contains(.shift)
+        ) else { return .ignored }
+        if composerFocused { return .ignored }
+        if chatHistoryBlocked() { return .ignored }
+        if ChatOpenHistory.overlayTextFieldOwnsChord(
+            textFieldFocused: TranscriptScroll.textInputIsFirstResponder(),
+            composerFocused: false
+        ) {
+            return .ignored
+        }
+        if ChatOpenHistory.shouldIgnoreRepeat(press.`repeat`) {
+            return .handled
+        }
+        model.openChatFromHistory(direction)
+        return .handled
+    }
+
+    /// Composer ⌘[ / ⌘] and the control variants. Mention and skill menus
+    /// are checked by the bar. Find, the shortcuts sheet, and the lightbox
+    /// keep the key. The text view swallows a key repeat.
+    private func chatHistoryFromComposer(_ direction: String) {
+        if chatHistoryBlocked() { return }
+        guard let step = ChatOpenHistory.Direction(rawValue: direction) else { return }
+        model.openChatFromHistory(step)
+    }
+
+    private func chatHistoryBlocked() -> Bool {
+        if findOpen || findFieldFocused || lightbox != nil || shortcutsOpen {
+            return true
+        }
+        if model.computerTakeoverOpen || model.showProfile || model.showSettings {
+            return true
+        }
+        if model.skillMenuOpen() { return true }
+        if model.renameChatID != nil { return true }
+        return false
     }
 
     private func unarchiveOpenChatBlocked() -> Bool {
@@ -2533,6 +2588,7 @@ private struct ComposerBar: View {
     var onJumpChat: (Int) -> Void = { _ in }
     var onArchiveOpenChat: () -> Void = {}
     var onUnarchiveOpenChat: () -> Void = {}
+    var onChatHistory: (String) -> Void = { _ in }
     var onClearComposerDraft: () -> Void = {}
     var onPinOpenChat: () -> Void = {}
     var onMuteOpenChat: () -> Void = {}
@@ -2728,6 +2784,10 @@ private struct ComposerBar: View {
                     onUnarchiveOpenChat: {
                         if mentionQuery != nil || model.skillMenuOpen() { return }
                         onUnarchiveOpenChat()
+                    },
+                    onChatHistory: { direction in
+                        if mentionQuery != nil || model.skillMenuOpen() { return }
+                        onChatHistory(direction)
                     },
                     onClearComposerDraft: {
                         if mentionQuery != nil || model.skillMenuOpen() { return }

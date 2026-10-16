@@ -179,6 +179,16 @@ import {
   unarchiveOpenChatShouldRun,
 } from "./unarchiveOpenChat";
 import {
+  chatHistoryBlocked,
+  chatHistoryDirection,
+  chatHistoryShouldMove,
+  noteChatOpenClosed,
+  overlayTextFieldOwnsChatHistory,
+  recordChatOpen,
+  seedChatOpenHistory,
+  stepChatOpenHistory,
+} from "./chatOpenHistory";
+import {
   clearComposerDraftBlocked,
   composerDraftAlreadyEmpty,
   isClearComposerDraftChord,
@@ -1516,6 +1526,10 @@ export function App() {
   const createFromShortcutRef = useRef<() => void>(() => {});
   const archiveOpenChatRef = useRef<() => void>(() => {});
   const unarchiveOpenChatRef = useRef<() => void>(() => {});
+  const openChatHistoryRef = useRef<(direction: "back" | "forward") => void>(() => {});
+  const rosterIdsRef = useRef(new Set<string>());
+  rosterIdsRef.current = new Set(agents.map((agent) => agent.id));
+  const chatOpenHistoryRef = useRef(seedChatOpenHistory(SEED_CHANNEL_ID));
   const clearComposerDraftRef = useRef<() => void>(() => {});
   const pinOpenChatRef = useRef<() => void>(() => {});
   const muteOpenChatRef = useRef<() => void>(() => {});
@@ -2265,6 +2279,7 @@ export function App() {
         retainArchives(rosterIds);
         retainNames(rosterIds);
         const preferred = fallbackRosterSelection(roster);
+        chatOpenHistoryRef.current = seedChatOpenHistory(preferred);
         moveComposer(preferred, null);
         previewLive.current = false;
         setActiveId(preferred);
@@ -2282,6 +2297,7 @@ export function App() {
         finishNewMessagesLoad(epoch);
       } catch (err) {
         setAgents([]);
+        chatOpenHistoryRef.current = seedChatOpenHistory(null);
         moveComposer(null, null);
         previewLive.current = false;
         setActiveId(null);
@@ -2307,6 +2323,7 @@ export function App() {
       newMessagesPlace.current = freshNewMessagesPlace();
       setDividerAnchorId(null);
       setAgents([PLACEHOLDER_CHANNEL, PLACEHOLDER_SEED]);
+      chatOpenHistoryRef.current = seedChatOpenHistory(SEED_CHANNEL_ID);
       moveComposer(SEED_CHANNEL_ID, null);
       setActiveId(SEED_CHANNEL_ID);
       setThreadId(null);
@@ -2397,7 +2414,11 @@ export function App() {
     id: string,
     thread: string | null,
     focusAfter: "composer" | "sidebar" = "composer",
+    historyMode: "record" | "restore" = "record",
   ) {
+    if (historyMode === "record") {
+      chatOpenHistoryRef.current = recordChatOpen(chatOpenHistoryRef.current, id);
+    }
     moveComposer(id, thread);
     previewLive.current = false;
     const epoch = beginNewMessagesLoad(id, thread);
@@ -2489,6 +2510,7 @@ export function App() {
     try {
       const agent = await createAgent(session, "New agent");
       setAgents((prev) => [...prev, agent]);
+      chatOpenHistoryRef.current = recordChatOpen(chatOpenHistoryRef.current, agent.id);
       moveComposer(agent.id, null);
       setActiveId(agent.id);
       setThreadId(null);
@@ -2521,6 +2543,7 @@ export function App() {
       setCreateMenuOpen(false);
       setChannelNameDraft("New channel");
       setChannelMemberDraft([]);
+      chatOpenHistoryRef.current = recordChatOpen(chatOpenHistoryRef.current, channel.id);
       moveComposer(channel.id, null);
       setActiveId(channel.id);
       setThreadId(null);
@@ -3105,7 +3128,12 @@ export function App() {
               ? explicitNext
               : null
             : nextRosterSelection(roster, doomed.id, activeId);
-        if (next) chatUnread.current.clear(next);
+        if (next) {
+          chatUnread.current.clear(next);
+          chatOpenHistoryRef.current = recordChatOpen(chatOpenHistoryRef.current, next);
+        } else {
+          chatOpenHistoryRef.current = noteChatOpenClosed(chatOpenHistoryRef.current);
+        }
         moveComposer(next, null);
         previewLive.current = false;
         setActiveId(next);
@@ -6142,6 +6170,73 @@ export function App() {
     skillMenuOpen,
   ]);
 
+  // v1.23: Cmd/Ctrl-[ steps back through this window's chat-open
+  // history. Cmd/Ctrl-] steps forward. Opening a chat pushes.
+  // Going back and then opening a different chat truncates the
+  // forward entries. Deleted chats are skipped. Archived chats stay
+  // valid. Either end is a no-op. The composer does not own the
+  // chord and the bracket is not inserted. A key repeat is swallowed
+  // and does not step again. IME keeps it.
+  openChatHistoryRef.current = (direction) => {
+    const stepped = stepChatOpenHistory(
+      chatOpenHistoryRef.current,
+      direction,
+      (id) => rosterIdsRef.current.has(id),
+    );
+    chatOpenHistoryRef.current = stepped.history;
+    if (!stepped.id) return;
+    void loadConversation(stepped.id, null, "composer", "restore");
+  };
+
+  useEffect(() => {
+    const onChatHistory = (event: globalThis.KeyboardEvent) => {
+      if (event.defaultPrevented) return;
+      const direction = chatHistoryDirection({
+        key: event.key,
+        metaKey: event.metaKey,
+        ctrlKey: event.ctrlKey,
+        altKey: event.altKey,
+        shiftKey: event.shiftKey,
+        repeat: event.repeat,
+      });
+      if (!direction) return;
+      const gate = {
+        composing: isComposerComposing(event),
+        overlayTextField: overlayTextFieldOwnsChatHistory(
+          focusIsTextField(event.target),
+          event.target === composerRef.current,
+        ),
+        inCard: focusInsideCard(event.target),
+        findOpen,
+        switchOpen,
+        shortcutsOpen,
+        renaming: renamingId != null,
+        lightboxOpen: lightboxTarget != null,
+        menuOpen: contextMenu != null,
+        blocked: switcherBlocked || mentionOpen || skillMenuOpen,
+      };
+      if (chatHistoryBlocked(gate)) return;
+      event.preventDefault();
+      event.stopPropagation();
+      if (!chatHistoryShouldMove({ repeat: event.repeat })) return;
+      openChatHistoryRef.current(direction);
+    };
+    window.addEventListener("keydown", onChatHistory, true);
+    return () => {
+      window.removeEventListener("keydown", onChatHistory, true);
+    };
+  }, [
+    findOpen,
+    switchOpen,
+    shortcutsOpen,
+    renamingId,
+    lightboxTarget,
+    contextMenu,
+    switcherBlocked,
+    mentionOpen,
+    skillMenuOpen,
+  ]);
+
   // v1.18: Cmd/Ctrl-Shift-Y regenerates the latest completed LEFT
   // through the same path as the Regenerate hover control. The
   // composer does not own the chord and the letter is not inserted.
@@ -6406,6 +6501,7 @@ export function App() {
   }, [switchOpen, switchSafeIndex, activeSwitch?.id, switchQuery]);
 
   function leaveToEmptyChat() {
+    chatOpenHistoryRef.current = noteChatOpenClosed(chatOpenHistoryRef.current);
     moveComposer(null, null);
     previewLive.current = false;
     setFindOpen(false);

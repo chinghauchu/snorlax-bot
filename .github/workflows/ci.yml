@@ -140,3 +140,4 @@ jobs:
           python3 ios/scripts/test_ios_mark_all_read_key.py
           python3 ios/scripts/test_ios_previous_unread_chat.py
           python3 ios/scripts/test_ios_unarchive_open_chat.py
+          python3 ios/scripts/test_ios_chat_open_history.py
