@@ -28,7 +28,10 @@ export type ChatShortcut = {
  * and does not insert (v0.99). Cmd/Ctrl-Shift-C copies the last
  * assistant reply (v1.00). Page Up / Page Down scroll the transcript
  * one viewport; Cmd/Ctrl-Home / Cmd/Ctrl-End jump to the oldest or
- * latest loaded messages (v1.03). Cmd/Ctrl-N starts a new chat
+ * latest loaded messages (v1.03). Cmd/Ctrl-Shift-Up /
+ * Cmd/Ctrl-Shift-Down jump to the previous or next message you sent
+ * (v1.25). An empty composer does not own that chord. A composer
+ * that already has text keeps it, so selection stays. Cmd/Ctrl-N starts a new chat
  * through the sidebar New agent path (v1.04). Cmd/Ctrl-1 through
  * Cmd/Ctrl-8 opens that visible chat; Cmd/Ctrl-9 opens the last
  * one (v1.05). Cmd/Ctrl-Shift-A archives the open chat through the
@@ -81,6 +84,7 @@ export const CHAT_SHORTCUTS: readonly ChatShortcut[] = [
   { id: "copy-last", keys: "Cmd/Ctrl Shift C", action: "Copy the last reply" },
   { id: "page", keys: "Page Up / Page Down", action: "Scroll the transcript" },
   { id: "transcript-edge", keys: "Cmd/Ctrl Home / End", action: "Oldest or latest messages" },
+  { id: "user-jump", keys: "Cmd/Ctrl Shift ↑ / ↓", action: "Previous or next message you sent" },
   { id: "transcript-text", keys: "Cmd/Ctrl = / + / - / 0", action: "Larger, smaller, or default text" },
   { id: "escape", keys: "Esc", action: "Stop, close, or jump" },
   { id: "recall", keys: "↑", action: "Recall last message" },

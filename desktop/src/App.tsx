@@ -200,6 +200,19 @@ import {
   writeTranscriptTextScale,
 } from "./transcriptTextScale";
 import {
+  composerTextOwnsUserJump,
+  isUserJumpMessage,
+  overlayTextFieldOwnsUserJump,
+  pickUserJumpId,
+  userJumpContentTop,
+  userJumpHighlightMs,
+  userJumpScrollTop,
+  userJumpView,
+  userMessageJumpBlocked,
+  userMessageJumpDirection,
+  userMessageJumpShouldMove,
+} from "./userMessageJump";
+import {
   clearComposerDraftBlocked,
   composerDraftAlreadyEmpty,
   isClearComposerDraftChord,
@@ -1160,6 +1173,8 @@ export function App() {
   const [transcriptTextPercent, setTranscriptTextPercent] = useState(() =>
     readTranscriptTextScale(browserTranscriptTextStorage()),
   );
+  const [userJumpHighlightId, setUserJumpHighlightId] = useState<string | null>(null);
+  const userJumpHighlightGen = useRef(0);
   const [accent, setAccent] = useState(
     () => localStorage.getItem(ACCENT_KEY) || DEFAULT_ACCENT,
   );
@@ -6311,6 +6326,119 @@ export function App() {
     skillMenuOpen,
   ]);
 
+  // v1.25: Cmd/Ctrl-Shift-Up / Cmd/Ctrl-Shift-Down jump to the previous
+  // or next message you sent in the loaded transcript. The target
+  // sits under the sticky day header and gets a brief outline.
+  // Either end stays put. An empty composer does not own the chord.
+  // A composer that already has text keeps selecting. A key repeat
+  // is swallowed and does not jump again. IME keeps the key.
+  // Stick-to-bottom and the reading place follow the same scroll path
+  // as Page Up / Page Down. Collapsed long messages stay collapsed.
+  useEffect(() => {
+    const onUserMessageJump = (event: globalThis.KeyboardEvent) => {
+      if (event.defaultPrevented) return;
+      const direction = userMessageJumpDirection({
+        key: event.key,
+        metaKey: event.metaKey,
+        ctrlKey: event.ctrlKey,
+        altKey: event.altKey,
+        shiftKey: event.shiftKey,
+        repeat: event.repeat,
+      });
+      if (!direction) return;
+      const composer = composerRef.current;
+      const gate = {
+        chatOpen: active != null,
+        composing: isComposerComposing(event),
+        overlayTextField: overlayTextFieldOwnsUserJump(
+          focusIsTextField(event.target),
+          event.target === composer,
+        ),
+        composerHasText: composerTextOwnsUserJump(
+          event.target === composer,
+          composer?.value ?? "",
+        ),
+        inCard: focusInsideCard(event.target),
+        findOpen,
+        switchOpen,
+        shortcutsOpen,
+        renaming: renamingId != null,
+        lightboxOpen: lightboxTarget != null,
+        menuOpen: contextMenu != null,
+        blocked: switcherBlocked || mentionOpen || skillMenuOpen,
+      };
+      if (userMessageJumpBlocked(gate)) return;
+      event.preventDefault();
+      event.stopPropagation();
+      if (!userMessageJumpShouldMove({ repeat: event.repeat })) return;
+      const el = scroller.current;
+      if (!el) return;
+      const day = el.querySelector<HTMLElement>(".day-separator");
+      const stickyInset = day ? day.getBoundingClientRect().height : 0;
+      const scrollerTop = el.getBoundingClientRect().top;
+      const rows = [...el.querySelectorAll<HTMLElement>("[data-user-jump]")].map(
+        (node) => ({
+          id: node.dataset.userJump ?? "",
+          top: userJumpContentTop(
+            node.getBoundingClientRect().top,
+            scrollerTop,
+            el.scrollTop,
+          ),
+        }),
+      );
+      const maxScroll = Math.max(0, el.scrollHeight - el.clientHeight);
+      const targetId = pickUserJumpId(
+        rows,
+        direction,
+        userJumpView({
+          scrollTop: el.scrollTop,
+          stickyInset,
+          maxScroll,
+        }),
+      );
+      if (!targetId) return;
+      const target = rows.find((row) => row.id === targetId);
+      if (!target || target.top == null) return;
+      const nextTop = userJumpScrollTop(target.top, stickyInset, maxScroll);
+      el.scrollTop = nextTop;
+      const box = {
+        scrollTop: nextTop,
+        scrollHeight: el.scrollHeight,
+        clientHeight: el.clientHeight,
+      };
+      applyStick(
+        onUserScroll(stickRef.current, isNearBottom(box, NEAR_BOTTOM_PX)),
+      );
+      captureOpenReadingPlace();
+      const token = userJumpHighlightGen.current + 1;
+      userJumpHighlightGen.current = token;
+      setUserJumpHighlightId(targetId);
+      const ms = userJumpHighlightMs(
+        window.matchMedia("(prefers-reduced-motion: reduce)").matches,
+      );
+      window.setTimeout(() => {
+        if (userJumpHighlightGen.current === token) setUserJumpHighlightId(null);
+      }, ms);
+    };
+    window.addEventListener("keydown", onUserMessageJump, true);
+    return () => {
+      window.removeEventListener("keydown", onUserMessageJump, true);
+    };
+  }, [
+    active,
+    findOpen,
+    switchOpen,
+    shortcutsOpen,
+    renamingId,
+    lightboxTarget,
+    contextMenu,
+    switcherBlocked,
+    mentionOpen,
+    skillMenuOpen,
+    applyStick,
+    captureOpenReadingPlace,
+  ]);
+
   // v1.18: Cmd/Ctrl-Shift-Y regenerates the latest completed LEFT
   // through the same path as the Regenerate hover control. The
   // composer does not own the chord and the letter is not inserted.
@@ -7357,6 +7485,12 @@ export function App() {
                       <>
                       <div
                         className="bubble user"
+                        data-user-jump={
+                          isUserJumpMessage(message) ? message.id : undefined
+                        }
+                        data-user-jump-highlight={
+                          userJumpHighlightId === message.id ? "true" : undefined
+                        }
                         data-failed={
                           failedSends.some((row) => row.id === message.id)
                             ? "true"

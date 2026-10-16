@@ -142,3 +142,4 @@ jobs:
           python3 ios/scripts/test_ios_unarchive_open_chat.py
           python3 ios/scripts/test_ios_chat_open_history.py
           python3 ios/scripts/test_ios_transcript_text_scale.py
+          python3 ios/scripts/test_ios_user_message_jump.py

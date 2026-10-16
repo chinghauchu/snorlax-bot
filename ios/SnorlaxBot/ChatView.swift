@@ -40,6 +40,11 @@ struct ChatView: View {
     /// v1.13: muted Copied beside the chat name after ⌘⇧E. Same 1.2s as Copy.
     @State private var transcriptCopied = false
     @State private var transcriptCopiedPulse = 0
+    /// v1.25: the sent message a keyboard jump just landed on.
+    @State private var userJumpHighlightID: String?
+    @State private var userJumpPulse = 0
+    @State private var userJumpUnmeasuredID: String?
+    @State private var userJumpToken = 0
 
     private var agent: Agent {
         model.visibleAgents.first(where: { $0.id == agentID })
@@ -77,6 +82,7 @@ struct ChatView: View {
                 onUnarchiveOpenChat: { unarchiveOpenChatFromComposer() },
                 onChatHistory: { direction in chatHistoryFromComposer(direction) },
                 onTranscriptText: { step in transcriptTextFromComposer(step) },
+                onUserMessageJump: { direction in userMessageJumpFromComposer(direction) },
                 onClearComposerDraft: { clearComposerDraftFromComposer() },
                 onPinOpenChat: { pinOpenChatFromComposer() },
                 onMuteOpenChat: { muteOpenChatFromComposer() },
@@ -183,6 +189,9 @@ struct ChatView: View {
                 return .handled
             }
             if chatNavKey(press) == .handled {
+                return .handled
+            }
+            if userMessageJumpKey(press) == .handled {
                 return .handled
             }
             if transcriptScrollKey(press) == .handled {
@@ -619,6 +628,117 @@ struct ChatView: View {
     private func transcriptTextFromComposer(_ step: TranscriptTextScale.Step) {
         if transcriptTextBlocked() { return }
         model.adjustTranscriptText(step)
+    }
+
+    /// Hardware ⌘⇧↑ / ⌃⇧↑ and ⌘⇧↓ / ⌃⇧↓ when the composer is not first
+    /// responder. The text view handles the same chord when the composer
+    /// is empty, and leaves it alone when the composer has text so the
+    /// arrows keep selecting. Find, rename, search, a card text field,
+    /// and the shortcuts sheet own the key. A key repeat does not jump
+    /// again. Either end stays put.
+    private func userMessageJumpKey(_ press: KeyPress) -> KeyPress.Result {
+        guard let direction = UserMessageJump.direction(
+            up: press.key == .upArrow,
+            down: press.key == .downArrow,
+            command: press.modifiers.contains(.command),
+            control: press.modifiers.contains(.control),
+            option: press.modifiers.contains(.option),
+            shift: press.modifiers.contains(.shift)
+        ) else { return .ignored }
+        if composerFocused { return .ignored }
+        guard hasRealAgent else { return .ignored }
+        if userMessageJumpBlocked() { return .ignored }
+        if UserMessageJump.overlayTextFieldOwnsChord(
+            textFieldFocused: TranscriptScroll.textInputIsFirstResponder(),
+            composerFocused: false
+        ) {
+            return .ignored
+        }
+        if UserMessageJump.shouldIgnoreRepeat(press.`repeat`) {
+            return .handled
+        }
+        applyUserMessageJump(direction)
+        return .handled
+    }
+
+    /// Composer ⌘⇧↑ / ⌘⇧↓ and the control variants. The text view only
+    /// offers the chord when the field is empty. Mention and skill menus
+    /// are checked by the bar. Find, the shortcuts sheet, and the lightbox
+    /// keep the key. The text view swallows a key repeat.
+    private func userMessageJumpFromComposer(_ direction: UserMessageJump.Direction) {
+        guard hasRealAgent else { return }
+        if userMessageJumpBlocked() { return }
+        applyUserMessageJump(direction)
+    }
+
+    private func userMessageJumpBlocked() -> Bool {
+        if findOpen || findFieldFocused || lightbox != nil || shortcutsOpen {
+            return true
+        }
+        if model.computerTakeoverOpen || model.showProfile || model.showSettings {
+            return true
+        }
+        if model.skillMenuOpen() { return true }
+        if model.renameChatID != nil { return true }
+        return false
+    }
+
+    /// Scroll the sent message under the pinned day header and outline it.
+    /// A row that is not laid out yet uses scroll-to-id. Stick-to-bottom
+    /// and the reading place follow the same offset path as Page Up.
+    /// Collapsed long messages are left collapsed.
+    private func applyUserMessageJump(_ direction: UserMessageJump.Direction) {
+        let visible = model.visibleMessages(for: agent)
+        let hasDay = visible.contains { $0.createdAt != nil }
+        let inset: CGFloat = hasDay ? UserMessageJump.stickyInset : 0
+        var box = scrollBox
+        if let commandedY {
+            box.offsetY = commandedY
+        }
+        let rows: [UserMessageJump.Row] = visible.compactMap { message in
+            guard message.isFromUser, message.isKindMessage else { return nil }
+            let frame = readingFrames.first { $0.id == message.id }
+            return UserMessageJump.Row(id: message.id, top: frame?.minY)
+        }
+        let line = UserMessageJump.viewLine(
+            scrollTop: box.offsetY,
+            stickyInset: inset,
+            maxOffset: box.maxOffset
+        )
+        guard let id = UserMessageJump.pick(rows: rows, direction: direction, line: line) else {
+            return
+        }
+        highlightUserJump(id)
+        guard let top = rows.first(where: { $0.id == id })?.top else {
+            userJumpUnmeasuredID = id
+            userJumpToken += 1
+            return
+        }
+        let next = UserMessageJump.scrollOffset(
+            targetTop: top,
+            stickyInset: inset,
+            maxOffset: box.maxOffset
+        )
+        commandedY = next
+        let near = TranscriptScroll.isNearBottom(offsetY: next, box: box)
+        stick = StickToBottom.onUserScroll(state: stick, nearBottom: near)
+        readingNearBottom = near
+        let transaction = TranscriptScroll.transaction(reduceMotion: reduceMotion)
+        withTransaction(transaction) {
+            transcriptPosition.scrollTo(point: CGPoint(x: 0, y: next))
+        }
+    }
+
+    private func highlightUserJump(_ id: String) {
+        userJumpPulse += 1
+        let pulse = userJumpPulse
+        userJumpHighlightID = id
+        let delay = UserMessageJump.highlightDuration(reduceMotion: reduceMotion)
+        DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
+            if pulse == userJumpPulse {
+                userJumpHighlightID = nil
+            }
+        }
     }
 
     private func transcriptTextBlocked() -> Bool {
@@ -2216,12 +2336,21 @@ struct ChatView: View {
             }
             .onChange(of: agentID) { _, _ in
                 closeFind()
+                userJumpHighlightID = nil
             }
             .onChange(of: model.threadID) { _, _ in
                 closeFind()
+                userJumpHighlightID = nil
             }
             .onChange(of: model.stickBump) { _, _ in
                 snapToBottom(proxy)
+            }
+            .onChange(of: userJumpToken) { _, token in
+                guard token > 0, let id = userJumpUnmeasuredID else { return }
+                let transaction = TranscriptScroll.transaction(reduceMotion: reduceMotion)
+                withTransaction(transaction) {
+                    proxy.scrollTo(id, anchor: .top)
+                }
             }
             .onChange(of: keyboardJumpToken) { _, token in
                 guard token > 0 else { return }
@@ -2543,6 +2672,9 @@ struct ChatView: View {
                 showEditAsNew: showEditAsNew,
                 showCaret: showCaret,
                 shortcutCopied: shortcutCopied,
+                jumpHighlight: userJumpHighlightID == message.id
+                    && message.isFromUser
+                    && message.isKindMessage,
                 onOpenImage: { target in
                     openLightbox(target)
                 }
@@ -2644,6 +2776,7 @@ private struct ComposerBar: View {
     var onUnarchiveOpenChat: () -> Void = {}
     var onChatHistory: (String) -> Void = { _ in }
     var onTranscriptText: (TranscriptTextScale.Step) -> Void = { _ in }
+    var onUserMessageJump: (UserMessageJump.Direction) -> Void = { _ in }
     var onClearComposerDraft: () -> Void = {}
     var onPinOpenChat: () -> Void = {}
     var onMuteOpenChat: () -> Void = {}
@@ -2847,6 +2980,10 @@ private struct ComposerBar: View {
                     onTranscriptText: { step in
                         if mentionQuery != nil || model.skillMenuOpen() { return }
                         onTranscriptText(step)
+                    },
+                    onUserMessageJump: { direction in
+                        if mentionQuery != nil || model.skillMenuOpen() { return }
+                        onUserMessageJump(direction)
                     },
                     onClearComposerDraft: {
                         if mentionQuery != nil || model.skillMenuOpen() { return }
@@ -3223,10 +3360,12 @@ private struct MessageBubble: View {
     var showEditAsNew = false
     var showCaret = false
     var shortcutCopied = false
+    var jumpHighlight = false
     var onOpenImage: (ImageLightbox.Target) -> Void = { _ in }
     var onJump: ((HandoffRef) -> Void)?
     @Environment(AppModel.self) private var model
     @Environment(\.chatFind) private var find
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var shareURL: URL?
     @State private var copied = false
     @State private var copyPulse = 0
@@ -3377,6 +3516,19 @@ private struct MessageBubble: View {
                     .padding(.vertical, 8)
                     .background(Color.accentColor.opacity(0.22), in: RoundedRectangle(cornerRadius: 16))
                     .overlay(findStroke(message.id))
+                    .overlay {
+                        if jumpHighlight {
+                            RoundedRectangle(cornerRadius: 16)
+                                .strokeBorder(Color.accentColor.opacity(0.65), lineWidth: 2)
+                                .allowsHitTesting(false)
+                        }
+                    }
+                    .animation(
+                        UserMessageJump.highlightAnimates(reduceMotion: reduceMotion)
+                            ? .easeOut(duration: 0.18)
+                            : nil,
+                        value: jumpHighlight
+                    )
                     .opacity(model.failedSend(id: message.id) == nil ? 1 : 0.55)
                     .transaction { transaction in
                         transaction.animation = nil
