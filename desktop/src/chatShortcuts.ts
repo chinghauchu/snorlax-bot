@@ -60,6 +60,9 @@ export type ChatShortcut = {
  * Cmd/Ctrl-Shift-K opens the previous unread chat before the one
  * that is open, in that same visible order, wrapping (v1.21).
  * Cmd/Ctrl-K without Shift still opens the switcher.
+ * Cmd/Ctrl-Shift-B unarchives the open chat through the sidebar
+ * Unarchive action when that chat is archived (v1.22).
+ * Cmd/Ctrl-Shift-A still only archives.
  * Find's Enter / Shift-Enter steps matches.
  * The switcher uses Up / Down / Enter. Mention and skill menus use
  * Up / Down / Enter / Tab.
@@ -77,6 +80,7 @@ export const CHAT_SHORTCUTS: readonly ChatShortcut[] = [
   { id: "chat-nav", keys: "Alt ↑ / Alt ↓", action: "Previous or next chat" },
   { id: "jump-chat", keys: "Cmd/Ctrl 1-9", action: "Open a chat (9 is last)" },
   { id: "archive-chat", keys: "Cmd/Ctrl Shift A", action: "Archive this chat" },
+  { id: "unarchive-chat", keys: "Cmd/Ctrl Shift B", action: "Unarchive this chat" },
   { id: "clear-draft", keys: "Cmd/Ctrl Shift Backspace", action: "Clear the draft" },
   { id: "pin-chat", keys: "Cmd/Ctrl Shift P", action: "Pin or unpin this chat" },
   { id: "mute-chat", keys: "Cmd/Ctrl Shift M", action: "Mute or unmute this chat" },

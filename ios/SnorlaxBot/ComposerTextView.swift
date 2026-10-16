@@ -34,6 +34,11 @@ struct ComposerTextView: UIViewRepresentable {
     /// v1.06: ⌘⇧A / ⌃⇧A archives the open chat. Does not insert or send.
     /// IME marked text keeps the key.
     var onArchiveOpenChat: (() -> Void)? = nil
+    /// v1.22: ⌘⇧B / ⌃⇧B unarchives the open chat when it is archived.
+    /// Does not insert or send. IME marked text keeps the key.
+    /// A key repeat does not unarchive again. A chat that is not
+    /// archived stays put.
+    var onUnarchiveOpenChat: (() -> Void)? = nil
     /// v1.07: ⌘⇧⌫ / ⌃⇧⌫ clears the composer draft. Does not send.
     /// IME marked text keeps the key.
     var onClearComposerDraft: (() -> Void)? = nil
@@ -136,6 +141,9 @@ struct ComposerTextView: UIViewRepresentable {
         view.onArchiveOpenChat = { [coordinator = context.coordinator] in
             coordinator.parent.onArchiveOpenChat?()
         }
+        view.onUnarchiveOpenChat = { [coordinator = context.coordinator] in
+            coordinator.parent.onUnarchiveOpenChat?()
+        }
         view.onClearComposerDraft = { [coordinator = context.coordinator] in
             coordinator.parent.onClearComposerDraft?()
         }
@@ -236,6 +244,9 @@ struct ComposerTextView: UIViewRepresentable {
         }
         view.onArchiveOpenChat = { [coordinator = context.coordinator] in
             coordinator.parent.onArchiveOpenChat?()
+        }
+        view.onUnarchiveOpenChat = { [coordinator = context.coordinator] in
+            coordinator.parent.onUnarchiveOpenChat?()
         }
         view.onClearComposerDraft = { [coordinator = context.coordinator] in
             coordinator.parent.onClearComposerDraft?()
@@ -451,6 +462,7 @@ final class ComposerUITextView: UITextView {
     var onNewChat: (() -> Void)?
     var onJumpChat: ((Int) -> Void)?
     var onArchiveOpenChat: (() -> Void)?
+    var onUnarchiveOpenChat: (() -> Void)?
     var onClearComposerDraft: (() -> Void)?
     var onPinOpenChat: (() -> Void)?
     var onMuteOpenChat: (() -> Void)?
@@ -499,6 +511,8 @@ final class ComposerUITextView: UITextView {
     private var focusSidebarConsumed = false
     /// v1.20: the first ⌘⇧O of a hold cleared. Repeats of that hold do not.
     private var markAllReadConsumed = false
+    /// v1.22: the first ⌘⇧B of a hold unarchived. Repeats of that hold do not.
+    private var unarchiveOpenChatConsumed = false
     /// v1.10: the first ⌘⇧U of a hold applies. Further repeats do not.
     private var markOpenChatConsumed = false
     var sendMuted = false
@@ -578,6 +592,7 @@ final class ComposerUITextView: UITextView {
             commands.append(contentsOf: newChatCommands())
             commands.append(contentsOf: jumpChatCommands())
             commands.append(contentsOf: archiveOpenChatCommands())
+            commands.append(contentsOf: unarchiveOpenChatCommands())
             commands.append(contentsOf: clearComposerDraftCommands())
             commands.append(contentsOf: pinOpenChatCommands())
             commands.append(contentsOf: muteOpenChatCommands())
@@ -678,6 +693,27 @@ final class ComposerUITextView: UITextView {
             commands.append(control)
         }
         return commands
+    }
+
+    /// ⌘⇧B / ⌃⇧B. Unarchives the open chat when it is archived.
+    /// Does not insert or send. IME keeps the key. A repeat of the
+    /// held chord does not unarchive again.
+    private func unarchiveOpenChatCommands() -> [UIKeyCommand] {
+        let command = UIKeyCommand(
+            title: UnarchiveOpenChat.action,
+            action: #selector(unarchiveOpenChatFromShortcut),
+            input: "b",
+            modifierFlags: [.command, .shift]
+        )
+        let control = UIKeyCommand(
+            title: UnarchiveOpenChat.action,
+            action: #selector(unarchiveOpenChatFromShortcut),
+            input: "b",
+            modifierFlags: [.control, .shift]
+        )
+        command.wantsPriorityOverSystemBehavior = true
+        control.wantsPriorityOverSystemBehavior = true
+        return [command, control]
     }
 
     /// ⌘⇧A / ⌃⇧A. Archives the open chat. Does not insert or send.
@@ -1062,6 +1098,16 @@ final class ComposerUITextView: UITextView {
         onArchiveOpenChat?()
     }
 
+    /// The first press unarchives when the open chat is archived.
+    /// A repeat of this hold returns without unarchiving again, so b
+    /// is not inserted.
+    @objc private func unarchiveOpenChatFromShortcut() {
+        if markedTextRange != nil { return }
+        if unarchiveOpenChatConsumed { return }
+        unarchiveOpenChatConsumed = true
+        onUnarchiveOpenChat?()
+    }
+
     @objc private func clearComposerDraftFromShortcut() {
         if markedTextRange != nil { return }
         onClearComposerDraft?()
@@ -1324,6 +1370,12 @@ final class ComposerUITextView: UITextView {
             }
         }
         if presses.contains(where: { press in
+            if press.key?.keyCode == .keyboardB { return true }
+            return press.key?.charactersIgnoringModifiers.lowercased() == "b"
+        }) {
+            unarchiveOpenChatConsumed = false
+        }
+        if presses.contains(where: { press in
             if press.key?.keyCode == .keyboardP { return true }
             return press.key?.charactersIgnoringModifiers.lowercased() == "p"
         }) {
@@ -1430,6 +1482,7 @@ final class ComposerUITextView: UITextView {
         }
         heldConfirmKeys.removeAll()
         pinOpenChatConsumed = false
+        unarchiveOpenChatConsumed = false
         muteOpenChatConsumed = false
         markOpenChatConsumed = false
         renameOpenChatConsumed = false
@@ -1451,6 +1504,20 @@ final class ComposerUITextView: UITextView {
             guard let key = press.key else { continue }
             if handleDeleteConfirm(key) {
                 return
+            }
+            if key.keyCode == .keyboardB {
+                let mods = key.modifierFlags
+                if UnarchiveOpenChat.isChord(
+                    key: "b",
+                    characters: key.charactersIgnoringModifiers,
+                    command: mods.contains(.command),
+                    control: mods.contains(.control),
+                    option: mods.contains(.alternate),
+                    shift: mods.contains(.shift)
+                ), unarchiveOpenChatConsumed {
+                    // Held ⌘⇧B. Do not insert b and do not unarchive again.
+                    return
+                }
             }
             if key.keyCode == .keyboardP {
                 let mods = key.modifierFlags

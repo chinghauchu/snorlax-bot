@@ -173,6 +173,12 @@ import {
   overlayTextFieldOwnsArchiveOpenChat,
 } from "./archiveOpenChat";
 import {
+  isUnarchiveOpenChatChord,
+  overlayTextFieldOwnsUnarchiveOpenChat,
+  unarchiveOpenChatBlocked,
+  unarchiveOpenChatShouldRun,
+} from "./unarchiveOpenChat";
+import {
   clearComposerDraftBlocked,
   composerDraftAlreadyEmpty,
   isClearComposerDraftChord,
@@ -1509,6 +1515,7 @@ export function App() {
   const markAllReadRef = useRef<() => void>(() => {});
   const createFromShortcutRef = useRef<() => void>(() => {});
   const archiveOpenChatRef = useRef<() => void>(() => {});
+  const unarchiveOpenChatRef = useRef<() => void>(() => {});
   const clearComposerDraftRef = useRef<() => void>(() => {});
   const pinOpenChatRef = useRef<() => void>(() => {});
   const muteOpenChatRef = useRef<() => void>(() => {});
@@ -6049,6 +6056,81 @@ export function App() {
     mutedChatIds,
     unreadIds,
     replyUnreadIds,
+    findOpen,
+    switchOpen,
+    shortcutsOpen,
+    renamingId,
+    lightboxTarget,
+    contextMenu,
+    switcherBlocked,
+    mentionOpen,
+    skillMenuOpen,
+  ]);
+
+  // v1.22: Cmd/Ctrl-Shift-B unarchives the open chat through the sidebar
+  // Unarchive action when that chat is archived. The row leaves the
+  // Archived list and returns to the main list. The open chat stays
+  // open. The composer does not own the chord and b is not inserted.
+  // A key repeat is swallowed and does not unarchive again. IME keeps
+  // it. Nothing changes when no chat is open or the chat is not archived.
+  // Cmd/Ctrl-Shift-A still only archives.
+  unarchiveOpenChatRef.current = () => {
+    const id = active?.id;
+    if (!id || !isChatArchived(archivedChatIds, id)) return;
+    onUnarchive(id);
+  };
+
+  useEffect(() => {
+    const onUnarchiveOpenChat = (event: globalThis.KeyboardEvent) => {
+      if (event.defaultPrevented) return;
+      if (
+        !isUnarchiveOpenChatChord({
+          key: event.key,
+          metaKey: event.metaKey,
+          ctrlKey: event.ctrlKey,
+          altKey: event.altKey,
+          shiftKey: event.shiftKey,
+          repeat: event.repeat,
+        })
+      ) {
+        return;
+      }
+      const gate = {
+        chatOpen: active != null,
+        composing: isComposerComposing(event),
+        overlayTextField: overlayTextFieldOwnsUnarchiveOpenChat(
+          focusIsTextField(event.target),
+          event.target === composerRef.current,
+        ),
+        inCard: focusInsideCard(event.target),
+        findOpen,
+        switchOpen,
+        shortcutsOpen,
+        renaming: renamingId != null,
+        lightboxOpen: lightboxTarget != null,
+        menuOpen: contextMenu != null,
+        blocked: switcherBlocked || mentionOpen || skillMenuOpen,
+      };
+      if (unarchiveOpenChatBlocked(gate)) return;
+      event.preventDefault();
+      event.stopPropagation();
+      if (
+        !unarchiveOpenChatShouldRun({
+          repeat: event.repeat,
+          archived: active != null && isChatArchived(archivedChatIds, active.id),
+        })
+      ) {
+        return;
+      }
+      unarchiveOpenChatRef.current();
+    };
+    window.addEventListener("keydown", onUnarchiveOpenChat, true);
+    return () => {
+      window.removeEventListener("keydown", onUnarchiveOpenChat, true);
+    };
+  }, [
+    active,
+    archivedChatIds,
     findOpen,
     switchOpen,
     shortcutsOpen,
