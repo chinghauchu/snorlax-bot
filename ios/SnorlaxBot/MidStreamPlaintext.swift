@@ -21,6 +21,8 @@ struct MidStreamPlaintextView: View {
     var rowId: String = ""
     @Environment(\.openURL) private var openURL
     @Environment(\.chatFind) private var find
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    @Environment(\.transcriptTextPercent) private var transcriptTextPercent
 
     var body: some View {
         let active = find.activeRowId == rowId
@@ -31,7 +33,15 @@ struct MidStreamPlaintextView: View {
             activeEnd: active ? find.activeEnd : -1
         )
         Text(wrapping(painted))
-            .font(.system(size: 14))
+            .font(
+                .system(
+                    size: TranscriptTextScale.points(
+                        base: 14,
+                        percent: transcriptTextPercent,
+                        dynamicType: dynamicTypeSize
+                    )
+                )
+            )
             .textSelection(.enabled)
             .multilineTextAlignment(.leading)
             .fixedSize(horizontal: false, vertical: true)

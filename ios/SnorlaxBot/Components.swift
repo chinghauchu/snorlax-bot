@@ -190,12 +190,18 @@ struct MentionLabel: View {
     @Environment(\.openURL) private var openURL
     @Environment(\.chatFind) private var find
     @Environment(AppModel.self) private var model
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    @Environment(\.transcriptTextPercent) private var transcriptTextPercent
+
+    private var metrics: TranscriptTextScale.Metrics {
+        TranscriptTextScale.metrics(percent: transcriptTextPercent, dynamicType: dynamicTypeSize)
+    }
 
     var body: some View {
         QuoteSelectableText(
             text: wrapping(attributed),
             quoteEnabled: quoteEnabled,
-            font: .systemFont(ofSize: 14),
+            font: metrics.bodyFont,
             onQuote: { model.quoteIntoComposer($0) },
             onLink: { url in
                 guard links, WebLinks.allows(url) else { return }
@@ -263,7 +269,7 @@ struct MentionLabel: View {
             let resolved = lowered.contains(token.lowercased())
             if resolved {
                 chunk.foregroundColor = .accentColor
-                chunk.font = .system(size: 14, weight: .semibold)
+                chunk.font = metrics.bodySemibold
             }
             output.append(chunk)
             last = match.range.location + match.range.length

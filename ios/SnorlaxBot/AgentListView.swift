@@ -115,6 +115,9 @@ struct AgentListView: View {
                 focusRequestedChatRow()
             }
             .onKeyPress(phases: [.down, .repeat]) { press in
+                if transcriptTextKey(press) == .handled {
+                    return .handled
+                }
                 if chatHistoryKey(press) == .handled {
                     return .handled
                 }
@@ -196,6 +199,35 @@ struct AgentListView: View {
         Task { @MainActor in
             focusedChatID = id
         }
+    }
+
+    /// Hardware ⌘= / ⌃=, ⌘+, ⌘-, and ⌘0 from the chat list. Search,
+    /// rename, and the channel sheet own the key. A key repeat does
+    /// not step the text size again.
+    private func transcriptTextKey(_ press: KeyPress) -> KeyPress.Result {
+        guard let step = TranscriptTextScale.step(
+            key: press.key.character,
+            characters: press.characters,
+            command: press.modifiers.contains(.command),
+            control: press.modifiers.contains(.control),
+            option: press.modifiers.contains(.option),
+            shift: press.modifiers.contains(.shift)
+        ) else { return .ignored }
+        if renamingID != nil || showCreateChannel || pendingDelete != nil { return .ignored }
+        if model.showSettings || model.showProfile || model.computerTakeoverOpen {
+            return .ignored
+        }
+        if TranscriptTextScale.overlayTextFieldOwnsChord(
+            textFieldFocused: TranscriptScroll.textInputIsFirstResponder(),
+            composerFocused: false
+        ) {
+            return .ignored
+        }
+        if TranscriptTextScale.shouldIgnoreRepeat(press.`repeat`) {
+            return .handled
+        }
+        model.adjustTranscriptText(step)
+        return .handled
     }
 
     /// Hardware ⌘[ / ⌃[ and ⌘] / ⌃] from the chat list. Search, rename,

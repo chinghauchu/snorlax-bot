@@ -76,6 +76,7 @@ struct ChatView: View {
                 onArchiveOpenChat: { archiveOpenChatFromComposer() },
                 onUnarchiveOpenChat: { unarchiveOpenChatFromComposer() },
                 onChatHistory: { direction in chatHistoryFromComposer(direction) },
+                onTranscriptText: { step in transcriptTextFromComposer(step) },
                 onClearComposerDraft: { clearComposerDraftFromComposer() },
                 onPinOpenChat: { pinOpenChatFromComposer() },
                 onMuteOpenChat: { muteOpenChatFromComposer() },
@@ -110,6 +111,7 @@ struct ChatView: View {
                 activeEnd: activeHit?.end ?? -1
             )
         )
+        .environment(\.transcriptTextPercent, model.transcriptTextPercent)
         .onKeyPress(phases: [.down, .up, .`repeat`]) { press in
             if deleteConfirmKey(press) == .handled {
                 return .handled
@@ -130,6 +132,9 @@ struct ChatView: View {
                 return .handled
             }
             if chatHistoryKey(press) == .handled {
+                return .handled
+            }
+            if transcriptTextKey(press) == .handled {
                 return .handled
             }
             if clearComposerDraftKey(press) == .handled {
@@ -577,6 +582,55 @@ struct ChatView: View {
         }
         model.openChatFromHistory(direction)
         return .handled
+    }
+
+    /// Hardware ⌘= / ⌃= and ⌘+ grow the transcript text. ⌘- shrinks it.
+    /// ⌘0 resets it. The text view handles the same chord and keeps IME
+    /// marked text. Find, rename, search, a card text field, and the
+    /// shortcuts sheet own the key. A key repeat is swallowed so the
+    /// character is not inserted and the size does not step again.
+    private func transcriptTextKey(_ press: KeyPress) -> KeyPress.Result {
+        guard let step = TranscriptTextScale.step(
+            key: press.key.character,
+            characters: press.characters,
+            command: press.modifiers.contains(.command),
+            control: press.modifiers.contains(.control),
+            option: press.modifiers.contains(.option),
+            shift: press.modifiers.contains(.shift)
+        ) else { return .ignored }
+        if composerFocused { return .ignored }
+        if transcriptTextBlocked() { return .ignored }
+        if TranscriptTextScale.overlayTextFieldOwnsChord(
+            textFieldFocused: TranscriptScroll.textInputIsFirstResponder(),
+            composerFocused: false
+        ) {
+            return .ignored
+        }
+        if TranscriptTextScale.shouldIgnoreRepeat(press.`repeat`) {
+            return .handled
+        }
+        model.adjustTranscriptText(step)
+        return .handled
+    }
+
+    /// Composer ⌘= / ⌘- / ⌘0 and the control variants. Mention and skill
+    /// menus are checked by the bar. Find, the shortcuts sheet, and the
+    /// lightbox keep the key. The text view swallows a key repeat.
+    private func transcriptTextFromComposer(_ step: TranscriptTextScale.Step) {
+        if transcriptTextBlocked() { return }
+        model.adjustTranscriptText(step)
+    }
+
+    private func transcriptTextBlocked() -> Bool {
+        if findOpen || findFieldFocused || lightbox != nil || shortcutsOpen {
+            return true
+        }
+        if model.computerTakeoverOpen || model.showProfile || model.showSettings {
+            return true
+        }
+        if model.skillMenuOpen() { return true }
+        if model.renameChatID != nil { return true }
+        return false
     }
 
     /// Composer ⌘[ / ⌘] and the control variants. Mention and skill menus
@@ -2589,6 +2643,7 @@ private struct ComposerBar: View {
     var onArchiveOpenChat: () -> Void = {}
     var onUnarchiveOpenChat: () -> Void = {}
     var onChatHistory: (String) -> Void = { _ in }
+    var onTranscriptText: (TranscriptTextScale.Step) -> Void = { _ in }
     var onClearComposerDraft: () -> Void = {}
     var onPinOpenChat: () -> Void = {}
     var onMuteOpenChat: () -> Void = {}
@@ -2788,6 +2843,10 @@ private struct ComposerBar: View {
                     onChatHistory: { direction in
                         if mentionQuery != nil || model.skillMenuOpen() { return }
                         onChatHistory(direction)
+                    },
+                    onTranscriptText: { step in
+                        if mentionQuery != nil || model.skillMenuOpen() { return }
+                        onTranscriptText(step)
                     },
                     onClearComposerDraft: {
                         if mentionQuery != nil || model.skillMenuOpen() { return }
@@ -3234,7 +3293,7 @@ private struct MessageBubble: View {
             }
             ForEach(toolTraces) { trace in
                 FindHighlighted(text: trace.summary, rowId: "live:\(trace.id)")
-                    .font(.system(size: 12))
+                    .transcriptFont(12)
                     .foregroundStyle(.secondary)
                     .padding(.horizontal, 12)
                     .id("live:\(trace.id)")
@@ -3255,7 +3314,7 @@ private struct MessageBubble: View {
                     index: messageIndex
                 )) {
                     FindHighlighted(text: message.content, rowId: message.id)
-                        .font(.system(size: 12))
+                        .transcriptFont(12)
                         .foregroundStyle(.secondary)
                         .padding(.horizontal, 12)
                 }
@@ -3278,15 +3337,15 @@ private struct MessageBubble: View {
                             text: message.userAsk ?? message.content,
                             rowId: message.id
                         )
-                            .font(.system(size: 14))
+                            .transcriptFont(14)
                             .textSelection(.enabled)
-                        if let brief = message.brief, !brief.isEmpty {
+                            if let brief = message.brief, !brief.isEmpty {
                             DisclosureGroup("Context") {
                                 Text(brief)
-                                    .font(.system(size: 12))
+                                    .transcriptFont(12)
                                     .foregroundStyle(.secondary)
                             }
-                            .font(.system(size: 12))
+                            .transcriptFont(12)
                             .foregroundStyle(.secondary)
                         }
                     }
@@ -3308,7 +3367,7 @@ private struct MessageBubble: View {
                                 links: true,
                                 findRowId: message.id
                             )
-                                .font(.system(size: 14))
+                                .transcriptFont(14)
                                 .textSelection(.enabled)
                                 .frame(minWidth: 0, alignment: .leading)
                         }

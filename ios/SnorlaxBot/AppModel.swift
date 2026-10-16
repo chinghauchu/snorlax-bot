@@ -143,6 +143,14 @@ final class AppModel {
     /// delivery of that same direction inside this window does not step again.
     private var chatHistoryChordDirection = ""
     private var chatHistoryChordAt: TimeInterval = 0
+    /// v1.24: transcript text percent. UserDefaults. 100 is the Dynamic Type base.
+    var transcriptTextPercent: Int = TranscriptTextScale.defaultPercent {
+        didSet { TranscriptTextScale.write(transcriptTextPercent) }
+    }
+    /// The list, the chat, and the composer can all see one size chord.
+    /// The second delivery of that same step inside this window does not step again.
+    private var transcriptTextChord = ""
+    private var transcriptTextChordAt: TimeInterval = 0
     /// v0.89: pinned chat ids, in the order they were pinned. UserDefaults.
     var pinnedChatIDs: [String] = [] {
         didSet { ChatPins.write(pinnedChatIDs) }
@@ -257,6 +265,7 @@ final class AppModel {
         chatNames = ChatNames.read()
         archivedChatIDs = ChatArchive.read()
         mutedChatIDs = ChatMute.read()
+        transcriptTextPercent = TranscriptTextScale.read()
         publishReplyUnread()
     }
 
@@ -2099,6 +2108,19 @@ final class AppModel {
             navigationPath = []
             threadID = nil
         }
+    }
+
+    /// v1.24: one step of the transcript text size. A second delivery of
+    /// the same step in this moment, from the list and the chat, does
+    /// not step again. The ends stay clamped.
+    func adjustTranscriptText(_ step: TranscriptTextScale.Step) {
+        let now = Date().timeIntervalSinceReferenceDate
+        if step.rawValue == transcriptTextChord, now - transcriptTextChordAt < 0.05 {
+            return
+        }
+        transcriptTextChord = step.rawValue
+        transcriptTextChordAt = now
+        transcriptTextPercent = TranscriptTextScale.apply(transcriptTextPercent, step)
     }
 
     /// v1.23: hardware ⌘[ / ⌃[ and ⌘] / ⌃]. Same open as tapping the row,

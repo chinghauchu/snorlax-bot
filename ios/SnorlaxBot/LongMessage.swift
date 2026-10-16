@@ -21,6 +21,12 @@ enum LongMessageCollapse {
         UIFont.systemFont(ofSize: 14).lineHeight * lines
     }
 
+    /// The same 14 lines after Dynamic Type and the transcript text scale.
+    static func scaledMaxHeight(percent: Int, dynamicType: DynamicTypeSize) -> CGFloat {
+        let size = TranscriptTextScale.points(base: 14, percent: percent, dynamicType: dynamicType)
+        return UIFont.systemFont(ofSize: size).lineHeight * lines
+    }
+
     static func overflows(height: CGFloat, limit: CGFloat = maxHeight) -> Bool {
         height > limit + 1
     }
@@ -63,11 +69,20 @@ struct LongMessageBody<Content: View>: View {
     @ViewBuilder var content: () -> Content
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    @Environment(\.transcriptTextPercent) private var transcriptTextPercent
     @State private var expanded = false
     @State private var fullHeight: CGFloat = 0
 
+    private var scaledLimit: CGFloat {
+        LongMessageCollapse.scaledMaxHeight(
+            percent: transcriptTextPercent,
+            dynamicType: dynamicTypeSize
+        )
+    }
+
     private var overflows: Bool {
-        LongMessageCollapse.overflows(height: fullHeight)
+        LongMessageCollapse.overflows(height: fullHeight, limit: scaledLimit)
     }
 
     private var clamp: Bool {
@@ -80,7 +95,7 @@ struct LongMessageBody<Content: View>: View {
     }
 
     private var limit: CGFloat? {
-        if clamp { return LongMessageCollapse.maxHeight }
+        if clamp { return scaledLimit }
         if expanded && overflows && fullHeight > 0 { return fullHeight }
         return nil
     }
