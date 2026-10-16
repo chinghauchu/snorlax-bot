@@ -74,6 +74,7 @@ struct ChatView: View {
                 onNewChat: { newChatFromComposer() },
                 onJumpChat: { slot in jumpChatFromComposer(slot) },
                 onArchiveOpenChat: { archiveOpenChatFromComposer() },
+                onUnarchiveOpenChat: { unarchiveOpenChatFromComposer() },
                 onClearComposerDraft: { clearComposerDraftFromComposer() },
                 onPinOpenChat: { pinOpenChatFromComposer() },
                 onMuteOpenChat: { muteOpenChatFromComposer() },
@@ -122,6 +123,9 @@ struct ChatView: View {
                 return .handled
             }
             if archiveOpenChatKey(press) == .handled {
+                return .handled
+            }
+            if unarchiveOpenChatKey(press) == .handled {
                 return .handled
             }
             if clearComposerDraftKey(press) == .handled {
@@ -497,6 +501,60 @@ struct ChatView: View {
         if model.computerTakeoverOpen || model.showProfile || model.showSettings { return }
         if model.skillMenuOpen() { return }
         model.archiveChat(agent.id)
+    }
+
+    /// Hardware ⌘⇧B / ⌃⇧B when the composer is not first responder.
+    /// The text view handles the same chord and keeps IME marked text.
+    /// Find, rename, search, a card text field, and an empty chat own the key.
+    /// A chat that is not archived is left as it is. A key repeat is
+    /// swallowed so b is not inserted and Unarchive does not run again.
+    private func unarchiveOpenChatKey(_ press: KeyPress) -> KeyPress.Result {
+        guard hasRealAgent else { return .ignored }
+        guard UnarchiveOpenChat.isChord(
+            key: press.key.character,
+            characters: press.characters,
+            command: press.modifiers.contains(.command),
+            control: press.modifiers.contains(.control),
+            option: press.modifiers.contains(.option),
+            shift: press.modifiers.contains(.shift)
+        ) else { return .ignored }
+        if composerFocused { return .ignored }
+        if unarchiveOpenChatBlocked() { return .ignored }
+        if UnarchiveOpenChat.overlayTextFieldOwnsChord(
+            textFieldFocused: TranscriptScroll.textInputIsFirstResponder(),
+            composerFocused: false
+        ) {
+            return .ignored
+        }
+        if UnarchiveOpenChat.shouldIgnoreRepeat(press.`repeat`) {
+            return .handled
+        }
+        guard model.isChatArchived(agent.id) else { return .handled }
+        model.unarchiveChat(agent.id)
+        return .handled
+    }
+
+    /// Composer ⌘⇧B. Mention and skill menus are checked by the bar.
+    /// Find, the shortcuts sheet, and the lightbox keep the key.
+    /// An empty chat does not unarchive. A chat that is not archived
+    /// stays put. The text view swallows a key repeat.
+    private func unarchiveOpenChatFromComposer() {
+        guard hasRealAgent else { return }
+        if unarchiveOpenChatBlocked() { return }
+        guard model.isChatArchived(agent.id) else { return }
+        model.unarchiveChat(agent.id)
+    }
+
+    private func unarchiveOpenChatBlocked() -> Bool {
+        if findOpen || findFieldFocused || lightbox != nil || shortcutsOpen {
+            return true
+        }
+        if model.computerTakeoverOpen || model.showProfile || model.showSettings {
+            return true
+        }
+        if model.skillMenuOpen() { return true }
+        if model.renameChatID != nil { return true }
+        return false
     }
 
     /// Hardware ⌘⇧⌫ / ⌃⇧⌫ when the composer is not first responder.
@@ -2474,6 +2532,7 @@ private struct ComposerBar: View {
     var onNewChat: () -> Void = {}
     var onJumpChat: (Int) -> Void = { _ in }
     var onArchiveOpenChat: () -> Void = {}
+    var onUnarchiveOpenChat: () -> Void = {}
     var onClearComposerDraft: () -> Void = {}
     var onPinOpenChat: () -> Void = {}
     var onMuteOpenChat: () -> Void = {}
@@ -2665,6 +2724,10 @@ private struct ComposerBar: View {
                     onArchiveOpenChat: {
                         if mentionQuery != nil || model.skillMenuOpen() { return }
                         onArchiveOpenChat()
+                    },
+                    onUnarchiveOpenChat: {
+                        if mentionQuery != nil || model.skillMenuOpen() { return }
+                        onUnarchiveOpenChat()
                     },
                     onClearComposerDraft: {
                         if mentionQuery != nil || model.skillMenuOpen() { return }

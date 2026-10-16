@@ -4,13 +4,14 @@ import SwiftUI
 /// v0.73: gestures and hardware-keyboard shortcuts that already exist
 /// on the chat screen. Long-press actions come from the message menu
 /// and the approve-command copy. Hardware keys are `UIKeyCommand`
-/// (Escape, Up, Option+Up/Down, ⌘L / ⌃L, ⌘N / ⌃N, ⌘1–⌘9 / ⌃1–⌃9, ⌘⇧C / ⌃⇧C, ⌘⇧A / ⌃⇧A, ⌘⇧P / ⌃⇧P, ⌘⇧M / ⌃⇧M, ⌘⇧U / ⌃⇧U, ⌘⇧R / ⌃⇧R, ⌘⇧D / ⌃⇧D, ⌘⇧E / ⌃⇧E, ⌘⇧G / ⌃⇧G, ⌘⇧F / ⌃⇧F, ⌘⇧H / ⌃⇧H, ⌘⇧J / ⌃⇧J, ⌘⇧Y / ⌃⇧Y, ⌘⇧S / ⌃⇧S, ⌘⇧O / ⌃⇧O, ⌘⇧K / ⌃⇧K), `.onKeyPress`
-/// (Page Up / Page Down, ⌘↑ / ⌘↓, ⌘N, ⌘1–⌘9, ⌘⇧A, ⌘⇧⌫, ⌘⇧P, ⌘⇧M, ⌘⇧U, ⌘⇧R, ⌘⇧D, ⌘⇧E, ⌘⇧G, ⌘⇧F, ⌘⇧H, ⌘⇧J, ⌘⇧Y, ⌘⇧S, ⌘⇧O, ⌘⇧K, and Enter / Delete / Esc on the delete confirm), `.keyboardShortcut` (Cmd-F), and
+/// (Escape, Up, Option+Up/Down, ⌘L / ⌃L, ⌘N / ⌃N, ⌘1–⌘9 / ⌃1–⌃9, ⌘⇧C / ⌃⇧C, ⌘⇧A / ⌃⇧A, ⌘⇧B / ⌃⇧B, ⌘⇧P / ⌃⇧P, ⌘⇧M / ⌃⇧M, ⌘⇧U / ⌃⇧U, ⌘⇧R / ⌃⇧R, ⌘⇧D / ⌃⇧D, ⌘⇧E / ⌃⇧E, ⌘⇧G / ⌃⇧G, ⌘⇧F / ⌃⇧F, ⌘⇧H / ⌃⇧H, ⌘⇧J / ⌃⇧J, ⌘⇧Y / ⌃⇧Y, ⌘⇧S / ⌃⇧S, ⌘⇧O / ⌃⇧O, ⌘⇧K / ⌃⇧K), `.onKeyPress`
+/// (Page Up / Page Down, ⌘↑ / ⌘↓, ⌘N, ⌘1–⌘9, ⌘⇧A, ⌘⇧B, ⌘⇧⌫, ⌘⇧P, ⌘⇧M, ⌘⇧U, ⌘⇧R, ⌘⇧D, ⌘⇧E, ⌘⇧G, ⌘⇧F, ⌘⇧H, ⌘⇧J, ⌘⇧Y, ⌘⇧S, ⌘⇧O, ⌘⇧K, and Enter / Delete / Esc on the delete confirm), `.keyboardShortcut` (Cmd-F), and
 /// the composer Return / Shift-Return presses. ⌘L focuses the composer
 /// and does not insert or send. ⌘N starts a new chat through New agent
 /// and does not send. ⌘1–⌘8 opens that chat and ⌘9 opens the last one.
 /// ⌘⇧C copies the last assistant reply
 /// and does not send. ⌘⇧A archives the open chat and does not send.
+/// ⌘⇧B unarchives the open chat when it is archived and does not insert or send.
 /// ⌘⇧⌫ clears the open chat's composer draft and does not send.
 /// ⌘⇧P pins or unpins the open chat and does not insert or send.
 /// ⌘⇧M mutes or unmutes the open chat and does not insert or send.
@@ -93,6 +94,7 @@ enum ChatShortcuts {
         Row(id: "chat-nav", keys: ChatNav.keysLabel, action: ChatNav.action),
         Row(id: "jump-chat", keys: ChatJump.keysLabel, action: ChatJump.action),
         Row(id: "archive-chat", keys: ArchiveOpenChat.keysLabel, action: ArchiveOpenChat.action),
+        Row(id: "unarchive-chat", keys: UnarchiveOpenChat.keysLabel, action: UnarchiveOpenChat.action),
         Row(id: "clear-draft", keys: ClearComposerDraft.keysLabel, action: ClearComposerDraft.action),
         Row(id: "pin-chat", keys: PinOpenChat.keysLabel, action: PinOpenChat.action),
         Row(id: "mute-chat", keys: MuteOpenChat.keysLabel, action: MuteOpenChat.action),
