@@ -538,6 +538,12 @@ button:disabled {
   background: color-mix(in srgb, var(--accent) 12%, transparent);
 }
 
+/* v1.19: keyboard focus in the chat list. */
+.row:focus-within {
+  outline: 1px solid color-mix(in srgb, var(--accent) 70%, transparent);
+  outline-offset: -1px;
+}
+
 .row-name {
   overflow: hidden;
   text-overflow: ellipsis;

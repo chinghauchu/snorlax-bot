@@ -3,6 +3,7 @@ import SwiftUI
 
 struct AgentListView: View {
     @Environment(AppModel.self) private var model
+    @FocusState private var focusedChatID: String?
     @State private var pendingDelete: Agent?
     @State private var showCreateChannel = false
     /// The list is on screen. Jump order follows the Archived flag only then.
@@ -107,6 +108,12 @@ struct AgentListView: View {
                 guard let id, model.isChatArchived(id) else { return }
                 model.showArchivedList = true
             }
+            .onChange(of: model.sidebarFocusRequest) { _, _ in
+                focusRequestedChatRow()
+            }
+            .onAppear {
+                focusRequestedChatRow()
+            }
             .onKeyPress(phases: [.down, .repeat]) { press in
                 if chatListFilterKey(press) == .handled {
                     return .handled
@@ -174,6 +181,15 @@ struct AgentListView: View {
                 }
                 Button("Cancel", role: .cancel) { pendingDelete = nil }
             }
+    }
+
+    /// ⌘⇧S asked for this row. Focusing it lets Up / Down move the
+    /// selection. A missing row leaves the list alone.
+    private func focusRequestedChatRow() {
+        guard model.sidebarKeyboardFocus, let id = model.sidebarFocusChatID else { return }
+        Task { @MainActor in
+            focusedChatID = id
+        }
     }
 
     /// Hardware ⌘⇧F / ⌃⇧F from the chat list. The same All / Unread
@@ -465,6 +481,7 @@ struct AgentListView: View {
                     .tint(Color.accentColor)
                 }
             }
+            .focused($focusedChatID, equals: agent.id)
             .modifier(
                 UserAgentDeleteMenu(
                     enabled: model.isConfigured,

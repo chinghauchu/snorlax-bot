@@ -71,6 +71,10 @@ struct ComposerTextView: UIViewRepresentable {
     /// Does not insert or send. IME marked text keeps the key.
     /// A key repeat does not regenerate again.
     var onRegenerateLastReply: (() -> Void)? = nil
+    /// v1.19: ⌘⇧S / ⌃⇧S moves focus into the chat list.
+    /// Does not insert or send. IME marked text keeps the key.
+    /// A key repeat does not move focus again.
+    var onFocusSidebarList: (() -> Void)? = nil
     /// True while the Delete confirm is on screen. Return and Delete confirm.
     /// Esc cancels. A key repeat never confirms.
     var deleteConfirmOpen: Bool = false
@@ -158,6 +162,9 @@ struct ComposerTextView: UIViewRepresentable {
         }
         view.onRegenerateLastReply = { [coordinator = context.coordinator] in
             coordinator.parent.onRegenerateLastReply?()
+        }
+        view.onFocusSidebarList = { [coordinator = context.coordinator] in
+            coordinator.parent.onFocusSidebarList?()
         }
         view.onConfirmDeleteKey = { [coordinator = context.coordinator] key in
             coordinator.parent.onConfirmDeleteKey?(key)
@@ -250,6 +257,9 @@ struct ComposerTextView: UIViewRepresentable {
         }
         view.onRegenerateLastReply = { [coordinator = context.coordinator] in
             coordinator.parent.onRegenerateLastReply?()
+        }
+        view.onFocusSidebarList = { [coordinator = context.coordinator] in
+            coordinator.parent.onFocusSidebarList?()
         }
         view.onConfirmDeleteKey = { [coordinator = context.coordinator] key in
             coordinator.parent.onConfirmDeleteKey?(key)
@@ -432,6 +442,7 @@ final class ComposerUITextView: UITextView {
     var onToggleArchiveList: (() -> Void)?
     var onNextUnread: (() -> Void)?
     var onRegenerateLastReply: (() -> Void)?
+    var onFocusSidebarList: (() -> Void)?
     var deleteConfirmOpen = false
     var onConfirmDeleteKey: ((String) -> Void)?
     var onCancelDelete: (() -> Void)?
@@ -458,6 +469,8 @@ final class ComposerUITextView: UITextView {
     private var nextUnreadConsumed = false
     /// v1.18: the first ⌘⇧Y of a hold regenerated. Repeats of that hold do not.
     private var regenerateLastReplyConsumed = false
+    /// v1.19: the first ⌘⇧S of a hold moved focus. Repeats of that hold do not.
+    private var focusSidebarConsumed = false
     /// v1.10: the first ⌘⇧U of a hold applies. Further repeats do not.
     private var markOpenChatConsumed = false
     var sendMuted = false
@@ -549,6 +562,7 @@ final class ComposerUITextView: UITextView {
             commands.append(contentsOf: archiveListCommands())
             commands.append(contentsOf: nextUnreadCommands())
             commands.append(contentsOf: regenerateLastReplyCommands())
+            commands.append(contentsOf: focusSidebarCommands())
         }
         return commands
     }
@@ -878,6 +892,26 @@ final class ComposerUITextView: UITextView {
         return [command, control]
     }
 
+    /// ⌘⇧S / ⌃⇧S. Moves focus into the chat list. Does not insert or send.
+    /// IME keeps the key. A repeat of the held chord does not move focus again.
+    private func focusSidebarCommands() -> [UIKeyCommand] {
+        let command = UIKeyCommand(
+            title: FocusSidebarList.action,
+            action: #selector(focusSidebarFromShortcut),
+            input: "s",
+            modifierFlags: [.command, .shift]
+        )
+        let control = UIKeyCommand(
+            title: FocusSidebarList.action,
+            action: #selector(focusSidebarFromShortcut),
+            input: "s",
+            modifierFlags: [.control, .shift]
+        )
+        command.wantsPriorityOverSystemBehavior = true
+        control.wantsPriorityOverSystemBehavior = true
+        return [command, control]
+    }
+
     /// ⌘⇧⌫ / ⌃⇧⌫. Clears the draft. Does not insert or send.
     /// IME keeps the key. An empty draft is ignored by the model.
     private func clearComposerDraftCommands() -> [UIKeyCommand] {
@@ -1062,6 +1096,15 @@ final class ComposerUITextView: UITextView {
         if regenerateLastReplyConsumed { return }
         regenerateLastReplyConsumed = true
         onRegenerateLastReply?()
+    }
+
+    /// The first press moves focus into the chat list. A repeat of this
+    /// hold returns without moving again, so s is not inserted.
+    @objc private func focusSidebarFromShortcut() {
+        if markedTextRange != nil { return }
+        if focusSidebarConsumed { return }
+        focusSidebarConsumed = true
+        onFocusSidebarList?()
     }
 
     @objc private func chatNavUp() {
@@ -1257,6 +1300,12 @@ final class ComposerUITextView: UITextView {
         }) {
             regenerateLastReplyConsumed = false
         }
+        if presses.contains(where: { press in
+            if press.key?.keyCode == .keyboardS { return true }
+            return press.key?.charactersIgnoringModifiers.lowercased() == "s"
+        }) {
+            focusSidebarConsumed = false
+        }
         super.pressesEnded(presses, with: event)
         // If deleteBackward already ran it cleared the flag. If a chorded
         // Delete never reached it, drop the flag on the next turn so a
@@ -1290,6 +1339,7 @@ final class ComposerUITextView: UITextView {
         archiveListConsumed = false
         nextUnreadConsumed = false
         regenerateLastReplyConsumed = false
+        focusSidebarConsumed = false
         super.pressesCancelled(presses, with: event)
     }
 
@@ -1450,6 +1500,20 @@ final class ComposerUITextView: UITextView {
                     shift: mods.contains(.shift)
                 ), regenerateLastReplyConsumed {
                     // Held ⌘⇧Y. Do not insert y and do not regenerate again.
+                    return
+                }
+            }
+            if key.keyCode == .keyboardS {
+                let mods = key.modifierFlags
+                if FocusSidebarList.isChord(
+                    key: "s",
+                    characters: key.charactersIgnoringModifiers,
+                    command: mods.contains(.command),
+                    control: mods.contains(.control),
+                    option: mods.contains(.alternate),
+                    shift: mods.contains(.shift)
+                ), focusSidebarConsumed {
+                    // Held ⌘⇧S. Do not insert s and do not move focus again.
                     return
                 }
             }

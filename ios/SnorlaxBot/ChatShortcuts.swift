@@ -4,8 +4,8 @@ import SwiftUI
 /// v0.73: gestures and hardware-keyboard shortcuts that already exist
 /// on the chat screen. Long-press actions come from the message menu
 /// and the approve-command copy. Hardware keys are `UIKeyCommand`
-/// (Escape, Up, Option+Up/Down, ⌘L / ⌃L, ⌘N / ⌃N, ⌘1–⌘9 / ⌃1–⌃9, ⌘⇧C / ⌃⇧C, ⌘⇧A / ⌃⇧A, ⌘⇧P / ⌃⇧P, ⌘⇧M / ⌃⇧M, ⌘⇧U / ⌃⇧U, ⌘⇧R / ⌃⇧R, ⌘⇧D / ⌃⇧D, ⌘⇧E / ⌃⇧E, ⌘⇧G / ⌃⇧G, ⌘⇧F / ⌃⇧F, ⌘⇧H / ⌃⇧H, ⌘⇧J / ⌃⇧J, ⌘⇧Y / ⌃⇧Y), `.onKeyPress`
-/// (Page Up / Page Down, ⌘↑ / ⌘↓, ⌘N, ⌘1–⌘9, ⌘⇧A, ⌘⇧⌫, ⌘⇧P, ⌘⇧M, ⌘⇧U, ⌘⇧R, ⌘⇧D, ⌘⇧E, ⌘⇧G, ⌘⇧F, ⌘⇧H, ⌘⇧J, ⌘⇧Y, and Enter / Delete / Esc on the delete confirm), `.keyboardShortcut` (Cmd-F), and
+/// (Escape, Up, Option+Up/Down, ⌘L / ⌃L, ⌘N / ⌃N, ⌘1–⌘9 / ⌃1–⌃9, ⌘⇧C / ⌃⇧C, ⌘⇧A / ⌃⇧A, ⌘⇧P / ⌃⇧P, ⌘⇧M / ⌃⇧M, ⌘⇧U / ⌃⇧U, ⌘⇧R / ⌃⇧R, ⌘⇧D / ⌃⇧D, ⌘⇧E / ⌃⇧E, ⌘⇧G / ⌃⇧G, ⌘⇧F / ⌃⇧F, ⌘⇧H / ⌃⇧H, ⌘⇧J / ⌃⇧J, ⌘⇧Y / ⌃⇧Y, ⌘⇧S / ⌃⇧S), `.onKeyPress`
+/// (Page Up / Page Down, ⌘↑ / ⌘↓, ⌘N, ⌘1–⌘9, ⌘⇧A, ⌘⇧⌫, ⌘⇧P, ⌘⇧M, ⌘⇧U, ⌘⇧R, ⌘⇧D, ⌘⇧E, ⌘⇧G, ⌘⇧F, ⌘⇧H, ⌘⇧J, ⌘⇧Y, ⌘⇧S, and Enter / Delete / Esc on the delete confirm), `.keyboardShortcut` (Cmd-F), and
 /// the composer Return / Shift-Return presses. ⌘L focuses the composer
 /// and does not insert or send. ⌘N starts a new chat through New agent
 /// and does not send. ⌘1–⌘8 opens that chat and ⌘9 opens the last one.
@@ -30,6 +30,7 @@ import SwiftUI
 /// ⌘⇧J opens the next unread chat in the visible list order, wrapping,
 /// and does not insert or send.
 /// ⌘⇧Y regenerates the latest completed assistant reply and does not insert or send.
+/// ⌘⇧S moves focus into the chat list and does not insert or send.
 /// Page Up / Page Down scroll the transcript.
 /// ⌘↑ / ⌘↓ jump to the oldest or latest messages. No Cmd-K on iOS
 /// (the switcher is the chat-list search field). No HTTP.
@@ -101,6 +102,7 @@ enum ChatShortcuts {
         Row(id: "archive-list", keys: ArchiveListKey.keysLabel, action: ArchiveListKey.action),
         Row(id: "next-unread", keys: NextUnreadChat.keysLabel, action: NextUnreadChat.action),
         Row(id: "regenerate-last", keys: RegenerateLastReply.keysLabel, action: RegenerateLastReply.action),
+        Row(id: "focus-sidebar", keys: FocusSidebarList.keysLabel, action: FocusSidebarList.action),
         Row(id: "focus", keys: FocusComposer.keysLabel, action: FocusComposer.action),
         Row(id: "new-chat", keys: NewChat.keysLabel, action: NewChat.action),
         Row(id: "copy-last", keys: CopyLastReply.keysLabel, action: CopyLastReply.action),

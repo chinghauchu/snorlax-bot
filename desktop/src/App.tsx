@@ -251,6 +251,16 @@ import {
   regenerateLastReplyShouldRun,
 } from "./regenerateLastReply";
 import {
+  focusInsideRosterRow,
+  focusSidebarBlocked,
+  focusSidebarShouldMove,
+  isFocusSidebarChord,
+  overlayTextFieldOwnsFocusSidebar,
+  rosterRowIdFromTarget,
+  sidebarFocusTargetId,
+  sidebarListArrowDirection,
+} from "./focusSidebarList";
+import {
   loadInitialRuntimeUrl,
   normalizeRuntimeUrl,
 } from "./runtimeUrl";
@@ -2351,7 +2361,21 @@ export function App() {
     };
   }, [session, settingsOpen]);
 
-  async function loadConversation(id: string, thread: string | null) {
+  function focusSidebarRow(id: string) {
+    if (!id) return;
+    const row = document.querySelector(
+      `[data-roster-id="${CSS.escape(id)}"] .row-hit`,
+    );
+    if (!(row instanceof HTMLElement)) return;
+    row.focus();
+    row.scrollIntoView({ block: "nearest" });
+  }
+
+  async function loadConversation(
+    id: string,
+    thread: string | null,
+    focusAfter: "composer" | "sidebar" = "composer",
+  ) {
     moveComposer(id, thread);
     previewLive.current = false;
     const epoch = beginNewMessagesLoad(id, thread);
@@ -2411,6 +2435,12 @@ export function App() {
     setMessages(commitTranscript(rows, id, thread));
     setTranscriptGen(gen);
     finishNewMessagesLoad(epoch);
+    if (focusAfter === "sidebar") {
+      // The row re-renders with the new selection. Focus after that paint
+      // so the keyboard stays in the list.
+      requestAnimationFrame(() => focusSidebarRow(id));
+      return;
+    }
     focusComposer();
     placeCaretAtEnd();
   }
@@ -6014,6 +6044,123 @@ export function App() {
     skillMenuOpen,
   ]);
 
+  // v1.19: Cmd/Ctrl-Shift-S moves focus into the sidebar chat list.
+  // The open chat's row is preferred when it is visible. Otherwise
+  // the first visible row. The composer does not own the chord and
+  // the letter is not inserted. A key repeat is swallowed and does
+  // not move focus again. IME keeps it. A row that already has focus
+  // keeps the key. Nothing moves when the visible list is empty.
+  useEffect(() => {
+    const onFocusSidebar = (event: globalThis.KeyboardEvent) => {
+      if (event.defaultPrevented) return;
+      if (
+        !isFocusSidebarChord({
+          key: event.key,
+          metaKey: event.metaKey,
+          ctrlKey: event.ctrlKey,
+          altKey: event.altKey,
+          shiftKey: event.shiftKey,
+          repeat: event.repeat,
+        })
+      ) {
+        return;
+      }
+      const gate = {
+        chatOpen: active != null,
+        inSidebarRow: focusInsideRosterRow(event.target),
+        composing: isComposerComposing(event),
+        overlayTextField: overlayTextFieldOwnsFocusSidebar(
+          focusIsTextField(event.target),
+          event.target === composerRef.current,
+        ),
+        inCard: focusInsideCard(event.target),
+        findOpen,
+        switchOpen,
+        shortcutsOpen,
+        renaming: renamingId != null,
+        lightboxOpen: lightboxTarget != null,
+        menuOpen: contextMenu != null,
+        blocked: switcherBlocked || mentionOpen || skillMenuOpen,
+      };
+      if (focusSidebarBlocked(gate)) return;
+      event.preventDefault();
+      event.stopPropagation();
+      if (!focusSidebarShouldMove({ repeat: event.repeat })) return;
+      const ids = jumpChatKey ? jumpChatKey.split("\u0000") : [];
+      const target = sidebarFocusTargetId(ids, activeId);
+      if (!target) return;
+      focusSidebarRow(target);
+    };
+    window.addEventListener("keydown", onFocusSidebar, true);
+    return () => {
+      window.removeEventListener("keydown", onFocusSidebar, true);
+    };
+  }, [
+    active,
+    activeId,
+    jumpChatKey,
+    findOpen,
+    switchOpen,
+    shortcutsOpen,
+    renamingId,
+    lightboxTarget,
+    contextMenu,
+    switcherBlocked,
+    mentionOpen,
+    skillMenuOpen,
+  ]);
+
+  // v1.19: once a sidebar row has focus, plain Up / Down walks the
+  // visible order and leaves focus on the new row. Alt+Up/Down stays
+  // the existing chord and still focuses the composer. The ends stay
+  // put. Rename and any other text field inside the row keep arrows.
+  const loadSidebarChatRef = useRef<(id: string) => void>(() => {});
+  loadSidebarChatRef.current = (id: string) => {
+    void loadConversation(id, null, "sidebar");
+  };
+  useEffect(() => {
+    const onSidebarListArrow = (event: globalThis.KeyboardEvent) => {
+      if (event.defaultPrevented) return;
+      const direction = sidebarListArrowDirection({
+        key: event.key,
+        metaKey: event.metaKey,
+        ctrlKey: event.ctrlKey,
+        altKey: event.altKey,
+        shiftKey: event.shiftKey,
+        composing: isComposerComposing(event),
+      });
+      if (direction == null) return;
+      if (!focusInsideRosterRow(event.target)) return;
+      if (focusIsTextField(event.target)) return;
+      if (findOpen || switchOpen || shortcutsOpen || renamingId != null) return;
+      if (lightboxTarget != null || contextMenu != null) return;
+      if (switcherBlocked || mentionOpen || skillMenuOpen) return;
+      const current = rosterRowIdFromTarget(event.target);
+      if (!current) return;
+      event.preventDefault();
+      event.stopPropagation();
+      const ids = jumpChatKey ? jumpChatKey.split("\u0000") : [];
+      const next = adjacentChatId(ids, current, direction);
+      if (!next) return;
+      loadSidebarChatRef.current(next);
+    };
+    window.addEventListener("keydown", onSidebarListArrow, true);
+    return () => {
+      window.removeEventListener("keydown", onSidebarListArrow, true);
+    };
+  }, [
+    jumpChatKey,
+    findOpen,
+    switchOpen,
+    shortcutsOpen,
+    renamingId,
+    lightboxTarget,
+    contextMenu,
+    switcherBlocked,
+    mentionOpen,
+    skillMenuOpen,
+  ]);
+
   useLayoutEffect(() => {
     if (!switchOpen || !activeSwitch) return;
     const row = document.querySelector(
@@ -6239,6 +6386,8 @@ export function App() {
         (muted ? " muted" : "") +
         (renaming ? " renaming" : "")
       }
+      data-roster-row=""
+      data-roster-id={agent.id}
       onContextMenu={(e) => onAgentContext(e, agent)}
     >
       {renaming ? (
