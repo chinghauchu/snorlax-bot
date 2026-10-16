@@ -122,6 +122,14 @@ final class AppModel {
     /// delivery inside this window does not open that chat again.
     private var nextUnreadChordId = ""
     private var nextUnreadChordAt: TimeInterval = 0
+    /// v1.19: the chat list keeps keyboard focus after ⌘⇧S. iPad arrow
+    /// selection must not yank focus back to the composer.
+    var sidebarKeyboardFocus = false
+    /// Bumped when ⌘⇧S asks the visible list to focus one row.
+    var sidebarFocusRequest = 0
+    var sidebarFocusChatID: String?
+    /// The chat view and the composer can both see one ⌘⇧S.
+    private var sidebarFocusChordAt: TimeInterval = 0
     /// v0.89: pinned chat ids, in the order they were pinned. UserDefaults.
     var pinnedChatIDs: [String] = [] {
         didSet { ChatPins.write(pinnedChatIDs) }
@@ -502,6 +510,33 @@ final class AppModel {
         Task {
             await select(next, push: true)
             wantsComposerFocus = true
+        }
+    }
+
+    /// v1.19: hardware ⌘⇧S / ⌃⇧S. Focus the open chat's row when it is
+    /// visible, otherwise the first visible row in the All / Unread,
+    /// pin, and archive order. Does not open a different chat. iPhone
+    /// shows the chat list. A second view that sees the same key does
+    /// not move focus again. An empty list changes nothing. No HTTP.
+    func focusSidebarListFromChord() {
+        guard let id = FocusSidebarList.target(
+            ids: jumpChatIds(),
+            openID: selectedAgentID
+        ) else { return }
+        let now = Date().timeIntervalSinceReferenceDate
+        if now - sidebarFocusChordAt < 0.05 { return }
+        sidebarFocusChordAt = now
+        sidebarKeyboardFocus = true
+        sidebarFocusChatID = id
+        sidebarFocusRequest += 1
+        UIApplication.shared.sendAction(
+            #selector(UIResponder.resignFirstResponder),
+            to: nil,
+            from: nil,
+            for: nil
+        )
+        if UIDevice.current.userInterfaceIdiom != .pad {
+            navigationPath = []
         }
     }
 

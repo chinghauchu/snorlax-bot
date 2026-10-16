@@ -136,3 +136,4 @@ jobs:
           python3 ios/scripts/test_ios_archive_list_key.py
           python3 ios/scripts/test_ios_next_unread_chat.py
           python3 ios/scripts/test_ios_regenerate_last_reply.py
+          python3 ios/scripts/test_ios_focus_sidebar_list.py

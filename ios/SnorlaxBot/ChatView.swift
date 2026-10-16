@@ -86,6 +86,7 @@ struct ChatView: View {
                 onToggleArchiveList: { toggleArchiveListFromComposer() },
                 onNextUnread: { nextUnreadFromComposer() },
                 onRegenerateLastReply: { regenerateLastReplyFromComposer() },
+                onFocusSidebarList: { focusSidebarFromComposer() },
                 deleteConfirmOpen: pendingDeleteChatID != nil,
                 onConfirmDeleteKey: { key in confirmDeleteOpenChat(key: key) },
                 onCancelDelete: { cancelDeleteOpenChat() },
@@ -155,6 +156,9 @@ struct ChatView: View {
                 return .handled
             }
             if regenerateLastReplyKey(press) == .handled {
+                return .handled
+            }
+            if focusSidebarKey(press) == .handled {
                 return .handled
             }
             if chatNavKey(press) == .handled {
@@ -279,7 +283,12 @@ struct ChatView: View {
                 await model.select(agentID, push: false)
             }
             if model.canCompose {
-                composerFocused = true
+                let keepList = model.sidebarKeyboardFocus
+                    && UIDevice.current.userInterfaceIdiom == .pad
+                if !keepList {
+                    model.sidebarKeyboardFocus = false
+                    composerFocused = true
+                }
                 model.wantsComposerFocus = false
             }
         }
@@ -290,8 +299,14 @@ struct ChatView: View {
             }
             .onChange(of: model.wantsComposerFocus) { _, wants in
             guard wants, model.canCompose || model.isSending else { return }
+            model.sidebarKeyboardFocus = false
             composerFocused = true
             model.wantsComposerFocus = false
+        }
+        .onChange(of: model.sidebarFocusRequest) { _, _ in
+            if model.sidebarKeyboardFocus {
+                composerFocused = false
+            }
         }
     }
 
@@ -1365,8 +1380,66 @@ struct ChatView: View {
             shift: press.modifiers.contains(.shift)
         ) else { return .ignored }
         model.pendingComposerCaret = (model.draft as NSString).length
+        model.sidebarKeyboardFocus = false
         composerFocused = true
         return .handled
+    }
+
+    /// Hardware ⌘⇧S / ⌃⇧S when the composer is not first responder.
+    /// The text view handles the same chord and keeps IME marked text.
+    /// Find, rename, search, and a card text field own the key. A chat
+    /// has to be open. A key repeat is swallowed so focus does not move again.
+    private func focusSidebarKey(_ press: KeyPress) -> KeyPress.Result {
+        guard hasRealAgent else { return .ignored }
+        if composerFocused { return .ignored }
+        if focusSidebarBlocked() { return .ignored }
+        guard FocusSidebarList.isChord(
+            key: press.key.character,
+            characters: press.characters,
+            command: press.modifiers.contains(.command),
+            control: press.modifiers.contains(.control),
+            option: press.modifiers.contains(.option),
+            shift: press.modifiers.contains(.shift)
+        ) else { return .ignored }
+        if FocusSidebarList.overlayTextFieldOwnsChord(
+            textFieldFocused: TranscriptScroll.textInputIsFirstResponder(),
+            composerFocused: false
+        ) {
+            return .ignored
+        }
+        if FocusSidebarList.shouldIgnoreRepeat(press.`repeat`) {
+            return .handled
+        }
+        focusSidebarFromChord()
+        return .handled
+    }
+
+    /// Composer ⌘⇧S. Mention and skill menus are checked by the bar.
+    /// Find, the shortcuts sheet, and the lightbox keep the key.
+    /// The text view swallows a key repeat so s is not inserted.
+    private func focusSidebarFromComposer() {
+        guard hasRealAgent else { return }
+        if focusSidebarBlocked() { return }
+        focusSidebarFromChord()
+    }
+
+    private func focusSidebarBlocked() -> Bool {
+        if findOpen || findFieldFocused || lightbox != nil || shortcutsOpen {
+            return true
+        }
+        if pendingDeleteChatID != nil { return true }
+        if model.computerTakeoverOpen || model.showProfile || model.showSettings {
+            return true
+        }
+        if model.skillMenuOpen() { return true }
+        if model.renameChatID != nil { return true }
+        return false
+    }
+
+    /// Same visible order as Option+Up / Option+Down and ⌘1–⌘9.
+    /// Nothing changes when that list is empty.
+    private func focusSidebarFromChord() {
+        model.focusSidebarListFromChord()
     }
 
     private func openFind() {
@@ -2295,6 +2368,7 @@ private struct ComposerBar: View {
     var onToggleArchiveList: () -> Void = {}
     var onNextUnread: () -> Void = {}
     var onRegenerateLastReply: () -> Void = {}
+    var onFocusSidebarList: () -> Void = {}
     var deleteConfirmOpen = false
     var onConfirmDeleteKey: (String) -> Void = { _ in }
     var onCancelDelete: () -> Void = {}
@@ -2519,6 +2593,10 @@ private struct ComposerBar: View {
                     onRegenerateLastReply: {
                         if mentionQuery != nil || model.skillMenuOpen() { return }
                         onRegenerateLastReply()
+                    },
+                    onFocusSidebarList: {
+                        if mentionQuery != nil || model.skillMenuOpen() { return }
+                        onFocusSidebarList()
                     },
                     deleteConfirmOpen: deleteConfirmOpen,
                     onConfirmDeleteKey: { key in
