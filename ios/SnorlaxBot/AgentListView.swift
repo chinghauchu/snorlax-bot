@@ -121,6 +121,9 @@ struct AgentListView: View {
                 if archiveListKey(press) == .handled {
                     return .handled
                 }
+                if markAllReadKey(press) == .handled {
+                    return .handled
+                }
                 if press.phase != .down {
                     return .ignored
                 }
@@ -218,6 +221,36 @@ struct AgentListView: View {
             return .handled
         }
         model.toggleChatListFilterFromChord()
+        return .handled
+    }
+
+    /// Hardware ⌘⇧O / ⌃⇧O from the chat list. The same clear as the
+    /// Mark all as read toolbar button. Search, rename, and the
+    /// channel sheet own the key. A key repeat does not clear again.
+    /// Nothing unread is a no-op.
+    private func markAllReadKey(_ press: KeyPress) -> KeyPress.Result {
+        guard MarkAllReadKey.isChord(
+            key: press.key.character,
+            characters: press.characters,
+            command: press.modifiers.contains(.command),
+            control: press.modifiers.contains(.control),
+            option: press.modifiers.contains(.option),
+            shift: press.modifiers.contains(.shift)
+        ) else { return .ignored }
+        if renamingID != nil || showCreateChannel || pendingDelete != nil { return .ignored }
+        if model.showSettings || model.showProfile || model.computerTakeoverOpen {
+            return .ignored
+        }
+        if MarkAllReadKey.overlayTextFieldOwnsChord(
+            textFieldFocused: TranscriptScroll.textInputIsFirstResponder(),
+            composerFocused: false
+        ) {
+            return .ignored
+        }
+        if MarkAllReadKey.shouldIgnoreRepeat(press.`repeat`) {
+            return .handled
+        }
+        model.markAllChatsReadFromChord()
         return .handled
     }
 

@@ -139,7 +139,7 @@ def test_clears_archived_and_handoff_then_badge_is_zero() -> None:
     assert any_chat_unread(handoff_only.ids, set()) is False
 
 
-def test_list_wires_the_toolbar_without_a_shortcut() -> None:
+def test_list_wires_the_toolbar_and_keeps_http_local() -> None:
     assert 'static let markAllReadLabel = "Mark all as read"' in SWIFT
     assert "static func anyChatUnread" in SWIFT
     assert "func clearAll() -> Bool" in SWIFT
@@ -164,8 +164,8 @@ def test_list_wires_the_toolbar_without_a_shortcut() -> None:
     assert "function onMarkAllRead(" in APP
     assert "chatUnread.current.clearAll()" in APP
     assert 'className="roster-mark-all"' in APP
-    assert "Mark all as read" not in DESKTOP_SHORTCUTS
-    assert "Mark all as read" not in SHORTCUTS
+    assert "Cmd/Ctrl Shift O" in DESKTOP_SHORTCUTS
+    assert "⌘⇧O" in SHORTCUTS
     assert "computerPane.ts" not in APP
     assert "computerPane.ts" not in LIST
     assert not PANE.exists()
@@ -188,7 +188,7 @@ def main() -> int:
     tests = [
         test_hidden_until_something_is_unread,
         test_clears_archived_and_handoff_then_badge_is_zero,
-        test_list_wires_the_toolbar_without_a_shortcut,
+        test_list_wires_the_toolbar_and_keeps_http_local,
         test_openapi_roadmap,
     ]
     failed = 0

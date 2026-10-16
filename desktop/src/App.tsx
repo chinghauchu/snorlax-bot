@@ -261,6 +261,13 @@ import {
   sidebarListArrowDirection,
 } from "./focusSidebarList";
 import {
+  isMarkAllReadChord,
+  markAllReadIsNoOp,
+  markAllReadKeyBlocked,
+  markAllReadShouldClear,
+  overlayTextFieldOwnsMarkAllRead,
+} from "./markAllReadKey";
+import {
   loadInitialRuntimeUrl,
   normalizeRuntimeUrl,
 } from "./runtimeUrl";
@@ -1492,6 +1499,7 @@ export function App() {
   const toggleChatListFilterRef = useRef<() => void>(() => {});
   const toggleArchiveListRef = useRef<() => void>(() => {});
   const regenerateLastReplyRef = useRef<() => void>(() => {});
+  const markAllReadRef = useRef<() => void>(() => {});
   const createFromShortcutRef = useRef<() => void>(() => {});
   const archiveOpenChatRef = useRef<() => void>(() => {});
   const clearComposerDraftRef = useRef<() => void>(() => {});
@@ -6099,6 +6107,69 @@ export function App() {
     active,
     activeId,
     jumpChatKey,
+    findOpen,
+    switchOpen,
+    shortcutsOpen,
+    renamingId,
+    lightboxTarget,
+    contextMenu,
+    switcherBlocked,
+    mentionOpen,
+    skillMenuOpen,
+  ]);
+
+  // v1.20: Cmd/Ctrl-Shift-O marks every chat read through the same
+  // path as the sidebar Mark all as read control, including archived
+  // chats and channel handoff dots. Nothing unread is a no-op. The
+  // composer does not own the chord and the letter is not inserted.
+  // A key repeat is swallowed and does not clear again. IME keeps it.
+  // The empty state still clears, because the sidebar control does.
+  markAllReadRef.current = () => {
+    if (markAllReadIsNoOp(replyUnreadIds, unreadIds)) return;
+    onMarkAllRead();
+  };
+
+  useEffect(() => {
+    const onMarkAllReadKey = (event: globalThis.KeyboardEvent) => {
+      if (event.defaultPrevented) return;
+      if (
+        !isMarkAllReadChord({
+          key: event.key,
+          metaKey: event.metaKey,
+          ctrlKey: event.ctrlKey,
+          altKey: event.altKey,
+          shiftKey: event.shiftKey,
+          repeat: event.repeat,
+        })
+      ) {
+        return;
+      }
+      const gate = {
+        composing: isComposerComposing(event),
+        overlayTextField: overlayTextFieldOwnsMarkAllRead(
+          focusIsTextField(event.target),
+          event.target === composerRef.current,
+        ),
+        inCard: focusInsideCard(event.target),
+        findOpen,
+        switchOpen,
+        shortcutsOpen,
+        renaming: renamingId != null,
+        lightboxOpen: lightboxTarget != null,
+        menuOpen: contextMenu != null,
+        blocked: switcherBlocked || mentionOpen || skillMenuOpen,
+      };
+      if (markAllReadKeyBlocked(gate)) return;
+      event.preventDefault();
+      event.stopPropagation();
+      if (!markAllReadShouldClear({ repeat: event.repeat })) return;
+      markAllReadRef.current();
+    };
+    window.addEventListener("keydown", onMarkAllReadKey, true);
+    return () => {
+      window.removeEventListener("keydown", onMarkAllReadKey, true);
+    };
+  }, [
     findOpen,
     switchOpen,
     shortcutsOpen,

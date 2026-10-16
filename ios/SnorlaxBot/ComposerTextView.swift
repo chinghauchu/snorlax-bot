@@ -75,6 +75,10 @@ struct ComposerTextView: UIViewRepresentable {
     /// Does not insert or send. IME marked text keeps the key.
     /// A key repeat does not move focus again.
     var onFocusSidebarList: (() -> Void)? = nil
+    /// v1.20: ⌘⇧O / ⌃⇧O marks every chat read.
+    /// Does not insert or send. IME marked text keeps the key.
+    /// A key repeat does not clear again. Nothing unread is a no-op.
+    var onMarkAllRead: (() -> Void)? = nil
     /// True while the Delete confirm is on screen. Return and Delete confirm.
     /// Esc cancels. A key repeat never confirms.
     var deleteConfirmOpen: Bool = false
@@ -165,6 +169,9 @@ struct ComposerTextView: UIViewRepresentable {
         }
         view.onFocusSidebarList = { [coordinator = context.coordinator] in
             coordinator.parent.onFocusSidebarList?()
+        }
+        view.onMarkAllRead = { [coordinator = context.coordinator] in
+            coordinator.parent.onMarkAllRead?()
         }
         view.onConfirmDeleteKey = { [coordinator = context.coordinator] key in
             coordinator.parent.onConfirmDeleteKey?(key)
@@ -260,6 +267,9 @@ struct ComposerTextView: UIViewRepresentable {
         }
         view.onFocusSidebarList = { [coordinator = context.coordinator] in
             coordinator.parent.onFocusSidebarList?()
+        }
+        view.onMarkAllRead = { [coordinator = context.coordinator] in
+            coordinator.parent.onMarkAllRead?()
         }
         view.onConfirmDeleteKey = { [coordinator = context.coordinator] key in
             coordinator.parent.onConfirmDeleteKey?(key)
@@ -443,6 +453,7 @@ final class ComposerUITextView: UITextView {
     var onNextUnread: (() -> Void)?
     var onRegenerateLastReply: (() -> Void)?
     var onFocusSidebarList: (() -> Void)?
+    var onMarkAllRead: (() -> Void)?
     var deleteConfirmOpen = false
     var onConfirmDeleteKey: ((String) -> Void)?
     var onCancelDelete: (() -> Void)?
@@ -471,6 +482,8 @@ final class ComposerUITextView: UITextView {
     private var regenerateLastReplyConsumed = false
     /// v1.19: the first ⌘⇧S of a hold moved focus. Repeats of that hold do not.
     private var focusSidebarConsumed = false
+    /// v1.20: the first ⌘⇧O of a hold cleared. Repeats of that hold do not.
+    private var markAllReadConsumed = false
     /// v1.10: the first ⌘⇧U of a hold applies. Further repeats do not.
     private var markOpenChatConsumed = false
     var sendMuted = false
@@ -563,6 +576,7 @@ final class ComposerUITextView: UITextView {
             commands.append(contentsOf: nextUnreadCommands())
             commands.append(contentsOf: regenerateLastReplyCommands())
             commands.append(contentsOf: focusSidebarCommands())
+            commands.append(contentsOf: markAllReadCommands())
         }
         return commands
     }
@@ -912,6 +926,26 @@ final class ComposerUITextView: UITextView {
         return [command, control]
     }
 
+    /// ⌘⇧O / ⌃⇧O. Marks every chat read. Does not insert or send.
+    /// IME keeps the key. A repeat of the held chord does not clear again.
+    private func markAllReadCommands() -> [UIKeyCommand] {
+        let command = UIKeyCommand(
+            title: MarkAllReadKey.action,
+            action: #selector(markAllReadFromShortcut),
+            input: "o",
+            modifierFlags: [.command, .shift]
+        )
+        let control = UIKeyCommand(
+            title: MarkAllReadKey.action,
+            action: #selector(markAllReadFromShortcut),
+            input: "o",
+            modifierFlags: [.control, .shift]
+        )
+        command.wantsPriorityOverSystemBehavior = true
+        control.wantsPriorityOverSystemBehavior = true
+        return [command, control]
+    }
+
     /// ⌘⇧⌫ / ⌃⇧⌫. Clears the draft. Does not insert or send.
     /// IME keeps the key. An empty draft is ignored by the model.
     private func clearComposerDraftCommands() -> [UIKeyCommand] {
@@ -1105,6 +1139,15 @@ final class ComposerUITextView: UITextView {
         if focusSidebarConsumed { return }
         focusSidebarConsumed = true
         onFocusSidebarList?()
+    }
+
+    /// The first press marks every chat read. A repeat of this hold
+    /// returns without clearing again, so o is not inserted.
+    @objc private func markAllReadFromShortcut() {
+        if markedTextRange != nil { return }
+        if markAllReadConsumed { return }
+        markAllReadConsumed = true
+        onMarkAllRead?()
     }
 
     @objc private func chatNavUp() {
@@ -1306,6 +1349,12 @@ final class ComposerUITextView: UITextView {
         }) {
             focusSidebarConsumed = false
         }
+        if presses.contains(where: { press in
+            if press.key?.keyCode == .keyboardO { return true }
+            return press.key?.charactersIgnoringModifiers.lowercased() == "o"
+        }) {
+            markAllReadConsumed = false
+        }
         super.pressesEnded(presses, with: event)
         // If deleteBackward already ran it cleared the flag. If a chorded
         // Delete never reached it, drop the flag on the next turn so a
@@ -1340,6 +1389,7 @@ final class ComposerUITextView: UITextView {
         nextUnreadConsumed = false
         regenerateLastReplyConsumed = false
         focusSidebarConsumed = false
+        markAllReadConsumed = false
         super.pressesCancelled(presses, with: event)
     }
 
@@ -1514,6 +1564,20 @@ final class ComposerUITextView: UITextView {
                     shift: mods.contains(.shift)
                 ), focusSidebarConsumed {
                     // Held ⌘⇧S. Do not insert s and do not move focus again.
+                    return
+                }
+            }
+            if key.keyCode == .keyboardO {
+                let mods = key.modifierFlags
+                if MarkAllReadKey.isChord(
+                    key: "o",
+                    characters: key.charactersIgnoringModifiers,
+                    command: mods.contains(.command),
+                    control: mods.contains(.control),
+                    option: mods.contains(.alternate),
+                    shift: mods.contains(.shift)
+                ), markAllReadConsumed {
+                    // Held ⌘⇧O. Do not insert o and do not clear again.
                     return
                 }
             }

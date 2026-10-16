@@ -87,6 +87,7 @@ struct ChatView: View {
                 onNextUnread: { nextUnreadFromComposer() },
                 onRegenerateLastReply: { regenerateLastReplyFromComposer() },
                 onFocusSidebarList: { focusSidebarFromComposer() },
+                onMarkAllRead: { markAllReadFromComposer() },
                 deleteConfirmOpen: pendingDeleteChatID != nil,
                 onConfirmDeleteKey: { key in confirmDeleteOpenChat(key: key) },
                 onCancelDelete: { cancelDeleteOpenChat() },
@@ -159,6 +160,9 @@ struct ChatView: View {
                 return .handled
             }
             if focusSidebarKey(press) == .handled {
+                return .handled
+            }
+            if markAllReadKey(press) == .handled {
                 return .handled
             }
             if chatNavKey(press) == .handled {
@@ -1442,6 +1446,60 @@ struct ChatView: View {
         model.focusSidebarListFromChord()
     }
 
+    /// Hardware ⌘⇧O / ⌃⇧O when the composer is not first responder.
+    /// The text view handles the same chord and keeps IME marked text.
+    /// Find, rename, search, and a card text field own the key. A chat
+    /// does not have to be open. A key repeat is swallowed so it does not clear again.
+    private func markAllReadKey(_ press: KeyPress) -> KeyPress.Result {
+        guard MarkAllReadKey.isChord(
+            key: press.key.character,
+            characters: press.characters,
+            command: press.modifiers.contains(.command),
+            control: press.modifiers.contains(.control),
+            option: press.modifiers.contains(.option),
+            shift: press.modifiers.contains(.shift)
+        ) else { return .ignored }
+        if composerFocused { return .ignored }
+        if markAllReadBlocked() { return .ignored }
+        if MarkAllReadKey.overlayTextFieldOwnsChord(
+            textFieldFocused: TranscriptScroll.textInputIsFirstResponder(),
+            composerFocused: false
+        ) {
+            return .ignored
+        }
+        if MarkAllReadKey.shouldIgnoreRepeat(press.`repeat`) {
+            return .handled
+        }
+        markAllReadFromChord()
+        return .handled
+    }
+
+    /// Composer ⌘⇧O. Mention and skill menus are checked by the bar.
+    /// Find, the shortcuts sheet, and the lightbox keep the key.
+    /// The text view swallows a key repeat so o is not inserted.
+    private func markAllReadFromComposer() {
+        if markAllReadBlocked() { return }
+        markAllReadFromChord()
+    }
+
+    private func markAllReadBlocked() -> Bool {
+        if findOpen || findFieldFocused || lightbox != nil || shortcutsOpen {
+            return true
+        }
+        if pendingDeleteChatID != nil { return true }
+        if model.computerTakeoverOpen || model.showProfile || model.showSettings {
+            return true
+        }
+        if model.skillMenuOpen() { return true }
+        if model.renameChatID != nil { return true }
+        return false
+    }
+
+    /// Same path as the Mark all as read control. Nothing unread is a no-op.
+    private func markAllReadFromChord() {
+        model.markAllChatsReadFromChord()
+    }
+
     private func openFind() {
         findOpen = true
         findFieldFocused = true
@@ -2369,6 +2427,7 @@ private struct ComposerBar: View {
     var onNextUnread: () -> Void = {}
     var onRegenerateLastReply: () -> Void = {}
     var onFocusSidebarList: () -> Void = {}
+    var onMarkAllRead: () -> Void = {}
     var deleteConfirmOpen = false
     var onConfirmDeleteKey: (String) -> Void = { _ in }
     var onCancelDelete: () -> Void = {}
@@ -2597,6 +2656,10 @@ private struct ComposerBar: View {
                     onFocusSidebarList: {
                         if mentionQuery != nil || model.skillMenuOpen() { return }
                         onFocusSidebarList()
+                    },
+                    onMarkAllRead: {
+                        if mentionQuery != nil || model.skillMenuOpen() { return }
+                        onMarkAllRead()
                     },
                     deleteConfirmOpen: deleteConfirmOpen,
                     onConfirmDeleteKey: { key in
