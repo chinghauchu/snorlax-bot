@@ -189,6 +189,17 @@ import {
   stepChatOpenHistory,
 } from "./chatOpenHistory";
 import {
+  applyTranscriptTextStep,
+  browserTranscriptTextStorage,
+  overlayTextFieldOwnsTranscriptText,
+  readTranscriptTextScale,
+  transcriptScaleFactor,
+  transcriptTextBlocked,
+  transcriptTextShouldApply,
+  transcriptTextStep,
+  writeTranscriptTextScale,
+} from "./transcriptTextScale";
+import {
   clearComposerDraftBlocked,
   composerDraftAlreadyEmpty,
   isClearComposerDraftChord,
@@ -1146,6 +1157,9 @@ export function App() {
   const [themePref, setThemePref] = useState<ThemePref>(
     () => (localStorage.getItem(THEME_KEY) as ThemePref) || "system",
   );
+  const [transcriptTextPercent, setTranscriptTextPercent] = useState(() =>
+    readTranscriptTextScale(browserTranscriptTextStorage()),
+  );
   const [accent, setAccent] = useState(
     () => localStorage.getItem(ACCENT_KEY) || DEFAULT_ACCENT,
   );
@@ -1745,6 +1759,10 @@ export function App() {
   useEffect(() => {
     localStorage.setItem(COMPUTER_OPEN_KEY, storeComputerOpen(computerOpen));
   }, [computerOpen]);
+
+  useEffect(() => {
+    writeTranscriptTextScale(browserTranscriptTextStorage(), transcriptTextPercent);
+  }, [transcriptTextPercent]);
 
   useLayoutEffect(() => {
     const node = composerRef.current;
@@ -6237,6 +6255,62 @@ export function App() {
     skillMenuOpen,
   ]);
 
+  // v1.24: Cmd/Ctrl-= and Cmd/Ctrl-+ step the transcript text larger.
+  // Cmd/Ctrl-- steps smaller. Cmd/Ctrl-0 resets to 100%. Bubbles,
+  // code, and tool traces share the scale. The composer does not
+  // own the chord and the character is not inserted. A key repeat
+  // is swallowed and does not step again. IME keeps it. The ends
+  // stay clamped. The choice persists in local storage.
+  useEffect(() => {
+    const onTranscriptText = (event: globalThis.KeyboardEvent) => {
+      if (event.defaultPrevented) return;
+      const step = transcriptTextStep({
+        key: event.key,
+        code: event.code,
+        metaKey: event.metaKey,
+        ctrlKey: event.ctrlKey,
+        altKey: event.altKey,
+        shiftKey: event.shiftKey,
+        repeat: event.repeat,
+      });
+      if (!step) return;
+      const gate = {
+        composing: isComposerComposing(event),
+        overlayTextField: overlayTextFieldOwnsTranscriptText(
+          focusIsTextField(event.target),
+          event.target === composerRef.current,
+        ),
+        inCard: focusInsideCard(event.target),
+        findOpen,
+        switchOpen,
+        shortcutsOpen,
+        renaming: renamingId != null,
+        lightboxOpen: lightboxTarget != null,
+        menuOpen: contextMenu != null,
+        blocked: switcherBlocked || mentionOpen || skillMenuOpen,
+      };
+      if (transcriptTextBlocked(gate)) return;
+      event.preventDefault();
+      event.stopPropagation();
+      if (!transcriptTextShouldApply({ repeat: event.repeat })) return;
+      setTranscriptTextPercent((current) => applyTranscriptTextStep(current, step));
+    };
+    window.addEventListener("keydown", onTranscriptText, true);
+    return () => {
+      window.removeEventListener("keydown", onTranscriptText, true);
+    };
+  }, [
+    findOpen,
+    switchOpen,
+    shortcutsOpen,
+    renamingId,
+    lightboxTarget,
+    contextMenu,
+    switcherBlocked,
+    mentionOpen,
+    skillMenuOpen,
+  ]);
+
   // v1.18: Cmd/Ctrl-Shift-Y regenerates the latest completed LEFT
   // through the same path as the Regenerate hover control. The
   // composer does not own the chord and the letter is not inserted.
@@ -6994,6 +7068,8 @@ export function App() {
         <div
           className="transcript"
           ref={scroller}
+          data-transcript-scale={transcriptTextPercent}
+          style={{ ["--transcript-scale" as string]: transcriptScaleFactor(transcriptTextPercent) }}
           onScroll={onTranscriptScroll}
         >
           <FindQueryProvider query={findQueryShown}>

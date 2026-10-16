@@ -30,7 +30,7 @@ struct AssistantMarkdown: View {
                 }
             }
         }
-        .font(.system(size: 14))
+        .transcriptFont(14)
     }
 }
 
@@ -113,7 +113,7 @@ private struct FenceBar: View {
     var body: some View {
         HStack {
             Text(language)
-                .font(.system(size: 12))
+                .transcriptFont(12)
                 .foregroundStyle(.secondary)
             Spacer(minLength: 0)
             if CodeBlockCopy.showsCopy(completed: completed) {
@@ -129,7 +129,7 @@ private struct FenceBar: View {
                         }
                     }
                 }
-                .font(.system(size: 12))
+                .transcriptFont(12)
                 .foregroundStyle(.secondary)
                 .buttonStyle(.plain)
                 .accessibilityLabel(CodeBlockCopy.accessibilityLabel(copied: copied))
@@ -146,17 +146,24 @@ private struct FenceSource: View {
     var quoteEnabled = true
     @Environment(\.chatFind) private var find
     @Environment(AppModel.self) private var model
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    @Environment(\.transcriptTextPercent) private var transcriptTextPercent
+
+    private var metrics: TranscriptTextScale.Metrics {
+        TranscriptTextScale.metrics(percent: transcriptTextPercent, dynamicType: dynamicTypeSize)
+    }
 
     var body: some View {
         ScrollView(.horizontal, showsIndicators: true) {
             QuoteSelectableText(
                 text: ChatFind.paint(AttributedString(source), query: find.query),
                 quoteEnabled: quoteEnabled,
-                font: .monospacedSystemFont(ofSize: 12, weight: .regular),
+                font: metrics.fenceFont,
                 expandsHorizontally: true,
                 onQuote: { model.quoteIntoComposer($0) }
             )
             .font(.system(size: 12, design: .monospaced))
+            .transcriptFont(12, design: .monospaced)
             .fixedSize(horizontal: true, vertical: true)
         }
         .padding(.horizontal, 10)
@@ -220,6 +227,12 @@ private struct MathFallback: View {
     var block: Bool
     var quoteEnabled = true
     @Environment(AppModel.self) private var model
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    @Environment(\.transcriptTextPercent) private var transcriptTextPercent
+
+    private var metrics: TranscriptTextScale.Metrics {
+        TranscriptTextScale.metrics(percent: transcriptTextPercent, dynamicType: dynamicTypeSize)
+    }
 
     var body: some View {
         if block {
@@ -227,7 +240,7 @@ private struct MathFallback: View {
                 QuoteSelectableText(
                     text: AttributedString(raw),
                     quoteEnabled: quoteEnabled,
-                    font: .monospacedSystemFont(ofSize: 13, weight: .regular),
+                    font: metrics.mathFont,
                     expandsHorizontally: true,
                     onQuote: { model.quoteIntoComposer($0) }
                 )
@@ -238,7 +251,7 @@ private struct MathFallback: View {
             QuoteSelectableText(
                 text: AttributedString(raw),
                 quoteEnabled: quoteEnabled,
-                font: .monospacedSystemFont(ofSize: 13, weight: .regular),
+                font: metrics.mathFont,
                 onQuote: { model.quoteIntoComposer($0) }
             )
         }
@@ -252,6 +265,12 @@ private struct MarkdownRun: View {
     @Environment(\.openURL) private var openURL
     @Environment(\.chatFind) private var find
     @Environment(AppModel.self) private var model
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    @Environment(\.transcriptTextPercent) private var transcriptTextPercent
+
+    private var metrics: TranscriptTextScale.Metrics {
+        TranscriptTextScale.metrics(percent: transcriptTextPercent, dynamicType: dynamicTypeSize)
+    }
 
     var body: some View {
         let pieces = MarkdownSplit.splitInlineMath(source)
@@ -280,7 +299,7 @@ private struct MarkdownRun: View {
         QuoteSelectableText(
             text: wrapping(attributed(src)),
             quoteEnabled: completed,
-            font: .systemFont(ofSize: 14),
+            font: metrics.bodyFont,
             onQuote: { model.quoteIntoComposer($0) },
             onLink: { url in
                 guard WebLinks.allows(url) else { return }
@@ -327,8 +346,7 @@ private struct MarkdownRun: View {
             guard let intent = run.presentationIntent else { continue }
             for component in intent.components {
                 if case .header(let level) = component.kind {
-                    let size: CGFloat = level <= 1 ? 16 : 14
-                    parsed[run.range].font = .system(size: size, weight: .semibold)
+                    parsed[run.range].font = level <= 1 ? metrics.headingFont : metrics.bodySemibold
                 }
             }
         }
@@ -337,7 +355,7 @@ private struct MarkdownRun: View {
     private func styleInlineCode(_ parsed: inout AttributedString) {
         for run in parsed.runs {
             guard let intent = run.inlinePresentationIntent, intent.contains(.code) else { continue }
-            parsed[run.range].font = .system(size: 13, design: .monospaced)
+            parsed[run.range].font = metrics.codeFont
             parsed[run.range].foregroundColor = .accentColor
             parsed[run.range].backgroundColor = Color.accentColor.opacity(0.18)
         }
@@ -369,7 +387,7 @@ private struct MarkdownRun: View {
                   let end = AttributedString.Index(stringRange.upperBound, within: parsed)
             else { continue }
             parsed[start..<end].foregroundColor = .accentColor
-            parsed[start..<end].font = .system(size: 14, weight: .semibold)
+            parsed[start..<end].font = metrics.bodySemibold
         }
     }
 }

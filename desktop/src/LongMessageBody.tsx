@@ -43,13 +43,19 @@ export function LongMessageBody({
   const [expanded, setExpanded] = useState(false);
   const [overflows, setOverflows] = useState(false);
   const [fullPx, setFullPx] = useState(0);
+  const [scale, setScale] = useState(1);
 
   useLayoutEffect(() => {
     const el = bodyRef.current;
     if (!el) return;
     const measure = () => {
       const height = el.scrollHeight;
-      const nextOverflows = completed && longMessageOverflows(height);
+      const raw = getComputedStyle(el).getPropertyValue("--transcript-scale").trim();
+      const parsed = Number(raw);
+      const nextScale = Number.isFinite(parsed) && parsed > 0 ? parsed : 1;
+      setScale((prev) => (prev === nextScale ? prev : nextScale));
+      const limit = LONG_MESSAGE_MAX_PX * nextScale;
+      const nextOverflows = completed && longMessageOverflows(height, limit);
       setOverflows((prev) => (prev === nextOverflows ? prev : nextOverflows));
       const nextFull = Math.ceil(height);
       setFullPx((prev) => (Math.abs(prev - nextFull) <= 1 ? prev : nextFull));
@@ -72,7 +78,7 @@ export function LongMessageBody({
     activeFind,
   });
   const maxHeight = clamp
-    ? LONG_MESSAGE_MAX_PX
+    ? LONG_MESSAGE_MAX_PX * scale
     : expanded && overflows && fullPx > 0
       ? fullPx
       : undefined;

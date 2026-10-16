@@ -43,6 +43,10 @@ struct ComposerTextView: UIViewRepresentable {
     /// ⌘] / ⌃] steps forward. Does not insert or send. IME marked
     /// text keeps the key. A key repeat does not step again.
     var onChatHistory: ((String) -> Void)? = nil
+    /// v1.24: ⌘= / ⌃= and ⌘+ grow the transcript text. ⌘- shrinks it.
+    /// ⌘0 resets it. Does not insert or send. IME marked text keeps
+    /// the key. A key repeat does not step again.
+    var onTranscriptText: ((TranscriptTextScale.Step) -> Void)? = nil
     /// v1.07: ⌘⇧⌫ / ⌃⇧⌫ clears the composer draft. Does not send.
     /// IME marked text keeps the key.
     var onClearComposerDraft: (() -> Void)? = nil
@@ -151,6 +155,9 @@ struct ComposerTextView: UIViewRepresentable {
         view.onChatHistory = { [coordinator = context.coordinator] direction in
             coordinator.parent.onChatHistory?(direction)
         }
+        view.onTranscriptText = { [coordinator = context.coordinator] step in
+            coordinator.parent.onTranscriptText?(step)
+        }
         view.onClearComposerDraft = { [coordinator = context.coordinator] in
             coordinator.parent.onClearComposerDraft?()
         }
@@ -257,6 +264,9 @@ struct ComposerTextView: UIViewRepresentable {
         }
         view.onChatHistory = { [coordinator = context.coordinator] direction in
             coordinator.parent.onChatHistory?(direction)
+        }
+        view.onTranscriptText = { [coordinator = context.coordinator] step in
+            coordinator.parent.onTranscriptText?(step)
         }
         view.onClearComposerDraft = { [coordinator = context.coordinator] in
             coordinator.parent.onClearComposerDraft?()
@@ -474,6 +484,7 @@ final class ComposerUITextView: UITextView {
     var onArchiveOpenChat: (() -> Void)?
     var onUnarchiveOpenChat: (() -> Void)?
     var onChatHistory: ((String) -> Void)?
+    var onTranscriptText: ((TranscriptTextScale.Step) -> Void)?
     var onClearComposerDraft: (() -> Void)?
     var onPinOpenChat: (() -> Void)?
     var onMuteOpenChat: (() -> Void)?
@@ -528,6 +539,12 @@ final class ComposerUITextView: UITextView {
     private var chatHistoryBackConsumed = false
     /// v1.23: the first ⌘] of a hold stepped forward. Repeats of that hold do not.
     private var chatHistoryForwardConsumed = false
+    /// v1.24: the first ⌘= or ⌘+ of a hold grew the text. Repeats of that hold do not.
+    private var transcriptTextLargerConsumed = false
+    /// v1.24: the first ⌘- of a hold shrank the text. Repeats of that hold do not.
+    private var transcriptTextSmallerConsumed = false
+    /// v1.24: the first ⌘0 of a hold reset the text. Repeats of that hold do not.
+    private var transcriptTextResetConsumed = false
     /// v1.10: the first ⌘⇧U of a hold applies. Further repeats do not.
     private var markOpenChatConsumed = false
     var sendMuted = false
@@ -609,6 +626,7 @@ final class ComposerUITextView: UITextView {
             commands.append(contentsOf: archiveOpenChatCommands())
             commands.append(contentsOf: unarchiveOpenChatCommands())
             commands.append(contentsOf: chatHistoryCommands())
+            commands.append(contentsOf: transcriptTextCommands())
             commands.append(contentsOf: clearComposerDraftCommands())
             commands.append(contentsOf: pinOpenChatCommands())
             commands.append(contentsOf: muteOpenChatCommands())
@@ -744,6 +762,97 @@ final class ComposerUITextView: UITextView {
         forwardCommand.wantsPriorityOverSystemBehavior = true
         forwardControl.wantsPriorityOverSystemBehavior = true
         return [backCommand, backControl, forwardCommand, forwardControl]
+    }
+
+    /// A held size chord must not insert or step again.
+    private func transcriptTextHoldShouldSwallow(_ key: UIKey) -> Bool {
+        let raw = key.charactersIgnoringModifiers
+        guard let first = raw.first ?? key.characters.first else { return false }
+        let mods = key.modifierFlags
+        guard let step = TranscriptTextScale.step(
+            key: first,
+            characters: key.characters,
+            command: mods.contains(.command),
+            control: mods.contains(.control),
+            option: mods.contains(.alternate),
+            shift: mods.contains(.shift)
+        ) else { return false }
+        switch step {
+        case .larger: return transcriptTextLargerConsumed
+        case .smaller: return transcriptTextSmallerConsumed
+        case .reset: return transcriptTextResetConsumed
+        }
+    }
+
+    private func releaseTranscriptText(_ key: UIKey) {
+        let raw = key.charactersIgnoringModifiers
+        let produced = key.characters
+        if raw == "=" || raw == "+" || produced == "=" || produced == "+" {
+            transcriptTextLargerConsumed = false
+        }
+        if raw == "-" || raw == "_" || produced == "-" || produced == "_" {
+            transcriptTextSmallerConsumed = false
+        }
+        if raw == "0" || produced == "0" {
+            transcriptTextResetConsumed = false
+        }
+    }
+
+    /// ⌘= / ⌃= and ⌘+ grow. ⌘- / ⌃- shrink. ⌘0 / ⌃0 resets. Does not
+    /// insert or send. IME keeps the key. A repeat of the held chord
+    /// does not step again.
+    private func transcriptTextCommands() -> [UIKeyCommand] {
+        let inputs: [(String, UIKeyModifierFlags)] = [
+            ("=", .command),
+            ("=", .control),
+            ("+", .command),
+            ("+", .control),
+            ("+", UIKeyModifierFlags.command.union(.shift)),
+            ("+", UIKeyModifierFlags.control.union(.shift)),
+            ("-", .command),
+            ("-", .control),
+            ("0", .command),
+            ("0", .control),
+        ]
+        return inputs.map { input, flags in
+            let command = UIKeyCommand(
+                title: TranscriptTextScale.action,
+                action: #selector(transcriptTextFromShortcut(_:)),
+                input: input,
+                modifierFlags: flags
+            )
+            command.wantsPriorityOverSystemBehavior = true
+            return command
+        }
+    }
+
+    /// The first press of each step changes the size. A repeat of that
+    /// hold returns without stepping again, so the character is not inserted.
+    @objc private func transcriptTextFromShortcut(_ sender: UIKeyCommand) {
+        if markedTextRange != nil { return }
+        let input = sender.input ?? ""
+        guard let first = input.first else { return }
+        let flags = sender.modifierFlags
+        guard let step = TranscriptTextScale.step(
+            key: first,
+            characters: input,
+            command: flags.contains(.command),
+            control: flags.contains(.control),
+            option: flags.contains(.alternate),
+            shift: flags.contains(.shift)
+        ) else { return }
+        switch step {
+        case .larger:
+            if transcriptTextLargerConsumed { return }
+            transcriptTextLargerConsumed = true
+        case .smaller:
+            if transcriptTextSmallerConsumed { return }
+            transcriptTextSmallerConsumed = true
+        case .reset:
+            if transcriptTextResetConsumed { return }
+            transcriptTextResetConsumed = true
+        }
+        onTranscriptText?(step)
     }
 
     /// The first press of each direction steps. A repeat of that hold
@@ -1456,6 +1565,11 @@ final class ComposerUITextView: UITextView {
         }) {
             chatHistoryForwardConsumed = false
         }
+        for press in presses {
+            if let key = press.key {
+                releaseTranscriptText(key)
+            }
+        }
         if presses.contains(where: { press in
             if press.key?.keyCode == .keyboardP { return true }
             return press.key?.charactersIgnoringModifiers.lowercased() == "p"
@@ -1566,6 +1680,9 @@ final class ComposerUITextView: UITextView {
         unarchiveOpenChatConsumed = false
         chatHistoryBackConsumed = false
         chatHistoryForwardConsumed = false
+        transcriptTextLargerConsumed = false
+        transcriptTextSmallerConsumed = false
+        transcriptTextResetConsumed = false
         muteOpenChatConsumed = false
         markOpenChatConsumed = false
         renameOpenChatConsumed = false
@@ -1629,6 +1746,10 @@ final class ComposerUITextView: UITextView {
                     // Held ⌘]. Do not insert ] and do not step again.
                     return
                 }
+            }
+            if transcriptTextHoldShouldSwallow(key) {
+                // Held ⌘= / ⌘- / ⌘0. Do not insert the character and do not step again.
+                return
             }
             if key.keyCode == .keyboardP {
                 let mods = key.modifierFlags

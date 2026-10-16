@@ -204,15 +204,21 @@ struct ToolStackHeader: View {
     let count: Int
     let expanded: Bool
     let toggle: () -> Void
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    @Environment(\.transcriptTextPercent) private var transcriptTextPercent
+
+    private var metrics: TranscriptTextScale.Metrics {
+        TranscriptTextScale.metrics(percent: transcriptTextPercent, dynamicType: dynamicTypeSize)
+    }
 
     var body: some View {
         Button(action: toggle) {
             HStack(spacing: 4) {
                 Image(systemName: "chevron.right")
-                    .font(.system(size: CompactToolTraces.chevronSize, weight: .semibold))
+                    .font(metrics.chevronFont)
                     .rotationEffect(.degrees(expanded ? 90 : 0))
                 Text(CompactToolTraces.label(count: count))
-                    .font(.system(size: CompactToolTraces.font))
+                    .font(metrics.traceFont)
             }
             .foregroundStyle(.secondary)
         }

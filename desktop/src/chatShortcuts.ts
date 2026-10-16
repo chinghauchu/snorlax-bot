@@ -66,6 +66,9 @@ export type ChatShortcut = {
  * Cmd/Ctrl-[ steps back through recently opened chats and Cmd/Ctrl-]
  * steps forward again (v1.23). The history is in memory for this
  * window. Deleted chats are skipped. Archived chats stay valid.
+ * Cmd/Ctrl-= and Cmd/Ctrl-+ make the transcript text one step
+ * larger, Cmd/Ctrl-- one step smaller, and Cmd/Ctrl-0 resets it
+ * (v1.24). The steps run from 85% to 130% and persist locally.
  * Find's Enter / Shift-Enter steps matches.
  * The switcher uses Up / Down / Enter. Mention and skill menus use
  * Up / Down / Enter / Tab.
@@ -78,6 +81,7 @@ export const CHAT_SHORTCUTS: readonly ChatShortcut[] = [
   { id: "copy-last", keys: "Cmd/Ctrl Shift C", action: "Copy the last reply" },
   { id: "page", keys: "Page Up / Page Down", action: "Scroll the transcript" },
   { id: "transcript-edge", keys: "Cmd/Ctrl Home / End", action: "Oldest or latest messages" },
+  { id: "transcript-text", keys: "Cmd/Ctrl = / + / - / 0", action: "Larger, smaller, or default text" },
   { id: "escape", keys: "Esc", action: "Stop, close, or jump" },
   { id: "recall", keys: "↑", action: "Recall last message" },
   { id: "chat-nav", keys: "Alt ↑ / Alt ↓", action: "Previous or next chat" },

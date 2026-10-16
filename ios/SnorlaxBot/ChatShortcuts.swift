@@ -38,6 +38,9 @@ import SwiftUI
 /// ⌘⇧K opens the previous unread chat in the visible list order, wrapping,
 /// and does not insert or send. ⌘K without Shift is not this chord.
 /// Page Up / Page Down scroll the transcript.
+/// ⌘= / ⌃= and ⌘+ / ⌃+ make the transcript text one step larger.
+/// ⌘- / ⌃- make it one step smaller. ⌘0 / ⌃0 resets to 100%.
+/// Dynamic Type is the base. The steps persist in UserDefaults.
 /// ⌘↑ / ⌘↓ jump to the oldest or latest messages. No Cmd-K on iOS
 /// (the switcher is the chat-list search field). No HTTP.
 /// Keep in lockstep with `desktop/src/chatShortcuts.ts`.
@@ -118,6 +121,7 @@ enum ChatShortcuts {
         Row(id: "copy-last", keys: CopyLastReply.keysLabel, action: CopyLastReply.action),
         Row(id: "page", keys: TranscriptScroll.pageKeysLabel, action: TranscriptScroll.pageAction),
         Row(id: "transcript-edge", keys: TranscriptScroll.edgeKeysLabel, action: TranscriptScroll.edgeAction),
+        Row(id: "transcript-text", keys: TranscriptTextScale.keysLabel, action: TranscriptTextScale.action),
         Row(id: "find", keys: "⌘F", action: "Find in chat"),
         Row(
             id: "find-step",
@@ -129,10 +133,14 @@ enum ChatShortcuts {
 
 struct ChatShortcutsSheet: View {
     @Environment(\.dismiss) private var dismiss
+    @Environment(AppModel.self) private var model
 
     var body: some View {
         NavigationStack {
             List {
+                Section(TranscriptTextScale.sectionTitle) {
+                    textSizeControl
+                }
                 Section(ChatShortcuts.gesturesHeading) {
                     ForEach(ChatShortcuts.gestures) { row in
                         shortcutRow(row)
@@ -155,6 +163,31 @@ struct ChatShortcutsSheet: View {
             }
         }
         .presentationDetents([.medium, .large])
+    }
+
+    private var textSizeControl: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(TranscriptTextScale.percentLabel(model.transcriptTextPercent))
+                .font(.system(size: 14, weight: .medium))
+                .accessibilityLabel("\(TranscriptTextScale.sectionTitle), \(TranscriptTextScale.percentLabel(model.transcriptTextPercent))")
+            HStack(spacing: 12) {
+                Button(TranscriptTextScale.smallerLabel) {
+                    model.adjustTranscriptText(.smaller)
+                }
+                .disabled(!TranscriptTextScale.canApply(model.transcriptTextPercent, .smaller))
+                Button(TranscriptTextScale.largerLabel) {
+                    model.adjustTranscriptText(.larger)
+                }
+                .disabled(!TranscriptTextScale.canApply(model.transcriptTextPercent, .larger))
+                Button(TranscriptTextScale.resetLabel) {
+                    model.adjustTranscriptText(.reset)
+                }
+                .disabled(!TranscriptTextScale.canApply(model.transcriptTextPercent, .reset))
+            }
+            .buttonStyle(.bordered)
+            .font(.system(size: 14))
+        }
+        .accessibilityElement(children: .contain)
     }
 
     private func shortcutRow(_ row: ChatShortcuts.Row) -> some View {

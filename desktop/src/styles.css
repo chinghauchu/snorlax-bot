@@ -3925,3 +3925,52 @@ legend {
   font-size: 12px;
   line-height: 1.4;
 }
+
+/* v1.24: transcript text scale. 1 is the authored size. Message
+   bubbles, code, and tool traces share it. Padding, images, max
+   widths, and chrome outside .transcript stay in px. */
+.transcript {
+  --transcript-scale: 1;
+}
+
+.transcript .bubble pre,
+.transcript .assistant-md,
+.transcript .handoff-card-ask {
+  font-size: calc(14px * var(--transcript-scale));
+}
+
+.transcript .assistant-md h1 {
+  font-size: calc(16px * var(--transcript-scale));
+}
+
+.transcript .assistant-md h2,
+.transcript .assistant-md h3,
+.transcript .assistant-md h4,
+.transcript .assistant-md h5,
+.transcript .assistant-md h6 {
+  font-size: calc(14px * var(--transcript-scale));
+}
+
+.transcript .assistant-md code,
+.transcript .md-math-fallback,
+.transcript .bubble pre.md-math-fallback {
+  font-size: calc(13px * var(--transcript-scale));
+}
+
+.transcript .md-fence-lang,
+.transcript .md-fence-body,
+.transcript .bubble pre.md-fence-body,
+.transcript .md-fence-body code,
+.transcript .tool-trace,
+.transcript .tool-stack,
+.transcript .handoff-context pre {
+  font-size: calc(12px * var(--transcript-scale));
+}
+
+.transcript .tool-stack-chevron {
+  font-size: calc(10px * var(--transcript-scale));
+}
+
+.transcript .streaming-caret {
+  height: calc(12px * var(--transcript-scale));
+}
