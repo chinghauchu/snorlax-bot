@@ -137,6 +137,12 @@ final class AppModel {
     /// The list and the open chat can both see one ⌘⇧O. The second
     /// delivery inside this window does not clear again.
     private var markAllReadChordAt: TimeInterval = 0
+    /// v1.23: in-memory per-window history of chat opens. Not persisted.
+    private var chatOpenHistory = ChatOpenHistory.State.empty
+    /// The list and the open chat can both see one ⌘[ or ⌘]. The second
+    /// delivery of that same direction inside this window does not step again.
+    private var chatHistoryChordDirection = ""
+    private var chatHistoryChordAt: TimeInterval = 0
     /// v0.89: pinned chat ids, in the order they were pinned. UserDefaults.
     var pinnedChatIDs: [String] = [] {
         didSet { ChatPins.write(pinnedChatIDs) }
@@ -392,6 +398,7 @@ final class AppModel {
     }
 
     func bootstrap() async {
+        chatOpenHistory = .empty
         guard isConfigured, let client else {
             agents = []
             retainChatPreviews()
@@ -399,6 +406,7 @@ final class AppModel {
             pluginCatalog = []
             adoptComposerDraft(agentId: Agent.channelID, threadId: nil)
             selectedAgentID = Agent.channelID
+            chatOpenHistory = ChatOpenHistory.replace(Agent.channelID)
             messages = []
             localPreviews = [:]
             navigationPath = []
@@ -421,6 +429,7 @@ final class AppModel {
             } else {
                 adoptComposerDraft(agentId: nil, threadId: nil)
                 selectedAgentID = nil
+                chatOpenHistory = .empty
                 messages = []
                 navigationPath = []
                 threadID = nil
@@ -662,7 +671,15 @@ final class AppModel {
         readingPublishLocked = false
     }
 
-    func loadConversation(_ id: String, thread: String?, push: Bool) async {
+    func loadConversation(
+        _ id: String,
+        thread: String?,
+        push: Bool,
+        recordHistory: Bool = true
+    ) async {
+        if recordHistory {
+            chatOpenHistory = ChatOpenHistory.record(chatOpenHistory, id: id)
+        }
         readingPublishLocked = true
         let generation = readingLoadGeneration + 1
         readingLoadGeneration = generation
@@ -820,6 +837,7 @@ final class AppModel {
                 } else {
                     adoptComposerDraft(agentId: nil, threadId: nil)
                     selectedAgentID = nil
+                    chatOpenHistory = ChatOpenHistory.noteClosed(chatOpenHistory)
                     messages = []
                     navigationPath = []
                     threadID = nil
@@ -2076,9 +2094,33 @@ final class AppModel {
         } else {
             adoptComposerDraft(agentId: nil, threadId: nil)
             selectedAgentID = nil
+            chatOpenHistory = ChatOpenHistory.noteClosed(chatOpenHistory)
             messages = []
             navigationPath = []
             threadID = nil
+        }
+    }
+
+    /// v1.23: hardware ⌘[ / ⌃[ and ⌘] / ⌃]. Same open as tapping the row,
+    /// including the draft swap, the reading place, and composer focus.
+    /// Deleted chats are skipped. Archived chats stay valid. Either end
+    /// is a no-op. A second view that sees the same direction does not
+    /// step again. This step does not push a new history entry.
+    func openChatFromHistory(_ direction: ChatOpenHistory.Direction) {
+        guard !computerTakeoverOpen else { return }
+        let now = Date().timeIntervalSinceReferenceDate
+        if direction.rawValue == chatHistoryChordDirection, now - chatHistoryChordAt < 0.05 {
+            return
+        }
+        chatHistoryChordDirection = direction.rawValue
+        chatHistoryChordAt = now
+        let alive = Set(visibleAgents.map(\.id))
+        let stepped = ChatOpenHistory.step(chatOpenHistory, direction: direction) { alive.contains($0) }
+        chatOpenHistory = stepped.state
+        guard let id = stepped.id else { return }
+        Task {
+            await loadConversation(id, thread: nil, push: true, recordHistory: false)
+            wantsComposerFocus = true
         }
     }
 

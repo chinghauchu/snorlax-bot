@@ -128,6 +128,7 @@ test("the overlay lists only shortcuts that already have handlers", () => {
       "escape",
       "recall",
       "chat-nav",
+      "chat-history",
       "jump-chat",
       "archive-chat",
       "unarchive-chat",
@@ -166,6 +167,7 @@ test("the overlay lists only shortcuts that already have handlers", () => {
   assert.equal(action.escape, "Stop, close, or jump");
   assert.equal(action.recall, "Recall last message");
   assert.equal(action["chat-nav"], "Previous or next chat");
+  assert.equal(action["chat-history"], "Back or forward chat");
   assert.equal(action["jump-chat"], "Open a chat (9 is last)");
   assert.equal(action["archive-chat"], "Archive this chat");
   assert.equal(action["unarchive-chat"], "Unarchive this chat");

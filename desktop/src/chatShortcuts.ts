@@ -63,6 +63,9 @@ export type ChatShortcut = {
  * Cmd/Ctrl-Shift-B unarchives the open chat through the sidebar
  * Unarchive action when that chat is archived (v1.22).
  * Cmd/Ctrl-Shift-A still only archives.
+ * Cmd/Ctrl-[ steps back through recently opened chats and Cmd/Ctrl-]
+ * steps forward again (v1.23). The history is in memory for this
+ * window. Deleted chats are skipped. Archived chats stay valid.
  * Find's Enter / Shift-Enter steps matches.
  * The switcher uses Up / Down / Enter. Mention and skill menus use
  * Up / Down / Enter / Tab.
@@ -78,6 +81,7 @@ export const CHAT_SHORTCUTS: readonly ChatShortcut[] = [
   { id: "escape", keys: "Esc", action: "Stop, close, or jump" },
   { id: "recall", keys: "↑", action: "Recall last message" },
   { id: "chat-nav", keys: "Alt ↑ / Alt ↓", action: "Previous or next chat" },
+  { id: "chat-history", keys: "Cmd/Ctrl [ / ]", action: "Back or forward chat" },
   { id: "jump-chat", keys: "Cmd/Ctrl 1-9", action: "Open a chat (9 is last)" },
   { id: "archive-chat", keys: "Cmd/Ctrl Shift A", action: "Archive this chat" },
   { id: "unarchive-chat", keys: "Cmd/Ctrl Shift B", action: "Unarchive this chat" },

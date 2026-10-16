@@ -39,6 +39,10 @@ struct ComposerTextView: UIViewRepresentable {
     /// A key repeat does not unarchive again. A chat that is not
     /// archived stays put.
     var onUnarchiveOpenChat: (() -> Void)? = nil
+    /// v1.23: ⌘[ / ⌃[ steps back through recently opened chats.
+    /// ⌘] / ⌃] steps forward. Does not insert or send. IME marked
+    /// text keeps the key. A key repeat does not step again.
+    var onChatHistory: ((String) -> Void)? = nil
     /// v1.07: ⌘⇧⌫ / ⌃⇧⌫ clears the composer draft. Does not send.
     /// IME marked text keeps the key.
     var onClearComposerDraft: (() -> Void)? = nil
@@ -144,6 +148,9 @@ struct ComposerTextView: UIViewRepresentable {
         view.onUnarchiveOpenChat = { [coordinator = context.coordinator] in
             coordinator.parent.onUnarchiveOpenChat?()
         }
+        view.onChatHistory = { [coordinator = context.coordinator] direction in
+            coordinator.parent.onChatHistory?(direction)
+        }
         view.onClearComposerDraft = { [coordinator = context.coordinator] in
             coordinator.parent.onClearComposerDraft?()
         }
@@ -247,6 +254,9 @@ struct ComposerTextView: UIViewRepresentable {
         }
         view.onUnarchiveOpenChat = { [coordinator = context.coordinator] in
             coordinator.parent.onUnarchiveOpenChat?()
+        }
+        view.onChatHistory = { [coordinator = context.coordinator] direction in
+            coordinator.parent.onChatHistory?(direction)
         }
         view.onClearComposerDraft = { [coordinator = context.coordinator] in
             coordinator.parent.onClearComposerDraft?()
@@ -463,6 +473,7 @@ final class ComposerUITextView: UITextView {
     var onJumpChat: ((Int) -> Void)?
     var onArchiveOpenChat: (() -> Void)?
     var onUnarchiveOpenChat: (() -> Void)?
+    var onChatHistory: ((String) -> Void)?
     var onClearComposerDraft: (() -> Void)?
     var onPinOpenChat: (() -> Void)?
     var onMuteOpenChat: (() -> Void)?
@@ -513,6 +524,10 @@ final class ComposerUITextView: UITextView {
     private var markAllReadConsumed = false
     /// v1.22: the first ⌘⇧B of a hold unarchived. Repeats of that hold do not.
     private var unarchiveOpenChatConsumed = false
+    /// v1.23: the first ⌘[ of a hold stepped back. Repeats of that hold do not.
+    private var chatHistoryBackConsumed = false
+    /// v1.23: the first ⌘] of a hold stepped forward. Repeats of that hold do not.
+    private var chatHistoryForwardConsumed = false
     /// v1.10: the first ⌘⇧U of a hold applies. Further repeats do not.
     private var markOpenChatConsumed = false
     var sendMuted = false
@@ -593,6 +608,7 @@ final class ComposerUITextView: UITextView {
             commands.append(contentsOf: jumpChatCommands())
             commands.append(contentsOf: archiveOpenChatCommands())
             commands.append(contentsOf: unarchiveOpenChatCommands())
+            commands.append(contentsOf: chatHistoryCommands())
             commands.append(contentsOf: clearComposerDraftCommands())
             commands.append(contentsOf: pinOpenChatCommands())
             commands.append(contentsOf: muteOpenChatCommands())
@@ -693,6 +709,59 @@ final class ComposerUITextView: UITextView {
             commands.append(control)
         }
         return commands
+    }
+
+    /// ⌘[ / ⌃[ steps back. ⌘] / ⌃] steps forward. Does not insert or
+    /// send. IME keeps the key. A repeat of the held chord does not
+    /// step again.
+    private func chatHistoryCommands() -> [UIKeyCommand] {
+        let backCommand = UIKeyCommand(
+            title: ChatOpenHistory.backTitle,
+            action: #selector(chatHistoryFromShortcut(_:)),
+            input: "[",
+            modifierFlags: .command
+        )
+        let backControl = UIKeyCommand(
+            title: ChatOpenHistory.backTitle,
+            action: #selector(chatHistoryFromShortcut(_:)),
+            input: "[",
+            modifierFlags: .control
+        )
+        let forwardCommand = UIKeyCommand(
+            title: ChatOpenHistory.forwardTitle,
+            action: #selector(chatHistoryFromShortcut(_:)),
+            input: "]",
+            modifierFlags: .command
+        )
+        let forwardControl = UIKeyCommand(
+            title: ChatOpenHistory.forwardTitle,
+            action: #selector(chatHistoryFromShortcut(_:)),
+            input: "]",
+            modifierFlags: .control
+        )
+        backCommand.wantsPriorityOverSystemBehavior = true
+        backControl.wantsPriorityOverSystemBehavior = true
+        forwardCommand.wantsPriorityOverSystemBehavior = true
+        forwardControl.wantsPriorityOverSystemBehavior = true
+        return [backCommand, backControl, forwardCommand, forwardControl]
+    }
+
+    /// The first press of each direction steps. A repeat of that hold
+    /// returns without stepping again, so the bracket is not inserted.
+    @objc private func chatHistoryFromShortcut(_ sender: UIKeyCommand) {
+        if markedTextRange != nil { return }
+        let input = sender.input ?? ""
+        if input == "[" {
+            if chatHistoryBackConsumed { return }
+            chatHistoryBackConsumed = true
+            onChatHistory?("back")
+            return
+        }
+        if input == "]" {
+            if chatHistoryForwardConsumed { return }
+            chatHistoryForwardConsumed = true
+            onChatHistory?("forward")
+        }
     }
 
     /// ⌘⇧B / ⌃⇧B. Unarchives the open chat when it is archived.
@@ -1376,6 +1445,18 @@ final class ComposerUITextView: UITextView {
             unarchiveOpenChatConsumed = false
         }
         if presses.contains(where: { press in
+            if press.key?.keyCode == .keyboardOpenBracket { return true }
+            return press.key?.charactersIgnoringModifiers == "["
+        }) {
+            chatHistoryBackConsumed = false
+        }
+        if presses.contains(where: { press in
+            if press.key?.keyCode == .keyboardCloseBracket { return true }
+            return press.key?.charactersIgnoringModifiers == "]"
+        }) {
+            chatHistoryForwardConsumed = false
+        }
+        if presses.contains(where: { press in
             if press.key?.keyCode == .keyboardP { return true }
             return press.key?.charactersIgnoringModifiers.lowercased() == "p"
         }) {
@@ -1483,6 +1564,8 @@ final class ComposerUITextView: UITextView {
         heldConfirmKeys.removeAll()
         pinOpenChatConsumed = false
         unarchiveOpenChatConsumed = false
+        chatHistoryBackConsumed = false
+        chatHistoryForwardConsumed = false
         muteOpenChatConsumed = false
         markOpenChatConsumed = false
         renameOpenChatConsumed = false
@@ -1516,6 +1599,34 @@ final class ComposerUITextView: UITextView {
                     shift: mods.contains(.shift)
                 ), unarchiveOpenChatConsumed {
                     // Held ⌘⇧B. Do not insert b and do not unarchive again.
+                    return
+                }
+            }
+            if key.keyCode == .keyboardOpenBracket || key.charactersIgnoringModifiers == "[" {
+                let mods = key.modifierFlags
+                if ChatOpenHistory.direction(
+                    key: "[",
+                    characters: key.charactersIgnoringModifiers,
+                    command: mods.contains(.command),
+                    control: mods.contains(.control),
+                    option: mods.contains(.alternate),
+                    shift: mods.contains(.shift)
+                ) == .back, chatHistoryBackConsumed {
+                    // Held ⌘[. Do not insert [ and do not step again.
+                    return
+                }
+            }
+            if key.keyCode == .keyboardCloseBracket || key.charactersIgnoringModifiers == "]" {
+                let mods = key.modifierFlags
+                if ChatOpenHistory.direction(
+                    key: "]",
+                    characters: key.charactersIgnoringModifiers,
+                    command: mods.contains(.command),
+                    control: mods.contains(.control),
+                    option: mods.contains(.alternate),
+                    shift: mods.contains(.shift)
+                ) == .forward, chatHistoryForwardConsumed {
+                    // Held ⌘]. Do not insert ] and do not step again.
                     return
                 }
             }
