@@ -127,6 +127,7 @@ test("the overlay lists only shortcuts that already have handlers", () => {
       "page",
       "transcript-edge",
       "user-jump",
+      "quote-jump",
       "transcript-text",
       "escape",
       "recall",

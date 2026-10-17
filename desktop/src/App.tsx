@@ -217,6 +217,21 @@ import {
   userMessageJumpShouldMove,
 } from "./userMessageJump";
 import {
+  QUOTE_JUMP_ACTION,
+  QuoteJumps,
+  browserQuoteJumpStorage,
+  isQuoteJumpChord,
+  overlayTextFieldOwnsQuoteJump,
+  pickQuoteJumpMessageId,
+  primaryQuoteSource,
+  quoteJumpBlocked,
+  quoteJumpBubbleProps,
+  quoteJumpParts,
+  quoteJumpRowSelector,
+  quoteJumpShouldMove,
+  quoteJumpTargetSelector,
+} from "./quoteJump";
+import {
   clearComposerDraftBlocked,
   composerDraftAlreadyEmpty,
   isClearComposerDraftChord,
@@ -905,7 +920,12 @@ function quoteRootOf(node: Node | null): Element | null {
 }
 
 /** Selection inside one quotable message, or null. Empty selections are null. */
-function readQuoteOffer(): { text: string; top: number; left: number } | null {
+function readQuoteOffer(): {
+  text: string;
+  top: number;
+  left: number;
+  messageId: string;
+} | null {
   const selection = window.getSelection();
   if (!selection || selection.isCollapsed || selection.rangeCount === 0) {
     return null;
@@ -921,7 +941,8 @@ function readQuoteOffer(): { text: string; top: number; left: number } | null {
     { top: rect.top, left: rect.left, bottom: rect.bottom },
     { width: window.innerWidth, height: window.innerHeight },
   );
-  return { text, top: origin.top, left: origin.left };
+  const messageId = anchor.getAttribute("data-quote-id") ?? "";
+  return { text, top: origin.top, left: origin.left, messageId };
 }
 
 /**
@@ -939,6 +960,7 @@ function QuoteSelectionButton({
     text: string;
     top: number;
     left: number;
+    messageId: string;
   } | null>(null);
   useEffect(() => {
     const update = () => setOffer(readQuoteOffer());
@@ -1179,6 +1201,9 @@ export function App() {
   );
   const [userJumpHighlightId, setUserJumpHighlightId] = useState<string | null>(null);
   const userJumpHighlightGen = useRef(0);
+  const [quoteJumpHighlightId, setQuoteJumpHighlightId] = useState<string | null>(null);
+  const quoteJumpHighlightGen = useRef(0);
+  const [quoteJumpEpoch, setQuoteJumpEpoch] = useState(0);
   const [accent, setAccent] = useState(
     () => localStorage.getItem(ACCENT_KEY) || DEFAULT_ACCENT,
   );
@@ -1433,6 +1458,7 @@ export function App() {
     () => new Set(),
   );
   const chatDrafts = useRef(new ChatDrafts(browserDraftStorage()));
+  const quoteJumps = useRef(new QuoteJumps(browserQuoteJumpStorage()));
   const convoRef = useRef<{ agentId: string | null; threadId: string | null }>({
     agentId: SEED_CHANNEL_ID,
     threadId: null,
@@ -1987,6 +2013,9 @@ export function App() {
     const here = convoRef.current;
     if (!here.agentId) return;
     chatDrafts.current.set(here.agentId, here.threadId, draft);
+    if (draft.length === 0) {
+      quoteJumps.current.clearPending(here.agentId, here.threadId);
+    }
   }, [draft]);
 
   function publishReplyUnread() {
@@ -3675,6 +3704,10 @@ export function App() {
     setDraft(text);
     setRecallArmed(true);
     syncComposerTriggers(text, text.length);
+    if (active) {
+      quoteJumps.current.clearPending(active.id, threadId);
+      setQuoteJumpEpoch((epoch) => epoch + 1);
+    }
   }
 
   /** v0.94: quote the selection into this chat's draft. Does not send. */
@@ -3687,6 +3720,11 @@ export function App() {
     setDraft(next.text);
     setRecallArmed((armed) => recallArmedAfterEdit(next.text, armed));
     syncComposerTriggers(next.text, next.caret);
+    const sourceId = readQuoteOffer()?.messageId ?? "";
+    if (sourceId && active) {
+      quoteJumps.current.note(active.id, threadId, selection, sourceId);
+      setQuoteJumpEpoch((epoch) => epoch + 1);
+    }
     window.getSelection()?.removeAllRanges();
   }
   quoteKeyRef.current = quoteIntoComposer;
@@ -3698,6 +3736,10 @@ export function App() {
     setDraft("");
     setRecallArmed(false);
     syncComposerTriggers("", 0);
+    if (active) {
+      quoteJumps.current.clearPending(active.id, threadId);
+      setQuoteJumpEpoch((epoch) => epoch + 1);
+    }
   }
 
   useEffect(() => {
@@ -3821,6 +3863,8 @@ export function App() {
     setDividerAnchorId(null);
     snapStick();
     focusComposer();
+    quoteJumps.current.commit(origin.agentId, origin.threadId, content);
+    setQuoteJumpEpoch((epoch) => epoch + 1);
     chatDrafts.current.clear(origin.agentId, origin.threadId);
     draftRef.current = "";
     setDraft("");
@@ -5308,6 +5352,8 @@ export function App() {
     const here = convoRef.current;
     if (here.agentId) {
       chatDrafts.current.clear(here.agentId, here.threadId);
+      quoteJumps.current.clearPending(here.agentId, here.threadId);
+      setQuoteJumpEpoch((epoch) => epoch + 1);
     }
     // Only move the caret when the text actually changes. A chips-only
     // clear leaves the empty field's caret alone, so the next keystroke
@@ -6456,6 +6502,144 @@ export function App() {
     captureOpenReadingPlace,
   ]);
 
+  // v1.27: scroll a quoted message under the sticky day header.
+  // The same path as a transcript page: stick-to-bottom and the
+  // reading place follow the offset. Collapsed long messages stay
+  // collapsed. Reduce Motion keeps the outline and skips the fade.
+  const jumpToQuotedMessage = useCallback(
+    (sourceId: string) => {
+      const el = scroller.current;
+      if (!el || !sourceId) return;
+      const target = el.querySelector<HTMLElement>(
+        quoteJumpTargetSelector(CSS.escape(sourceId)),
+      );
+      if (!target) return;
+      const day = el.querySelector<HTMLElement>(".day-separator");
+      const stickyInset = day ? day.getBoundingClientRect().height : 0;
+      const scrollerTop = el.getBoundingClientRect().top;
+      const top = userJumpContentTop(
+        target.getBoundingClientRect().top,
+        scrollerTop,
+        el.scrollTop,
+      );
+      const maxScroll = Math.max(0, el.scrollHeight - el.clientHeight);
+      const nextTop = userJumpScrollTop(top, stickyInset, maxScroll);
+      el.scrollTop = nextTop;
+      const box = {
+        scrollTop: nextTop,
+        scrollHeight: el.scrollHeight,
+        clientHeight: el.clientHeight,
+      };
+      applyStick(
+        onUserScroll(stickRef.current, isNearBottom(box, NEAR_BOTTOM_PX)),
+      );
+      captureOpenReadingPlace();
+      const token = quoteJumpHighlightGen.current + 1;
+      quoteJumpHighlightGen.current = token;
+      setQuoteJumpHighlightId(sourceId);
+      const ms = userJumpHighlightMs(
+        window.matchMedia("(prefers-reduced-motion: reduce)").matches,
+      );
+      window.setTimeout(() => {
+        if (quoteJumpHighlightGen.current === token) setQuoteJumpHighlightId(null);
+      }, ms);
+    },
+    [applyStick, captureOpenReadingPlace],
+  );
+
+  // v1.27: Cmd/Ctrl-' jumps to the message quoted by the quote nearest
+  // the reading line. The composer may keep its text. The apostrophe
+  // is not inserted. A key repeat is swallowed and does not jump again.
+  // IME keeps the key. Find, the switcher, and the other overlays keep it.
+  useEffect(() => {
+    const onQuoteJump = (event: globalThis.KeyboardEvent) => {
+      if (event.defaultPrevented) return;
+      if (
+        !isQuoteJumpChord({
+          key: event.key,
+          metaKey: event.metaKey,
+          ctrlKey: event.ctrlKey,
+          altKey: event.altKey,
+          shiftKey: event.shiftKey,
+          repeat: event.repeat,
+        })
+      ) {
+        return;
+      }
+      const composer = composerRef.current;
+      const gate = {
+        chatOpen: active != null,
+        composing: isComposerComposing(event),
+        overlayTextField: overlayTextFieldOwnsQuoteJump(
+          focusIsTextField(event.target),
+          event.target === composer,
+        ),
+        inCard: focusInsideCard(event.target),
+        findOpen,
+        switchOpen,
+        shortcutsOpen,
+        renaming: renamingId != null,
+        lightboxOpen: lightboxTarget != null,
+        menuOpen: contextMenu != null,
+        blocked: switcherBlocked || mentionOpen || skillMenuOpen,
+      };
+      if (quoteJumpBlocked(gate)) return;
+      event.preventDefault();
+      event.stopPropagation();
+      if (!quoteJumpShouldMove({ repeat: event.repeat })) return;
+      const el = scroller.current;
+      if (!el || !active) return;
+      const day = el.querySelector<HTMLElement>(".day-separator");
+      const stickyInset = day ? day.getBoundingClientRect().height : 0;
+      const scrollerTop = el.getBoundingClientRect().top;
+      const rows = [...el.querySelectorAll<HTMLElement>(quoteJumpRowSelector())].map(
+        (node) => ({
+          id: node.dataset.quoteJump ?? "",
+          top: userJumpContentTop(
+            node.getBoundingClientRect().top,
+            scrollerTop,
+            el.scrollTop,
+          ),
+        }),
+      );
+      const maxScroll = Math.max(0, el.scrollHeight - el.clientHeight);
+      const messageId = pickQuoteJumpMessageId(
+        rows,
+        userJumpView({
+          scrollTop: el.scrollTop,
+          stickyInset,
+          maxScroll,
+        }),
+      );
+      if (!messageId) return;
+      const message = messagesRef.current.find((row) => row.id === messageId);
+      if (!message) return;
+      const loaded = new Set(messagesRef.current.map((row) => row.id));
+      const sourceId = primaryQuoteSource(
+        quoteJumps.current.targets(active.id, threadId, message.content, loaded),
+      );
+      if (!sourceId) return;
+      jumpToQuotedMessage(sourceId);
+    };
+    window.addEventListener("keydown", onQuoteJump, true);
+    return () => {
+      window.removeEventListener("keydown", onQuoteJump, true);
+    };
+  }, [
+    active,
+    threadId,
+    findOpen,
+    switchOpen,
+    shortcutsOpen,
+    renamingId,
+    lightboxTarget,
+    contextMenu,
+    switcherBlocked,
+    mentionOpen,
+    skillMenuOpen,
+    jumpToQuotedMessage,
+  ]);
+
   // v1.18: Cmd/Ctrl-Shift-Y regenerates the latest completed LEFT
   // through the same path as the Regenerate hover control. The
   // composer does not own the chord and the letter is not inserted.
@@ -7271,6 +7455,20 @@ export function App() {
                   displayBody(message.content, message.senderName),
                   completed,
                 );
+                const quoteLoadedIds = new Set(messages.map((row) => row.id));
+                const quoteTargets =
+                  quoteJumpEpoch >= 0 && active && mine
+                    ? quoteJumps.current.targets(
+                        active.id,
+                        threadId,
+                        message.content,
+                        quoteLoadedIds,
+                      )
+                    : [];
+                const quoteParts =
+                  quoteTargets.length > 0 && findRowActive(message.id) !== "true"
+                    ? quoteJumpParts(message.content, quoteTargets)
+                    : null;
                 const viewingChannel = active?.kind === "channel";
                 const timelineHandoff =
                   viewingChannel && !threadId && isHandoffRoot(message);
@@ -7508,6 +7706,13 @@ export function App() {
                         data-user-jump-highlight={
                           userJumpHighlightId === message.id ? "true" : undefined
                         }
+                        data-quote-jump={
+                          quoteTargets.length > 0 ? message.id : undefined
+                        }
+                        data-quote-jump-target={message.id}
+                        data-quote-jump-highlight={
+                          quoteJumpHighlightId === message.id ? "true" : undefined
+                        }
                         data-failed={
                           failedSends.some((row) => row.id === message.id)
                             ? "true"
@@ -7525,6 +7730,41 @@ export function App() {
                           onOpenImage={openImageLightbox}
                         />
                         {message.content ? (
+                          quoteParts ? (
+                            <div className="user-quote-text">
+                              {quoteParts.map((part, partIndex) =>
+                                part.kind === "quote" ? (
+                                  <button
+                                    key={`${message.id}-quote-${partIndex}`}
+                                    type="button"
+                                    className="quote-jump"
+                                    aria-label={QUOTE_JUMP_ACTION}
+                                    onMouseDown={(event) => event.preventDefault()}
+                                    onClick={() => jumpToQuotedMessage(part.sourceId)}
+                                  >
+                                    {part.text}
+                                  </button>
+                                ) : (
+                                  <pre key={`${message.id}-text-${partIndex}`}>
+                                    <span
+                                      data-quote={quoteRootAttr({
+                                        kind: message.kind,
+                                        fromUser: true,
+                                        completed: true,
+                                      })}
+                                      data-quote-id={message.id}
+                                    >
+                                      <MentionText
+                                        text={part.text}
+                                        knownNames={knownNames}
+                                        links
+                                      />
+                                    </span>
+                                  </pre>
+                                ),
+                              )}
+                            </div>
+                          ) : (
                           <pre>
                             <span
                               data-quote={quoteRootAttr({
@@ -7532,6 +7772,7 @@ export function App() {
                                 fromUser: true,
                                 completed: true,
                               })}
+                              data-quote-id={message.id}
                             >
                             <MentionText
                               text={displayBody(
@@ -7544,6 +7785,7 @@ export function App() {
                             />
                             </span>
                           </pre>
+                          )
                         ) : null}
                       </div>
                       {showUserCopy({
@@ -7587,6 +7829,7 @@ export function App() {
                                       ? "bubble agent wide"
                                       : "bubble agent"
                                   }
+                                  {...quoteJumpBubbleProps(message.id, quoteJumpHighlightId)}
                                   data-find-row={bubbleRowId}
                                   data-find-active-row={findRowActive(bubbleRowId)}
                                   tabIndex={bubbleStamp ? 0 : undefined}
@@ -7594,12 +7837,8 @@ export function App() {
                                   <BubbleStamp label={bubbleStamp} />
                                   <LongMessageBody
                                     completed={completed}
-                                    text={part}
-                                    quote={quoteRootAttr({
-                                      kind: message.kind,
-                                      fromUser: false,
-                                      completed,
-                                    })}
+                                    text={part} quoteId={message.id}
+                                    quote={quoteRootAttr({ kind: message.kind, fromUser: false, completed })}
                                     activeFind={
                                       findRowActive(bubbleRowId) === "true"
                                     }

@@ -42,6 +42,8 @@ struct ChatView: View {
     @State private var transcriptCopiedPulse = 0
     /// v1.25: the sent message a keyboard jump just landed on.
     @State private var userJumpHighlightID: String?
+    @State private var quoteJumpUnmeasuredID: String?
+    @State private var quoteJumpToken = 0
     @State private var userJumpPulse = 0
     @State private var userJumpUnmeasuredID: String?
     @State private var userJumpToken = 0
@@ -83,6 +85,7 @@ struct ChatView: View {
                 onChatHistory: { direction in chatHistoryFromComposer(direction) },
                 onTranscriptText: { step in transcriptTextFromComposer(step) },
                 onUserMessageJump: { direction in userMessageJumpFromComposer(direction) },
+                onQuoteJump: { quoteJumpFromComposer() },
                 onClearComposerDraft: { clearComposerDraftFromComposer() },
                 onPinOpenChat: { pinOpenChatFromComposer() },
                 onMuteOpenChat: { muteOpenChatFromComposer() },
@@ -193,6 +196,9 @@ struct ChatView: View {
                 return .handled
             }
             if userMessageJumpKey(press) == .handled {
+                return .handled
+            }
+            if quoteJumpKey(press) == .handled {
                 return .handled
             }
             if transcriptScrollKey(press) == .handled {
@@ -713,6 +719,114 @@ struct ChatView: View {
         guard let top = rows.first(where: { $0.id == id })?.top else {
             userJumpUnmeasuredID = id
             userJumpToken += 1
+            return
+        }
+        let next = UserMessageJump.scrollOffset(
+            targetTop: top,
+            stickyInset: inset,
+            maxOffset: box.maxOffset
+        )
+        commandedY = next
+        let near = TranscriptScroll.isNearBottom(offsetY: next, box: box)
+        stick = StickToBottom.onUserScroll(state: stick, nearBottom: near)
+        readingNearBottom = near
+        let transaction = TranscriptScroll.transaction(reduceMotion: reduceMotion)
+        withTransaction(transaction) {
+            transcriptPosition.scrollTo(point: CGPoint(x: 0, y: next))
+        }
+    }
+
+    /// Hardware ⌘' / ⌃' when the composer is not first responder.
+    /// The text view handles the same chord and keeps IME marked text.
+    /// The composer may already have text. A key repeat does not jump again.
+    private func quoteJumpKey(_ press: KeyPress) -> KeyPress.Result {
+        guard QuoteJump.isChord(
+            key: String(press.key.character),
+            characters: press.characters,
+            command: press.modifiers.contains(.command),
+            control: press.modifiers.contains(.control),
+            option: press.modifiers.contains(.option),
+            shift: press.modifiers.contains(.shift)
+        ) else { return .ignored }
+        if composerFocused { return .ignored }
+        guard hasRealAgent else { return .ignored }
+        if userMessageJumpBlocked() { return .ignored }
+        if QuoteJump.overlayTextFieldOwnsChord(
+            textFieldFocused: TranscriptScroll.textInputIsFirstResponder(),
+            composerFocused: false
+        ) {
+            return .ignored
+        }
+        if QuoteJump.shouldIgnoreRepeat(press.`repeat`) {
+            return .handled
+        }
+        jumpToNearestQuote()
+        return .handled
+    }
+
+    /// Composer ⌘' / ⌃'. The text view swallows a key repeat and marked text.
+    private func quoteJumpFromComposer() {
+        guard hasRealAgent else { return }
+        if userMessageJumpBlocked() { return }
+        jumpToNearestQuote()
+    }
+
+    /// The quote nearest the reading line, then its source message.
+    private func jumpToNearestQuote() {
+        let visible = model.visibleMessages(for: agent)
+        let loaded = Set(model.messages.map(\.id))
+        let hasDay = visible.contains { $0.createdAt != nil }
+        let inset: CGFloat = hasDay ? UserMessageJump.stickyInset : 0
+        var box = scrollBox
+        if let commandedY {
+            box.offsetY = commandedY
+        }
+        let rows: [UserMessageJump.Row] = visible.compactMap { message in
+            guard message.isFromUser, message.isKindMessage else { return nil }
+            let targets = model.quoteJumps.targets(
+                agentId: message.agentId,
+                threadId: model.threadID,
+                content: message.content,
+                loaded: loaded
+            )
+            guard !targets.isEmpty else { return nil }
+            let frame = readingFrames.first { $0.id == message.id }
+            return UserMessageJump.Row(id: message.id, top: frame?.minY)
+        }
+        let line = UserMessageJump.viewLine(
+            scrollTop: box.offsetY,
+            stickyInset: inset,
+            maxOffset: box.maxOffset
+        )
+        guard let id = QuoteJump.pickMessageId(rows: rows, line: line),
+              let message = visible.first(where: { $0.id == id })
+        else { return }
+        let targets = model.quoteJumps.targets(
+            agentId: message.agentId,
+            threadId: model.threadID,
+            content: message.content,
+            loaded: loaded
+        )
+        guard let sourceId = QuoteJump.primarySource(targets) else { return }
+        applyQuoteJump(sourceId)
+    }
+
+    /// Scroll the quoted message under the pinned day header and outline it.
+    /// Stick-to-bottom and the reading place follow the same offset path
+    /// as Page Up. Collapsed long messages stay collapsed.
+    private func applyQuoteJump(_ id: String) {
+        guard !id.isEmpty else { return }
+        highlightUserJump(id)
+        let visible = model.visibleMessages(for: agent)
+        let hasDay = visible.contains { $0.createdAt != nil }
+        let inset: CGFloat = hasDay ? UserMessageJump.stickyInset : 0
+        var box = scrollBox
+        if let commandedY {
+            box.offsetY = commandedY
+        }
+        guard let top = readingFrames.first(where: { $0.id == id })?.minY else {
+            quoteJumpUnmeasuredID = id
+            quoteJumpToken += 1
             return
         }
         let next = UserMessageJump.scrollOffset(
@@ -2386,6 +2500,13 @@ struct ChatView: View {
                     proxy.scrollTo(id, anchor: .top)
                 }
             }
+            .onChange(of: quoteJumpToken) { _, token in
+                guard token > 0, let id = quoteJumpUnmeasuredID else { return }
+                let transaction = TranscriptScroll.transaction(reduceMotion: reduceMotion)
+                withTransaction(transaction) {
+                    proxy.scrollTo(id, anchor: .top)
+                }
+            }
             .onChange(of: keyboardJumpToken) { _, token in
                 guard token > 0 else { return }
                 let transaction = TranscriptScroll.transaction(reduceMotion: reduceMotion)
@@ -2706,15 +2827,15 @@ struct ChatView: View {
                 showEditAsNew: showEditAsNew,
                 showCaret: showCaret,
                 shortcutCopied: shortcutCopied,
-                jumpHighlight: userJumpHighlightID == message.id
-                    && message.isFromUser
-                    && message.isKindMessage,
+                jumpHighlight: userJumpHighlightID == message.id,
+                onQuoteJump: { sourceId in applyQuoteJump(sourceId) },
                 onOpenImage: { target in
                     openLightbox(target)
                 }
             ) { jump in
                 Task { await model.openJump(channelId: jump.channelId, threadId: jump.threadId) }
             }
+            .environment(\.quoteSourceId, message.id)
         }
     }
 
@@ -2811,6 +2932,7 @@ private struct ComposerBar: View {
     var onChatHistory: (String) -> Void = { _ in }
     var onTranscriptText: (TranscriptTextScale.Step) -> Void = { _ in }
     var onUserMessageJump: (UserMessageJump.Direction) -> Void = { _ in }
+    var onQuoteJump: () -> Void = {}
     var onClearComposerDraft: () -> Void = {}
     var onPinOpenChat: () -> Void = {}
     var onMuteOpenChat: () -> Void = {}
@@ -3018,6 +3140,10 @@ private struct ComposerBar: View {
                     onUserMessageJump: { direction in
                         if mentionQuery != nil || model.skillMenuOpen() { return }
                         onUserMessageJump(direction)
+                    },
+                    onQuoteJump: {
+                        if mentionQuery != nil || model.skillMenuOpen() { return }
+                        onQuoteJump()
                     },
                     onClearComposerDraft: {
                         if mentionQuery != nil || model.skillMenuOpen() { return }
@@ -3395,6 +3521,7 @@ private struct MessageBubble: View {
     var showCaret = false
     var shortcutCopied = false
     var jumpHighlight = false
+    var onQuoteJump: (String) -> Void = { _ in }
     var onOpenImage: (ImageLightbox.Target) -> Void = { _ in }
     var onJump: ((HandoffRef) -> Void)?
     @Environment(AppModel.self) private var model
@@ -3405,6 +3532,68 @@ private struct MessageBubble: View {
     @State private var copyPulse = 0
 
     private var isUser: Bool { message.isFromUser }
+
+    /// v1.27: quote blocks with a loaded source are buttons. Find keeps
+    /// the whole body so the match stays highlighted. No animation.
+    private var userQuoteBody: some View {
+        quoteBody(finding: ChatFind.queryActive(find.query), targets: loadedQuoteTargets)
+    }
+
+    private var loadedQuoteTargets: [QuoteJump.Link] {
+        let loaded = Set(model.messages.map(\.id))
+        return model.quoteJumps.targets(
+            agentId: message.agentId,
+            threadId: model.threadID,
+            content: message.content,
+            loaded: loaded
+        )
+    }
+
+    @ViewBuilder
+    private func quoteBody(finding: Bool, targets: [QuoteJump.Link]) -> some View {
+        if message.content.isEmpty {
+            EmptyView()
+        } else if finding || targets.isEmpty {
+            userQuoteLabel(message.displayContent, findable: true)
+        } else {
+            VStack(alignment: .leading, spacing: 4) {
+                ForEach(Array(QuoteJump.parts(content: message.content, targets: targets).enumerated()), id: \.offset) { _, part in
+                    quotePart(part)
+                }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func quotePart(_ part: QuoteJump.Part) -> some View {
+        switch part {
+        case .quote(let text, let sourceId):
+            Button {
+                onQuoteJump(sourceId)
+            } label: {
+                Text(text)
+                    .transcriptFont(14)
+                    .multilineTextAlignment(.leading)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel(QuoteJump.action)
+        case .text(let text):
+            userQuoteLabel(text, findable: false)
+        }
+    }
+
+    private func userQuoteLabel(_ text: String, findable: Bool) -> some View {
+        MentionLabel(
+            text: text,
+            names: agents.filter { !$0.isChannel }.map(\.name),
+            links: true,
+            findRowId: findable ? message.id : ""
+        )
+        .transcriptFont(14)
+        .textSelection(.enabled)
+        .frame(minWidth: 0, alignment: .leading)
+    }
 
     private func findStroke(_ rowId: String) -> some View {
         RoundedRectangle(cornerRadius: 16)
@@ -3533,17 +3722,7 @@ private struct MessageBubble: View {
                     Spacer(minLength: 48)
                     VStack(alignment: .leading, spacing: 6) {
                         userAttachments
-                        if !message.content.isEmpty {
-                            MentionLabel(
-                                text: message.displayContent,
-                                names: agents.filter { !$0.isChannel }.map(\.name),
-                                links: true,
-                                findRowId: message.id
-                            )
-                                .transcriptFont(14)
-                                .textSelection(.enabled)
-                                .frame(minWidth: 0, alignment: .leading)
-                        }
+                        userQuoteBody
                     }
                     .frame(minWidth: 0, maxWidth: .infinity, alignment: .leading)
                     .padding(.horizontal, 12)
@@ -3607,6 +3786,19 @@ private struct MessageBubble: View {
                                         in: RoundedRectangle(cornerRadius: 16)
                                     )
                                     .overlay(findStroke("\(message.id)#\(offset)"))
+                                    .overlay {
+                                        if jumpHighlight && offset == 0 {
+                                            RoundedRectangle(cornerRadius: 16)
+                                                .strokeBorder(Color.accentColor.opacity(0.65), lineWidth: 2)
+                                                .allowsHitTesting(false)
+                                        }
+                                    }
+                                    .animation(
+                                        QuoteJump.highlightAnimates(reduceMotion: reduceMotion)
+                                            ? .easeOut(duration: 0.18)
+                                            : nil,
+                                        value: jumpHighlight
+                                    )
                                     .modifier(timeMenu)
                                 }
                             }

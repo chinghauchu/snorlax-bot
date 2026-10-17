@@ -52,6 +52,10 @@ struct ComposerTextView: UIViewRepresentable {
     /// field that already has text keeps selecting. Does not send.
     /// IME marked text keeps the key. A key repeat does not jump again.
     var onUserMessageJump: ((UserMessageJump.Direction) -> Void)? = nil
+    /// v1.27: ⌘' / ⌃' jumps to the quoted message. The field may
+    /// already have text. Does not insert or send. IME marked text
+    /// keeps the key. A key repeat does not jump again.
+    var onQuoteJump: (() -> Void)? = nil
     /// v1.07: ⌘⇧⌫ / ⌃⇧⌫ clears the composer draft. Does not send.
     /// IME marked text keeps the key.
     var onClearComposerDraft: (() -> Void)? = nil
@@ -166,6 +170,9 @@ struct ComposerTextView: UIViewRepresentable {
         view.onUserMessageJump = { [coordinator = context.coordinator] direction in
             coordinator.parent.onUserMessageJump?(direction)
         }
+        view.onQuoteJump = { [coordinator = context.coordinator] in
+            coordinator.parent.onQuoteJump?()
+        }
         view.onClearComposerDraft = { [coordinator = context.coordinator] in
             coordinator.parent.onClearComposerDraft?()
         }
@@ -278,6 +285,9 @@ struct ComposerTextView: UIViewRepresentable {
         }
         view.onUserMessageJump = { [coordinator = context.coordinator] direction in
             coordinator.parent.onUserMessageJump?(direction)
+        }
+        view.onQuoteJump = { [coordinator = context.coordinator] in
+            coordinator.parent.onQuoteJump?()
         }
         view.onClearComposerDraft = { [coordinator = context.coordinator] in
             coordinator.parent.onClearComposerDraft?()
@@ -497,6 +507,7 @@ final class ComposerUITextView: UITextView {
     var onChatHistory: ((String) -> Void)?
     var onTranscriptText: ((TranscriptTextScale.Step) -> Void)?
     var onUserMessageJump: ((UserMessageJump.Direction) -> Void)?
+    var onQuoteJump: (() -> Void)?
     var onClearComposerDraft: (() -> Void)?
     var onPinOpenChat: (() -> Void)?
     var onMuteOpenChat: (() -> Void)?
@@ -561,6 +572,8 @@ final class ComposerUITextView: UITextView {
     private var userJumpUpConsumed = false
     /// v1.25: the first ⌘⇧↓ of a hold jumped. Repeats of that hold do not.
     private var userJumpDownConsumed = false
+    /// v1.27: the first ⌘' of a hold jumped. Repeats of that hold do not.
+    private var quoteJumpConsumed = false
     /// v1.10: the first ⌘⇧U of a hold applies. Further repeats do not.
     private var markOpenChatConsumed = false
     var sendMuted = false
@@ -636,6 +649,7 @@ final class ComposerUITextView: UITextView {
         }
         // IME keeps Option+arrows and ⌘L while marked text is composing.
         if markedTextRange == nil {
+            commands.append(contentsOf: quoteJumpCommands())
             commands.append(contentsOf: chatNavCommands())
             commands.append(contentsOf: focusComposerCommands())
             commands.append(contentsOf: copyLastReplyCommands())
@@ -890,6 +904,42 @@ final class ComposerUITextView: UITextView {
             userJumpDownConsumed = true
         }
         onUserMessageJump?(direction)
+    }
+
+    /// ⌘' / ⌃' even when the composer has text. Does not insert or send.
+    private func quoteJumpCommands() -> [UIKeyCommand] {
+        let command = UIKeyCommand(
+            title: QuoteJump.action,
+            action: #selector(quoteJumpFromShortcut(_:)),
+            input: "'",
+            modifierFlags: .command
+        )
+        let control = UIKeyCommand(
+            title: QuoteJump.action,
+            action: #selector(quoteJumpFromShortcut(_:)),
+            input: "'",
+            modifierFlags: .control
+        )
+        command.wantsPriorityOverSystemBehavior = true
+        control.wantsPriorityOverSystemBehavior = true
+        return [command, control]
+    }
+
+    /// The first press jumps. A repeat of that hold returns without jumping again.
+    @objc private func quoteJumpFromShortcut(_ sender: UIKeyCommand) {
+        if markedTextRange != nil { return }
+        let flags = sender.modifierFlags
+        guard QuoteJump.isChord(
+            key: "'",
+            characters: sender.input ?? "",
+            command: flags.contains(.command),
+            control: flags.contains(.control),
+            option: flags.contains(.alternate),
+            shift: flags.contains(.shift)
+        ) else { return }
+        if quoteJumpConsumed { return }
+        quoteJumpConsumed = true
+        onQuoteJump?()
     }
 
     /// The first press of each step changes the size. A repeat of that
@@ -1643,6 +1693,12 @@ final class ComposerUITextView: UITextView {
             userJumpDownConsumed = false
         }
         if presses.contains(where: { press in
+            if press.key?.keyCode == .keyboardApostrophe { return true }
+            return press.key?.charactersIgnoringModifiers == "'"
+        }) {
+            quoteJumpConsumed = false
+        }
+        if presses.contains(where: { press in
             if press.key?.keyCode == .keyboardP { return true }
             return press.key?.charactersIgnoringModifiers.lowercased() == "p"
         }) {
@@ -1757,6 +1813,7 @@ final class ComposerUITextView: UITextView {
         transcriptTextResetConsumed = false
         userJumpUpConsumed = false
         userJumpDownConsumed = false
+        quoteJumpConsumed = false
         muteOpenChatConsumed = false
         markOpenChatConsumed = false
         renameOpenChatConsumed = false
@@ -1842,6 +1899,20 @@ final class ComposerUITextView: UITextView {
                         // Held ⌘⇧↑ / ⌘⇧↓. Do not jump again.
                         return
                     }
+                }
+            }
+            if key.charactersIgnoringModifiers == "'" || key.keyCode == .keyboardApostrophe {
+                let mods = key.modifierFlags
+                if QuoteJump.isChord(
+                    key: "'",
+                    characters: key.charactersIgnoringModifiers,
+                    command: mods.contains(.command),
+                    control: mods.contains(.control),
+                    option: mods.contains(.alternate),
+                    shift: mods.contains(.shift)
+                ), quoteJumpConsumed {
+                    // Held ⌘'. Do not insert ' and do not jump again.
+                    return
                 }
             }
             if key.keyCode == .keyboardP {
