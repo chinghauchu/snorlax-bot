@@ -95,6 +95,7 @@ struct QuoteSelectableText: UIViewRepresentable {
     var expandsHorizontally: Bool = false
     var onQuote: (String) -> Void
     var onLink: ((URL) -> Void)? = nil
+    @Environment(\.quoteChordBlocked) private var quoteChordBlocked
 
     func makeCoordinator() -> Coordinator {
         Coordinator(onQuote: onQuote, onLink: onLink)
@@ -126,6 +127,8 @@ struct QuoteSelectableText: UIViewRepresentable {
         context.coordinator.onQuote = onQuote
         context.coordinator.onLink = onLink
         uiView.quoteEnabled = quoteEnabled
+        uiView.quoteChordBlocked = quoteChordBlocked
+        uiView.onQuoteKey = { context.coordinator.onQuote($0) }
         uiView.expandsHorizontally = expandsHorizontally
         uiView.baseFont = font
         let styled = Self.styled(text, font: font, expandsHorizontally: expandsHorizontally)
@@ -185,7 +188,69 @@ final class QuoteTextView: UITextView {
     var quoteEnabled = true
     var expandsHorizontally = false
     var baseFont: UIFont = .systemFont(ofSize: 14)
+    /// v1.26: hardware ⌘L / ⌃L. Nil while an overlay owns the keyboard.
+    var onQuoteKey: ((String) -> Void)?
+    var quoteChordBlocked = false
+    /// The first ⌘L of a hold quotes. Further repeats of that hold do not.
+    var quoteHold = false
     static weak var active: QuoteTextView?
+
+    static func clearActiveSelection() {
+        guard let view = active else { return }
+        view.selectedTextRange = view.textRange(from: view.endOfDocument, to: view.endOfDocument)
+    }
+
+    override var keyCommands: [UIKeyCommand]? {
+        let base = super.keyCommands
+        guard !quoteChordBlocked, quoteEnabled, markedTextRange == nil else { return base }
+        guard let range = selectedTextRange, !range.isEmpty,
+              let raw = text(in: range),
+              QuoteSelectionKey.selectionToQuote(inTextField: false, selection: raw) != nil
+        else { return base }
+        let command = UIKeyCommand(
+            title: QuoteSelectionKey.action,
+            action: #selector(quoteSelectionFromHardware),
+            input: "l",
+            modifierFlags: .command
+        )
+        let control = UIKeyCommand(
+            title: QuoteSelectionKey.action,
+            action: #selector(quoteSelectionFromHardware),
+            input: "l",
+            modifierFlags: .control
+        )
+        command.wantsPriorityOverSystemBehavior = true
+        control.wantsPriorityOverSystemBehavior = true
+        return [command, control] + (base ?? [])
+    }
+
+    /// The first ⌘L of a hold quotes. Further repeats of that hold do not.
+    @objc func quoteSelectionFromHardware() {
+        if quoteChordBlocked || quoteHold { return }
+        guard let range = selectedTextRange, !range.isEmpty,
+              let raw = text(in: range),
+              let quoted = QuoteSelectionKey.selectionToQuote(inTextField: false, selection: raw)
+        else { return }
+        guard QuoteSelectionKey.claimTurn() else { return }
+        quoteHold = true
+        onQuoteKey?(quoted)
+        QuoteTextView.clearActiveSelection()
+    }
+
+    override func pressesEnded(_ presses: Set<UIPress>, with event: UIPressesEvent?) {
+        if presses.contains(where: { press in
+            if press.key?.keyCode == .keyboardL { return true }
+            return press.key?.charactersIgnoringModifiers.lowercased() == "l"
+        }) {
+            quoteHold = false
+        }
+        super.pressesEnded(presses, with: event)
+    }
+
+    override func pressesCancelled(_ presses: Set<UIPress>, with event: UIPressesEvent?) {
+        quoteHold = false
+        super.pressesCancelled(presses, with: event)
+    }
 
     static func currentSelection() -> String {
         guard let view = active,

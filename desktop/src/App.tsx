@@ -134,6 +134,10 @@ import {
   quoteRootAttr,
   quoteableText,
 } from "./quoteSelection";
+import {
+  quoteSelectionBlocked,
+  selectionToQuote,
+} from "./quoteSelectionKey";
 import { backspaceRemovesLastChip, withoutLastChip } from "./backspaceChip";
 import { adjacentChatId, chatNavDirection } from "./chatNav";
 import {
@@ -1474,6 +1478,8 @@ export function App() {
   const pickedMentions = useRef(new Map<string, string>());
   const lastExtraChannelId = useRef<string | null>(null);
   const pendingCaret = useRef<number | null>(null);
+  /** v1.26: the key handler sits later in the component than this function. */
+  const quoteKeyRef = useRef<(selection: string) => void>(() => {});
   const highlightRef = useRef<HTMLDivElement>(null);
 
   const [profileName, setProfileName] = useState("");
@@ -3683,6 +3689,7 @@ export function App() {
     syncComposerTriggers(next.text, next.caret);
     window.getSelection()?.removeAllRanges();
   }
+  quoteKeyRef.current = quoteIntoComposer;
 
   /** Escape, or a later empty field, leaves the composer empty. */
   function clearRecalledDraft() {
@@ -4872,6 +4879,8 @@ export function App() {
 
   // v0.99: a printable character outside a text field lands at the end
   // of this chat's draft. Cmd/Ctrl-L focuses and inserts nothing.
+  // v1.26: the same chord quotes a transcript selection when one
+  // quotable message owns it, then focuses the composer.
   typeIntoComposerRef.current = (character: string) => {
     const next = appendDraftAtEnd(draftRef.current, character);
     pendingCaret.current = next.caret;
@@ -4908,9 +4917,17 @@ export function App() {
           repeat: event.repeat,
         })
       ) {
-        if (focusComposerChordBlocked(gate)) return;
+        if (focusComposerChordBlocked(gate) || quoteSelectionBlocked(gate)) return;
+        const quoted = selectionToQuote({
+          inTextField: gate.inTextField,
+          selection: readQuoteOffer()?.text ?? null,
+        });
         event.preventDefault();
         event.stopPropagation();
+        if (quoted) {
+          quoteKeyRef.current(quoted);
+          return;
+        }
         if (!gate.inTextField) {
           placeCaretAtEnd();
         }

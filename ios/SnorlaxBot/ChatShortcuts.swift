@@ -7,7 +7,8 @@ import SwiftUI
 /// (Escape, Up, Option+Up/Down, ⌘L / ⌃L, ⌘N / ⌃N, ⌘1–⌘9 / ⌃1–⌃9, ⌘[ / ⌃[, ⌘] / ⌃], ⌘⇧C / ⌃⇧C, ⌘⇧A / ⌃⇧A, ⌘⇧B / ⌃⇧B, ⌘⇧P / ⌃⇧P, ⌘⇧M / ⌃⇧M, ⌘⇧U / ⌃⇧U, ⌘⇧R / ⌃⇧R, ⌘⇧D / ⌃⇧D, ⌘⇧E / ⌃⇧E, ⌘⇧G / ⌃⇧G, ⌘⇧F / ⌃⇧F, ⌘⇧H / ⌃⇧H, ⌘⇧J / ⌃⇧J, ⌘⇧Y / ⌃⇧Y, ⌘⇧S / ⌃⇧S, ⌘⇧O / ⌃⇧O, ⌘⇧K / ⌃⇧K), `.onKeyPress`
 /// (Page Up / Page Down, ⌘↑ / ⌘↓, ⌘N, ⌘1–⌘9, ⌘[, ⌘], ⌘⇧A, ⌘⇧B, ⌘⇧⌫, ⌘⇧P, ⌘⇧M, ⌘⇧U, ⌘⇧R, ⌘⇧D, ⌘⇧E, ⌘⇧G, ⌘⇧F, ⌘⇧H, ⌘⇧J, ⌘⇧Y, ⌘⇧S, ⌘⇧O, ⌘⇧K, and Enter / Delete / Esc on the delete confirm), `.keyboardShortcut` (Cmd-F), and
 /// the composer Return / Shift-Return presses. ⌘L focuses the composer
-/// and does not insert or send. ⌘N starts a new chat through New agent
+/// and does not insert or send. When a quotable transcript selection is
+/// active, ⌘L quotes it into the composer instead. ⌘N starts a new chat through New agent
 /// and does not send. ⌘1–⌘8 opens that chat and ⌘9 opens the last one.
 /// ⌘⇧C copies the last assistant reply
 /// and does not send. ⌘⇧A archives the open chat and does not send.
@@ -120,6 +121,7 @@ enum ChatShortcuts {
         Row(id: "mark-all-read", keys: MarkAllReadKey.keysLabel, action: MarkAllReadKey.action),
         Row(id: "previous-unread", keys: PreviousUnreadChat.keysLabel, action: PreviousUnreadChat.action),
         Row(id: "focus", keys: FocusComposer.keysLabel, action: FocusComposer.action),
+        Row(id: "quote-selection", keys: QuoteSelectionKey.keysLabel, action: QuoteSelectionKey.action),
         Row(id: "new-chat", keys: NewChat.keysLabel, action: NewChat.action),
         Row(id: "copy-last", keys: CopyLastReply.keysLabel, action: CopyLastReply.action),
         Row(id: "page", keys: TranscriptScroll.pageKeysLabel, action: TranscriptScroll.pageAction),
