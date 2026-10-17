@@ -21,6 +21,8 @@ type Props = {
   activeFind: boolean;
   /** v0.94: `message` marks completed message text as quotable. */
   quote?: string;
+  /** v1.27: message the selection was quoted from. */
+  quoteId?: string;
   children: ReactNode;
 };
 
@@ -37,6 +39,7 @@ export function LongMessageBody({
   text,
   activeFind,
   quote,
+  quoteId,
   children,
 }: Props) {
   const bodyRef = useRef<HTMLDivElement>(null);
@@ -90,7 +93,12 @@ export function LongMessageBody({
         data-collapsed={clamp ? "true" : "false"}
         style={maxHeight == null ? undefined : { maxHeight }}
       >
-        <div ref={bodyRef} className="long-message-body" data-quote={quote}>
+        <div
+          ref={bodyRef}
+          className="long-message-body"
+          data-quote={quote}
+          data-quote-id={quoteId}
+        >
           {children}
         </div>
       </div>

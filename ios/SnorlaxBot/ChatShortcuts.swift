@@ -73,6 +73,11 @@ enum ChatShortcuts {
             action: "Insert a quote in the composer"
         ),
         Row(
+            id: "quote-jump",
+            keys: "Tap a sent quote",
+            action: QuoteJump.action
+        ),
+        Row(
             id: "edit",
             keys: "Long-press your message",
             action: "Copy, or \(RecallDraft.editAsNewMessage)"
@@ -127,6 +132,7 @@ enum ChatShortcuts {
         Row(id: "page", keys: TranscriptScroll.pageKeysLabel, action: TranscriptScroll.pageAction),
         Row(id: "transcript-edge", keys: TranscriptScroll.edgeKeysLabel, action: TranscriptScroll.edgeAction),
         Row(id: "user-jump", keys: UserMessageJump.keysLabel, action: UserMessageJump.action),
+        Row(id: "quote-jump-key", keys: QuoteJump.keysLabel, action: QuoteJump.action),
         Row(id: "transcript-text", keys: TranscriptTextScale.keysLabel, action: TranscriptTextScale.action),
         Row(id: "find", keys: "⌘F", action: "Find in chat"),
         Row(

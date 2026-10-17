@@ -96,6 +96,7 @@ struct QuoteSelectableText: UIViewRepresentable {
     var onQuote: (String) -> Void
     var onLink: ((URL) -> Void)? = nil
     @Environment(\.quoteChordBlocked) private var quoteChordBlocked
+    @Environment(\.quoteSourceId) private var quoteSourceId
 
     func makeCoordinator() -> Coordinator {
         Coordinator(onQuote: onQuote, onLink: onLink)
@@ -128,6 +129,7 @@ struct QuoteSelectableText: UIViewRepresentable {
         context.coordinator.onLink = onLink
         uiView.quoteEnabled = quoteEnabled
         uiView.quoteChordBlocked = quoteChordBlocked
+        uiView.quoteSourceId = quoteSourceId
         uiView.onQuoteKey = { context.coordinator.onQuote($0) }
         uiView.expandsHorizontally = expandsHorizontally
         uiView.baseFont = font
@@ -191,9 +193,16 @@ final class QuoteTextView: UITextView {
     /// v1.26: hardware ⌘L / ⌃L. Nil while an overlay owns the keyboard.
     var onQuoteKey: ((String) -> Void)?
     var quoteChordBlocked = false
+    /// v1.27: message this text belongs to, so a quote can jump back.
+    var quoteSourceId = ""
     /// The first ⌘L of a hold quotes. Further repeats of that hold do not.
     var quoteHold = false
     static weak var active: QuoteTextView?
+
+    static func currentSourceId() -> String? {
+        guard let id = active?.quoteSourceId, !id.isEmpty else { return nil }
+        return id
+    }
 
     static func clearActiveSelection() {
         guard let view = active else { return }

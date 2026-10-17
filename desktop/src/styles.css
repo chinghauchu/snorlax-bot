@@ -2953,6 +2953,59 @@ pre.md-math-fallback.md-math-block {
   }
 }
 
+/* v1.27: a sent quote jumps to the message it replies to. No motion. */
+.quote-jump {
+  display: block;
+  width: 100%;
+  margin: 0;
+  padding: 0 0 0 8px;
+  border: 0;
+  border-left: 2px solid color-mix(in srgb, var(--accent) 55%, transparent);
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-size: 14px;
+  line-height: 1.4;
+  text-align: left;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  cursor: pointer;
+  opacity: 0.82;
+  transition: none;
+  animation: none;
+}
+
+.quote-jump:hover {
+  opacity: 1;
+}
+
+.user-quote-text {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+  width: 100%;
+  min-width: 0;
+}
+
+.bubble.user[data-quote-jump-highlight="true"],
+.bubble.agent[data-quote-jump-highlight="true"] {
+  animation: user-jump-highlight 1.2s ease-out;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .quote-jump {
+    transition: none;
+    animation: none;
+  }
+
+  .bubble.user[data-quote-jump-highlight="true"],
+  .bubble.agent[data-quote-jump-highlight="true"] {
+    animation: none;
+    box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--accent) 55%, transparent);
+  }
+}
+
 .info-routine-remove {
   flex-shrink: 0;
   border: 0;

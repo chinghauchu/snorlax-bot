@@ -219,6 +219,8 @@ final class AppModel {
     private var streamEpoch = 0
     /// Unsent composer text per conversation. UserDefaults, per chat.
     private var chatDrafts = ChatDrafts()
+    /// v1.27: quote source ids. UserDefaults. No HTTP.
+    var quoteJumps = QuoteJumps()
     /// Chat the composer text belongs to. iPad's list binding updates
     /// `selectedAgentID` before adopt runs, so the draft must not follow it.
     private var composerAgentID: String?
@@ -336,6 +338,9 @@ final class AppModel {
         guard !computerTakeoverOpen else { return }
         guard RecallDraft.arrowUpRecalls(composerText: draft, composing: false) else { return }
         guard let text = latestRecallableUserText() else { return }
+        if let agent = selectedAgent {
+            quoteJumps.clearPending(agentId: agent.id, threadId: threadID)
+        }
         draft = text
         recallArmed = true
         pendingComposerCaret = (text as NSString).length
@@ -349,12 +354,23 @@ final class AppModel {
         draft = next.text
         pendingComposerCaret = next.caret
         wantsComposerFocus = true
+        if let sourceId = QuoteTextView.currentSourceId(), let agent = selectedAgent {
+            quoteJumps.note(
+                agentId: agent.id,
+                threadId: threadID,
+                text: selection,
+                sourceId: sourceId
+            )
+        }
     }
 
     /// v0.68: long-press "Edit as new message" on the latest user bubble.
     func editAsNewMessage(_ text: String) {
         guard !computerTakeoverOpen else { return }
         guard !text.isEmpty else { return }
+        if let agent = selectedAgent {
+            quoteJumps.clearPending(agentId: agent.id, threadId: threadID)
+        }
         draft = text
         recallArmed = true
         pendingComposerCaret = (text as NSString).length
@@ -374,6 +390,9 @@ final class AppModel {
             pendingApprove: StopGenerating.pendingApprove(in: messages),
             pendingConnect: StopGenerating.pendingConnect(in: messages)
         ) else { return false }
+        if let agent = selectedAgent {
+            quoteJumps.clearPending(agentId: agent.id, threadId: threadID)
+        }
         draft = ""
         recallArmed = false
         pendingComposerCaret = 0
@@ -1429,6 +1448,7 @@ final class AppModel {
             chips = pendingAttachments
             guard !content.isEmpty || !chips.isEmpty else { return }
             guard attachError == nil else { return }
+            quoteJumps.commit(agentId: originAgentID, threadId: originThreadID, content: content)
             mentionIDs = self.mentionIDs(in: content)
             chatDrafts.clear(agentId: originAgentID, threadId: originThreadID)
             draft = ""
@@ -2698,6 +2718,7 @@ final class AppModel {
         }
         pendingAttachments = []
         attachError = nil
+        quoteJumps.clearPending(agentId: agentId, threadId: composerThreadID ?? threadID)
         if draft.isEmpty { return }
         pendingComposerCaret = 0
         draft = ""
