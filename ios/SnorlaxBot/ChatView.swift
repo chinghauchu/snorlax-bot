@@ -28,6 +28,12 @@ struct ChatView: View {
     @State private var readingOffsetY: CGFloat = 0
     @State private var readingNearBottom = true
     @State private var readingFrames: [ReadingPlace.Frame] = []
+    /// v1.30: fraction still to apply once the anchor row is measured.
+    @State private var readingOffsetPendingID: String?
+    @State private var readingOffsetPendingFraction: CGFloat = 0
+    @State private var readingOffsetPendingToken = 0
+    /// Holds publish until scroll geometry catches the restored offset.
+    @State private var readingRestoreCommandedY: CGFloat?
     @FocusState private var findFieldFocused: Bool
     /// v1.03: programmatic transcript offset. Geometry lags a key repeat.
     @State private var transcriptPosition = ScrollPosition()
@@ -387,10 +393,14 @@ struct ChatView: View {
     /// same way Jump to latest does, then the transcript snaps.
     private func applyTranscriptScroll(_ action: TranscriptScroll.Action) {
         if TranscriptScroll.prefersJumpToLatest(action) {
+            claimTargetedScroll(.bottom)
             commandedY = nil
             stick = StickToBottom.onJumpToLatest()
             keyboardJumpToken += 1
             return
+        }
+        if action == .top {
+            claimTargetedScroll(.top)
         }
         var box = scrollBox
         if let commandedY {
@@ -716,6 +726,7 @@ struct ChatView: View {
             return
         }
         highlightUserJump(id)
+        claimTargetedScroll(.message)
         guard let top = rows.first(where: { $0.id == id })?.top else {
             userJumpUnmeasuredID = id
             userJumpToken += 1
@@ -817,6 +828,7 @@ struct ChatView: View {
     private func applyQuoteJump(_ id: String) {
         guard !id.isEmpty else { return }
         highlightUserJump(id)
+        claimTargetedScroll(.message)
         let visible = model.visibleMessages(for: agent)
         let hasDay = visible.contains { $0.createdAt != nil }
         let inset: CGFloat = hasDay ? UserMessageJump.stickyInset : 0
@@ -2107,9 +2119,11 @@ struct ChatView: View {
     }
 
     private func scrollFind(_ proxy: ScrollViewProxy, index: Int) {
+        guard findOpen else { return }
         let hits = loadedFindHits
         guard !hits.isEmpty else { return }
         let safe = min(max(index, 0), hits.count - 1)
+        claimTargetedScroll(.message)
         proxy.scrollTo(ChatFind.scrollID(hits[safe].rowId), anchor: .center)
     }
 
@@ -2469,12 +2483,23 @@ struct ChatView: View {
             .onScrollGeometryChange(for: CGFloat.self) { geo in
                 geo.contentOffset.y
             } action: { _, offset in
+                if let commanded = readingRestoreCommandedY {
+                    if abs(offset - commanded) <= 1 {
+                        readingRestoreCommandedY = nil
+                        readingOffsetY = offset
+                        publishReadingPlace(offsetY: offset)
+                    }
+                    return
+                }
                 readingOffsetY = offset
                 publishReadingPlace(offsetY: offset)
             }
             .onPreferenceChange(ReadingFramesKey.self) { frames in
                 readingFrames = frames
-                publishReadingPlace(frames: frames)
+                applyPendingReadingOffset(frames)
+                if readingOffsetPendingID == nil, readingRestoreCommandedY == nil {
+                    publishReadingPlace(frames: frames)
+                }
             }
             .onAppear {
                 _ = applyPendingRestore(proxy)
@@ -2641,22 +2666,90 @@ struct ChatView: View {
         let offset = offsetY ?? readingOffsetY
         let rows = frames ?? readingFrames
         let anchor = ReadingPlace.topVisibleAnchor(rows: rows, viewportTop: offset)
+        let fraction = ReadingPlace.anchorOffset(
+            rows: rows,
+            anchorId: anchor,
+            viewportTop: offset
+        )
         let tail = model.visibleMessages(for: agent).last?.id
         model.noteReadingPlace(
             agentId: agentID,
             threadId: model.threadID,
             nearBottom: near,
             anchorId: anchor,
-            tailId: tail
+            tailId: tail,
+            anchorOffset: fraction
         )
     }
 
+    /// v1.30: find, a quote jump, a sent-message jump, Home, or End
+    /// wins over a restore that was scheduled earlier. Drops a deferred
+    /// offset so it cannot yank the transcript afterwards.
+    private func claimTargetedScroll(_ kind: ReadingPlace.TargetedKind) {
+        readingOffsetPendingID = nil
+        readingRestoreCommandedY = nil
+        model.noteTargetedScroll(kind)
+    }
+
+    /// Instant content offset. Geometry may lag; publish waits until it catches up.
+    private func scrollReadingPoint(_ y: CGFloat) {
+        readingOffsetY = y
+        readingRestoreCommandedY = y
+        let transaction = TranscriptScroll.transaction(reduceMotion: true)
+        withTransaction(transaction) {
+            transcriptPosition.scrollTo(point: CGPoint(x: 0, y: y))
+        }
+    }
+
+    /// Once the anchor is measured, scroll so the saved fraction sits
+    /// above the viewport. No animation. An explicit target cancels it.
+    private func applyPendingReadingOffset(_ frames: [ReadingPlace.Frame]) {
+        guard let id = readingOffsetPendingID else { return }
+        guard model.targetedScrollToken == readingOffsetPendingToken else {
+            readingOffsetPendingID = nil
+            return
+        }
+        guard let frame = frames.first(where: { $0.id == id }) else { return }
+        let fraction = readingOffsetPendingFraction
+        readingOffsetPendingID = nil
+        let y = ReadingPlace.restoredContentOffset(
+            minY: frame.minY,
+            maxY: frame.maxY,
+            fraction: fraction
+        )
+        guard abs(y - frame.minY) >= 1 else { return }
+        scrollReadingPoint(y)
+    }
+
     /// Park on the saved message, or open at the latest. Returns true when
-    /// this transcript was the switch being restored.
+    /// this transcript was the switch being restored. An explicit target
+    /// claimed after the switch was scheduled wins and is not overwritten.
+    /// The offset assign is instant.
     private func applyPendingRestore(_ proxy: ScrollViewProxy) -> Bool {
         guard let key = model.pendingReadingKey else { return false }
         guard key == ReadingPlace.key(agentId: agentID, threadId: model.threadID) else {
             return false
+        }
+        let decision = ReadingPlace.decision(
+            scheduled: model.pendingReadingTargeted,
+            current: model.targetedScrollToken,
+            kind: model.targetedScrollKind
+        )
+        if decision != .place {
+            readingOffsetPendingID = nil
+            readingRestoreCommandedY = nil
+            model.consumeReadingRestore()
+            let transaction = TranscriptScroll.transaction(reduceMotion: true)
+            if decision == .bottom {
+                withTransaction(transaction) {
+                    proxy.scrollTo("bottom", anchor: .bottom)
+                }
+            } else if decision == .top {
+                withTransaction(transaction) {
+                    transcriptPosition.scrollTo(edge: .top)
+                }
+            }
+            return true
         }
         let visible = model.visibleMessages(for: agent)
         let ids = visible.map(\.id)
@@ -2666,18 +2759,43 @@ struct ChatView: View {
         stick = ReadingPlace.stick(mode: mode, tailGrew: grew)
         lastAssistantSig = StickToBottom.signature(messages: visible)
         model.consumeReadingRestore()
+        let transaction = TranscriptScroll.transaction(reduceMotion: true)
         if mode == .anchor, let anchor = saved?.anchorId {
-            proxy.scrollTo(anchor, anchor: .top)
-            DispatchQueue.main.async {
-                proxy.scrollTo(anchor, anchor: .top)
+            let fraction = saved?.anchorOffset ?? 0
+            if let frame = readingFrames.first(where: { $0.id == anchor }) {
+                readingOffsetPendingID = nil
+                let y = ReadingPlace.restoredContentOffset(
+                    minY: frame.minY,
+                    maxY: frame.maxY,
+                    fraction: fraction
+                )
+                if abs(y - frame.minY) < 1 {
+                    readingRestoreCommandedY = nil
+                    withTransaction(transaction) {
+                        proxy.scrollTo(anchor, anchor: .top)
+                    }
+                } else {
+                    scrollReadingPoint(y)
+                }
+            } else {
+                readingOffsetPendingID = anchor
+                readingOffsetPendingFraction = fraction
+                readingOffsetPendingToken = model.targetedScrollToken
+                withTransaction(transaction) {
+                    proxy.scrollTo(anchor, anchor: .top)
+                }
             }
         } else {
-            proxy.scrollTo("bottom", anchor: .bottom)
+            readingOffsetPendingID = nil
+            withTransaction(transaction) {
+                proxy.scrollTo("bottom", anchor: .bottom)
+            }
         }
         return true
     }
 
     private func snapToBottom(_ proxy: ScrollViewProxy) {
+        claimTargetedScroll(.bottom)
         stick = StickToBottom.onSendOrRegenerate()
         lastAssistantSig = StickToBottom.signature(messages: model.visibleMessages(for: agent))
         proxy.scrollTo("bottom", anchor: .bottom)
