@@ -2265,6 +2265,56 @@ pre.md-math-fallback.md-math-block {
   color: var(--text-muted);
 }
 
+.queued-follow-ups {
+  list-style: none;
+  margin: 0 0 8px;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.queued-follow-up {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 32px;
+  padding: 4px 8px;
+  border-radius: 8px;
+  background: var(--bg-elevated);
+  color: var(--text-muted);
+  font-size: 13px;
+}
+
+.queued-label {
+  flex: none;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.queued-text {
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  background: transparent;
+  color: var(--text-muted);
+  font: inherit;
+  padding: 0;
+}
+
+.queued-remove {
+  flex: none;
+  width: 20px;
+  height: 20px;
+  border: 0;
+  padding: 0;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 14px;
+  line-height: 1;
+  cursor: pointer;
+}
+
 .send {
   width: 28px;
   height: 28px;

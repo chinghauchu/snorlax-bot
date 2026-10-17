@@ -269,6 +269,48 @@ struct QuoteJumps {
         if changed { persist() }
     }
 
+    /// v1.28: a queued follow-up takes the draft's quote links so clearing
+    /// the composer does not drop them.
+    mutating func takePending(agentId: String, threadId: String?) -> [QuoteJump.Link] {
+        let key = QuoteJump.chatKey(agentId: agentId, threadId: threadId)
+        let links = pending[key] ?? []
+        guard !links.isEmpty else { return [] }
+        pending.removeValue(forKey: key)
+        persist()
+        return links
+    }
+
+    /// v1.28: keep quote links for a queued send. A newer draft's pending
+    /// quotes stay pending.
+    mutating func commitOwned(
+        agentId: String,
+        threadId: String?,
+        content: String,
+        links: [QuoteJump.Link]
+    ) {
+        let kept = QuoteJump.stillInContent(content, links: links)
+        guard !kept.isEmpty else { return }
+        sent[QuoteJump.sentKey(agentId: agentId, threadId: threadId, content: content)] = kept
+        persist()
+    }
+
+    /// v1.28: a failed queued send puts its quote links back on that draft.
+    mutating func restorePending(agentId: String, threadId: String?, links: [QuoteJump.Link]) {
+        guard !links.isEmpty else { return }
+        let key = QuoteJump.chatKey(agentId: agentId, threadId: threadId)
+        var next = pending[key] ?? []
+        var have = Set(next.map(\.text))
+        var changed = false
+        for link in links where !link.sourceId.isEmpty && !have.contains(link.text) {
+            next.append(link)
+            have.insert(link.text)
+            changed = true
+        }
+        guard changed else { return }
+        pending[key] = next
+        persist()
+    }
+
     func targets(
         agentId: String,
         threadId: String?,

@@ -477,6 +477,22 @@ import {
 } from "./stopGenerating";
 import { sendMutedWhileGenerating } from "./sendMuted";
 import {
+  canQueueFollowUp,
+  dequeueFollowUp,
+  dropQueuedFollowUps,
+  editQueuedFollowUp,
+  enqueueFollowUp,
+  enterQueuesFollowUp,
+  queuedItems,
+  queuedSendKey,
+  removeQueuedFollowUp,
+  requeueFollowUp,
+  restoreAfterQueuedFailure,
+  shouldFlushQueue,
+  type QueuedItem,
+  type QueuedSendMap,
+} from "./queuedSend";
+import {
   ChatDrafts,
   browserDraftStorage,
   type ChatDraftKey,
@@ -1488,6 +1504,10 @@ export function App() {
   const dropHoldRef = useRef(false);
   dropTargetRef.current = dropTarget;
   const [busy, setBusy] = useState(false);
+  /** v1.28: per-chat follow-ups held while a reply is in flight. Session only. */
+  const [queuedMap, setQueuedMap] = useState<QueuedSendMap>(() => new Map());
+  const queuedRef = useRef(queuedMap);
+  queuedRef.current = queuedMap;
   /** v0.93: chat whose client-started assistant reply is still in flight. */
   const [generatingChatId, setGeneratingChatId] = useState<string | null>(null);
   const inFlight = useRef(false);
@@ -1787,6 +1807,17 @@ export function App() {
   const composerDisabled = fieldDisabled || busy;
   const attaching = attachInFlight > 0;
   const sendBlocked = shouldBlockSend({ busy, attaching });
+  const queueNow = canQueueFollowUp({
+    busy,
+    text: draft,
+    chipCount: pendingAttachments.length,
+    attachError: Boolean(attachError),
+    takeoverOpen,
+    hasChat: Boolean(active),
+  });
+  const openQueued = active
+    ? queuedItems(queuedMap, queuedSendKey(active.id, threadId))
+    : [];
 
   useEffect(() => {
     applyChrome(themePref, accent);
@@ -3316,6 +3347,12 @@ export function App() {
     reuseOptimisticId?: string;
     restoreAttachments?: PendingAttachment[];
     draftOrigin?: ChatDraftKey;
+    /** v1.28: this turn is a queued follow-up, not a fresh composer send. */
+    fromQueue?: boolean;
+    fromQueueQuotes?: { text: string; sourceId: string }[];
+    streamAgentId?: string;
+    streamThreadId?: string | null;
+    streamKind?: string;
     extra?: {
       widgetReply?: { id: string; values?: string[]; dismissed?: boolean };
       connectReply?: { id?: string; dismissed?: boolean };
@@ -3338,7 +3375,14 @@ export function App() {
       setBusy(true);
     }
     const content = opts.content;
-    const streamChatId = active.id;
+    const streamChatId = opts.streamAgentId ?? active.id;
+    const streamKind = opts.streamKind ?? active.kind;
+    const streamThread =
+      opts.streamThreadId !== undefined
+        ? opts.streamThreadId
+        : active.kind === "channel"
+          ? threadId
+          : null;
     setGeneratingChatId(
       activeGeneratingChat({ busy: true, chatId: streamChatId }),
     );
@@ -3354,9 +3398,17 @@ export function App() {
     const originAgent = opts.draftOrigin?.agentId ?? streamChatId;
     const originThread = opts.draftOrigin
       ? opts.draftOrigin.threadId
-      : active.kind === "channel"
-        ? threadId
-        : null;
+      : streamThread;
+    let queueFailed = false;
+    const showsStream = () =>
+      convoRef.current.agentId === originAgent &&
+      (convoRef.current.threadId ?? null) === (originThread ?? null);
+    const setStreamMessages = (
+      update: ChatMessage[] | ((prev: ChatMessage[]) => ChatMessage[]),
+    ) => {
+      if (!showsStream()) return;
+      setMessages(update);
+    };
     const attachmentIds =
       extra?.attachmentIds ??
       (opts.attachments ?? []).map((row) => row.id);
@@ -3365,24 +3417,24 @@ export function App() {
     if (opts.optimisticUser) {
       userMsg = optimisticUserMessage({
         id: opts.reuseOptimisticId,
-        agentId: active.id,
+        agentId: streamChatId,
         content,
         images: localImages,
         attachments: opts.attachments ?? [],
       });
-      setMessages((prev) => {
+      setStreamMessages((prev) => {
         if (prev.some((row) => row.id === userMsg!.id)) {
           return prev.map((row) => (row.id === userMsg!.id ? userMsg! : row));
         }
         return insertOptimistic(prev, userMsg!);
       });
     }
-    setToolTraces([]);
+    if (showsStream()) setToolTraces([]);
     const handlers: StreamHandlers = {
       onDelta(messageId, delta, sender) {
         if (replyStarted({ delta })) sawReply = true;
-        if (active.kind === "channel" && !threadId) return;
-        setMessages((prev) => {
+        if (streamKind === "channel" && !streamThread) return;
+        setStreamMessages((prev) => {
           const existing = prev.find((m) => m.id === messageId);
           if (!existing) {
             if (!delta) return prev;
@@ -3390,7 +3442,7 @@ export function App() {
               ...prev,
               {
                 id: messageId,
-                agentId: active.id,
+                agentId: streamChatId,
                 role: "assistant",
                 content: delta,
                 images: [],
@@ -3429,8 +3481,8 @@ export function App() {
         }
         if (
           message &&
-          active.kind === "channel" &&
-          !threadId &&
+          streamKind === "channel" &&
+          !streamThread &&
           message.replyTo
         ) {
           return;
@@ -3445,17 +3497,19 @@ export function App() {
         }
         if (message) {
           if (isEmptyAssistantReply(message)) {
-            setMessages((prev) => prev.filter((m) => m.id !== message.id));
+            setStreamMessages((prev) => prev.filter((m) => m.id !== message.id));
             return;
           }
           if (isToolLine(message)) {
-            setToolTraces((prev) =>
-              prev.filter((trace) => trace.id !== message.id),
-            );
+            if (showsStream()) {
+              setToolTraces((prev) =>
+                prev.filter((trace) => trace.id !== message.id),
+              );
+            }
             refreshOpenMemory(message.content);
             refreshOpenUserMemory(message.content);
           }
-          setMessages((prev) => {
+          setStreamMessages((prev) => {
             if (isUserSender(message.senderId, message.role)) {
               return absorbServerUser(prev, message);
             }
@@ -3470,11 +3524,20 @@ export function App() {
           streamError = message || code;
           return;
         }
-        setComposerError(`${code}: ${message}`);
+        if (showsStream()) setComposerError(`${code}: ${message}`);
       },
       onTool(trace) {
         if (replyStarted({ isTool: true })) sawReply = true;
-        if (active.kind === "channel" && !threadId) return;
+        if (streamKind === "channel" && !streamThread) return;
+        if (!showsStream()) {
+          if (typeof trace.ok === "boolean") {
+            setWorkspaceTick((n) => n + 1);
+            if (rosterRefreshTool(trace.name) && session) {
+              void listAgents(session).then(setAgents).catch(() => {});
+            }
+          }
+          return;
+        }
         setToolTraces((prev) => {
           const without = prev.filter((item) => item.id !== trace.id);
           return [...without, { id: trace.id, summary: trace.summary, senderId: trace.senderId, senderName: trace.senderName }];
@@ -3493,16 +3556,24 @@ export function App() {
         void openOsBrowser(url);
       },
     };
+    const dropQueuedBubble = (orphan: string | null) => {
+      queueFailed = true;
+      if (orphan) hiddenOrphans.current.add(orphan);
+      if (userMsg) {
+        setStreamMessages((prev) => prev.filter((row) => row.id !== userMsg!.id));
+      }
+      releasePendingPreviews(opts.restoreAttachments);
+    };
     try {
       await sendMessage(
         session,
-        active.id,
+        streamChatId,
         content,
         images,
         handlers,
         mentionIds,
-        active.kind === "channel" && threadId ? threadId : undefined,
-        active.kind === "channel" ? undefined : lastExtraChannelId.current,
+        streamKind === "channel" && streamThread ? streamThread : undefined,
+        streamKind === "channel" ? undefined : lastExtraChannelId.current,
         extra,
         ac.signal,
       );
@@ -3516,6 +3587,10 @@ export function App() {
           beforeIds,
           content,
         );
+        if (opts.fromQueue) {
+          dropQueuedBubble(orphan);
+          return;
+        }
         rememberFailedSend(
           userMsg,
           { agentId: originAgent, threadId: originThread },
@@ -3533,19 +3608,23 @@ export function App() {
       }
       const listed = await listMessages(
         session,
-        active.id,
-        active.kind === "channel" && threadId ? { threadId } : undefined,
+        streamChatId,
+        streamKind === "channel" && streamThread
+          ? { threadId: streamThread }
+          : undefined,
       );
-      const viewThread = active.kind === "channel" ? threadId : null;
-      setMessages(
-        commitTranscript(
-          userMsg ? reconcileOptimistic([], userMsg.id, listed) : listed,
-          active.id,
-          viewThread,
-        ),
-      );
-      setToolTraces([]);
-      if (active.kind !== "channel") {
+      const viewThread = streamKind === "channel" ? streamThread : null;
+      if (showsStream()) {
+        setStreamMessages(
+          commitTranscript(
+            userMsg ? reconcileOptimistic([], userMsg.id, listed) : listed,
+            streamChatId,
+            viewThread,
+          ),
+        );
+        setToolTraces([]);
+      }
+      if (streamKind !== "channel") {
         const channelId = listed
           .map((message) => visibleJump(message, agents)?.channelId)
           .find((id): id is string => Boolean(id));
@@ -3556,12 +3635,12 @@ export function App() {
           setUnreadIds((prev) => new Set(prev).add(channelId));
         }
       }
-      pickedMentions.current.clear();
+      if (showsStream()) pickedMentions.current.clear();
       releasePendingPreviews(opts.restoreAttachments);
     } catch (err) {
       if (isAbortError(err) || ac.signal.aborted) {
         if (!shouldRefetchAfterStop()) {
-          setMessages((prev) => keepPartialOnStop(prev));
+          setStreamMessages((prev) => keepPartialOnStop(prev));
         }
         return;
       }
@@ -3577,6 +3656,10 @@ export function App() {
               content,
             );
           }
+          if (opts.fromQueue) {
+            dropQueuedBubble(orphan);
+            return;
+          }
           rememberFailedSend(
             userMsg,
             { agentId: originAgent, threadId: originThread },
@@ -3586,7 +3669,21 @@ export function App() {
             orphan,
           );
           releasePendingPreviews(opts.restoreAttachments);
+        } else if (opts.fromQueue) {
+          dropQueuedBubble(null);
+          if (showsStream()) setComposerError(describeError(err));
         } else {
+          setComposerError(describeError(err));
+        }
+      } else if (opts.fromQueue) {
+        dropQueuedBubble(null);
+        if (
+          showsStream() &&
+          err instanceof ApiError &&
+          (err.status === 422 || err.status === 409)
+        ) {
+          setComposerError(err.message);
+        } else if (showsStream()) {
           setComposerError(describeError(err));
         }
       } else if (
@@ -3597,15 +3694,17 @@ export function App() {
       } else {
         setComposerError(describeError(err));
       }
-      if (extra?.regenerate && session && active) {
+      if (extra?.regenerate && session && showsStream()) {
         try {
           const listed = await listMessages(
             session,
-            active.id,
-            active.kind === "channel" && threadId ? { threadId } : undefined,
+            streamChatId,
+            streamKind === "channel" && streamThread
+              ? { threadId: streamThread }
+              : undefined,
           );
-          const viewThread = active.kind === "channel" ? threadId : null;
-          setMessages(commitTranscript(listed, active.id, viewThread));
+          const viewThread = streamKind === "channel" ? streamThread : null;
+          setStreamMessages(commitTranscript(listed, streamChatId, viewThread));
         } catch {
           /* keep local transcript */
         }
@@ -3617,8 +3716,50 @@ export function App() {
       setGeneratingChatId(
         activeGeneratingChat({ busy: false, chatId: streamChatId }),
       );
-      if (shouldFocusComposerOnSettle()) {
+      if (shouldFocusComposerOnSettle() && showsStream()) {
         focusComposer();
+      }
+      const flushKey = queuedSendKey(originAgent, originThread);
+      if (opts.fromQueue && queueFailed) {
+        const dropped = dropQueuedFollowUps(queuedRef.current, flushKey);
+        queuedRef.current = dropped.map;
+        setQueuedMap(dropped.map);
+        const open = showsStream();
+        const composerText = open
+          ? draftRef.current
+          : chatDrafts.current.get(originAgent, originThread);
+        const restored = restoreAfterQueuedFailure({
+          failedText: content,
+          remaining: dropped.remaining,
+          composerText,
+        });
+        chatDrafts.current.set(originAgent, originThread, restored);
+        quoteJumps.current.restorePending(originAgent, originThread, [
+          ...(opts.fromQueueQuotes ?? []),
+          ...dropped.remaining.flatMap((row) => row.quotes),
+        ]);
+        if (open) {
+          draftRef.current = restored;
+          setDraft(restored);
+          setRecallArmed(false);
+          setQuoteJumpEpoch((epoch) => epoch + 1);
+        }
+      } else if (
+        shouldFlushQueue({
+          fromQueue: Boolean(opts.fromQueue),
+          failed: queueFailed,
+        })
+      ) {
+        const next = dequeueFollowUp(queuedRef.current, flushKey);
+        queuedRef.current = next.map;
+        setQueuedMap(next.map);
+        if (next.item) {
+          const item = next.item;
+          const kind = streamKind;
+          queueMicrotask(() => {
+            void sendQueuedFollowUp(item, originAgent, originThread, kind);
+          });
+        }
       }
     }
   }
@@ -3920,6 +4061,119 @@ export function App() {
     await submitTurn({
       content: "",
       extra: { approveReply: { id, dismissed: true } },
+    });
+  }
+
+  function publishQueued(next: QueuedSendMap) {
+    queuedRef.current = next;
+    setQueuedMap(next);
+  }
+
+  /** v1.28: hold the composer text until the in-flight reply settles. */
+  function queueFollowUp() {
+    if (!active) return;
+    const text = draftRef.current;
+    if (
+      !canQueueFollowUp({
+        busy: true,
+        text,
+        chipCount: pendingAttachmentsRef.current.length,
+        attachError: Boolean(attachError),
+        takeoverOpen,
+        hasChat: true,
+      })
+    ) {
+      return;
+    }
+    const quotes = quoteJumps.current.takePending(active.id, threadId);
+    const id =
+      typeof crypto !== "undefined" && "randomUUID" in crypto
+        ? crypto.randomUUID()
+        : `q-${Date.now()}`;
+    publishQueued(
+      enqueueFollowUp(
+        queuedRef.current,
+        queuedSendKey(active.id, threadId),
+        text,
+        id,
+        mentionIdsInText(text, pickedMentions.current),
+        quotes,
+      ),
+    );
+    chatDrafts.current.clear(active.id, threadId);
+    draftRef.current = "";
+    setDraft("");
+    setRecallArmed(false);
+    setQuoteJumpEpoch((epoch) => epoch + 1);
+    resizeComposer(true);
+    focusComposer();
+  }
+
+  function editQueuedItem(id: string, text: string) {
+    if (!active) return;
+    publishQueued(
+      editQueuedFollowUp(
+        queuedRef.current,
+        queuedSendKey(active.id, threadId),
+        id,
+        text,
+      ),
+    );
+  }
+
+  function removeQueuedItem(id: string) {
+    if (!active) return;
+    publishQueued(
+      removeQueuedFollowUp(
+        queuedRef.current,
+        queuedSendKey(active.id, threadId),
+        id,
+      ),
+    );
+  }
+
+  async function sendQueuedFollowUp(
+    item: QueuedItem,
+    agentId: string,
+    thread: string | null,
+    kind: string,
+  ) {
+    if (!session || inFlight.current) {
+      publishQueued(
+        requeueFollowUp(
+          queuedRef.current,
+          queuedSendKey(agentId, thread),
+          item,
+        ),
+      );
+      return;
+    }
+    const open =
+      convoRef.current.agentId === agentId &&
+      (convoRef.current.threadId ?? null) === (thread ?? null);
+    inFlight.current = true;
+    setBusy(true);
+    if (open) {
+      newMessagesPlace.current = clearNewMessages(newMessagesPlace.current);
+      watchingNewMessages.current = true;
+      setDividerAnchorId(null);
+      snapStick();
+      focusComposer();
+    }
+    quoteJumps.current.commitOwned(agentId, thread, item.text, item.quotes);
+    if (open) setQuoteJumpEpoch((epoch) => epoch + 1);
+    setComposerError(null);
+    await submitTurn({
+      content: item.text,
+      mentionIds: item.mentionIds,
+      optimisticUser: true,
+      draftOrigin: { agentId, threadId: thread },
+      fromQueue: true,
+      fromQueueQuotes: item.quotes,
+      streamAgentId: agentId,
+      streamThreadId: thread,
+      streamKind: kind,
+      holdBusy: true,
     });
   }
 
@@ -4256,6 +4510,19 @@ export function App() {
       return;
     }
     if (sendMutedWhileGenerating(busy)) {
+      if (
+        enterQueuesFollowUp(event, {
+          busy,
+          text: event.currentTarget.value,
+          chipCount: pendingAttachments.length,
+          attachError: Boolean(attachError),
+          takeoverOpen,
+          hasChat: Boolean(active),
+        })
+      ) {
+        event.preventDefault();
+        queueFollowUp();
+      }
       return;
     }
     if (composerEnterSends(event)) {
@@ -8136,6 +8403,35 @@ export function App() {
               ))}
             </ul>
           ) : null}
+          {openQueued.length > 0 ? (
+            <ul className="queued-follow-ups" aria-label="Queued messages">
+              {openQueued.map((item) => (
+                <li key={item.id} className="queued-follow-up">
+                  <span className="queued-label">Queued</span>
+                  <input
+                    className="queued-text"
+                    aria-label="Queued message"
+                    value={item.text}
+                    onChange={(event) => editQueuedItem(item.id, event.target.value)}
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter") {
+                        event.preventDefault();
+                        event.stopPropagation();
+                      }
+                    }}
+                  />
+                  <button
+                    type="button"
+                    className="queued-remove"
+                    aria-label="Remove queued message"
+                    onClick={() => removeQueuedItem(item.id)}
+                  >
+                    ×
+                  </button>
+                </li>
+              ))}
+            </ul>
+          ) : null}
           <div className="composer-bar">
             <button
               type="button"
@@ -8214,14 +8510,19 @@ export function App() {
               className="send"
               aria-label="Send"
               disabled={
-                sendMutedWhileGenerating(busy) ||
-                composerDisabled ||
-                sendBlocked ||
-                !active ||
-                Boolean(attachError) ||
-                (!draft.trim() && pendingAttachments.length === 0)
+                queueNow
+                  ? false
+                  : sendMutedWhileGenerating(busy) ||
+                    composerDisabled ||
+                    sendBlocked ||
+                    !active ||
+                    Boolean(attachError) ||
+                    (!draft.trim() && pendingAttachments.length === 0)
               }
-              onClick={() => void onSend()}
+              onClick={() => {
+                if (queueNow) queueFollowUp();
+                else void onSend();
+              }}
             >
               <SendIcon />
             </button>

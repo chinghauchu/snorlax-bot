@@ -172,7 +172,8 @@ test("the sidebar paints dots in the time slot and keeps neighbors", () => {
   assert.match(app, /from "\.\/chatGenerating"/);
   assert.match(app, /activeGeneratingChat\(\{ busy: true, chatId: streamChatId \}\)/);
   assert.match(app, /activeGeneratingChat\(\{ busy: false, chatId: streamChatId \}\)/);
-  assert.match(app, /const streamChatId = active\.id/);
+  // v1.28: a queued follow-up names its origin chat; a composer send still uses active.id.
+  assert.match(app, /const streamChatId = opts\.streamAgentId \?\? active\.id/);
   assert.match(app, /noteReplyUnread\(streamChatId\)/);
   assert.match(app, /chatRowPreview\(\{/);
   assert.match(app, /chatListLine\(\{/);

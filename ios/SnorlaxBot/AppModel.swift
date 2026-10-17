@@ -201,6 +201,10 @@ final class AppModel {
     var generatingChatID: String?
     /// v0.78 failed Sends for this session. Not persisted. No HTTP.
     var failedSends: [FailedSendRecord] = []
+    /// v1.28: per-chat follow-ups held while a reply is in flight. Session only.
+    var queuedFollowUps: [String: [QueuedSend.Item]] = [:]
+    private var queuedDispatch: QueuedSend.Dispatch?
+    private var queuedSendFailed = false
     var hiddenOrphanIDs: Set<String> = []
     private var retryOverride: FailedSendRecord?
     var errorMessage: String?
@@ -1402,19 +1406,54 @@ final class AppModel {
     func send() async {
         let retry = retryOverride
         retryOverride = nil
-        cancelDictation()
-        dictationEpoch += 1
-        guard let client, let agent = selectedAgent else { return }
+        let queued = queuedDispatch
+        queuedDispatch = nil
+        if queued == nil || selectedAgentID == queued?.agentId {
+            cancelDictation()
+            dictationEpoch += 1
+        }
+        guard let client else {
+            if let queued { requeueDispatch(queued) }
+            return
+        }
+        let resolvedAgent = queued.flatMap { item in
+            agents.first { $0.id == item.agentId }
+        } ?? selectedAgent
+        guard let agent = resolvedAgent else {
+            if let queued { requeueDispatch(queued) }
+            return
+        }
+        if isSending || isAttaching {
+            if let queued { requeueDispatch(queued) }
+            return
+        }
         guard !isSending, !isAttaching else { return }
         if let retry {
             guard retry.agentId == agent.id, retry.threadId == threadID else { return }
         }
         isSending = true
+        let originAgentID = queued?.agentId ?? agent.id
+        let originThreadID = queued?.threadId ?? threadID
+        let sendingQueued = queued != nil
+        queuedSendFailed = false
+        var ranTurn = false
+        var sentContent = ""
         defer {
             isSending = false
             generatingChatID = nil
             if StopGenerating.shouldFocusComposerOnSettle() {
                 wantsComposerFocus = true
+            }
+            if ranTurn {
+                settleQueuedSend(
+                    agentId: originAgentID,
+                    threadId: originThreadID,
+                    isChannel: agent.isChannel,
+                    fromQueue: sendingQueued,
+                    failed: queuedSendFailed,
+                    failedText: sentContent,
+                    failedQuotes: queued?.quotes ?? []
+                )
             }
         }
 
@@ -1422,8 +1461,6 @@ final class AppModel {
         let chips: [PendingChatAttachment]
         let mentionIDs: [String]
         let user: Message
-        let originAgentID = agent.id
-        let originThreadID = threadID
         if let retry {
             content = retry.content
             mentionIDs = retry.mentionIds
@@ -1443,12 +1480,33 @@ final class AppModel {
                 hiddenOrphanIDs.insert(orphan)
             }
             failedSends = FailedSend.dismiss(failedSends, id: retry.id)
+            sentContent = content
+        } else if let queued {
+            content = queued.text
+            mentionIDs = queued.mentionIds
+            chips = []
+            sentContent = content
+            quoteJumps.commitOwned(
+                agentId: originAgentID,
+                threadId: originThreadID,
+                content: content,
+                links: queued.quotes.map { QuoteJump.Link(text: $0.text, sourceId: $0.sourceId) }
+            )
+            user = Message.optimisticUser(
+                agentId: originAgentID,
+                content: content,
+                attachments: []
+            )
+            if selectedAgentID == originAgentID && threadID == originThreadID {
+                messages = OptimisticSend.insert(messages, user)
+            }
         } else {
             content = draft.trimmingCharacters(in: .whitespacesAndNewlines)
             chips = pendingAttachments
             guard !content.isEmpty || !chips.isEmpty else { return }
             guard attachError == nil else { return }
             quoteJumps.commit(agentId: originAgentID, threadId: originThreadID, content: content)
+            sentContent = content
             mentionIDs = self.mentionIDs(in: content)
             chatDrafts.clear(agentId: originAgentID, threadId: originThreadID)
             draft = ""
@@ -1469,19 +1527,22 @@ final class AppModel {
             messages = OptimisticSend.insert(messages, user)
         }
         generatingChatID = originAgentID
-        wantsComposerFocus = true
-        stickBump += 1
-        newMessagesPlace = NewMessages.clear(newMessagesPlace)
-        newMessagesAnchorID = nil
-        watchingNewMessages = true
-        toolTraces = []
+        if selectedAgentID == originAgentID && threadID == originThreadID {
+            wantsComposerFocus = true
+            stickBump += 1
+            newMessagesPlace = NewMessages.clear(newMessagesPlace)
+            newMessagesAnchorID = nil
+            watchingNewMessages = true
+            toolTraces = []
+        }
+        ranTurn = true
 
         let watch = SendWatch(beforeIDs: Set(messages.map(\.id)))
         let epoch = streamEpoch
         let work = Task { @MainActor in
             do {
                 try await client.sendMessage(
-                    agentId: agent.id,
+                    agentId: originAgentID,
                     content: content,
                     images: [],
                     mentions: mentionIDs,
@@ -1497,7 +1558,7 @@ final class AppModel {
                         guard let self, self.streamEpoch == epoch else { return }
                         self.handle(
                             event,
-                            agentId: agent.id,
+                            agentId: originAgentID,
                             mainTranscript: originThreadID == nil
                         )
                     }
@@ -1515,6 +1576,14 @@ final class AppModel {
                             content: content
                         )
                     }
+                    if sendingQueued {
+                        queuedSendFailed = true
+                        if let orphan { hiddenOrphanIDs.insert(orphan) }
+                        if selectedAgentID == originAgentID && threadID == originThreadID {
+                            messages.removeAll { $0.id == user.id }
+                        }
+                        return
+                    }
                     noteFailedSend(
                         user: user,
                         agentId: originAgentID,
@@ -1526,12 +1595,12 @@ final class AppModel {
                     )
                     return
                 }
-                if selectedAgentID == agent.id {
-                    let listed = try await client.listMessages(agentId: agent.id, threadId: threadID)
+                if selectedAgentID == originAgentID && threadID == originThreadID {
+                    let listed = try await client.listMessages(agentId: originAgentID, threadId: originThreadID)
                     messages = showListed(
                         OptimisticSend.reconcile(listed: listed),
-                        agentId: agent.id,
-                        threadId: threadID
+                        agentId: originAgentID,
+                        threadId: originThreadID
                     )
                     toolTraces = []
                     prunePreviews()
@@ -1544,7 +1613,8 @@ final class AppModel {
                 }
             } catch {
                 if StopGenerating.isAbort(error) || Task.isCancelled || self.streamEpoch != epoch {
-                    if !StopGenerating.shouldRefetchAfterStop() {
+                    if !StopGenerating.shouldRefetchAfterStop(),
+                       selectedAgentID == originAgentID && threadID == originThreadID {
                         messages = StopGenerating.keepPartial(messages)
                     }
                     return
@@ -1569,15 +1639,29 @@ final class AppModel {
                             )
                         }
                     }
-                    noteFailedSend(
-                        user: user,
-                        agentId: originAgentID,
-                        threadId: originThreadID,
-                        content: content,
-                        chips: chips,
-                        mentionIDs: mentionIDs,
-                        orphan: orphan
-                    )
+                    if sendingQueued {
+                        queuedSendFailed = true
+                        if let orphan { hiddenOrphanIDs.insert(orphan) }
+                        if selectedAgentID == originAgentID && threadID == originThreadID {
+                            messages.removeAll { $0.id == user.id }
+                        }
+                    } else {
+                        noteFailedSend(
+                            user: user,
+                            agentId: originAgentID,
+                            threadId: originThreadID,
+                            content: content,
+                            chips: chips,
+                            mentionIDs: mentionIDs,
+                            orphan: orphan
+                        )
+                    }
+                } else if sendingQueued {
+                    queuedSendFailed = true
+                    if selectedAgentID == originAgentID && threadID == originThreadID {
+                        messages.removeAll { $0.id == user.id }
+                        errorMessage = error.localizedDescription
+                    }
                 } else {
                     errorMessage = error.localizedDescription
                 }
@@ -1586,6 +1670,146 @@ final class AppModel {
         streamTask = work
         await work.value
         streamTask = nil
+    }
+
+    func canQueueFollowUp() -> Bool {
+        QueuedSend.canQueue(
+            busy: isSending,
+            text: draft,
+            chipCount: pendingAttachments.count,
+            attachError: attachError != nil,
+            takeoverOpen: computerTakeoverOpen,
+            hasChat: (composerAgentID ?? selectedAgentID) != nil
+        )
+    }
+
+    func openQueuedItems() -> [QueuedSend.Item] {
+        guard let agentId = composerAgentID ?? selectedAgentID else { return [] }
+        let thread = composerAgentID == nil ? threadID : composerThreadID
+        return QueuedSend.items(
+            queuedFollowUps,
+            key: QueuedSend.key(agentId: agentId, threadId: thread)
+        )
+    }
+
+    /// Hold the composer text until the in-flight reply settles.
+    func queueFollowUp() {
+        guard let agentId = composerAgentID ?? selectedAgentID else { return }
+        let thread = composerAgentID == nil ? threadID : composerThreadID
+        guard QueuedSend.canQueue(
+            busy: isSending,
+            text: draft,
+            chipCount: pendingAttachments.count,
+            attachError: attachError != nil,
+            takeoverOpen: computerTakeoverOpen,
+            hasChat: true
+        ) else { return }
+        let links = quoteJumps.takePending(agentId: agentId, threadId: thread)
+        queuedFollowUps = QueuedSend.enqueue(
+            queuedFollowUps,
+            key: QueuedSend.key(agentId: agentId, threadId: thread),
+            text: draft,
+            id: UUID().uuidString,
+            mentionIds: mentionIDs(in: draft),
+            quotes: links.map { QueuedSend.Quote(text: $0.text, sourceId: $0.sourceId) }
+        )
+        chatDrafts.clear(agentId: agentId, threadId: thread)
+        suppressDraftPersist = true
+        draft = ""
+        suppressDraftPersist = false
+        pendingComposerCaret = 0
+        recallArmed = false
+        wantsComposerFocus = true
+    }
+
+    func editQueued(id: String, text: String) {
+        guard let agentId = composerAgentID ?? selectedAgentID else { return }
+        let thread = composerAgentID == nil ? threadID : composerThreadID
+        queuedFollowUps = QueuedSend.edit(
+            queuedFollowUps,
+            key: QueuedSend.key(agentId: agentId, threadId: thread),
+            id: id,
+            text: text
+        )
+    }
+
+    func removeQueued(id: String) {
+        guard let agentId = composerAgentID ?? selectedAgentID else { return }
+        let thread = composerAgentID == nil ? threadID : composerThreadID
+        queuedFollowUps = QueuedSend.remove(
+            queuedFollowUps,
+            key: QueuedSend.key(agentId: agentId, threadId: thread),
+            id: id
+        )
+    }
+
+    private func requeueDispatch(_ queued: QueuedSend.Dispatch) {
+        queuedFollowUps = QueuedSend.requeueFront(
+            queuedFollowUps,
+            key: QueuedSend.key(agentId: queued.agentId, threadId: queued.threadId),
+            item: QueuedSend.Item(
+                id: UUID().uuidString,
+                text: queued.text,
+                mentionIds: queued.mentionIds,
+                quotes: queued.quotes
+            )
+        )
+    }
+
+    private func settleQueuedSend(
+        agentId: String,
+        threadId: String?,
+        isChannel: Bool,
+        fromQueue: Bool,
+        failed: Bool,
+        failedText: String,
+        failedQuotes: [QueuedSend.Quote]
+    ) {
+        let key = QueuedSend.key(agentId: agentId, threadId: threadId)
+        if fromQueue && failed {
+            let dropped = QueuedSend.drop(queuedFollowUps, key: key)
+            queuedFollowUps = dropped.queued
+            let viewingAgent = composerAgentID ?? selectedAgentID
+            let viewingThread = composerAgentID == nil ? threadID : composerThreadID
+            let open = viewingAgent == agentId && viewingThread == threadId
+            let composerText = open
+                ? draft
+                : chatDrafts.text(agentId: agentId, threadId: threadId)
+            let restored = QueuedSend.restoreText(
+                failed: failedText,
+                remaining: dropped.remaining,
+                composer: composerText
+            )
+            chatDrafts.restore(agentId: agentId, threadId: threadId, text: restored)
+            var links = failedQuotes.map { QuoteJump.Link(text: $0.text, sourceId: $0.sourceId) }
+            for row in dropped.remaining {
+                links.append(contentsOf: row.quotes.map {
+                    QuoteJump.Link(text: $0.text, sourceId: $0.sourceId)
+                })
+            }
+            quoteJumps.restorePending(agentId: agentId, threadId: threadId, links: links)
+            if open {
+                suppressDraftPersist = true
+                draft = restored
+                suppressDraftPersist = false
+                pendingComposerCaret = (restored as NSString).length
+                recallArmed = false
+            }
+            return
+        }
+        guard QueuedSend.shouldFlush(fromQueue: fromQueue, failed: failed) else { return }
+        let next = QueuedSend.dequeue(queuedFollowUps, key: key)
+        queuedFollowUps = next.queued
+        guard let item = next.item else { return }
+        queuedDispatch = QueuedSend.Dispatch(
+            text: item.text,
+            agentId: agentId,
+            threadId: threadId,
+            isChannel: isChannel,
+            mentionIds: item.mentionIds,
+            quotes: item.quotes
+        )
+        Task { await send() }
     }
 
     func dismissFailedSend(id: String) {
@@ -1818,6 +2042,7 @@ final class AppModel {
 
     func regenerate() async {
         guard let client, let agent = selectedAgent, !agent.isChannel, !isSending else { return }
+        let originThreadID = threadID
         composerError = nil
         stickBump += 1
         dropLastAssistantTurn()
@@ -1827,6 +2052,15 @@ final class AppModel {
         defer {
             isSending = false
             generatingChatID = nil
+            settleQueuedSend(
+                agentId: agent.id,
+                threadId: originThreadID,
+                isChannel: false,
+                fromQueue: false,
+                failed: false,
+                failedText: "",
+                failedQuotes: []
+            )
         }
         let epoch = streamEpoch
         let work = Task { @MainActor in
@@ -1906,6 +2140,7 @@ final class AppModel {
 
     private func streamAnswer(widgetReply: WidgetReply? = nil, connectReply: ConnectReply? = nil, approveReply: ApproveReply? = nil) async {
         guard let client, let agent = selectedAgent, !isSending else { return }
+        let originThreadID = threadID
         composerError = nil
         toolTraces = []
         isSending = true
@@ -1913,6 +2148,15 @@ final class AppModel {
         defer {
             isSending = false
             generatingChatID = nil
+            settleQueuedSend(
+                agentId: agent.id,
+                threadId: originThreadID,
+                isChannel: agent.isChannel,
+                fromQueue: false,
+                failed: false,
+                failedText: "",
+                failedQuotes: []
+            )
         }
         let epoch = streamEpoch
         let mainTranscript = threadID == nil

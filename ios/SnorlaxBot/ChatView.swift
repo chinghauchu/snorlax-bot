@@ -2971,6 +2971,10 @@ private struct ComposerBar: View {
         return String(after)
     }
 
+    private var canQueue: Bool {
+        model.canQueueFollowUp()
+    }
+
     private var canSend: Bool {
         let trimmed = model.draft.trimmingCharacters(in: .whitespacesAndNewlines)
         return model.canCompose
@@ -3050,6 +3054,45 @@ private struct ComposerBar: View {
                     )
                 }
             }
+            if !model.openQueuedItems().isEmpty {
+                VStack(alignment: .leading, spacing: 6) {
+                    ForEach(model.openQueuedItems()) { item in
+                        HStack(spacing: 8) {
+                            Text(QueuedSend.label)
+                                .font(.system(size: 12, weight: .semibold))
+                                .foregroundStyle(.secondary)
+                            TextField(
+                                QueuedSend.editLabel,
+                                text: Binding(
+                                    get: { item.text },
+                                    set: { model.editQueued(id: item.id, text: $0) }
+                                )
+                            )
+                            .font(.system(size: 13))
+                            .foregroundStyle(.secondary)
+                            .textFieldStyle(.plain)
+                            .accessibilityLabel(QueuedSend.editLabel)
+                            Button {
+                                model.removeQueued(id: item.id)
+                            } label: {
+                                Image(systemName: "xmark")
+                                    .font(.system(size: 11, weight: .bold))
+                                    .frame(width: 20, height: 20)
+                            }
+                            .buttonStyle(.plain)
+                            .accessibilityLabel(QueuedSend.removeLabel)
+                        }
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 4)
+                        .background(
+                            Color(uiColor: .secondarySystemBackground),
+                            in: RoundedRectangle(cornerRadius: 8)
+                        )
+                    }
+                }
+                .accessibilityElement(children: .contain)
+                .accessibilityLabel(QueuedSend.listLabel)
+            }
             HStack(alignment: .bottom, spacing: 8) {
                 Button {
                     attachMenu = true
@@ -3075,6 +3118,9 @@ private struct ComposerBar: View {
                     onReturnSend: {
                         guard SendMuted.enterSends(busy: model.isSending) else { return }
                         Task { await model.send() }
+                    },
+                    onReturnWhileMuted: {
+                        model.queueFollowUp()
                     },
                     onPasteAttachments: { items in
                         Task {
@@ -3254,14 +3300,18 @@ private struct ComposerBar: View {
                 .accessibilityValue(Dictation.busy(model.dictation) ? Dictation.hintTranscribing : "")
 
                 Button {
-                    Task { await model.send() }
+                    if canQueue {
+                        model.queueFollowUp()
+                    } else {
+                        Task { await model.send() }
+                    }
                 } label: {
                     Image(systemName: "arrow.up.circle.fill")
                         .font(.system(size: 28))
                 }
-                .disabled(!canSend)
+                .disabled(!canSend && !canQueue)
                 .opacity(
-                    SendMuted.whileGenerating(busy: model.isSending)
+                    SendMuted.whileGenerating(busy: model.isSending) && !canQueue
                         ? SendMuted.disabledOpacity
                         : 1
                 )
