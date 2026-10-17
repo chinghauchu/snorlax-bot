@@ -7,6 +7,13 @@ import SwiftUI
 /// slack, the chat still opens at the latest. A new tail while parked
 /// shows Jump to latest. Send, Regenerate, and Jump still snap to the
 /// bottom. Session memory only. No HTTP.
+///
+/// v1.30: the parked place also stores how far into that row the
+/// viewport started, as a fraction of the row height. Coming back
+/// lands on that fraction. A zero fraction still aligns the row top.
+/// An explicit jump to a message, or Home/End, wins over the saved
+/// place. The restore assigns an offset. No animation. Still session
+/// memory only. No HTTP.
 /// Keep in lockstep with `desktop/src/readingPlace.ts`.
 enum ReadingPlace {
     static let coordinateSpace = "reading"
@@ -14,12 +21,29 @@ enum ReadingPlace {
     struct Place: Equatable {
         var nearBottom: Bool
         var anchorId: String?
+        /// Fraction of the anchor row above the viewport. 0 aligns the top.
+        var anchorOffset: CGFloat
         var tailId: String?
     }
 
     enum Mode: Equatable {
         case bottom
         case anchor
+    }
+
+    /// What an explicit scroll was aiming at after the place was scheduled.
+    enum TargetedKind: Equatable {
+        case top
+        case bottom
+        case message
+    }
+
+    /// `place` restores the anchor. `keep` leaves a message-target scroll.
+    enum Decision: Equatable {
+        case place
+        case top
+        case bottom
+        case keep
     }
 
     struct Frame: Equatable {
@@ -33,12 +57,51 @@ enum ReadingPlace {
         "\(agentId)\n\(threadId ?? "")"
     }
 
-    static func capture(nearBottom: Bool, anchorId: String?, tailId: String?) -> Place {
-        Place(
+    static func capture(
+        nearBottom: Bool,
+        anchorId: String?,
+        tailId: String?,
+        anchorOffset: CGFloat = 0
+    ) -> Place {
+        let parked = !nearBottom && anchorId != nil
+        let offset = parked && anchorOffset.isFinite ? anchorOffset : 0
+        return Place(
             nearBottom: nearBottom,
             anchorId: nearBottom ? nil : anchorId,
+            anchorOffset: offset,
             tailId: tailId
         )
+    }
+
+    /// How far into the anchor the viewport starts, as a fraction of its height.
+    static func fraction(minY: CGFloat, maxY: CGFloat, viewportTop: CGFloat) -> CGFloat {
+        let height = maxY - minY
+        guard height > 0 else { return 0 }
+        return (viewportTop - minY) / height
+    }
+
+    /// Fraction for the saved anchor, or 0 when that row is not measured.
+    static func anchorOffset(rows: [Frame], anchorId: String?, viewportTop: CGFloat) -> CGFloat {
+        guard let anchorId, let row = rows.first(where: { $0.id == anchorId }) else { return 0 }
+        return fraction(minY: row.minY, maxY: row.maxY, viewportTop: viewportTop)
+    }
+
+    /// Content offset that puts `fraction` of the row above the viewport.
+    /// A zero fraction, or a row with no height, meets the row top.
+    static func restoredContentOffset(minY: CGFloat, maxY: CGFloat, fraction: CGFloat) -> CGFloat {
+        let height = maxY - minY
+        let shift = height > 0 && fraction.isFinite ? fraction * height : 0
+        return max(0, minY + shift)
+    }
+
+    /// An explicit scroll claimed after the place was scheduled wins.
+    static func decision(scheduled: Int, current: Int, kind: TargetedKind) -> Decision {
+        if scheduled == current { return .place }
+        switch kind {
+        case .top: return .top
+        case .bottom: return .bottom
+        case .message: return .keep
+        }
     }
 
     /// First row whose bottom is still inside the viewport, in visual order.

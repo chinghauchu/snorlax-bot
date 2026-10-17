@@ -5,11 +5,14 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import test from "node:test";
 import {
+  anchorOffsetForId,
+  anchorOffsetFraction,
   anchorScrollTop,
   captureReadingPlace,
   readingNearBottom,
   readingPlaceKey,
   readingRestore,
+  readingRestoreDecision,
   readingTailGrew,
   stickForReadingRestore,
   topVisibleAnchor,
@@ -84,7 +87,7 @@ test("capture drops the anchor when the reader is at the bottom", () => {
       anchorId: "m1",
       tailId: "m9",
     }),
-    { nearBottom: true, anchorId: null, tailId: "m9" },
+    { nearBottom: true, anchorId: null, anchorOffset: 0, tailId: "m9" },
   );
   assert.deepEqual(
     captureReadingPlace({
@@ -92,7 +95,34 @@ test("capture drops the anchor when the reader is at the bottom", () => {
       anchorId: "m2",
       tailId: "m9",
     }),
-    { nearBottom: false, anchorId: "m2", tailId: "m9" },
+    { nearBottom: false, anchorId: "m2", anchorOffset: 0, tailId: "m9" },
+  );
+  assert.deepEqual(
+    captureReadingPlace({
+      nearBottom: true,
+      anchorId: "m2",
+      tailId: "m9",
+      anchorOffset: 0.4,
+    }),
+    { nearBottom: true, anchorId: null, anchorOffset: 0, tailId: "m9" },
+  );
+  assert.deepEqual(
+    captureReadingPlace({
+      nearBottom: false,
+      anchorId: "m2",
+      tailId: "m9",
+      anchorOffset: 0.25,
+    }),
+    { nearBottom: false, anchorId: "m2", anchorOffset: 0.25, tailId: "m9" },
+  );
+  assert.equal(
+    captureReadingPlace({
+      nearBottom: false,
+      anchorId: "m2",
+      tailId: "m9",
+      anchorOffset: Number.NaN,
+    }).anchorOffset,
+    0,
   );
 });
 
@@ -153,6 +183,73 @@ test("parked place disarms stick and shows Jump only when the tail grew", () => 
   });
   assert.equal(anchorScrollTop(240, 80, 100), 260);
   assert.equal(anchorScrollTop(10, 80, 20), 0);
+  assert.equal(anchorScrollTop(200, 100, 500, 0.25, 400), 700);
+  assert.equal(anchorScrollTop(10, 10, 40, 0.5, 0), 40);
+});
+
+test("v1.30 offset is a fraction of the anchor and explicit targets win", () => {
+  const rows = [
+    { id: "m1", top: 0, bottom: 80 },
+    { id: "m2", top: 80, bottom: 280 },
+    { id: "m3", top: 280, bottom: 400 },
+  ];
+  assert.equal(anchorOffsetFraction(80, 280, 130), 0.25);
+  assert.equal(anchorOffsetFraction(80, 80, 80), 0);
+  assert.equal(anchorOffsetForId(rows, "m2", 130), 0.25);
+  assert.equal(anchorOffsetForId(rows, null, 130), 0);
+  assert.equal(anchorOffsetForId(rows, "missing", 130), 0);
+  const fraction = anchorOffsetFraction(100, 300, 180);
+  assert.equal(anchorScrollTop(100, 180, 900, fraction, 200), 900);
+  const scaled = anchorScrollTop(400, 0, 0, fraction, 400);
+  assert.equal(scaled, 560);
+  assert.equal(readingRestoreDecision(3, 3, "message"), "place");
+  assert.equal(readingRestoreDecision(3, 4, "message"), "keep");
+  assert.equal(readingRestoreDecision(3, 4, "bottom"), "bottom");
+  assert.equal(readingRestoreDecision(3, 4, "top"), "top");
+  const parked = captureReadingPlace({
+    nearBottom: false,
+    anchorId: "m2",
+    tailId: "m9",
+    anchorOffset: 0.25,
+  });
+  assert.equal(readingRestore(parked, ["m1", "m2"]), "anchor");
+  assert.equal(readingRestore(parked, ["m1"]), "bottom");
+  assert.deepEqual(stickForReadingRestore("anchor", true), {
+    armed: false,
+    showJump: true,
+  });
+  assert.deepEqual(stickForReadingRestore("bottom", true), {
+    armed: true,
+    showJump: false,
+  });
+
+  assert.match(app, /anchorOffset: anchorOffsetForId\(/);
+  assert.match(app, /readingRestoreDecision\(/);
+  assert.match(app, /saved\?\.anchorOffset/);
+  assert.match(app, /targetedScrollKind\.current = "message"/);
+  assert.match(app, /targetedScrollKind\.current = "bottom"/);
+  assert.match(app, /targetedScrollKind\.current = "top"/);
+  assert.match(app, /decision !== "place"/);
+  assert.doesNotMatch(src, /localStorage/);
+  assert.doesNotMatch(src, /scrollIntoView/);
+  assert.match(swift, /var anchorOffset: CGFloat/);
+  assert.match(swift, /func restoredContentOffset/);
+  assert.match(swift, /func decision\(scheduled:/);
+  assert.match(swift, /case keep/);
+  assert.doesNotMatch(swift, /UserDefaults/);
+  assert.match(chat, /readingOffsetPendingID/);
+  assert.match(chat, /claimTargetedScroll\(\.message\)/);
+  assert.match(chat, /claimTargetedScroll\(\.top\)/);
+  assert.match(chat, /claimTargetedScroll\(\.bottom\)/);
+  assert.match(chat, /TranscriptScroll\.transaction\(reduceMotion: true\)/);
+  assert.match(chat, /proxy\.scrollTo\(anchor, anchor: \.top\)/);
+  assert.doesNotMatch(
+    sliceFn(chat, "private func applyPendingRestore", "private func snapToBottom"),
+    /DispatchQueue\.main\.async/,
+  );
+  assert.match(model, /func noteTargetedScroll/);
+  assert.match(model, /pendingReadingTargeted = targetedScrollToken/);
+  assert.match(model, /anchorOffset: anchorOffset/);
 });
 
 test("desktop restores on switch and still snaps Send, Regenerate, and Jump", () => {
@@ -190,6 +287,7 @@ test("OpenAPI stays 0.18.0; iOS restores the same way; no computerPane.ts", () =
   assert.doesNotMatch(openapi, /version:\s*0\.19/);
   assert.match(pkg, /readingPlace\.test\.ts/);
   assert.match(roadmap, new RegExp(PHRASE.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
+  assert.match(roadmap, /v1\.30 transcript reading offset/);
   assert.equal(existsSync(join(here, "computerPane.ts")), false);
   assert.doesNotMatch(src, /computerPane\.ts/);
   assert.doesNotMatch(app, /computerPane\.ts/);
