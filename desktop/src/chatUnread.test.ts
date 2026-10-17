@@ -209,7 +209,8 @@ test("unread survives relaunch; opening clears; deleted chats drop", () => {
 test("desktop marks from message.done, clears on open, and paints the existing dot", () => {
   assert.match(app, /from "\.\/chatUnread"/);
   assert.match(app, /new ChatUnread\(browserUnreadStorage\(\)\)/);
-  assert.match(app, /const streamChatId = active\.id/);
+  // v1.28: a queued follow-up names its origin chat; a composer send still uses active.id.
+  assert.match(app, /const streamChatId = opts\.streamAgentId \?\? active\.id/);
 
   const done = sliceFn(app, "onDone(message)", "onError(code, message)");
   assert.match(done, /isFinishedAssistantReply\(message\)/);

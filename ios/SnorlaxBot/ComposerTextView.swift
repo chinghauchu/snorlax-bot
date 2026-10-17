@@ -11,6 +11,8 @@ struct ComposerTextView: UIViewRepresentable {
     @Binding var pendingCaret: Int?
     var focused: FocusState<Bool>.Binding
     var onReturnSend: (() -> Void)? = nil
+    /// v1.28: hardware Return while a reply is in flight queues the draft.
+    var onReturnWhileMuted: (() -> Void)? = nil
     var onPasteAttachments: (([ComposerPasteboard.Attachment]) -> Void)? = nil
     var onCaretChange: ((NSRange) -> Void)? = nil
     /// Hardware Esc: Stop while generating (v0.53), Jump when frozen (v0.60).
@@ -119,7 +121,8 @@ struct ComposerTextView: UIViewRepresentable {
     /// Hardware Delete and the on-screen keyboard both call `deleteBackward`.
     /// Returns true when a chip was removed.
     var onBackspaceRemoveChip: (() -> Bool)? = nil
-    /// v0.55: hardware Return does not send while an assistant turn is in flight.
+    /// v0.55 / v1.28: hardware Return does not send while a reply is in flight.
+    /// It queues the draft instead of inserting a newline.
     var sendMuted: Bool = false
     /// v0.84: grown height, already capped. The parent applies it with no animation.
     var onHeight: ((CGFloat) -> Void)? = nil
@@ -133,6 +136,9 @@ struct ComposerTextView: UIViewRepresentable {
         view.delegate = context.coordinator
         view.onReturnSend = { [coordinator = context.coordinator] in
             coordinator.parent.onReturnSend?()
+        }
+        view.onReturnWhileMuted = { [coordinator = context.coordinator] in
+            coordinator.parent.onReturnWhileMuted?()
         }
         view.onPasteAttachments = { [coordinator = context.coordinator] files in
             coordinator.parent.onPasteAttachments?(files)
@@ -249,6 +255,9 @@ struct ComposerTextView: UIViewRepresentable {
         context.coordinator.parent = self
         view.onReturnSend = { [coordinator = context.coordinator] in
             coordinator.parent.onReturnSend?()
+        }
+        view.onReturnWhileMuted = { [coordinator = context.coordinator] in
+            coordinator.parent.onReturnWhileMuted?()
         }
         view.onPasteAttachments = { [coordinator = context.coordinator] files in
             coordinator.parent.onPasteAttachments?(files)
@@ -495,6 +504,7 @@ struct ComposerTextView: UIViewRepresentable {
 /// Software Return still inserts a newline (send button unchanged).
 final class ComposerUITextView: UITextView {
     var onReturnSend: (() -> Void)?
+    var onReturnWhileMuted: (() -> Void)?
     var onPasteAttachments: (([ComposerPasteboard.Attachment]) -> Void)?
     var onEscapeStop: ((Bool) -> Void)?
     var onArrowUpRecall: (() -> Void)?
@@ -2146,7 +2156,7 @@ final class ComposerUITextView: UITextView {
                     return
                 }
                 if sendMuted {
-                    super.pressesBegan(presses, with: event)
+                    onReturnWhileMuted?()
                     return
                 }
                 onReturnSend?()

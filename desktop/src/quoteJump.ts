@@ -442,6 +442,55 @@ export class QuoteJumps {
     if (changed) this.persist();
   }
 
+  /**
+   * v1.28: a queued follow-up takes the draft's quote links so clearing
+   * the composer does not drop them. The draft's pending list is cleared.
+   */
+  takePending(agentId: string, threadId: string | null): QuoteLink[] {
+    const chatKey = chatDraftKey(agentId, threadId);
+    const links = [...(this.pending[chatKey] ?? [])];
+    if (!this.pending[chatKey]) return links;
+    delete this.pending[chatKey];
+    this.persist();
+    return links;
+  }
+
+  /**
+   * v1.28: keep quote links for a queued send without clearing a newer
+   * draft's pending quotes.
+   */
+  commitOwned(
+    agentId: string,
+    threadId: string | null,
+    content: string,
+    links: readonly QuoteLink[],
+  ): void {
+    const kept = linksStillInContent(content, links);
+    if (kept.length === 0) return;
+    this.sent[sentQuoteKey(agentId, threadId, content)] = kept;
+    this.persist();
+  }
+
+  /** v1.28: a failed queued send puts its quote links back on that draft. */
+  restorePending(
+    agentId: string,
+    threadId: string | null,
+    links: readonly QuoteLink[],
+  ): void {
+    if (links.length === 0) return;
+    const chatKey = chatDraftKey(agentId, threadId);
+    const have = new Set((this.pending[chatKey] ?? []).map((link) => link.text));
+    const next = [...(this.pending[chatKey] ?? [])];
+    for (const link of links) {
+      if (!link.sourceId || have.has(link.text)) continue;
+      next.push(link);
+      have.add(link.text);
+    }
+    if (next.length === (this.pending[chatKey] ?? []).length) return;
+    this.pending[chatKey] = next;
+    this.persist();
+  }
+
   targets(
     agentId: string,
     threadId: string | null,

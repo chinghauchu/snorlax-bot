@@ -78,7 +78,8 @@ def test_send_muted_disabled_while_generating() -> None:
     send_slice = CHAT[max(0, send_idx - 500) : send_idx + 80]
     assert "SendMuted.whileGenerating(busy: model.isSending)" in send_slice
     assert "SendMuted.disabledOpacity" in send_slice
-    assert ".disabled(!canSend)" in send_slice
+    # v1.28: the control stays disabled while generating unless a follow-up can queue.
+    assert ".disabled(!canSend && !canQueue)" in send_slice
     assert "sendMutedWhileGenerating" in DESKTOP_MUTED
     assert "sendMutedWhileGenerating(busy)" in DESKTOP_APP
     assert 'aria-label="Send"' in DESKTOP_APP
@@ -101,11 +102,14 @@ def test_enter_does_not_send_while_generating() -> None:
     presses = _fn(COMPOSER, "pressesBegan")
     assert "sendMuted" in presses
     assert "onReturnSend?()" in presses
-    # Muted Return falls through to super (newline / draft), does not send.
+    # v1.28: muted Return queues a follow-up. It does not send or insert a newline.
     muted_at = presses.find("if sendMuted")
     send_at = presses.find("onReturnSend?()")
     assert muted_at >= 0 and send_at > muted_at
-    assert "super.pressesBegan" in presses[muted_at:send_at]
+    muted_body = presses[muted_at:send_at]
+    assert "onReturnWhileMuted?()" in muted_body
+    assert "return" in muted_body
+    assert "super.pressesBegan" not in muted_body
     send = _fn(MODEL, "send()")
     assert "guard !isSending, !isAttaching else { return }" in send
     assert "enterSends" in DESKTOP_MUTED
