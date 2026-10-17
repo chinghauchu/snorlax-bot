@@ -82,7 +82,7 @@ def test_tool_widget_user_right_unchanged() -> None:
 
 def test_invalid_falls_back_and_streaming_defers() -> None:
     assert "if failed" in MARKDOWN
-    assert "FenceSource(source: source)" in MARKDOWN
+    assert "FenceSource(source: source, wrapped: wrapped)" in MARKDOWN
     assert "failed.wrappedValue = true" in MERMAID
     assert "completed && MarkdownSplit.isMermaidLanguage" in MARKDOWN
     assert "completed: !(model.isSending && index == liveAssistantIdx)" in CHAT

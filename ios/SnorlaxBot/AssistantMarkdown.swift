@@ -8,18 +8,30 @@ struct AssistantMarkdown: View {
     var names: [String] = []
     /// Defer mermaid / math until the LEFT message is complete.
     var completed: Bool = true
+    /// Session key for per-fence wrap. Empty still keys by fence index.
+    var wrapScope: String = ""
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            ForEach(Array(MarkdownSplit.segments(in: MarkdownSplit.stabilize(text)).enumerated()), id: \.offset) { _, segment in
+            ForEach(Array(MarkdownSplit.segments(in: MarkdownSplit.stabilize(text)).enumerated()), id: \.offset) { index, segment in
                 switch segment {
                 case .markdown(let source):
                     MarkdownRun(source: source, names: names, completed: completed)
                 case .code(let language, let source):
                     if completed && MarkdownSplit.isMermaidLanguage(language) {
-                        MermaidFence(language: language, source: source, completed: completed)
+                        MermaidFence(
+                            language: language,
+                            source: source,
+                            completed: completed,
+                            wrapId: CodeBlockWrap.blockId(scope: wrapScope, index: index)
+                        )
                     } else {
-                        CodeFence(language: language, source: source, completed: completed)
+                        CodeFence(
+                            language: language,
+                            source: source,
+                            completed: completed,
+                            wrapId: CodeBlockWrap.blockId(scope: wrapScope, index: index)
+                        )
                     }
                 case .blockMath(let source, let raw, let closed):
                     if completed && closed {
@@ -37,16 +49,36 @@ struct AssistantMarkdown: View {
 private struct MermaidFence: View {
     let language: String
     let source: String
-    var completed: Bool = true
+    var completed: Bool
+    var wrapId: String
     @Environment(\.colorScheme) private var colorScheme
-    @State private var failed = false
-    @State private var size = CGSize(width: 1, height: 1)
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var failed: Bool
+    @State private var size: CGSize
+    @State private var wrapped: Bool
+
+    init(language: String, source: String, completed: Bool = true, wrapId: String = "") {
+        self.language = language
+        self.source = source
+        self.completed = completed
+        self.wrapId = wrapId
+        _failed = State(initialValue: false)
+        _size = State(initialValue: CGSize(width: 1, height: 1))
+        _wrapped = State(initialValue: CodeBlockWrap.isWrapped(id: wrapId))
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            FenceBar(language: language, source: source, completed: completed)
+            FenceBar(
+                language: language,
+                source: source,
+                completed: completed,
+                wrapped: wrapped,
+                showsWrap: failed,
+                onToggleWrap: toggleWrap
+            )
             if failed {
-                FenceSource(source: source)
+                FenceSource(source: source, wrapped: wrapped)
             } else {
                 ScrollView(.horizontal, showsIndicators: true) {
                     MermaidWebView(
@@ -76,18 +108,44 @@ private struct MermaidFence: View {
                 .stroke(Color(uiColor: .separator), lineWidth: 1)
         }
         .clipShape(RoundedRectangle(cornerRadius: 8))
+        .animation(CodeBlockWrap.animation(reduceMotion: reduceMotion), value: wrapped)
+        .onChange(of: wrapId) { _, next in
+            wrapped = CodeBlockWrap.isWrapped(id: next)
+        }
+    }
+
+    private func toggleWrap() {
+        wrapped = CodeBlockWrap.toggle(id: wrapId, wrapped: wrapped)
     }
 }
 
 private struct CodeFence: View {
     let language: String
     let source: String
-    var completed: Bool = true
+    var completed: Bool
+    var wrapId: String
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var wrapped: Bool
+
+    init(language: String, source: String, completed: Bool = true, wrapId: String = "") {
+        self.language = language
+        self.source = source
+        self.completed = completed
+        self.wrapId = wrapId
+        _wrapped = State(initialValue: CodeBlockWrap.isWrapped(id: wrapId))
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            FenceBar(language: language, source: source, completed: completed)
-            FenceSource(source: source)
+            FenceBar(
+                language: language,
+                source: source,
+                completed: completed,
+                wrapped: wrapped,
+                showsWrap: true,
+                onToggleWrap: toggleWrap
+            )
+            FenceSource(source: source, wrapped: wrapped)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(
@@ -99,6 +157,14 @@ private struct CodeFence: View {
                 .stroke(Color(uiColor: .separator), lineWidth: 1)
         }
         .clipShape(RoundedRectangle(cornerRadius: 8))
+        .animation(CodeBlockWrap.animation(reduceMotion: reduceMotion), value: wrapped)
+        .onChange(of: wrapId) { _, next in
+            wrapped = CodeBlockWrap.isWrapped(id: next)
+        }
+    }
+
+    private func toggleWrap() {
+        wrapped = CodeBlockWrap.toggle(id: wrapId, wrapped: wrapped)
     }
 }
 
@@ -106,6 +172,9 @@ private struct FenceBar: View {
     let language: String
     let source: String
     var completed: Bool = true
+    var wrapped: Bool = false
+    var showsWrap: Bool = false
+    var onToggleWrap: () -> Void = {}
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var copied = false
     @State private var pulse = 0
@@ -116,6 +185,16 @@ private struct FenceBar: View {
                 .transcriptFont(12)
                 .foregroundStyle(.secondary)
             Spacer(minLength: 0)
+            if showsWrap && CodeBlockWrap.showsWrap(completed: completed) {
+                Button(CodeBlockWrap.label(wrapped: wrapped)) {
+                    onToggleWrap()
+                }
+                .transcriptFont(12)
+                .foregroundStyle(.secondary)
+                .buttonStyle(.plain)
+                .accessibilityLabel(CodeBlockWrap.accessibilityLabel(wrapped: wrapped))
+                .animation(CodeBlockWrap.animation(reduceMotion: reduceMotion), value: wrapped)
+            }
             if CodeBlockCopy.showsCopy(completed: completed) {
                 Button(CodeBlockCopy.label(copied: copied)) {
                     UIPasteboard.general.string = CodeBlockCopy.clipboardText(source)
@@ -144,6 +223,7 @@ private struct FenceBar: View {
 private struct FenceSource: View {
     let source: String
     var quoteEnabled = true
+    var wrapped = false
     @Environment(\.chatFind) private var find
     @Environment(AppModel.self) private var model
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
@@ -154,20 +234,31 @@ private struct FenceSource: View {
     }
 
     var body: some View {
-        ScrollView(.horizontal, showsIndicators: true) {
-            QuoteSelectableText(
-                text: ChatFind.paint(AttributedString(source), query: find.query),
-                quoteEnabled: quoteEnabled,
-                font: metrics.fenceFont,
-                expandsHorizontally: true,
-                onQuote: { model.quoteIntoComposer($0) }
-            )
-            .font(.system(size: 12, design: .monospaced))
-            .transcriptFont(12, design: .monospaced)
-            .fixedSize(horizontal: true, vertical: true)
+        Group {
+            if CodeBlockWrap.expandsHorizontally(wrapped: wrapped) {
+                ScrollView(.horizontal, showsIndicators: true) {
+                    sourceText(expandsHorizontally: true)
+                        .fixedSize(horizontal: true, vertical: true)
+                }
+            } else {
+                sourceText(expandsHorizontally: false)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
         }
         .padding(.horizontal, 10)
         .padding(.vertical, 8)
+    }
+
+    private func sourceText(expandsHorizontally: Bool) -> some View {
+        QuoteSelectableText(
+            text: ChatFind.paint(AttributedString(source), query: find.query),
+            quoteEnabled: quoteEnabled,
+            font: metrics.fenceFont,
+            expandsHorizontally: expandsHorizontally,
+            onQuote: { model.quoteIntoComposer($0) }
+        )
+        .font(.system(size: 12, design: .monospaced))
+        .transcriptFont(12, design: .monospaced)
     }
 }
 

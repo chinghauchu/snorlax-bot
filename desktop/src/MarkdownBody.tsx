@@ -17,6 +17,15 @@ import {
   codeBlockCopyLabel,
   showCodeBlockCopy,
 } from "./codeBlockCopy";
+import {
+  codeBlockWrapAriaLabel,
+  codeBlockWrapClass,
+  codeBlockWrapId,
+  codeBlockWrapLabel,
+  readCodeBlockWrap,
+  showCodeBlockWrap,
+  toggleCodeBlockWrap,
+} from "./codeBlockWrap";
 import { isSafeWebUrl, splitWebUrls } from "./linkify";
 import {
   copyText,
@@ -41,19 +50,34 @@ type Props = {
   knownNames: string[];
   /** Defer mermaid / math until the LEFT message is complete. */
   completed?: boolean;
+  /** Session key for per-fence wrap. Empty still keys by fence index. */
+  wrapScope?: string;
 };
 
-export function MarkdownBody({ text, knownNames, completed = true }: Props) {
+type FenceOrder = { n: number };
+
+export function MarkdownBody({
+  text,
+  knownNames,
+  completed = true,
+  wrapScope = "",
+}: Props) {
   const findQuery = useFindQuery();
   const { text: source, slots } = extractMath(stabilizeMarkdown(text));
   const enrich = (children?: ReactNode) =>
     enrichChildren(children, knownNames, completed, slots, findQuery);
+  const order: FenceOrder = { n: 0 };
   return (
     <Markdown
       components={{
         a: ({ href, children }) => <MdLink href={href}>{children}</MdLink>,
         pre: ({ children }) => (
-          <CodeFence completed={completed} findQuery={findQuery}>
+          <CodeFence
+            completed={completed}
+            findQuery={findQuery}
+            wrapScope={wrapScope}
+            fenceIndex={order.n++}
+          >
             {children}
           </CodeFence>
         ),
@@ -265,12 +289,17 @@ function CodeFence({
   children,
   completed,
   findQuery,
+  wrapScope,
+  fenceIndex,
 }: {
   children?: ReactNode;
   completed: boolean;
   findQuery: string;
+  wrapScope: string;
+  fenceIndex: number;
 }) {
   const { text, language } = fenceFromChildren(children);
+  const wrapId = codeBlockWrapId(wrapScope, fenceIndex);
   if (shouldRenderMermaid({ language, completed })) {
     return (
       <MermaidFence
@@ -278,6 +307,7 @@ function CodeFence({
         source={text}
         completed={completed}
         findQuery={findQuery}
+        wrapId={wrapId}
       />
     );
   }
@@ -287,6 +317,7 @@ function CodeFence({
       source={text}
       completed={completed}
       findQuery={findQuery}
+      wrapId={wrapId}
     />
   );
 }
@@ -296,11 +327,13 @@ function MermaidFence({
   source,
   completed,
   findQuery,
+  wrapId,
 }: {
   language: string;
   source: string;
   completed: boolean;
   findQuery: string;
+  wrapId: string;
 }) {
   const [svg, setSvg] = useState<string | null>(null);
   useEffect(() => {
@@ -315,7 +348,7 @@ function MermaidFence({
   }, [source]);
   if (!svg) {
     return (
-      <FenceChrome language={language} source={source} completed={completed} findQuery={findQuery} />
+      <FenceChrome language={language} source={source} completed={completed} findQuery={findQuery} wrapId={wrapId} />
     );
   }
   return (
@@ -335,16 +368,29 @@ function FenceChrome({
   source,
   completed,
   findQuery,
+  wrapId,
 }: {
   language: string;
   source: string;
   completed: boolean;
   findQuery: string;
+  wrapId: string;
 }) {
+  const [wrapped, setWrapped] = useState(() => readCodeBlockWrap(wrapId));
+  useEffect(() => {
+    setWrapped(readCodeBlockWrap(wrapId));
+  }, [wrapId]);
+  const wrapOn = showCodeBlockWrap(completed) && wrapped;
   return (
     <div className="md-fence">
-      <FenceBar language={language} source={source} completed={completed} />
-      <pre className="md-fence-body">
+      <FenceBar
+        language={language}
+        source={source}
+        completed={completed}
+        wrapped={wrapped}
+        onToggleWrap={() => setWrapped(toggleCodeBlockWrap(wrapId, wrapped))}
+      />
+      <pre className={codeBlockWrapClass(wrapOn)}>
         <code>
           <FindText text={source} query={findQuery} />
         </code>
@@ -357,10 +403,14 @@ function FenceBar({
   language,
   source,
   completed,
+  wrapped = false,
+  onToggleWrap,
 }: {
   language: string;
   source: string;
   completed: boolean;
+  wrapped?: boolean;
+  onToggleWrap?: () => void;
 }) {
   const [copied, setCopied] = useState(false);
   const timer = useRef<ReturnType<typeof window.setTimeout> | null>(null);
@@ -393,17 +443,30 @@ function FenceBar({
   return (
     <div className="md-fence-bar">
       <span className="md-fence-lang">{language}</span>
-      {showCodeBlockCopy(completed) ? (
-        <button
-          type="button"
-          className="md-copy"
-          aria-label={codeBlockCopyAriaLabel(copied)}
-          aria-live="polite"
-          onClick={onCopy}
-        >
-          {codeBlockCopyLabel(copied)}
-        </button>
-      ) : null}
+      <span className="md-fence-actions">
+        {onToggleWrap && showCodeBlockWrap(completed) ? (
+          <button
+            type="button"
+            className="md-fence-wrap"
+            aria-pressed={wrapped}
+            aria-label={codeBlockWrapAriaLabel(wrapped)}
+            onClick={onToggleWrap}
+          >
+            {codeBlockWrapLabel(wrapped)}
+          </button>
+        ) : null}
+        {showCodeBlockCopy(completed) ? (
+          <button
+            type="button"
+            className="md-copy"
+            aria-label={codeBlockCopyAriaLabel(copied)}
+            aria-live="polite"
+            onClick={onCopy}
+          >
+            {codeBlockCopyLabel(copied)}
+          </button>
+        ) : null}
+      </span>
     </div>
   );
 }

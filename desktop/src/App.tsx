@@ -8115,6 +8115,7 @@ export function App() {
                                         text={part}
                                         knownNames={knownNames}
                                         completed={completed}
+                                        wrapScope={bubbleRowId}
                                       />
                                     ) : (
                                       <pre className="assistant-plain">
