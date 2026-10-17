@@ -3815,7 +3815,8 @@ private struct MessageBubble: View {
                                                 AssistantMarkdown(
                                                     text: part,
                                                     names: agents.filter { !$0.isChannel }.map(\.name),
-                                                    completed: completed
+                                                    completed: completed,
+                                                    wrapScope: "\(message.id)#\(offset)"
                                                 )
                                             } else {
                                                 MidStreamPlaintextView(

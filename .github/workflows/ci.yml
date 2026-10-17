@@ -146,3 +146,4 @@ jobs:
           python3 ios/scripts/test_ios_quote_selection_key.py
           python3 ios/scripts/test_ios_quote_jump.py
           python3 ios/scripts/test_ios_queued_send.py
+          python3 ios/scripts/test_ios_code_block_wrap.py
