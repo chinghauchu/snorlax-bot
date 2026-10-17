@@ -3535,8 +3535,21 @@ private struct MessageBubble: View {
 
     /// v1.27: quote blocks with a loaded source are buttons. Find keeps
     /// the whole body so the match stays highlighted. No animation.
+    private var showsQuoteJump: Bool {
+        !message.content.isEmpty
+            && !ChatFind.queryActive(find.query)
+            && !loadedQuoteTargets.isEmpty
+    }
+
     private var userQuoteBody: some View {
-        quoteBody(finding: ChatFind.queryActive(find.query), targets: loadedQuoteTargets)
+        VStack(alignment: .leading, spacing: 4) {
+            ForEach(
+                Array(QuoteJump.parts(content: message.content, targets: loadedQuoteTargets).enumerated()),
+                id: \.offset
+            ) { _, part in
+                quotePart(part)
+            }
+        }
     }
 
     private var loadedQuoteTargets: [QuoteJump.Link] {
@@ -3547,21 +3560,6 @@ private struct MessageBubble: View {
             content: message.content,
             loaded: loaded
         )
-    }
-
-    @ViewBuilder
-    private func quoteBody(finding: Bool, targets: [QuoteJump.Link]) -> some View {
-        if message.content.isEmpty {
-            EmptyView()
-        } else if finding || targets.isEmpty {
-            userQuoteLabel(message.displayContent, findable: true)
-        } else {
-            VStack(alignment: .leading, spacing: 4) {
-                ForEach(Array(QuoteJump.parts(content: message.content, targets: targets).enumerated()), id: \.offset) { _, part in
-                    quotePart(part)
-                }
-            }
-        }
     }
 
     @ViewBuilder
@@ -3581,18 +3579,6 @@ private struct MessageBubble: View {
         case .text(let text):
             userQuoteLabel(text, findable: false)
         }
-    }
-
-    private func userQuoteLabel(_ text: String, findable: Bool) -> some View {
-        MentionLabel(
-            text: text,
-            names: agents.filter { !$0.isChannel }.map(\.name),
-            links: true,
-            findRowId: findable ? message.id : ""
-        )
-        .transcriptFont(14)
-        .textSelection(.enabled)
-        .frame(minWidth: 0, alignment: .leading)
     }
 
     private func findStroke(_ rowId: String) -> some View {
@@ -3722,7 +3708,20 @@ private struct MessageBubble: View {
                     Spacer(minLength: 48)
                     VStack(alignment: .leading, spacing: 6) {
                         userAttachments
-                        userQuoteBody
+                        if showsQuoteJump {
+                            userQuoteBody
+                        }
+                        if !showsQuoteJump && !message.content.isEmpty {
+                            MentionLabel(
+                                text: message.displayContent,
+                                names: agents.filter { !$0.isChannel }.map(\.name),
+                                links: true,
+                                findRowId: message.id
+                            )
+                            .transcriptFont(14)
+                            .textSelection(.enabled)
+                            .frame(minWidth: 0, alignment: .leading)
+                        }
                     }
                     .frame(minWidth: 0, maxWidth: .infinity, alignment: .leading)
                     .padding(.horizontal, 12)
@@ -4197,5 +4196,19 @@ private struct HandoffTimelineRow: View {
 
     private func repliesLabel(_ count: Int) -> String {
         count == 1 ? "1 reply" : "\(count) replies"
+    }
+
+    /// Plain text beside a quote button. Find uses the full body above,
+    /// so this copy does not carry a find range.
+    private func userQuoteLabel(_ text: String, findable: Bool) -> some View {
+        MentionLabel(
+            text: text,
+            names: agents.filter { !$0.isChannel }.map(\.name),
+            links: true,
+            findRowId: findable ? message.id : ""
+        )
+        .transcriptFont(14)
+        .textSelection(.enabled)
+        .frame(minWidth: 0, alignment: .leading)
     }
 }
