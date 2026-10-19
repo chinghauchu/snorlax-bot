@@ -538,7 +538,7 @@ private struct CodeFence: View {
                 showsWrap: true,
                 onToggleWrap: toggleWrap
             )
-            FenceSource(source: source, wrapped: wrapped)
+            FenceSource(source: source, wrapped: wrapped, language: language, completed: completed)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(
@@ -617,6 +617,8 @@ private struct FenceSource: View {
     let source: String
     var quoteEnabled = true
     var wrapped = false
+    var language: String = ""
+    var completed: Bool = true
     @Environment(\.chatFind) private var find
     @Environment(AppModel.self) private var model
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
@@ -643,8 +645,9 @@ private struct FenceSource: View {
     }
 
     private func sourceText(expandsHorizontally: Bool) -> some View {
+        let painted = CodeHighlight.paint(source, language: language, completed: completed)
         QuoteSelectableText(
-            text: ChatFind.paint(AttributedString(source), query: find.query),
+            text: ChatFind.paint(painted, query: find.query),
             quoteEnabled: quoteEnabled,
             font: metrics.fenceFont,
             expandsHorizontally: expandsHorizontally,

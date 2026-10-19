@@ -9,6 +9,10 @@
   --text-muted: #8b8d94;
   --border: rgba(255, 255, 255, 0.08);
   --accent: #6d8bff;
+  --tok-keyword: #9aa8e8;
+  --tok-string: #8fbf9a;
+  --tok-comment: #8b8d94;
+  --tok-number: #c4a574;
   --bubble: #1c1d22;
   --danger: #ff6b6b;
   --shadow: 0 18px 50px rgba(0, 0, 0, 0.45);
@@ -22,6 +26,10 @@
   --bg-hover: rgba(0, 0, 0, 0.05);
   --text: #1b1c20;
   --text-muted: #6b6d75;
+  --tok-keyword: #3d4f99;
+  --tok-string: #2f6b45;
+  --tok-comment: #6b6d75;
+  --tok-number: #8a5a22;
   --border: rgba(0, 0, 0, 0.08);
   --bubble: #ffffff;
   --shadow: 0 18px 50px rgba(20, 20, 30, 0.12);
@@ -1607,6 +1615,28 @@ mark.find-hit.active {
   line-height: 1.45;
 }
 
+/* v1.37: muted token colors. Plain text keeps the fence's inherited color. */
+.md-fence-body .md-tok-keyword {
+  color: var(--tok-keyword);
+}
+
+.md-fence-body .md-tok-string {
+  color: var(--tok-string);
+}
+
+.md-fence-body .md-tok-comment {
+  color: var(--tok-comment);
+}
+
+.md-fence-body .md-tok-number {
+  color: var(--tok-number);
+}
+
+.md-fence-body .md-tok {
+  transition: none;
+  animation: none;
+}
+
 .md-mermaid-body {
   margin: 0;
   padding: 8px 10px 10px;
@@ -1698,6 +1728,14 @@ pre.md-math-fallback.md-math-block {
 @media (prefers-reduced-motion: reduce) {
   .md-fence-wrap,
   .md-fence-body.md-fence-body-wrap {
+    transition: none;
+    animation: none;
+  }
+}
+
+/* v1.37: token colors do not fade in, including when Reduce Motion is off. */
+@media (prefers-reduced-motion: reduce) {
+  .md-fence-body .md-tok {
     transition: none;
     animation: none;
   }

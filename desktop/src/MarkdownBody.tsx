@@ -11,6 +11,11 @@ import {
 } from "react";
 import Markdown from "react-markdown";
 import {
+  codeHighlightClass,
+  highlightCode,
+  shouldHighlightCode,
+} from "./codeHighlight";
+import {
   CODE_BLOCK_COPY_MS,
   codeBlockClipboardText,
   codeBlockCopyAriaLabel,
@@ -756,7 +761,12 @@ function FenceChrome({
       />
       <pre className={codeBlockWrapClass(wrapOn)}>
         <code>
-          <FindText text={source} query={findQuery} />
+          <HighlightedCode
+            source={source}
+            language={language}
+            completed={completed}
+            findQuery={findQuery}
+          />
         </code>
       </pre>
     </div>
@@ -832,6 +842,36 @@ function FenceBar({
         ) : null}
       </span>
     </div>
+  );
+}
+
+function HighlightedCode({
+  source,
+  language,
+  completed,
+  findQuery,
+}: {
+  source: string;
+  language: string;
+  completed: boolean;
+  findQuery: string;
+}) {
+  if (!shouldHighlightCode({ language, completed })) {
+    return <FindText text={source} query={findQuery} />;
+  }
+  const spans = highlightCode(source, language);
+  return (
+    <>
+      {spans.map((span, index) =>
+        span.kind === "plain" ? (
+          <FindText key={index} text={span.text} query={findQuery} />
+        ) : (
+          <span key={index} className={codeHighlightClass(span.kind)}>
+            <FindText text={span.text} query={findQuery} />
+          </span>
+        ),
+      )}
+    </>
   );
 }
 
