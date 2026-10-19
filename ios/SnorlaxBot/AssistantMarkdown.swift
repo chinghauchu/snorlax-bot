@@ -514,7 +514,25 @@ private struct MarkdownRun: View {
         }
     }
 
+    @ViewBuilder
     private func markdownText(_ src: String) -> some View {
+        let label = selectable(src)
+        if hugsText {
+            // Table cells stay one line so a wide table scrolls instead of squashing.
+            label
+                .lineLimit(1)
+                .fixedSize(horizontal: true, vertical: true)
+                .frame(minWidth: 0, alignment: .leading)
+        } else {
+            // Long unbroken URLs wrap inside the bubble.
+            label
+                .lineLimit(nil)
+                .fixedSize(horizontal: false, vertical: true)
+                .frame(minWidth: 0, maxWidth: .infinity, alignment: .leading)
+        }
+    }
+
+    private func selectable(_ src: String) -> QuoteSelectableText {
         QuoteSelectableText(
             text: wrapping(attributed(src)),
             quoteEnabled: completed,
@@ -528,15 +546,16 @@ private struct MarkdownRun: View {
                 openURL(url)
             }
         )
-        .lineLimit(hugsText ? 1 : nil)
-        .fixedSize(horizontal: hugsText, vertical: true)
-        .frame(minWidth: 0, maxWidth: hugsText ? nil : .infinity, alignment: .leading)
     }
 
     private func wrapping(_ text: AttributedString) -> AttributedString {
         let ns = NSMutableAttributedString(text)
         let style = NSMutableParagraphStyle()
-        style.lineBreakMode = hugsText ? .byClipping : .byCharWrapping
+        if hugsText {
+            style.lineBreakMode = .byClipping
+        } else {
+            style.lineBreakMode = .byCharWrapping
+        }
         ns.addAttribute(
             .paragraphStyle,
             value: style,
