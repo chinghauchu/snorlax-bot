@@ -33,6 +33,12 @@ import {
   stabilizeMarkdown,
 } from "./markdown";
 import {
+  quoteTaskAnimates,
+  splitQuoteAndTasks,
+  taskGlyph,
+  taskGlyphLabel,
+} from "./markdownQuoteTask";
+import {
   TABLE_COPY_MS,
   showTableCopy,
   splitMarkdownTables,
@@ -62,6 +68,8 @@ type Props = {
   completed?: boolean;
   /** Session key for per-fence wrap. Empty still keys by fence index. */
   wrapScope?: string;
+  /** Shared fence index when a quote or task renders nested markdown. */
+  fenceOrder?: FenceOrder;
 };
 
 type FenceOrder = { n: number };
@@ -71,10 +79,11 @@ export function MarkdownBody({
   knownNames,
   completed = true,
   wrapScope = "",
+  fenceOrder,
 }: Props) {
   const stable = stabilizeMarkdown(text);
   const segments = splitMarkdownTables(stable, completed);
-  const order: FenceOrder = { n: 0 };
+  const order: FenceOrder = fenceOrder ?? { n: 0 };
   return (
     <>
       {segments.map((segment, index) =>
@@ -86,7 +95,7 @@ export function MarkdownBody({
             completed={completed}
           />
         ) : (
-          <MarkdownSegment
+          <QuoteTaskPieces
             key={`md-${index}`}
             text={segment.text}
             knownNames={knownNames}
@@ -96,6 +105,100 @@ export function MarkdownBody({
           />
         ),
       )}
+    </>
+  );
+}
+
+/**
+ * Completed replies pull quotes and task lists out before the
+ * commonmark renderer. Streaming (`completed: false`) is one
+ * markdown run, the same bubble as today. Glyphs are static.
+ */
+function QuoteTaskPieces({
+  text,
+  knownNames,
+  completed,
+  wrapScope,
+  order,
+}: {
+  text: string;
+  knownNames: string[];
+  completed: boolean;
+  wrapScope: string;
+  order: FenceOrder;
+}) {
+  const blocks = splitQuoteAndTasks(text, completed);
+  const animate = quoteTaskAnimates(false);
+  return (
+    <>
+      {blocks.map((block, index) => {
+        if (block.type === "quote") {
+          return (
+            <blockquote
+              className="md-quote"
+              key={`q-${index}`}
+              data-animate={animate ? "1" : undefined}
+            >
+              <MarkdownBody
+                text={block.text}
+                knownNames={knownNames}
+                completed={completed}
+                wrapScope={wrapScope}
+                fenceOrder={order}
+              />
+            </blockquote>
+          );
+        }
+        if (block.type === "tasks") {
+          return (
+            <ul className="md-task-list" key={`t-${index}`}>
+              {block.items.map((item, itemIndex) => (
+                <li
+                  key={itemIndex}
+                  className={
+                    item.checked ? "md-task-item is-checked" : "md-task-item"
+                  }
+                >
+                  <span
+                    className={
+                      item.checked
+                        ? "md-task-glyph is-checked"
+                        : "md-task-glyph"
+                    }
+                    role="img"
+                    aria-label={taskGlyphLabel(item.checked)}
+                  >
+                    <span aria-hidden="true">{taskGlyph(item.checked)}</span>
+                  </span>
+                  {item.text ? (
+                    <div className="md-task-body">
+                      <MarkdownBody
+                        text={item.text}
+                        knownNames={knownNames}
+                        completed={completed}
+                        wrapScope={wrapScope}
+                        fenceOrder={order}
+                      />
+                    </div>
+                  ) : (
+                    <div className="md-task-body" />
+                  )}
+                </li>
+              ))}
+            </ul>
+          );
+        }
+        return (
+          <MarkdownSegment
+            key={`m-${index}`}
+            text={block.text}
+            knownNames={knownNames}
+            completed={completed}
+            wrapScope={wrapScope}
+            order={order}
+          />
+        );
+      })}
     </>
   );
 }

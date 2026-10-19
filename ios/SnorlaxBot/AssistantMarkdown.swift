@@ -16,7 +16,12 @@ struct AssistantMarkdown: View {
             ForEach(Array(MarkdownSplit.segments(in: MarkdownSplit.stabilize(text)).enumerated()), id: \.offset) { index, segment in
                 switch segment {
                 case .markdown(let source):
-                    MarkdownTablePieces(source: source, names: names, completed: completed)
+                    MarkdownTablePieces(
+                        source: source,
+                        names: names,
+                        completed: completed,
+                        wrapScope: wrapScope
+                    )
                 case .code(let language, let source):
                     if completed && MarkdownSplit.isMermaidLanguage(language) {
                         MermaidFence(
@@ -52,6 +57,7 @@ private struct MarkdownTablePieces: View {
     let source: String
     let names: [String]
     var completed: Bool
+    var wrapScope: String = ""
 
     var body: some View {
         let pieces = MarkdownTable.split(source, completed: completed)
@@ -59,11 +65,132 @@ private struct MarkdownTablePieces: View {
             ForEach(Array(pieces.enumerated()), id: \.offset) { _, piece in
                 switch piece {
                 case .markdown(let text):
-                    MarkdownRun(source: text, names: names, completed: completed)
+                    MarkdownQuoteTaskPieces(
+                        source: text,
+                        names: names,
+                        completed: completed,
+                        wrapScope: wrapScope
+                    )
                 case .table(let table):
                     MarkdownTableBlock(table: table, names: names, completed: completed)
                 }
             }
+        }
+    }
+}
+
+/// Completed quotes and task lists. Streaming is one markdown run.
+private struct MarkdownQuoteTaskPieces: View {
+    let source: String
+    let names: [String]
+    var completed: Bool
+    var wrapScope: String
+
+    var body: some View {
+        let blocks = MarkdownQuoteTask.split(source, completed: completed)
+        VStack(alignment: .leading, spacing: 8) {
+            ForEach(Array(blocks.enumerated()), id: \.offset) { _, block in
+                switch block {
+                case .markdown(let text):
+                    MarkdownRun(source: text, names: names, completed: completed)
+                case .quote(let text):
+                    MarkdownQuoteBlock(
+                        source: text,
+                        names: names,
+                        completed: completed,
+                        wrapScope: wrapScope
+                    )
+                case .tasks(let items):
+                    MarkdownTaskList(
+                        items: items,
+                        names: names,
+                        completed: completed,
+                        wrapScope: wrapScope
+                    )
+                }
+            }
+        }
+    }
+}
+
+/// Muted left rule and indent. Nested `>>` is another quote inside.
+private struct MarkdownQuoteBlock: View {
+    let source: String
+    let names: [String]
+    var completed: Bool
+    var wrapScope: String
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    var body: some View {
+        AssistantMarkdown(
+            text: source,
+            names: names,
+            completed: completed,
+            wrapScope: wrapScope
+        )
+        .foregroundStyle(.secondary)
+        .padding(.leading, 10)
+        .overlay(alignment: .leading) {
+            Rectangle()
+                .fill(Color(uiColor: .separator))
+                .frame(width: 2)
+                .accessibilityHidden(true)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .animation(MarkdownQuoteTask.animation(reduceMotion: reduceMotion), value: source)
+    }
+}
+
+/// Read-only checkbox glyphs. Checked rows are muted. Not a toggle.
+private struct MarkdownTaskList: View {
+    let items: [MarkdownQuoteTask.TaskItem]
+    let names: [String]
+    var completed: Bool
+    var wrapScope: String
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            ForEach(Array(items.enumerated()), id: \.offset) { _, item in
+                MarkdownTaskRow(
+                    item: item,
+                    names: names,
+                    completed: completed,
+                    wrapScope: wrapScope
+                )
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .animation(MarkdownQuoteTask.animation(reduceMotion: reduceMotion), value: items)
+    }
+}
+
+private struct MarkdownTaskRow: View {
+    let item: MarkdownQuoteTask.TaskItem
+    let names: [String]
+    var completed: Bool
+    var wrapScope: String
+
+    var body: some View {
+        let row = HStack(alignment: .top, spacing: 8) {
+            Text(MarkdownQuoteTask.glyph(checked: item.checked))
+                .transcriptFont(14)
+                .accessibilityLabel(MarkdownQuoteTask.glyphLabel(checked: item.checked))
+            if !item.text.isEmpty {
+                AssistantMarkdown(
+                    text: item.text,
+                    names: names,
+                    completed: completed,
+                    wrapScope: wrapScope
+                )
+                .frame(maxWidth: .infinity, alignment: .leading)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        if item.checked {
+            row.foregroundStyle(.secondary)
+        } else {
+            row
         }
     }
 }
