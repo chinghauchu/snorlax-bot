@@ -1,0 +1,287 @@
+// SPDX-License-Identifier: Apache-2.0
+
+/**
+ * v1.31: GFM pipe tables on completed assistant LEFT `kind=message`.
+ * A wide table scrolls inside its own container. Copy puts the
+ * table's markdown source on the clipboard (header, delimiter, and
+ * rows as written), then shows Copied for 1.5s. Streaming stays
+ * plain text. No animation. No new HTTP.
+ * Keep in lockstep with `ios/SnorlaxBot/MarkdownTable.swift`.
+ */
+
+export const TABLE_COPY_LABEL = "Copy";
+
+export const TABLE_COPIED_LABEL = "Copied";
+
+/** Accessible name while idle. Visible text stays `Copy`. */
+export const TABLE_COPY_ARIA = "Copy table";
+
+export const TABLE_COPIED_ARIA = "Copied";
+
+/** Same confirmation window as v0.66 code-block Copy. */
+export const TABLE_COPY_MS = 1500;
+
+export type TableAlign = "left" | "center" | "right";
+
+export type MarkdownTable = {
+  /** Header, delimiter, and body lines, joined as written. */
+  source: string;
+  align: TableAlign[];
+  header: string[];
+  rows: string[][];
+};
+
+export type MarkdownTableSegment =
+  | { type: "markdown"; text: string }
+  | { type: "table"; table: MarkdownTable };
+
+export function showTableCopy(completed: boolean): boolean {
+  return completed;
+}
+
+export function tableCopyLabel(copied: boolean): "Copy" | "Copied" {
+  return copied ? TABLE_COPIED_LABEL : TABLE_COPY_LABEL;
+}
+
+export function tableCopyAriaLabel(copied: boolean): string {
+  return copied ? TABLE_COPIED_ARIA : TABLE_COPY_ARIA;
+}
+
+/**
+ * Clipboard text is the table's markdown source, not a tab-separated
+ * rewrite. Pasting it back into the composer round-trips, and the
+ * other copy controls already copy source.
+ */
+export function tableClipboardText(source: string): string {
+  return source;
+}
+
+/** Label swap only. Never animate, including when Reduce Motion is off. */
+export function tableCopyAnimates(reduceMotion: boolean): boolean {
+  if (reduceMotion) return false;
+  return false;
+}
+
+export function containsMarkdownTable(text: string): boolean {
+  return splitMarkdownTables(text, true).some((part) => part.type === "table");
+}
+
+/**
+ * Pull top-level GFM tables out of completed markdown. Fences and
+ * `$$` blocks stay markdown. `completed: false` returns the text
+ * unchanged so a streaming bubble is not a table.
+ */
+export function splitMarkdownTables(
+  text: string,
+  completed = true,
+): MarkdownTableSegment[] {
+  if (!text) return [];
+  const src = text.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
+  if (!completed) return [{ type: "markdown", text: src }];
+
+  const lines = src.split("\n");
+  const segments: MarkdownTableSegment[] = [];
+  let mdStart = 0;
+  let i = 0;
+  let fence: string | null = null;
+  let inMath = false;
+
+  const pushMarkdown = (end: number) => {
+    if (end <= mdStart) return;
+    const chunk = lines.slice(mdStart, end).join("\n");
+    if (chunk.trim()) segments.push({ type: "markdown", text: chunk });
+  };
+
+  while (i < lines.length) {
+    const line = lines[i] ?? "";
+    const gate = blockGate(line, fence, inMath);
+    fence = gate.fence;
+    inMath = gate.inMath;
+    if (gate.blocked) {
+      i += 1;
+      continue;
+    }
+    const found = parseTable(lines, i);
+    if (!found) {
+      i += 1;
+      continue;
+    }
+    pushMarkdown(i);
+    segments.push({ type: "table", table: found.table });
+    i = found.next;
+    mdStart = i;
+  }
+  pushMarkdown(lines.length);
+  if (segments.length === 0) return [{ type: "markdown", text: src }];
+  return segments;
+}
+
+function blockGate(
+  line: string,
+  fence: string | null,
+  inMath: boolean,
+): { fence: string | null; inMath: boolean; blocked: boolean } {
+  if (!inMath) {
+    const match = /^( {0,3})(`{3,}|~{3,})(.*)$/.exec(line);
+    if (match) {
+      const marker = match[2] ?? "";
+      const info = match[3] ?? "";
+      if (!fence) return { fence: marker, inMath, blocked: true };
+      const same =
+        marker[0] === fence[0] &&
+        marker.length >= fence.length &&
+        info.trim() === "";
+      return { fence: same ? null : fence, inMath, blocked: true };
+    }
+  }
+  if (fence) return { fence, inMath, blocked: true };
+  if (line.trim() === "$$") return { fence, inMath: !inMath, blocked: true };
+  if (inMath) return { fence, inMath, blocked: true };
+  return { fence, inMath, blocked: false };
+}
+
+function parseTable(
+  lines: string[],
+  start: number,
+): { table: MarkdownTable; next: number } | null {
+  if (start + 1 >= lines.length) return null;
+  const headerLine = lines[start] ?? "";
+  const delimLine = lines[start + 1] ?? "";
+  if (!isTableLine(headerLine) || !isTableLine(delimLine)) return null;
+  const header = splitRow(headerLine);
+  const delim = splitRow(delimLine);
+  if (!header || !delim) return null;
+  const align = delimiterAlign(delim);
+  if (!align || align.length !== header.length) return null;
+
+  const body: string[][] = [];
+  let next = start + 2;
+  while (next < lines.length) {
+    const line = lines[next] ?? "";
+    if (!isTableLine(line)) break;
+    const row = splitRow(line);
+    if (!row) break;
+    body.push(row);
+    next += 1;
+  }
+  const shaped = rectangular(header, body, align);
+  return {
+    table: {
+      source: lines.slice(start, next).join("\n"),
+      align: shaped.align,
+      header: shaped.header,
+      rows: shaped.rows,
+    },
+    next,
+  };
+}
+
+function isTableLine(line: string): boolean {
+  if (/^ {4,}/.test(line)) return false;
+  const trimmed = line.trim();
+  if (!trimmed) return false;
+  if (trimmed.startsWith(">")) return false;
+  if (/^([-*+]|\d+[.)])\s/.test(trimmed)) return false;
+  return true;
+}
+
+/** Cells split on unescaped pipes outside inline code. Outer pipes drop. */
+export function splitRow(line: string): string[] | null {
+  const indent = line.match(/^ */)?.[0].length ?? 0;
+  if (indent >= 4) return null;
+  const body = line.slice(indent);
+  const cells: string[] = [];
+  let current = "";
+  let pipes = 0;
+  let code = 0;
+  for (let i = 0; i < body.length; ) {
+    const ch = body[i] ?? "";
+    if (code > 0) {
+      if (ch === "`") {
+        let n = 0;
+        while (body[i + n] === "`") n += 1;
+        current += "`".repeat(n);
+        i += n;
+        if (n === code) code = 0;
+        continue;
+      }
+      current += ch;
+      i += 1;
+      continue;
+    }
+    if (ch === "\\") {
+      if (i + 1 < body.length) {
+        current += body[i + 1];
+        i += 2;
+        continue;
+      }
+    }
+    if (ch === "`") {
+      let n = 0;
+      while (body[i + n] === "`") n += 1;
+      current += "`".repeat(n);
+      i += n;
+      code = n;
+      continue;
+    }
+    if (ch === "|") {
+      pipes += 1;
+      cells.push(current.trim());
+      current = "";
+      i += 1;
+      continue;
+    }
+    current += ch;
+    i += 1;
+  }
+  cells.push(current.trim());
+  if (pipes === 0) return null;
+  let start = 0;
+  let end = cells.length;
+  const trimmed = body.trim();
+  if (trimmed.startsWith("|")) start = 1;
+  if (endsWithUnescapedPipe(body)) end -= 1;
+  if (end <= start) return null;
+  return cells.slice(start, end);
+}
+
+function endsWithUnescapedPipe(line: string): boolean {
+  const trimmed = line.trimEnd();
+  if (!trimmed.endsWith("|")) return false;
+  let slashes = 0;
+  for (let i = trimmed.length - 2; i >= 0 && trimmed[i] === "\\"; i -= 1) {
+    slashes += 1;
+  }
+  return slashes % 2 === 0;
+}
+
+function delimiterAlign(cells: string[]): TableAlign[] | null {
+  if (cells.length === 0) return null;
+  const align: TableAlign[] = [];
+  for (const cell of cells) {
+    if (!/^:?-+:?$/.test(cell)) return null;
+    const left = cell.startsWith(":");
+    const right = cell.endsWith(":");
+    if (left && right) align.push("center");
+    else if (right) align.push("right");
+    else align.push("left");
+  }
+  return align;
+}
+
+function rectangular(
+  header: string[],
+  rows: string[][],
+  align: TableAlign[],
+): { header: string[]; rows: string[][]; align: TableAlign[] } {
+  let width = Math.max(header.length, align.length);
+  for (const row of rows) width = Math.max(width, row.length);
+  const pad = (cells: string[]) => {
+    const next = cells.slice(0, width);
+    while (next.length < width) next.push("");
+    return next;
+  };
+  const nextAlign = align.slice(0, width);
+  while (nextAlign.length < width) nextAlign.push("left");
+  return { header: pad(header), rows: rows.map(pad), align: nextAlign };
+}

@@ -33,6 +33,16 @@ import {
   stabilizeMarkdown,
 } from "./markdown";
 import {
+  TABLE_COPY_MS,
+  showTableCopy,
+  splitMarkdownTables,
+  tableClipboardText,
+  tableCopyAriaLabel,
+  tableCopyLabel,
+  type MarkdownTable,
+  type TableAlign,
+} from "./markdownTable";
+import {
   extractMath,
   renderKatex,
   shouldRenderMath,
@@ -62,11 +72,51 @@ export function MarkdownBody({
   completed = true,
   wrapScope = "",
 }: Props) {
+  const stable = stabilizeMarkdown(text);
+  const segments = splitMarkdownTables(stable, completed);
+  const order: FenceOrder = { n: 0 };
+  return (
+    <>
+      {segments.map((segment, index) =>
+        segment.type === "table" ? (
+          <MarkdownTableBlock
+            key={`table-${index}`}
+            table={segment.table}
+            knownNames={knownNames}
+            completed={completed}
+          />
+        ) : (
+          <MarkdownSegment
+            key={`md-${index}`}
+            text={segment.text}
+            knownNames={knownNames}
+            completed={completed}
+            wrapScope={wrapScope}
+            order={order}
+          />
+        ),
+      )}
+    </>
+  );
+}
+
+function MarkdownSegment({
+  text,
+  knownNames,
+  completed,
+  wrapScope,
+  order,
+}: {
+  text: string;
+  knownNames: string[];
+  completed: boolean;
+  wrapScope: string;
+  order: FenceOrder;
+}) {
   const findQuery = useFindQuery();
-  const { text: source, slots } = extractMath(stabilizeMarkdown(text));
+  const { text: source, slots } = extractMath(text);
   const enrich = (children?: ReactNode) =>
     enrichChildren(children, knownNames, completed, slots, findQuery);
-  const order: FenceOrder = { n: 0 };
   return (
     <Markdown
       components={{
@@ -95,6 +145,112 @@ export function MarkdownBody({
         h4: ({ children }) => <h4>{enrich(children)}</h4>,
         h5: ({ children }) => <h5>{enrich(children)}</h5>,
         h6: ({ children }) => <h6>{enrich(children)}</h6>,
+      }}
+    >
+      {source}
+    </Markdown>
+  );
+}
+
+function MarkdownTableBlock({
+  table,
+  knownNames,
+  completed,
+}: {
+  table: MarkdownTable;
+  knownNames: string[];
+  completed: boolean;
+}) {
+  const [copied, setCopied] = useState(false);
+  const timer = useRef<ReturnType<typeof window.setTimeout> | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (timer.current != null) window.clearTimeout(timer.current);
+    };
+  }, []);
+
+  function onCopy() {
+    void copyText(tableClipboardText(table.source));
+    setCopied(true);
+    if (timer.current != null) window.clearTimeout(timer.current);
+    timer.current = window.setTimeout(() => {
+      setCopied(false);
+      timer.current = null;
+    }, TABLE_COPY_MS);
+  }
+
+  return (
+    <div className="md-table">
+      {showTableCopy(completed) ? (
+        <div className="md-table-bar">
+          <button
+            type="button"
+            className="md-copy"
+            aria-label={tableCopyAriaLabel(copied)}
+            aria-live="polite"
+            onClick={onCopy}
+          >
+            {tableCopyLabel(copied)}
+          </button>
+        </div>
+      ) : null}
+      <div className="md-table-scroll">
+        <table>
+          <thead>
+            <tr>
+              {table.header.map((cell, index) => (
+                <th key={index} scope="col" className={tableAlignClass(table.align[index])}>
+                  <TableCellText text={cell} knownNames={knownNames} completed={completed} />
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {table.rows.map((row, rowIndex) => (
+              <tr key={rowIndex}>
+                {row.map((cell, index) => (
+                  <td key={index} className={tableAlignClass(table.align[index])}>
+                    <TableCellText text={cell} knownNames={knownNames} completed={completed} />
+                  </td>
+                ))}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+function tableAlignClass(align: TableAlign | undefined): string {
+  if (align === "center") return "md-table-center";
+  if (align === "right") return "md-table-right";
+  return "md-table-left";
+}
+
+function TableCellText({
+  text,
+  knownNames,
+  completed,
+}: {
+  text: string;
+  knownNames: string[];
+  completed: boolean;
+}) {
+  const findQuery = useFindQuery();
+  const { text: source, slots } = extractMath(text);
+  if (!source) return null;
+  const enrich = (children?: ReactNode) =>
+    enrichChildren(children, knownNames, completed, slots, findQuery);
+  return (
+    <Markdown
+      components={{
+        a: ({ href, children }) => <MdLink href={href}>{children}</MdLink>,
+        code: InlineCode,
+        img: ({ alt }) => (alt ? <span>{alt}</span> : null),
+        pre: ({ children }) => <>{children}</>,
+        p: ({ children }) => <>{enrich(children)}</>,
       }}
     >
       {source}

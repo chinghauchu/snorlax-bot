@@ -8157,7 +8157,7 @@ export function App() {
                                 <div
                                   key={`${message.id}-${bubbleIdx}`}
                                   className={
-                                    assistantBubbleWide(part)
+                                    assistantBubbleWide(part, completed)
                                       ? "bubble agent wide"
                                       : "bubble agent"
                                   }
