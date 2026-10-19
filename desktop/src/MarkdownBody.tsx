@@ -28,6 +28,13 @@ import {
 } from "./codeBlockWrap";
 import { isSafeWebUrl, linkHref, splitWebUrls } from "./linkify";
 import {
+  linkStatusClearFocus,
+  linkStatusClearHover,
+  linkStatusFocus,
+  linkStatusHover,
+  nextLinkStatusId,
+} from "./linkStatus";
+import {
   copyText,
   fenceLanguage,
   stabilizeMarkdown,
@@ -273,7 +280,11 @@ function MarkdownChunk({
     <Markdown
       remarkPlugins={completed ? [remarkStrikethrough] : []}
       components={{
-        a: ({ href, children }) => <MdLink href={href}>{children}</MdLink>,
+        a: ({ href, children }) => (
+          <MdLink href={href} preview={completed}>
+            {children}
+          </MdLink>
+        ),
         pre: ({ children }) => (
           <CodeFence
             completed={completed}
@@ -402,7 +413,11 @@ function TableCellText({
     <Markdown
       remarkPlugins={completed ? [remarkStrikethrough] : []}
       components={{
-        a: ({ href, children }) => <MdLink href={href}>{children}</MdLink>,
+        a: ({ href, children }) => (
+          <MdLink href={href} preview={completed}>
+            {children}
+          </MdLink>
+        ),
         code: InlineCode,
         del: ({ children }) => <del className="md-strike">{enrich(children)}</del>,
         img: ({ alt }) => (alt ? <span>{alt}</span> : null),
@@ -418,19 +433,46 @@ function TableCellText({
 export function MdLink({
   href,
   children,
+  preview = true,
 }: {
   href?: string;
   children?: ReactNode;
+  /** Completed message bubbles reveal the destination. Streaming does not. */
+  preview?: boolean;
 }) {
-  if (!isSafeWebUrl(href) || !href) {
+  const idRef = useRef(0);
+  if (idRef.current === 0) idRef.current = nextLinkStatusId();
+  const url = isSafeWebUrl(href) && href ? href : "";
+  const reveal = preview && url.length > 0;
+  useEffect(() => {
+    if (!reveal) return;
+    const id = idRef.current;
+    return () => {
+      linkStatusClearHover(id);
+      linkStatusClearFocus(id);
+    };
+  }, [reveal, url]);
+  if (!url) {
     return <>{children}</>;
   }
-  const url = href;
+  const id = idRef.current;
   return (
     <a
       href={url}
       className="md-link"
       rel="noopener noreferrer"
+      onMouseEnter={reveal ? () => linkStatusHover(id, url) : undefined}
+      onMouseLeave={reveal ? () => linkStatusClearHover(id) : undefined}
+      onFocus={
+        reveal
+          ? (event) => {
+              if (event.currentTarget.matches(":focus-visible")) {
+                linkStatusFocus(id, url);
+              }
+            }
+          : undefined
+      }
+      onBlur={reveal ? () => linkStatusClearFocus(id) : undefined}
       onClick={(event: MouseEvent<HTMLAnchorElement>) => {
         event.preventDefault();
         void openOsBrowser(url);
@@ -472,7 +514,7 @@ export function HttpsText({
         const overlapped = overlapHits(hits, active, start, offset);
         if (piece.type === "link") {
           return (
-            <MdLink key={index} href={linkHref(piece.value)}>
+            <MdLink key={index} href={linkHref(piece.value)} preview={!streaming}>
               {paintOverlap(piece.value, overlapped)}
             </MdLink>
           );

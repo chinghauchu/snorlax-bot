@@ -319,5 +319,19 @@ extension QuoteSelectableText {
             }
             return defaultAction
         }
+
+        /// v1.35: long-press a link. The header/preview is the full
+        /// destination. A tap still uses primaryActionFor above.
+        /// Message bubbles pass onLink; other text keeps the system menu.
+        func textView(
+            _ textView: UITextView,
+            menuConfigurationFor textItem: UITextItem,
+            defaultMenu: UIMenu
+        ) -> UITextItem.MenuConfiguration? {
+            guard let onLink else { return nil }
+            guard case .link(let url) = textItem.content else { return nil }
+            guard WebLinks.allows(url) else { return nil }
+            return LinkPreview.configuration(for: url, open: onLink)
+        }
     }
 }
