@@ -400,15 +400,18 @@ import { LongMessageBody } from "./LongMessageBody";
 import { bubbleTimeLabel } from "./bubbleTime";
 import { dayGroups, daySeparatorLabels } from "./daySeparator";
 import {
+  anchorOffsetForId,
   anchorScrollTop,
   captureReadingPlace,
   readingNearBottom,
   readingPlaceKey,
   readingRestore,
+  readingRestoreDecision,
   readingTailGrew,
   stickForReadingRestore,
   topVisibleAnchor,
   type ReadingPlace,
+  type TargetedScrollKind,
 } from "./readingPlace";
 import {
   COPY_CONTROL_LABEL,
@@ -1464,7 +1467,18 @@ export function App() {
   const hiddenOrphans = useRef(new Set<string>());
   /** v0.74: session reading place per chat. Not persisted. */
   const readingPlaces = useRef(new Map<string, ReadingPlace>());
-  const pendingRestore = useRef<{ key: string; gen: number } | null>(null);
+  const pendingRestore = useRef<{
+    key: string;
+    gen: number;
+    targeted: number;
+  } | null>(null);
+  /**
+   * v1.30: bumped when find, a quote jump, a sent-message jump,
+   * Home, End, Send, Regenerate, or Jump scrolls on purpose.
+   * A reading-place restore scheduled earlier yields.
+   */
+  const targetedScroll = useRef(0);
+  const targetedScrollKind = useRef<TargetedScrollKind>("message");
   const transcriptGenRef = useRef(0);
   const [transcriptGen, setTranscriptGen] = useState(0);
   const [toolTraces, setToolTraces] = useState<
@@ -1933,6 +1947,8 @@ export function App() {
   }, []);
 
   const snapStick = useCallback(() => {
+    targetedScroll.current += 1;
+    targetedScrollKind.current = "bottom";
     applyStick(onSendOrRegenerate());
     const el = scroller.current;
     if (el) el.scrollTop = el.scrollHeight;
@@ -1966,11 +1982,13 @@ export function App() {
         )
       : [];
     const tail = messagesRef.current.at(-1)?.id ?? null;
+    const anchorId = near ? null : topVisibleAnchor(rows, viewportTop);
     readingPlaces.current.set(
       readingPlaceKey(here.agentId, here.threadId),
       captureReadingPlace({
         nearBottom: near,
-        anchorId: near ? null : topVisibleAnchor(rows, viewportTop),
+        anchorId,
+        anchorOffset: anchorOffsetForId(rows, anchorId, viewportTop),
         tailId: tail,
       }),
     );
@@ -2170,6 +2188,8 @@ export function App() {
   }, [messages, dividerTick, activeId, threadId]);
 
   const onJumpLatest = useCallback(() => {
+    targetedScroll.current += 1;
+    targetedScrollKind.current = "bottom";
     applyStick(onJumpToLatest());
     const el = scroller.current;
     if (el) el.scrollTop = el.scrollHeight;
@@ -2280,6 +2300,33 @@ export function App() {
       : messages;
     if (pending && key && pending.key === key) {
       if (pending.gen !== transcriptGen) return;
+      const decision = readingRestoreDecision(
+        pending.targeted,
+        targetedScroll.current,
+        targetedScrollKind.current,
+      );
+      if (decision !== "place") {
+        pendingRestore.current = null;
+        const el = scroller.current;
+        if (decision === "bottom" && el) {
+          el.scrollTop = el.scrollHeight;
+          applyStick(onJumpToLatest());
+        } else         if (decision === "top" && el) {
+          el.scrollTop = 0;
+          applyStick(
+            onUserScroll(
+              stickRef.current,
+              isNearBottom({
+                scrollTop: 0,
+                scrollHeight: el.scrollHeight,
+                clientHeight: el.clientHeight,
+              }),
+            ),
+          );
+        }
+        lastAssistantSig.current = assistantBubbleSignature(visible);
+        return;
+      }
       pendingRestore.current = null;
       const el = scroller.current;
       const ids = el
@@ -2300,10 +2347,13 @@ export function App() {
             )
           : null;
         if (node) {
+          const box = node.getBoundingClientRect();
           el.scrollTop = anchorScrollTop(
-            node.getBoundingClientRect().top,
+            box.top,
             el.getBoundingClientRect().top,
             el.scrollTop,
+            saved?.anchorOffset ?? 0,
+            box.height,
           );
         } else {
           el.scrollTop = el.scrollHeight;
@@ -2523,7 +2573,11 @@ export function App() {
     const epoch = beginNewMessagesLoad(id, thread);
     const gen = transcriptGenRef.current + 1;
     transcriptGenRef.current = gen;
-    pendingRestore.current = { key: readingPlaceKey(id, thread), gen };
+    pendingRestore.current = {
+      key: readingPlaceKey(id, thread),
+      gen,
+      targeted: targetedScroll.current,
+    };
     setFindOpen(false);
     setFindQuery("");
     setFindIndex(0);
@@ -5039,7 +5093,10 @@ export function App() {
       `[data-find-row="${CSS.escape(activeFindHit.rowId)}"]`,
     );
     const target = mark ?? row;
-    target?.scrollIntoView({ block: "nearest", inline: "nearest" });
+    if (!target) return;
+    targetedScroll.current += 1;
+    targetedScrollKind.current = "message";
+    target.scrollIntoView({ block: "nearest", inline: "nearest" });
   }, [
     findOpen,
     findSafeIndex,
@@ -5379,6 +5436,10 @@ export function App() {
       if (prefersJumpToLatest(action)) {
         onJumpLatest();
         return;
+      }
+      if (action === "top") {
+        targetedScroll.current += 1;
+        targetedScrollKind.current = "top";
       }
       const el = scroller.current;
       if (!el) return;
@@ -6730,6 +6791,8 @@ export function App() {
       const target = rows.find((row) => row.id === targetId);
       if (!target || target.top == null) return;
       const nextTop = userJumpScrollTop(target.top, stickyInset, maxScroll);
+      targetedScroll.current += 1;
+      targetedScrollKind.current = "message";
       el.scrollTop = nextTop;
       const box = {
         scrollTop: nextTop,
@@ -6791,6 +6854,8 @@ export function App() {
       );
       const maxScroll = Math.max(0, el.scrollHeight - el.clientHeight);
       const nextTop = userJumpScrollTop(top, stickyInset, maxScroll);
+      targetedScroll.current += 1;
+      targetedScrollKind.current = "message";
       el.scrollTop = nextTop;
       const box = {
         scrollTop: nextTop,

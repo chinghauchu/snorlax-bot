@@ -215,6 +215,12 @@ final class AppModel {
     /// v0.74: session reading place per chat. Not persisted.
     private var readingPlaces: [String: ReadingPlace.Place] = [:]
     var pendingReadingKey: String?
+    /// v1.30: token captured when the switch scheduled a restore.
+    var pendingReadingTargeted = 0
+    /// Bumped when find, a quote jump, a sent-message jump, Home, End,
+    /// Send, Regenerate, or Jump scrolls on purpose.
+    var targetedScrollToken = 0
+    var targetedScrollKind: ReadingPlace.TargetedKind = .message
     private(set) var readingTranscriptToken = 0
     private var readingLoadGeneration = 0
     /// True from the start of a chat switch until that transcript is restored.
@@ -683,15 +689,23 @@ final class AppModel {
         threadId: String?,
         nearBottom: Bool,
         anchorId: String?,
-        tailId: String?
+        tailId: String?,
+        anchorOffset: CGFloat = 0
     ) {
         if readingPublishLocked || pendingReadingKey != nil { return }
         let key = ReadingPlace.key(agentId: agentId, threadId: threadId)
         readingPlaces[key] = ReadingPlace.capture(
             nearBottom: nearBottom,
             anchorId: anchorId,
-            tailId: tailId
+            tailId: tailId,
+            anchorOffset: anchorOffset
         )
+    }
+
+    /// v1.30: an explicit transcript target wins over a restore scheduled earlier.
+    func noteTargetedScroll(_ kind: ReadingPlace.TargetedKind) {
+        targetedScrollToken += 1
+        targetedScrollKind = kind
     }
 
     func readingPlace(for key: String) -> ReadingPlace.Place? {
@@ -761,6 +775,7 @@ final class AppModel {
         messages = showListed(rows, agentId: id, threadId: thread)
         newMessagesReturning = false
         pendingReadingKey = ReadingPlace.key(agentId: id, threadId: thread)
+        pendingReadingTargeted = targetedScrollToken
         readingTranscriptToken += 1
         await loadComposerSkills()
     }
