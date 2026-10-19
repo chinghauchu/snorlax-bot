@@ -358,6 +358,7 @@ import { WidgetCard } from "./WidgetCard";
 import { ApproveCard } from "./ApproveCard";
 import { ConnectCard } from "./ConnectCard";
 import { HttpsText, MarkdownBody } from "./MarkdownBody";
+import { LinkStatusPill } from "./linkStatusPill";
 import { FindQueryProvider, FindText, useFindQuery } from "./FindText";
 import {
   FIND_CLOSE_LABEL,
@@ -8368,6 +8369,7 @@ export function App() {
             ) : null}
           </div>
         ) : null}
+        <LinkStatusPill />
         </div>
 
         <footer
