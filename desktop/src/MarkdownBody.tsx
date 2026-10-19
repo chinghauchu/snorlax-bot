@@ -33,6 +33,11 @@ import {
   stabilizeMarkdown,
 } from "./markdown";
 import {
+  breakAnimates,
+  remarkStrikethrough,
+  splitThematicBreaks,
+} from "./markdownBreak";
+import {
   quoteTaskAnimates,
   splitQuoteAndTasks,
   taskGlyph,
@@ -203,7 +208,51 @@ function QuoteTaskPieces({
   );
 }
 
+/**
+ * Completed replies pull thematic breaks out before the commonmark
+ * renderer. ATX headings stay in the markdown and render as h1–h6.
+ * Streaming (`completed: false`) is one markdown run.
+ */
 function MarkdownSegment({
+  text,
+  knownNames,
+  completed,
+  wrapScope,
+  order,
+}: {
+  text: string;
+  knownNames: string[];
+  completed: boolean;
+  wrapScope: string;
+  order: FenceOrder;
+}) {
+  const parts = splitThematicBreaks(text, completed);
+  const animate = breakAnimates(false);
+  return (
+    <>
+      {parts.map((part, index) =>
+        part.type === "rule" ? (
+          <hr
+            key={`rule-${index}`}
+            className="md-rule"
+            data-animate={animate ? "1" : undefined}
+          />
+        ) : (
+          <MarkdownChunk
+            key={`chunk-${index}`}
+            text={part.text}
+            knownNames={knownNames}
+            completed={completed}
+            wrapScope={wrapScope}
+            order={order}
+          />
+        ),
+      )}
+    </>
+  );
+}
+
+function MarkdownChunk({
   text,
   knownNames,
   completed,
@@ -222,6 +271,7 @@ function MarkdownSegment({
     enrichChildren(children, knownNames, completed, slots, findQuery);
   return (
     <Markdown
+      remarkPlugins={completed ? [remarkStrikethrough] : []}
       components={{
         a: ({ href, children }) => <MdLink href={href}>{children}</MdLink>,
         pre: ({ children }) => (
@@ -236,6 +286,8 @@ function MarkdownSegment({
         ),
         code: InlineCode,
         img: ({ alt }) => (alt ? <span>{alt}</span> : null),
+        del: ({ children }) => <del className="md-strike">{enrich(children)}</del>,
+        hr: () => <hr className="md-rule" />,
         p: ({ children }) => {
           const block = soleBlockMath(children, slots, completed, findQuery);
           if (block) return block;
@@ -348,9 +400,11 @@ function TableCellText({
     enrichChildren(children, knownNames, completed, slots, findQuery);
   return (
     <Markdown
+      remarkPlugins={completed ? [remarkStrikethrough] : []}
       components={{
         a: ({ href, children }) => <MdLink href={href}>{children}</MdLink>,
         code: InlineCode,
+        del: ({ children }) => <del className="md-strike">{enrich(children)}</del>,
         img: ({ alt }) => (alt ? <span>{alt}</span> : null),
         pre: ({ children }) => <>{children}</>,
         p: ({ children }) => <>{enrich(children)}</>,

@@ -150,3 +150,4 @@ jobs:
           python3 ios/scripts/test_ios_reading_offset.py
           python3 ios/scripts/test_ios_markdown_table.py
           python3 ios/scripts/test_ios_markdown_quote_task.py
+          python3 ios/scripts/test_ios_markdown_break.py
