@@ -16,7 +16,7 @@ struct AssistantMarkdown: View {
             ForEach(Array(MarkdownSplit.segments(in: MarkdownSplit.stabilize(text)).enumerated()), id: \.offset) { index, segment in
                 switch segment {
                 case .markdown(let source):
-                    MarkdownRun(source: source, names: names, completed: completed)
+                    MarkdownTablePieces(source: source, names: names, completed: completed)
                 case .code(let language, let source):
                     if completed && MarkdownSplit.isMermaidLanguage(language) {
                         MermaidFence(
@@ -43,6 +43,129 @@ struct AssistantMarkdown: View {
             }
         }
         .transcriptFont(14)
+    }
+}
+
+/// Completed pipe tables render here. Streaming passes `completed: false`
+/// and stays a markdown run, the same plain text as today.
+private struct MarkdownTablePieces: View {
+    let source: String
+    let names: [String]
+    var completed: Bool
+
+    var body: some View {
+        let pieces = MarkdownTable.split(source, completed: completed)
+        VStack(alignment: .leading, spacing: 8) {
+            ForEach(Array(pieces.enumerated()), id: \.offset) { _, piece in
+                switch piece {
+                case .markdown(let text):
+                    MarkdownRun(source: text, names: names, completed: completed)
+                case .table(let table):
+                    MarkdownTableBlock(table: table, names: names, completed: completed)
+                }
+            }
+        }
+    }
+}
+
+/// Horizontal scroll lives on the table, not the bubble. Copy writes the
+/// markdown source. The label swap does not animate.
+private struct MarkdownTableBlock: View {
+    let table: MarkdownTable.Table
+    let names: [String]
+    var completed: Bool
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var copied = false
+    @State private var pulse = 0
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            if MarkdownTableCopy.showsCopy(completed: completed) {
+                HStack {
+                    Spacer(minLength: 0)
+                    Button(MarkdownTableCopy.label(copied: copied)) {
+                        UIPasteboard.general.string = MarkdownTableCopy.clipboardText(table.source)
+                        copied = true
+                        pulse += 1
+                        let ticket = pulse
+                        Task {
+                            try? await Task.sleep(nanoseconds: MarkdownTableCopy.feedbackNanoseconds)
+                            if ticket == pulse {
+                                copied = false
+                            }
+                        }
+                    }
+                    .font(.system(size: 12))
+                    .foregroundStyle(.secondary)
+                    .buttonStyle(.plain)
+                    .accessibilityLabel(MarkdownTableCopy.accessibilityLabel(copied: copied))
+                    .animation(MarkdownTableCopy.animation(reduceMotion: reduceMotion), value: copied)
+                }
+                .padding(.horizontal, 10)
+                .padding(.top, 6)
+            }
+            ScrollView(.horizontal, showsIndicators: true) {
+                Grid(alignment: .leading, horizontalSpacing: 0, verticalSpacing: 0) {
+                    GridRow {
+                        ForEach(Array(table.header.enumerated()), id: \.offset) { index, cell in
+                            tableCell(cell, column: index, header: true, last: table.rows.isEmpty)
+                        }
+                    }
+                    ForEach(Array(table.rows.enumerated()), id: \.offset) { rowIndex, row in
+                        GridRow {
+                            ForEach(Array(row.enumerated()), id: \.offset) { index, cell in
+                                tableCell(
+                                    cell,
+                                    column: index,
+                                    header: false,
+                                    last: rowIndex == table.rows.count - 1
+                                )
+                            }
+                        }
+                    }
+                }
+                .fixedSize(horizontal: true, vertical: true)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(
+            Color(uiColor: .secondarySystemBackground),
+            in: RoundedRectangle(cornerRadius: 8)
+        )
+        .overlay {
+            RoundedRectangle(cornerRadius: 8)
+                .stroke(Color(uiColor: .separator), lineWidth: 1)
+        }
+        .clipShape(RoundedRectangle(cornerRadius: 8))
+    }
+
+    private func tableCell(_ text: String, column: Int, header: Bool, last: Bool) -> some View {
+        MarkdownRun(
+            source: text.isEmpty ? " " : text,
+            names: names,
+            completed: completed,
+            hugsText: true,
+            header: header
+        )
+        .padding(.horizontal, 10)
+        .padding(.vertical, 4)
+        .overlay(alignment: .bottom) {
+            if !last {
+                Rectangle()
+                    .fill(Color(uiColor: .separator))
+                    .frame(height: 1)
+            }
+        }
+        .gridColumnAlignment(columnAlign(column))
+    }
+
+    private func columnAlign(_ column: Int) -> HorizontalAlignment {
+        let align = column < table.align.count ? table.align[column] : .left
+        switch align {
+        case .left: return .leading
+        case .center: return .center
+        case .right: return .trailing
+        }
     }
 }
 
@@ -353,6 +476,10 @@ private struct MarkdownRun: View {
     let source: String
     let names: [String]
     var completed: Bool = true
+    /// Table cells size to their text so a wide table can scroll.
+    var hugsText: Bool = false
+    /// Header cells use semibold body text.
+    var header: Bool = false
     @Environment(\.openURL) private var openURL
     @Environment(\.chatFind) private var find
     @Environment(AppModel.self) private var model
@@ -382,30 +509,53 @@ private struct MarkdownRun: View {
                     }
                 }
             }
-            .frame(maxWidth: .infinity, alignment: .leading)
+            .fixedSize(horizontal: hugsText, vertical: true)
+            .frame(maxWidth: hugsText ? nil : .infinity, alignment: .leading)
         }
     }
 
+    @ViewBuilder
     private func markdownText(_ src: String) -> some View {
+        let label = selectable(src)
+        if hugsText {
+            // Table cells stay one line so a wide table scrolls instead of squashing.
+            label
+                .lineLimit(1)
+                .fixedSize(horizontal: true, vertical: true)
+                .frame(minWidth: 0, alignment: .leading)
+        } else {
+            // Long unbroken URLs wrap inside the bubble.
+            label
+                .lineLimit(nil)
+                .fixedSize(horizontal: false, vertical: true)
+                .frame(minWidth: 0, maxWidth: .infinity, alignment: .leading)
+        }
+    }
+
+    private func selectable(_ src: String) -> QuoteSelectableText {
         QuoteSelectableText(
             text: wrapping(attributed(src)),
             quoteEnabled: completed,
-            font: metrics.bodyFont,
+            font: header
+                ? UIFont.systemFont(ofSize: metrics.body, weight: .semibold)
+                : metrics.bodyFont,
+            expandsHorizontally: hugsText,
             onQuote: { model.quoteIntoComposer($0) },
             onLink: { url in
                 guard WebLinks.allows(url) else { return }
                 openURL(url)
             }
         )
-        .lineLimit(nil)
-        .fixedSize(horizontal: false, vertical: true)
-        .frame(minWidth: 0, maxWidth: .infinity, alignment: .leading)
     }
 
     private func wrapping(_ text: AttributedString) -> AttributedString {
         let ns = NSMutableAttributedString(text)
         let style = NSMutableParagraphStyle()
-        style.lineBreakMode = .byCharWrapping
+        if hugsText {
+            style.lineBreakMode = .byClipping
+        } else {
+            style.lineBreakMode = .byCharWrapping
+        }
         ns.addAttribute(
             .paragraphStyle,
             value: style,

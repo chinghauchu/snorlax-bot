@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
+import { containsMarkdownTable } from "./markdownTable.ts";
+
 /**
  * v0.48: completed LEFT `kind=message` splits on blank lines into short
  * multi-bubbles. Mid-stream stays one growing bubble. Runtime still stores
@@ -103,7 +105,9 @@ export function splitAssistantBubbles(
   return parts;
 }
 
-/** Fences and block math stretch to the column; short prose hugs the text. */
-export function assistantBubbleWide(text: string): boolean {
-  return /^( {0,3})(`{3,}|~{3,})/m.test(text) || /^\s*\$\$/m.test(text);
+/** Fences, block math, and completed tables stretch to the column. */
+export function assistantBubbleWide(text: string, completed = true): boolean {
+  if (/^( {0,3})(`{3,}|~{3,})/m.test(text) || /^\s*\$\$/m.test(text)) return true;
+  if (!completed) return false;
+  return containsMarkdownTable(text);
 }
