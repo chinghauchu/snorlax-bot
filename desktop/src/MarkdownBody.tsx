@@ -26,7 +26,7 @@ import {
   showCodeBlockWrap,
   toggleCodeBlockWrap,
 } from "./codeBlockWrap";
-import { isSafeWebUrl, splitWebUrls } from "./linkify";
+import { isSafeWebUrl, linkHref, splitWebUrls } from "./linkify";
 import {
   copyText,
   fenceLanguage,
@@ -472,7 +472,7 @@ export function HttpsText({
         const overlapped = overlapHits(hits, active, start, offset);
         if (piece.type === "link") {
           return (
-            <MdLink key={index} href={piece.value}>
+            <MdLink key={index} href={linkHref(piece.value)}>
               {paintOverlap(piece.value, overlapped)}
             </MdLink>
           );

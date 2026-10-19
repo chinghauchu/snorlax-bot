@@ -4,7 +4,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import test from "node:test";
-import { isSafeWebUrl, splitWebUrls, type WebPiece } from "./linkify.ts";
+import { isSafeWebUrl, linkHref, splitWebUrls, type WebPiece } from "./linkify.ts";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const app = readFileSync(join(here, "App.tsx"), "utf8");
@@ -53,8 +53,107 @@ test("http and https are links; other schemes stay plain", () => {
   assert.deepEqual(linksOf("file:///etc/passwd"), []);
   assert.deepEqual(linksOf("data:text/html,hi"), []);
   assert.deepEqual(linksOf("ftp://example.com/a"), []);
-  assert.deepEqual(linksOf("www.example.com"), []);
   assert.deepEqual(linksOf("see javascript:alert(1) now"), []);
+});
+
+test("GFM www autolinks open as http and keep path, query, and balanced parens", () => {
+  assert.equal(linkHref("www.example.com"), "http://www.example.com");
+  assert.equal(
+    linkHref("www.example.com/path?q=1"),
+    "http://www.example.com/path?q=1",
+  );
+  assert.equal(
+    linkHref("https://example.com/path?q=1"),
+    "https://example.com/path?q=1",
+  );
+  assert.equal(isSafeWebUrl(linkHref("www.example.com/path?q=1")), true);
+
+  assert.deepEqual(linksOf("www.example.com"), ["www.example.com"]);
+  assert.deepEqual(linksOf("see www.example.com/path?q=1 now"), [
+    "www.example.com/path?q=1",
+  ]);
+  assert.deepEqual(linksOf("WWW.example.com"), []);
+  assert.deepEqual(linksOf("notwww.example.com"), []);
+  assert.deepEqual(linksOf("www.xxx.yyy._zzz"), []);
+  assert.deepEqual(linksOf("www._xxx.yyy.zzz"), ["www._xxx.yyy.zzz"]);
+  assert.deepEqual(
+    linksOf("https://example.com/path?q=1 and www.example.com"),
+    ["https://example.com/path?q=1", "www.example.com"],
+  );
+  assert.deepEqual(linksOf("https://www.example.com/a"), ["https://www.example.com/a"]);
+});
+
+test("www trailing punctuation stays outside and balanced parens stay inside", () => {
+  assert.deepEqual(linksOf("Visit www.commonmark.org."), ["www.commonmark.org"]);
+  assert.deepEqual(linksOf("Visit www.commonmark.org/a.b."), ["www.commonmark.org/a.b"]);
+  assert.deepEqual(linksOf("see www.example.com, please"), ["www.example.com"]);
+  assert.deepEqual(linksOf("see www.example.com!"), ["www.example.com"]);
+  assert.deepEqual(linksOf("see (www.example.com)"), ["www.example.com"]);
+  assert.deepEqual(linksOf("www.example.com)."), ["www.example.com"]);
+  assert.deepEqual(
+    linksOf("www.google.com/search?q=Markup+(business)"),
+    ["www.google.com/search?q=Markup+(business)"],
+  );
+  assert.deepEqual(
+    linksOf("www.google.com/search?q=Markup+(business)))"),
+    ["www.google.com/search?q=Markup+(business)"],
+  );
+  assert.deepEqual(
+    linksOf("(www.google.com/search?q=Markup+(business))"),
+    ["www.google.com/search?q=Markup+(business)"],
+  );
+  assert.deepEqual(
+    linksOf("www.google.com/search?q=(business))+ok"),
+    ["www.google.com/search?q=(business))+ok"],
+  );
+  assert.deepEqual(
+    linksOf("www.en.wikipedia.org/wiki/URL_(disambiguation)"),
+    ["www.en.wikipedia.org/wiki/URL_(disambiguation)"],
+  );
+  assert.deepEqual(
+    linksOf("www.en.wikipedia.org/wiki/URL_(disambiguation)."),
+    ["www.en.wikipedia.org/wiki/URL_(disambiguation)"],
+  );
+  assert.deepEqual(linksOf("www.commonmark.org/he<lp"), ["www.commonmark.org/he"]);
+  assert.deepEqual(linksOf("www.google.com/search?q=commonmark&hl;"), [
+    "www.google.com/search?q=commonmark",
+  ]);
+  assert.deepEqual(linksOf("*www.example.com*"), ["www.example.com"]);
+  assert.deepEqual(linksOf('"www.example.com"'), []);
+});
+
+test("www inside inline code and fences stays plain", () => {
+  assert.deepEqual(
+    linksOf("use `www.in.example.com/a` then www.out.example.com/b."),
+    ["www.out.example.com/b"],
+  );
+  const fenced = [
+    "before www.out.example.com/a",
+    "```",
+    "www.in.example.com/b",
+    "```",
+    "after www.out.example.com/c.",
+  ].join("\n");
+  assert.deepEqual(linksOf(fenced), [
+    "www.out.example.com/a",
+    "www.out.example.com/c",
+  ]);
+  const unclosed = ["see www.out.example.com/a", "```", "www.in.example.com/b"].join("\n");
+  assert.deepEqual(linksOf(unclosed), ["www.out.example.com/a"]);
+});
+
+test("a mid-stream www URL at the end of the buffer stays plain", () => {
+  assert.deepEqual(linksOf("see www.example.com/partial", true), []);
+  assert.deepEqual(linksOf("see www.example.com.", true), []);
+  assert.deepEqual(linksOf("see www.example.com next", true), ["www.example.com"]);
+  assert.deepEqual(
+    linksOf("www.done.example.com/a then www.partial.example.com/b", true),
+    ["www.done.example.com/a"],
+  );
+  assert.deepEqual(
+    linksOf("www.done.example.com/a then https://partial.example/b", true),
+    ["www.done.example.com/a"],
+  );
 });
 
 test("trailing punctuation and quotes stay outside the link", () => {
@@ -137,7 +236,9 @@ test("a mid-stream URL at the end of the buffer stays plain", () => {
 test("desktop wires links on user and assistant bubbles, not tool lines", () => {
   assert.match(body, /isSafeWebUrl/);
   assert.match(body, /splitWebUrls/);
+  assert.match(body, /linkHref\(piece\.value\)/);
   assert.match(body, /openOsBrowser/);
+  assert.match(body, /event\.preventDefault\(\)/);
   assert.match(body, /function InlineCode/);
   assert.match(body, /child\.type === InlineCode/);
   assert.match(body, /child\.type === MdLink/);
@@ -163,6 +264,7 @@ test("desktop wires links on user and assistant bubbles, not tool lines", () => 
   assert.doesNotMatch(toolBranch, /splitWebUrls/);
   assert.match(plain, /no live markdown, mermaid, or math/);
   assert.match(roadmap, /v0\.82 bare http\(s\) links/);
+  assert.match(roadmap, /v1\.34 www autolinks in completed assistant replies/);
   assert.match(openapi, /version: 0\.18\.0/);
   assert.match(protocol, /version: 0\.18\.0/);
   assert.equal(existsSync(join(here, "computerPane.ts")), false);

@@ -2,10 +2,13 @@
 
 /**
  * v0.82: bare http:// and https:// in chat message text are links.
- * Trailing sentence punctuation stays outside the link. Inline code and
- * fenced code stay plain. javascript:, file:, and any other scheme stay
- * plain. While a bubble is still streaming, a URL that reaches the end
- * of the buffer stays plain so a half-typed address is not a link.
+ * v1.34: GFM www autolinks (`www.example.com`) are links too. The
+ * visible text stays `www...`; the opened URL is `http://` plus that
+ * text. Trailing sentence punctuation stays outside the link. Balanced
+ * parentheses inside a URL stay. Inline code and fenced code stay
+ * plain. javascript:, file:, and any other scheme stay plain. While a
+ * bubble is still streaming, a URL that reaches the end of the buffer
+ * stays plain so a half-typed address is not a link.
  * Keep in lockstep with `ios/SnorlaxBot/WebLinks.swift`.
  */
 
@@ -34,7 +37,16 @@ export function isSafeWebUrl(href: string | undefined | null): boolean {
 }
 
 /**
- * Split plain message text into literal runs and bare http(s) links.
+ * Destination opened for a visible link. www autolinks gain `http://`
+ * (GFM). http(s) text is already absolute.
+ */
+export function linkHref(visible: string): string {
+  if (visible.startsWith("www.")) return `http://${visible}`;
+  return visible;
+}
+
+/**
+ * Split plain message text into literal runs and bare links.
  * `streaming` leaves a URL that still touches the end of the buffer as
  * text. Closed inline code and fenced code (including an unclosed fence,
  * which runs to the end) are never links.
@@ -44,6 +56,23 @@ export function splitWebUrls(
   opts?: { streaming?: boolean },
 ): WebPiece[] {
   const streaming = opts?.streaming ?? false;
+  const http = splitHttp(text, streaming);
+  const pieces: WebPiece[] = [];
+  http.forEach((piece, index) => {
+    if (piece.type === "link") {
+      pieces.push(piece);
+      return;
+    }
+    const tail = streaming && index === http.length - 1;
+    pieces.push(...splitWww(piece.value, tail));
+  });
+  if (pieces.length === 0 || pieces.map((piece) => piece.value).join("") !== text) {
+    return [{ type: "text", value: text }];
+  }
+  return pieces;
+}
+
+function splitHttp(text: string, streaming: boolean): WebPiece[] {
   const blocked = codeRanges(text);
   const pattern = /https?:\/\/[^\s<>"'`]+/gi;
   const pieces: WebPiece[] = [];
@@ -62,6 +91,166 @@ export function splitWebUrls(
   if (last < text.length) pieces.push({ type: "text", value: text.slice(last) });
   if (pieces.length === 0) pieces.push({ type: "text", value: text });
   return pieces;
+}
+
+const WWW_TRAIL = new Set(["?", "!", ".", ",", ":", "*", "_", "~", "'", '"']);
+
+type WwwHit = { start: number; end: number; value: string };
+
+/** GFM extended www autolink. Visible text has no scheme. */
+function splitWww(text: string, streaming: boolean): WebPiece[] {
+  const blocked = codeRanges(text);
+  const pieces: WebPiece[] = [];
+  let last = 0;
+  let cursor = 0;
+  while (cursor < text.length) {
+    const hit = nextWww(text, cursor, blocked, streaming);
+    if (!hit) break;
+    if (hit.start > last) pieces.push({ type: "text", value: text.slice(last, hit.start) });
+    pieces.push({ type: "link", value: hit.value });
+    last = hit.end;
+    cursor = hit.end;
+  }
+  if (last < text.length) pieces.push({ type: "text", value: text.slice(last) });
+  if (pieces.length === 0) pieces.push({ type: "text", value: text });
+  if (pieces.map((piece) => piece.value).join("") !== text) {
+    return [{ type: "text", value: text }];
+  }
+  return pieces;
+}
+
+function nextWww(
+  text: string,
+  from: number,
+  blocked: Array<[number, number]>,
+  streaming: boolean,
+): WwwHit | null {
+  let i = from;
+  while (i < text.length) {
+    const idx = text.indexOf("www.", i);
+    if (idx < 0) return null;
+    if (inRanges(blocked, idx) || !wwwBoundary(text, idx)) {
+      i = idx + 1;
+      continue;
+    }
+    const domainEnd = checkDomain(text, idx);
+    if (domainEnd == null) {
+      i = idx + 4;
+      continue;
+    }
+    let rawEnd = domainEnd;
+    while (rawEnd < text.length && !isWwwSpace(text[rawEnd]!) && text[rawEnd] !== "<") {
+      rawEnd += 1;
+    }
+    if (streaming && rawEnd === text.length) return null;
+    const end = autolinkDelim(text, idx, rawEnd);
+    if (end <= idx + 4) {
+      i = idx + 4;
+      continue;
+    }
+    const value = text.slice(idx, end);
+    if (!isSafeWebUrl(linkHref(value))) {
+      i = idx + 4;
+      continue;
+    }
+    return { start: idx, end, value };
+  }
+  return null;
+}
+
+/** Start of text, whitespace, or GFM delimiters `*_~(` . */
+function wwwBoundary(text: string, index: number): boolean {
+  if (index === 0) return true;
+  const prev = text[index - 1]!;
+  if (prev === "*" || prev === "_" || prev === "~" || prev === "(") return true;
+  return isWwwSpace(prev);
+}
+
+function isWwwSpace(ch: string): boolean {
+  return ch === " " || ch === "\t" || ch === "\n" || ch === "\r" || ch === "\f" || ch === "\v";
+}
+
+/**
+ * cmark-gfm `check_domain`: at least one dot in `www.…`, and no
+ * underscore in the last two segments (unless there are more than
+ * ten dots). Returns the index where the domain scan stopped.
+ */
+function checkDomain(text: string, start: number): number | null {
+  const size = text.length - start;
+  if (size < 4) return null;
+  let np = 0;
+  let uscore1 = 0;
+  let uscore2 = 0;
+  let i = 1;
+  while (i < size - 1) {
+    if (text[start + i] === "\\" && i < size - 2) i += 1;
+    const c = text[start + i]!;
+    if (c === "_") {
+      uscore2 += 1;
+    } else if (c === ".") {
+      uscore1 = uscore2;
+      uscore2 = 0;
+      np += 1;
+    } else if (!isHostChar(c) && c !== "-") {
+      break;
+    }
+    i += 1;
+  }
+  if ((uscore1 > 0 || uscore2 > 0) && np <= 10) return null;
+  if (np === 0) return null;
+  return start + i;
+}
+
+function isHostChar(ch: string): boolean {
+  const code = ch.charCodeAt(0);
+  return (
+    (code >= 48 && code <= 57) ||
+    (code >= 65 && code <= 90) ||
+    (code >= 97 && code <= 122)
+  );
+}
+
+/** GFM extended-autolink path trim: trailing punct, unmatched `)`, entities. */
+function autolinkDelim(text: string, start: number, linkEnd: number): number {
+  let end = linkEnd;
+  let opening = 0;
+  let closing = 0;
+  for (let i = start; i < end; i++) {
+    const c = text[i];
+    if (c === "(") opening += 1;
+    else if (c === ")") closing += 1;
+  }
+  while (end > start) {
+    const c = text[end - 1]!;
+    if (c === ")") {
+      if (closing <= opening) return end;
+      closing -= 1;
+      end -= 1;
+      continue;
+    }
+    if (WWW_TRAIL.has(c)) {
+      end -= 1;
+      continue;
+    }
+    if (c === ";") {
+      let k = end - 2;
+      while (k > start && isAlnum(text[k]!)) k -= 1;
+      if (k >= start && k < end - 2 && text[k] === "&") end = k;
+      else end -= 1;
+      continue;
+    }
+    return end;
+  }
+  return end;
+}
+
+function isAlnum(ch: string): boolean {
+  const code = ch.charCodeAt(0);
+  return (
+    (code >= 48 && code <= 57) ||
+    (code >= 65 && code <= 90) ||
+    (code >= 97 && code <= 122)
+  );
 }
 
 function trimTrailingPunctuation(url: string): string {
