@@ -92,7 +92,7 @@ private struct MarkdownQuoteTaskPieces: View {
             ForEach(Array(blocks.enumerated()), id: \.offset) { _, block in
                 switch block {
                 case .markdown(let text):
-                    MarkdownRun(source: text, names: names, completed: completed)
+                    MarkdownBreakPieces(source: text, names: names, completed: completed)
                 case .quote(let text):
                     MarkdownQuoteBlock(
                         source: text,
@@ -192,6 +192,47 @@ private struct MarkdownTaskRow: View {
         } else {
             row
         }
+    }
+}
+
+/// Completed own-line rules. A message with no rule stays one run.
+private struct MarkdownBreakPieces: View {
+    let source: String
+    let names: [String]
+    var completed: Bool
+
+    var body: some View {
+        let parts = MarkdownBreak.split(source, completed: completed)
+        if parts.count == 1, case .markdown(let text) = parts[0] {
+            MarkdownRun(source: text, names: names, completed: completed)
+        } else {
+            VStack(alignment: .leading, spacing: 8) {
+                ForEach(Array(parts.enumerated()), id: \.offset) { _, part in
+                    switch part {
+                    case .markdown(let text):
+                        MarkdownRun(source: text, names: names, completed: completed)
+                    case .rule:
+                        MarkdownRule()
+                    }
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+    }
+}
+
+/// Thin muted rule. Not a control. No animation.
+private struct MarkdownRule: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    var body: some View {
+        Rectangle()
+            .fill(Color(uiColor: .separator))
+            .frame(height: 1)
+            .frame(maxWidth: .infinity)
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel("Separator")
+            .animation(MarkdownBreak.animation(reduceMotion: reduceMotion), value: reduceMotion)
     }
 }
 
@@ -677,6 +718,10 @@ private struct MarkdownRun: View {
 
     private func wrapping(_ text: AttributedString) -> AttributedString {
         let ns = NSMutableAttributedString(text)
+        // SwiftUI.Font set on AttributedString does not survive this
+        // UITextView round trip. Apply UIFont from the heading intent
+        // onto the NS string so #–###### paint as 16/14 semibold.
+        styleHeadings(text, ns: ns)
         let style = NSMutableParagraphStyle()
         if hugsText {
             style.lineBreakMode = .byClipping
@@ -701,23 +746,59 @@ private struct MarkdownRun: View {
         } catch {
             parsed = AttributedString(src)
         }
-        styleHeadings(&parsed)
         styleInlineCode(&parsed)
         dropUnsafeLinks(&parsed)
         parsed = WebLinks.applyingLinks(parsed, streaming: false)
         highlightMentions(&parsed)
+        markHeadingFonts(&parsed)
         return ChatFind.paint(parsed, query: find.query)
     }
 
-    private func styleHeadings(_ parsed: inout AttributedString) {
+    /// UIFont on the UIKit scope, so a later NS round trip (find highlight,
+    /// wrapping, UITextView) keeps the heading size. SwiftUI.Font does not.
+    private func markHeadingFonts(_ parsed: inout AttributedString) {
         for run in parsed.runs {
-            guard let intent = run.presentationIntent else { continue }
-            for component in intent.components {
-                if case .header(let level) = component.kind {
-                    parsed[run.range].font = level <= 1 ? metrics.headingFont : metrics.bodySemibold
-                }
+            guard let level = headingLevel(run.presentationIntent) else { continue }
+            let size = level <= 1 ? metrics.heading : metrics.body
+            parsed[run.range].uiKit.font = UIFont.systemFont(ofSize: size, weight: .semibold)
+        }
+    }
+
+    private func headingLevel(_ intent: PresentationIntent?) -> Int? {
+        guard let intent else { return nil }
+        var level: Int?
+        for component in intent.components {
+            if case .header(let value) = component.kind {
+                level = value
             }
         }
+        guard let level, level >= 1, level <= 6 else { return nil }
+        return level
+    }
+
+    /// ATX and setext headings. Level 1 is 16pt semibold; levels 2–6
+    /// are 14pt semibold, matching desktop `.assistant-md h1` / `h2`.
+    private func styleHeadings(_ source: AttributedString, ns: NSMutableAttributedString) {
+        for run in source.runs {
+            guard let level = headingLevel(run.presentationIntent) else { continue }
+            let size = level <= 1 ? metrics.heading : metrics.body
+            let font = UIFont.systemFont(ofSize: size, weight: .semibold)
+            let range = Self.utf16Range(run.range, in: source)
+            guard range.location >= 0,
+                  range.length > 0,
+                  range.location + range.length <= ns.length
+            else { continue }
+            ns.addAttribute(.font, value: font, range: range)
+        }
+    }
+
+    private static func utf16Range(
+        _ range: Range<AttributedString.Index>,
+        in source: AttributedString
+    ) -> NSRange {
+        let prefix = String(source.characters[source.startIndex..<range.lowerBound])
+        let slice = String(source.characters[range])
+        return NSRange(location: prefix.utf16.count, length: slice.utf16.count)
     }
 
     private func styleInlineCode(_ parsed: inout AttributedString) {

@@ -1433,6 +1433,43 @@ mark.find-hit.active {
   }
 }
 
+/* v1.33: GFM strikethrough. The tildes are not shown. */
+.assistant-md del.md-strike {
+  text-decoration: line-through;
+  text-decoration-thickness: 1px;
+  transition: none;
+  animation: none;
+}
+
+/* v1.33: thematic break. Thin muted rule, full bubble width.
+   The flex column's align-items would otherwise shrink an hr away. */
+.assistant-md hr {
+  align-self: stretch;
+  box-sizing: border-box;
+  width: 100%;
+  height: 0;
+  margin: 0 0 8px;
+  border: 0;
+  border-top: 1px solid var(--border);
+  background: transparent;
+  color: var(--border);
+  transition: none;
+  animation: none;
+}
+
+.assistant-md hr:last-child {
+  margin-bottom: 0;
+}
+
+/* v1.33: Reduce Motion on → rules and strikes stay static. */
+@media (prefers-reduced-motion: reduce) {
+  .assistant-md hr,
+  .assistant-md del.md-strike {
+    transition: none;
+    animation: none;
+  }
+}
+
 .assistant-md a.md-link {
   color: var(--accent);
   text-decoration: none;
