@@ -92,7 +92,12 @@ private struct MarkdownQuoteTaskPieces: View {
             ForEach(Array(blocks.enumerated()), id: \.offset) { _, block in
                 switch block {
                 case .markdown(let text):
-                    MarkdownBreakPieces(source: text, names: names, completed: completed)
+                    MarkdownBreakPieces(
+                        source: text,
+                        names: names,
+                        completed: completed,
+                        wrapScope: wrapScope
+                    )
                 case .quote(let text):
                     MarkdownQuoteBlock(
                         source: text,
@@ -196,21 +201,33 @@ private struct MarkdownTaskRow: View {
 }
 
 /// Completed own-line rules. A message with no rule stays one run.
+/// List markers are drawn after rules, still before the text view.
 private struct MarkdownBreakPieces: View {
     let source: String
     let names: [String]
     var completed: Bool
+    var wrapScope: String = ""
 
     var body: some View {
         let parts = MarkdownBreak.split(source, completed: completed)
         if parts.count == 1, case .markdown(let text) = parts[0] {
-            MarkdownRun(source: text, names: names, completed: completed)
+            MarkdownListPieces(
+                source: text,
+                names: names,
+                completed: completed,
+                wrapScope: wrapScope
+            )
         } else {
             VStack(alignment: .leading, spacing: 8) {
                 ForEach(Array(parts.enumerated()), id: \.offset) { _, part in
                     switch part {
                     case .markdown(let text):
-                        MarkdownRun(source: text, names: names, completed: completed)
+                        MarkdownListPieces(
+                            source: text,
+                            names: names,
+                            completed: completed,
+                            wrapScope: wrapScope
+                        )
                     case .rule:
                         MarkdownRule()
                     }
@@ -218,6 +235,91 @@ private struct MarkdownBreakPieces: View {
             }
             .frame(maxWidth: .infinity, alignment: .leading)
         }
+    }
+}
+
+/// Completed lists. An ordered list keeps its start number.
+/// Nested lists render under the item with their own marker.
+/// Streaming stays one markdown run.
+private struct MarkdownListPieces: View {
+    let source: String
+    let names: [String]
+    var completed: Bool
+    var wrapScope: String
+
+    var body: some View {
+        let blocks = MarkdownList.split(source, completed: completed)
+        if blocks.count == 1, case .markdown(let text) = blocks[0] {
+            MarkdownRun(source: text, names: names, completed: completed)
+        } else {
+            VStack(alignment: .leading, spacing: 8) {
+                ForEach(Array(blocks.enumerated()), id: \.offset) { _, block in
+                    switch block {
+                    case .markdown(let text):
+                        MarkdownRun(source: text, names: names, completed: completed)
+                    case .list(let group):
+                        MarkdownListBlock(
+                            group: group,
+                            names: names,
+                            completed: completed,
+                            wrapScope: wrapScope
+                        )
+                    }
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+    }
+}
+
+/// Markers sit beside the item. The item body is markdown again,
+/// so a nested list indents under this marker.
+private struct MarkdownListBlock: View {
+    let group: MarkdownList.Group
+    let names: [String]
+    var completed: Bool
+    var wrapScope: String
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.markdownListDepth) private var depth
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            ForEach(Array(group.items.enumerated()), id: \.offset) { index, item in
+                HStack(alignment: .top, spacing: 8) {
+                    Text(
+                        MarkdownList.marker(
+                            ordered: group.ordered,
+                            start: group.start,
+                            index: index,
+                            depth: depth
+                        )
+                    )
+                    .transcriptFont(14)
+                    .fixedSize(horizontal: true, vertical: true)
+                    .accessibilityLabel(
+                        MarkdownList.markerLabel(
+                            ordered: group.ordered,
+                            start: group.start,
+                            index: index,
+                            depth: depth
+                        )
+                    )
+                    if !item.isEmpty {
+                        AssistantMarkdown(
+                            text: item,
+                            names: names,
+                            completed: completed,
+                            wrapScope: wrapScope
+                        )
+                        .environment(\.markdownListDepth, depth + 1)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .animation(MarkdownList.animation(reduceMotion: reduceMotion), value: group.items)
     }
 }
 

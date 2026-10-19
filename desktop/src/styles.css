@@ -1345,12 +1345,28 @@ mark.find-hit.active {
   font-weight: 600;
 }
 
+/* v1.36: ordered lists keep the start number on the ol element.
+   Nested lists indent and use their own marker. */
 .assistant-md ul {
+  list-style: disc outside;
   padding-left: 1.2em;
 }
 
 .assistant-md ol {
+  list-style: decimal outside;
   padding-left: 1.2em;
+}
+
+.assistant-md ul ul,
+.assistant-md ol ul {
+  list-style-type: circle;
+}
+
+.assistant-md ul ul ul,
+.assistant-md ol ul ul,
+.assistant-md ul ol ul,
+.assistant-md ol ol ul {
+  list-style-type: square;
 }
 
 .assistant-md blockquote {
