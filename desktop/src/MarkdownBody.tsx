@@ -304,6 +304,15 @@ function MarkdownChunk({
           if (block) return block;
           return <p>{enrich(children)}</p>;
         },
+        // v1.36: CommonMark already sets `start` when the list does
+        // not begin at 1. Forward it so a later custom `ol` cannot
+        // drop the number. Nested lists stay inside the item.
+        ol: ({ start, children }) =>
+          typeof start === "number" ? (
+            <ol start={start}>{children}</ol>
+          ) : (
+            <ol>{children}</ol>
+          ),
         li: ({ children }) => <li>{enrich(children)}</li>,
         h1: ({ children }) => <h1>{enrich(children)}</h1>,
         h2: ({ children }) => <h2>{enrich(children)}</h2>,

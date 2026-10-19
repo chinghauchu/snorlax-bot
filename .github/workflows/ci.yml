@@ -153,3 +153,4 @@ jobs:
           python3 ios/scripts/test_ios_markdown_break.py
           python3 ios/scripts/test_ios_markdown_autolink.py
           python3 ios/scripts/test_ios_link_preview.py
+          python3 ios/scripts/test_ios_markdown_list.py
