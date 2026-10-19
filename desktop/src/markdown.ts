@@ -23,7 +23,7 @@ export function stabilizeMarkdown(src: string): string {
   return src.endsWith("\n") ? `${src}${closer}` : `${src}\n${closer}`;
 }
 
-export { isSafeWebUrl, splitWebUrls, type WebPiece } from "./linkify.ts";
+export { isSafeWebUrl, linkHref, splitWebUrls, type WebPiece } from "./linkify.ts";
 
 export function fenceLanguage(className?: string | null): string {
   const match = /(?:^|\s)language-([A-Za-z0-9_+-]+)/.exec(className || "");
