@@ -23,7 +23,7 @@
  * Keep in lockstep with `ios/SnorlaxBot/MarkdownAutolink.swift`.
  */
 
-import { isSafeWebUrl } from "./linkify.ts";
+import { extendedMailtoAddress, isSafeWebUrl } from "./linkify.ts";
 import { stashMarkdownText } from "./markdownEscape.ts";
 import { fenceRanges, inRange, inlineCodeRanges, type Range } from "./math.ts";
 
@@ -48,9 +48,13 @@ export function safeLinkHref(href: string | null | undefined): string {
   return "";
 }
 
-/** `mailto:user@example.com` and nothing after the address. */
+/**
+ * `mailto:` plus an email and nothing else. CommonMark addresses
+ * (including `foo@bar`) and GFM extended addresses (a dot in the
+ * domain, `_` allowed) both open. A query or a fragment does not.
+ */
 export function isSafeMailto(href: string): boolean {
-  return mailtoAddress(href) != null;
+  return mailtoAddress(href) != null || extendedMailtoAddress(href) != null;
 }
 
 /** Email address inside a safe mailto URL, or null. */

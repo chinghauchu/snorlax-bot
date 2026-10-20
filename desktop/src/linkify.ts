@@ -9,6 +9,11 @@
  * plain. javascript:, file:, and any other scheme stay plain. While a
  * bubble is still streaming, a URL that reaches the end of the buffer
  * stays plain so a half-typed address is not a link.
+ * v1.45: GFM extended email autolinks on a completed assistant reply.
+ * `foo@bar.baz` is a `mailto:` link whose text is the address. A
+ * `mailto:` prefix stays in the text. `xmpp:` is not linked. Pass
+ * `emails: true` only for that completed reply; user text and a
+ * streaming bubble do not.
  * Keep in lockstep with `ios/SnorlaxBot/WebLinks.swift`.
  */
 
@@ -38,11 +43,63 @@ export function isSafeWebUrl(href: string | undefined | null): boolean {
 
 /**
  * Destination opened for a visible link. www autolinks gain `http://`
- * (GFM). http(s) text is already absolute.
+ * (GFM). A bare email or `mailto:` email gains `mailto:`. http(s) text
+ * is already absolute.
  */
 export function linkHref(visible: string): string {
   if (visible.startsWith("www.")) return `http://${visible}`;
+  const mail = emailHref(visible);
+  if (mail) return mail;
   return visible;
+}
+
+/**
+ * `mailto:` plus the address when `visible` is a GFM extended email,
+ * or already starts with `mailto:`. Otherwise null.
+ */
+export function emailHref(visible: string): string | null {
+  const address = emailAddressOf(visible);
+  if (!address) return null;
+  return `mailto:${address}`;
+}
+
+/**
+ * Address inside a `mailto:` URL when it is a GFM extended email.
+ * A query or a fragment is rejected. CommonMark addresses without a
+ * dot in the domain stay on the angle-bracket path.
+ */
+export function extendedMailtoAddress(href: string): string | null {
+  let url: URL;
+  try {
+    url = new URL(href);
+  } catch {
+    return null;
+  }
+  if (url.protocol !== "mailto:") return null;
+  if (url.search || url.hash) return null;
+  let address = url.pathname.replace(/^\/+/, "");
+  if (!address) address = href.replace(/^mailto:/i, "").replace(/^\/+/, "");
+  try {
+    address = decodeURIComponent(address);
+  } catch {
+    return null;
+  }
+  if (!isExtendedEmail(address)) return null;
+  return address;
+}
+
+/**
+ * GFM extended email. Local part is alphanumeric or `.` `-` `_` `+`.
+ * Domain labels are alphanumeric or `-` `_`, at least one dot, and the
+ * address does not end in `-` or `_`. `+` is only allowed before `@`.
+ */
+export function isExtendedEmail(address: string): boolean {
+  const at = address.indexOf("@");
+  if (at <= 0 || address.indexOf("@", at + 1) >= 0) return false;
+  const local = address.slice(0, at);
+  const domain = address.slice(at + 1);
+  if (!isEmailLocal(local) || !isEmailDomain(domain)) return false;
+  return true;
 }
 
 /**
@@ -53,9 +110,10 @@ export function linkHref(visible: string): string {
  */
 export function splitWebUrls(
   text: string,
-  opts?: { streaming?: boolean },
+  opts?: { streaming?: boolean; emails?: boolean },
 ): WebPiece[] {
   const streaming = opts?.streaming ?? false;
+  const emails = opts?.emails ?? false;
   const http = splitHttp(text, streaming);
   const pieces: WebPiece[] = [];
   http.forEach((piece, index) => {
@@ -64,7 +122,19 @@ export function splitWebUrls(
       return;
     }
     const tail = streaming && index === http.length - 1;
-    pieces.push(...splitWww(piece.value, tail));
+    const www = splitWww(piece.value, tail);
+    if (!emails) {
+      pieces.push(...www);
+      return;
+    }
+    www.forEach((part, wwwIndex) => {
+      if (part.type === "link") {
+        pieces.push(part);
+        return;
+      }
+      const emailTail = tail && wwwIndex === www.length - 1;
+      pieces.push(...splitEmails(part.value, emailTail));
+    });
   });
   if (pieces.length === 0 || pieces.map((piece) => piece.value).join("") !== text) {
     return [{ type: "text", value: text }];
@@ -400,4 +470,210 @@ function findInlineClose(text: string, from: number, run: number): number | null
 
 function stripCr(line: string): string {
   return line.endsWith("\r") ? line.slice(0, -1) : line;
+}
+
+type EmailHit = { start: number; end: number; value: string };
+
+/**
+ * GFM extended email autolink. A trailing `.` stays outside. An
+ * address that still touches the end of a streaming buffer stays
+ * plain. Code spans, fences, and indented code stay plain.
+ */
+function splitEmails(text: string, streaming: boolean): WebPiece[] {
+  const blocked = emailBlocked(text);
+  const pieces: WebPiece[] = [];
+  let last = 0;
+  let cursor = 0;
+  while (cursor < text.length) {
+    const hit = nextEmail(text, cursor, blocked, streaming);
+    if (!hit) break;
+    if (hit.start > last) pieces.push({ type: "text", value: text.slice(last, hit.start) });
+    pieces.push({ type: "link", value: hit.value });
+    last = hit.end;
+    cursor = hit.end;
+  }
+  if (last < text.length) pieces.push({ type: "text", value: text.slice(last) });
+  if (pieces.length === 0) pieces.push({ type: "text", value: text });
+  if (pieces.map((piece) => piece.value).join("") !== text) {
+    return [{ type: "text", value: text }];
+  }
+  return pieces;
+}
+
+function nextEmail(
+  text: string,
+  from: number,
+  blocked: Array<[number, number]>,
+  streaming: boolean,
+): EmailHit | null {
+  let i = from;
+  while (i < text.length) {
+    const at = text.indexOf("@", i);
+    if (at < 0) return null;
+    if (inRanges(blocked, at)) {
+      i = at + 1;
+      continue;
+    }
+    let local = at;
+    while (local > 0 && isEmailLocalChar(text[local - 1]!) && !inRanges(blocked, local - 1)) {
+      local -= 1;
+    }
+    if (local === at) {
+      i = at + 1;
+      continue;
+    }
+    const domainEnd = readEmailDomain(text, at + 1, blocked);
+    if (domainEnd == null || !isExtendedEmail(text.slice(local, domainEnd))) {
+      i = at + 1;
+      continue;
+    }
+    if (streaming && domainEnd === text.length) return null;
+    const visible = mailtoPrefixStart(text, local, blocked);
+    if (visible === local && local > 0 && text[local - 1] === ":") {
+      i = at + 1;
+      continue;
+    }
+    return { start: visible, end: domainEnd, value: text.slice(visible, domainEnd) };
+  }
+  return null;
+}
+
+function emailAddressOf(visible: string): string | null {
+  let address = visible;
+  if (visible.length >= 7 && visible.slice(0, 7).toLowerCase() === "mailto:") {
+    address = visible.slice(7);
+  }
+  if (!isExtendedEmail(address)) return null;
+  return address;
+}
+
+function isEmailLocal(local: string): boolean {
+  if (!local) return false;
+  for (const ch of local) {
+    if (!isEmailLocalChar(ch)) return false;
+  }
+  return true;
+}
+
+function isEmailDomain(domain: string): boolean {
+  if (!domain || domain.endsWith("-") || domain.endsWith("_")) return false;
+  const labels = domain.split(".");
+  if (labels.length < 2) return false;
+  for (const label of labels) {
+    if (!label) return false;
+    for (const ch of label) {
+      if (!isEmailDomainChar(ch)) return false;
+    }
+  }
+  return true;
+}
+
+function isEmailLocalChar(ch: string): boolean {
+  return isAlnum(ch) || ch === "." || ch === "-" || ch === "_" || ch === "+";
+}
+
+function isEmailDomainChar(ch: string): boolean {
+  return isAlnum(ch) || ch === "-" || ch === "_";
+}
+
+/** Domain after `@`, or null when it has no dot. Trailing `.` stays out. */
+function readEmailDomain(
+  text: string,
+  start: number,
+  blocked: Array<[number, number]>,
+): number | null {
+  let j = start;
+  let labels = 0;
+  let dots = 0;
+  if (j >= text.length || inRanges(blocked, j) || !isEmailDomainChar(text[j]!)) return null;
+  while (j < text.length && !inRanges(blocked, j)) {
+    if (isEmailDomainChar(text[j]!)) {
+      if (labels === dots) labels += 1;
+      j += 1;
+      continue;
+    }
+    if (
+      text[j] === "." &&
+      j + 1 < text.length &&
+      !inRanges(blocked, j + 1) &&
+      isEmailDomainChar(text[j + 1]!)
+    ) {
+      dots += 1;
+      j += 1;
+      continue;
+    }
+    break;
+  }
+  if (dots < 1 || labels < 2) return null;
+  return j;
+}
+
+/** Include a leading `mailto:` when it is its own token. */
+function mailtoPrefixStart(
+  text: string,
+  localStart: number,
+  blocked: Array<[number, number]>,
+): number {
+  if (localStart < 7) return localStart;
+  const prefixStart = localStart - 7;
+  if (text.slice(prefixStart, localStart).toLowerCase() !== "mailto:") return localStart;
+  if (inRanges(blocked, prefixStart)) return localStart;
+  if (prefixStart > 0 && isAlnum(text[prefixStart - 1]!)) return localStart;
+  return prefixStart;
+}
+
+function emailBlocked(text: string): Array<[number, number]> {
+  const fences = codeRanges(text);
+  return fences.concat(indentedEmailRanges(text, fences));
+}
+
+/** Indented code (blank line, then 4 columns) so an address there stays plain. */
+function indentedEmailRanges(
+  text: string,
+  fences: Array<[number, number]>,
+): Array<[number, number]> {
+  const ranges: Array<[number, number]> = [];
+  let inCode = false;
+  let codeStart = 0;
+  let prevBlank = true;
+  let i = 0;
+  while (i <= text.length) {
+    const nl = text.indexOf("\n", i);
+    const end = nl < 0 ? text.length : nl;
+    const inFence = fences.some(([start, stop]) => i >= start && i < stop);
+    if (inFence) {
+      if (inCode) {
+        ranges.push([codeStart, i]);
+        inCode = false;
+      }
+      prevBlank = false;
+    } else {
+      const line = text.slice(i, end);
+      const indent = emailIndent(line);
+      const blank = line.trim() === "";
+      if (inCode && !blank && indent < 4) {
+        ranges.push([codeStart, i]);
+        inCode = false;
+      }
+      if (!inCode && prevBlank && !blank && indent >= 4) {
+        inCode = true;
+        codeStart = i;
+      }
+      prevBlank = blank;
+    }
+    if (nl < 0) break;
+    i = nl + 1;
+  }
+  if (inCode) ranges.push([codeStart, text.length]);
+  return ranges;
+}
+
+function emailIndent(line: string): number {
+  let columns = 0;
+  for (const ch of line) {
+    if (ch === " ") columns += 1;
+    else if (ch === "\t") columns += 4 - (columns % 4);
+    else break;
+  }
+  return columns;
 }

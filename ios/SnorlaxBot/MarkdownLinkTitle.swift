@@ -191,6 +191,11 @@ enum MarkdownLinkTitle {
         return !labelLooksLikeDest(entry.label, entry.dest, entry.url)
     }
 
+    /// A rendered run whose text is the destination itself (a bare
+    /// http(s) URL, a `www.` autolink, or a v1.45 GFM email) is not the
+    /// labeled link that owns a title. `mailto:user@example.com` already
+    /// matches the absolute string. A bare `user@example.com` does not,
+    /// so it is recognized here and does not take the tooltip.
     private static func runLooksBare(_ text: String, _ link: URL) -> Bool {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         if trimmed == link.absoluteString { return true }
@@ -200,6 +205,7 @@ enum MarkdownLinkTitle {
                 return true
             }
         }
+        if let address = mailtoAddress(link), sameEmail(trimmed, address) { return true }
         return false
     }
 
@@ -209,7 +215,32 @@ enum MarkdownLinkTitle {
         if let decoded = url.absoluteString.removingPercentEncoding, lab == decoded { return true }
         if url.absoluteString == "http://" + lab || url.absoluteString == "https://" + lab { return true }
         if dest == "http://" + lab || dest == "https://" + lab { return true }
+        if let address = mailtoAddress(url), sameEmail(lab, address) || sameEmail(lab, "mailto:" + address) {
+            return true
+        }
+        if dest.lowercased().hasPrefix("mailto:") {
+            let rest = String(dest.dropFirst("mailto:".count))
+            if sameEmail(lab, rest) || sameEmail(lab, dest) { return true }
+        }
         return false
+    }
+
+    /// Address of a `mailto:` URL, without the scheme. Nil for other links.
+    private static func mailtoAddress(_ url: URL) -> String? {
+        guard url.scheme?.lowercased() == "mailto" else { return nil }
+        var address = url.absoluteString
+        guard let colon = address.firstIndex(of: ":") else { return nil }
+        address = String(address[address.index(after: colon)...])
+        if address.hasPrefix("//") { address.removeFirst(2) }
+        if let decoded = address.removingPercentEncoding { address = decoded }
+        if let cut = address.firstIndex(where: { $0 == "?" || $0 == "#" }) {
+            address = String(address[..<cut])
+        }
+        return address.isEmpty ? nil : address
+    }
+
+    private static func sameEmail(_ left: String, _ right: String) -> Bool {
+        left.caseInsensitiveCompare(right) == .orderedSame
     }
 
     private static func sameDestination(_ link: URL, _ expected: URL) -> Bool {
