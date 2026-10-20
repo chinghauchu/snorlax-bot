@@ -868,18 +868,23 @@ private struct MarkdownRun: View {
     }
 
     private func attributed(_ src: String) -> AttributedString {
+        // Math delimiters are already split out. Escapes and character
+        // references become tokens before the markdown parser, then
+        // paint as text after autolinks so they cannot form syntax or HTML.
+        let source = MarkdownEscape.protect(src, completed: completed)
         var parsed: AttributedString
         do {
             var options = AttributedString.MarkdownParsingOptions()
             options.interpretedSyntax = .full
             options.failurePolicy = .returnPartiallyParsedIfPossible
-            parsed = try AttributedString(markdown: src, options: options)
+            parsed = try AttributedString(markdown: source, options: options)
         } catch {
-            parsed = AttributedString(src)
+            parsed = AttributedString(source)
         }
         styleInlineCode(&parsed)
-        dropUnsafeLinks(&parsed)
         parsed = WebLinks.applyingLinks(parsed, streaming: false)
+        parsed = MarkdownEscape.restore(parsed)
+        dropUnsafeLinks(&parsed)
         highlightMentions(&parsed)
         markHeadingFonts(&parsed)
         MarkdownFootnote.applyMarkers(&parsed, baseSize: metrics.body)

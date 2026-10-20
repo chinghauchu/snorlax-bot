@@ -179,6 +179,9 @@ enum MarkdownTable {
             }
             if ch == "\\" {
                 if index + 1 < chars.count {
+                    // Keep the backslash. Only `\|` fails to split; the
+                    // inline escape pass turns `\*` into a literal asterisk.
+                    current.append(ch)
                     current.append(chars[index + 1])
                     index += 2
                     continue

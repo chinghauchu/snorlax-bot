@@ -211,7 +211,9 @@ export function splitRow(line: string): string[] | null {
     }
     if (ch === "\\") {
       if (i + 1 < body.length) {
-        current += body[i + 1];
+        // Keep the backslash. Only `\|` fails to split; the inline
+        // escape pass turns `\*` into a literal asterisk.
+        current += ch + (body[i + 1] ?? "");
         i += 2;
         continue;
       }
