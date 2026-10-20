@@ -47,6 +47,10 @@ import {
   stabilizeMarkdown,
 } from "./markdown";
 import {
+  protectMarkdownEscapes,
+  restoreMarkdownEscapes,
+} from "./markdownEscape";
+import {
   breakAnimates,
   remarkStrikethrough,
   splitThematicBreaks,
@@ -324,7 +328,8 @@ function MarkdownChunk({
   order: FenceOrder;
 }) {
   const findQuery = useFindQuery();
-  const { text: source, slots } = extractMath(text);
+  const { text: mathText, slots } = extractMath(text);
+  const source = protectMarkdownEscapes(mathText, completed);
   const enrich = (children?: ReactNode) =>
     enrichChildren(children, knownNames, completed, slots, findQuery);
   return (
@@ -347,7 +352,10 @@ function MarkdownChunk({
           </CodeFence>
         ),
         code: InlineCode,
-        img: ({ alt }) => (alt ? <span>{alt}</span> : null),
+        img: ({ alt }) => {
+          const shown = typeof alt === "string" ? restoreMarkdownEscapes(alt) : "";
+          return shown ? <span>{shown}</span> : null;
+        },
         del: ({ children }) => <del className="md-strike">{enrich(children)}</del>,
         hr: () => <hr className="md-rule" />,
         p: ({ children }) => {
@@ -465,7 +473,8 @@ function TableCellText({
   completed: boolean;
 }) {
   const findQuery = useFindQuery();
-  const { text: source, slots } = extractMath(text);
+  const { text: mathText, slots } = extractMath(text);
+  const source = protectMarkdownEscapes(mathText, completed);
   if (!source) return null;
   const enrich = (children?: ReactNode) =>
     enrichChildren(children, knownNames, completed, slots, findQuery);
@@ -480,7 +489,10 @@ function TableCellText({
         ),
         code: InlineCode,
         del: ({ children }) => <del className="md-strike">{enrich(children)}</del>,
-        img: ({ alt }) => (alt ? <span>{alt}</span> : null),
+        img: ({ alt }) => {
+          const shown = typeof alt === "string" ? restoreMarkdownEscapes(alt) : "";
+          return shown ? <span>{shown}</span> : null;
+        },
         pre: ({ children }) => <>{children}</>,
         p: ({ children }) => <>{enrich(children)}</>,
       }}
@@ -502,7 +514,8 @@ export function MdLink({
 }) {
   const idRef = useRef(0);
   if (idRef.current === 0) idRef.current = nextLinkStatusId();
-  const url = isSafeWebUrl(href) && href ? href : "";
+  const rawHref = restoreMarkdownEscapes(href ?? "");
+  const url = isSafeWebUrl(rawHref) && rawHref ? rawHref : "";
   const reveal = preview && url.length > 0;
   useEffect(() => {
     if (!reveal) return;
@@ -547,8 +560,10 @@ export function MdLink({
 function FootnoteMarkers({ children }: { children?: ReactNode }) {
   const scope = useFootnoteScope();
   return Children.map(children, (child, index) => {
-    if (typeof child !== "string" || !child.includes("§§SBFN")) return child;
-    return splitFootnoteTokens(child).map((piece, inner) =>
+    if (typeof child !== "string") return child;
+    const shown = restoreMarkdownEscapes(child);
+    if (!shown.includes("§§SBFN")) return shown;
+    return splitFootnoteTokens(shown).map((piece, inner) =>
       piece.type === "ref" ? (
         <FootnoteRefButton
           key={`${index}-${inner}`}
@@ -580,9 +595,17 @@ export function HttpsText({
 }) {
   const fromContext = useFindQuery();
   const query = findQuery ?? fromContext;
-  const pieces = splitWebUrls(text, { streaming });
+  const rawPieces = splitWebUrls(text, { streaming });
+  const hasEscape = text.includes("§§SBE");
+  const pieces = hasEscape
+    ? rawPieces.map((piece) => ({
+        ...piece,
+        value: restoreMarkdownEscapes(piece.value),
+      }))
+    : rawPieces;
+  const findText = hasEscape ? pieces.map((piece) => piece.value).join("") : text;
   const hits = findQueryActive(query)
-    ? findHits([{ id: "row", text }], query)
+    ? findHits([{ id: "row", text: findText }], query)
     : [];
   let offset = 0;
   return (
