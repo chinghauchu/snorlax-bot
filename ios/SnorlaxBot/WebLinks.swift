@@ -9,6 +9,11 @@ import SwiftUI
 /// plain. javascript:, file:, and any other scheme stay plain. While a
 /// bubble is still streaming, a URL that reaches the end of the buffer
 /// stays plain so a half-typed address is not a link.
+/// v1.45: GFM extended email autolinks on a completed assistant reply.
+/// `foo@bar.baz` is a `mailto:` link whose text is the address. A
+/// `mailto:` prefix stays in the text. A scheme other than mailto
+/// before the address stays plain. Pass `emails: true` only for
+/// that completed reply; user text and a streaming bubble do not.
 /// Keep in lockstep with `desktop/src/linkify.ts`.
 enum WebLinks {
     struct Piece: Equatable {
@@ -25,6 +30,7 @@ enum WebLinks {
 
     static func allows(_ url: URL) -> Bool {
         if isMailtoEmail(url) { return true }
+        if isExtendedMailto(url) { return true }
         let scheme = url.scheme?.lowercased()
         guard scheme == "http" || scheme == "https" else { return false }
         guard let host = url.host, !host.isEmpty else { return false }
@@ -57,6 +63,9 @@ enum WebLinks {
     )
 
     static func url(_ raw: String) -> URL? {
+        if let href = emailHref(raw), let parsed = URL(string: href), allows(parsed) {
+            return parsed
+        }
         let candidate = raw.hasPrefix("www.") ? "http://" + raw : raw
         if let parsed = URL(string: candidate), allows(parsed) { return parsed }
         // Foundation rejects some characters that are valid in real links.
@@ -70,7 +79,9 @@ enum WebLinks {
     }
 
     /// Plain text. `streaming` leaves a URL that still touches the end as text.
-    static func split(_ text: String, streaming: Bool) -> [Piece] {
+    /// `emails` adds GFM extended email autolinks. Completed assistant
+    /// markdown passes true. User text and a streaming bubble do not.
+    static func split(_ text: String, streaming: Bool, emails: Bool = false) -> [Piece] {
         let http = splitHttp(text, streaming: streaming)
         var pieces: [Piece] = []
         for (index, piece) in http.enumerated() {
@@ -79,7 +90,19 @@ enum WebLinks {
                 continue
             }
             let tail = streaming && index == http.count - 1
-            pieces.append(contentsOf: splitWww(piece.value, streaming: tail))
+            let www = splitWww(piece.value, streaming: tail)
+            if !emails {
+                pieces.append(contentsOf: www)
+                continue
+            }
+            for (wwwIndex, part) in www.enumerated() {
+                if part.kind == .link {
+                    pieces.append(part)
+                    continue
+                }
+                let emailTail = tail && wwwIndex == www.count - 1
+                pieces.append(contentsOf: splitEmails(part.value, streaming: emailTail))
+            }
         }
         if pieces.isEmpty || pieces.map(\.value).joined() != text {
             return [Piece(kind: .text, value: text)]
@@ -148,7 +171,7 @@ enum WebLinks {
         for run in source.runs {
             if shouldSkip(run) { continue }
             let raw = String(source[run.range].characters)
-            let pieces = split(raw, streaming: streaming)
+            let pieces = split(raw, streaming: streaming, emails: !streaming)
             guard pieces.map(\.value).joined() == raw else { continue }
             guard pieces.contains(where: { $0.kind == .link }) else { continue }
             var cursor = run.range.lowerBound
@@ -500,5 +523,252 @@ enum WebLinks {
 
     private static func stripCr(_ line: String) -> String {
         line.hasSuffix("\r") ? String(line.dropLast()) : line
+    }
+
+    /// `mailto:` plus a GFM extended email, with no query and no fragment.
+    private static func isExtendedMailto(_ url: URL) -> Bool {
+        guard url.scheme?.lowercased() == "mailto" else { return false }
+        if url.query != nil || url.fragment != nil { return false }
+        var address = url.absoluteString
+        guard let colon = address.firstIndex(of: ":") else { return false }
+        address = String(address[address.index(after: colon)...])
+        if address.hasPrefix("//") { address.removeFirst(2) }
+        if let decoded = address.removingPercentEncoding { address = decoded }
+        return isExtendedEmail(address)
+    }
+
+    /// GFM extended email. The whole string must match.
+    static func isExtendedEmail(_ address: String) -> Bool {
+        guard let at = address.firstIndex(of: "@"), at > address.startIndex else { return false }
+        let local = address[..<at]
+        let domainStart = address.index(after: at)
+        guard domainStart < address.endIndex else { return false }
+        let domain = address[domainStart...]
+        if domain.contains("@") { return false }
+        return isEmailLocal(String(local)) && isEmailDomain(String(domain))
+    }
+
+    /// `mailto:` plus the address, or nil when `visible` is not an extended email.
+    static func emailHref(_ visible: String) -> String? {
+        guard let address = emailAddressOf(visible) else { return nil }
+        return "mailto:" + address
+    }
+
+    private static func emailAddressOf(_ visible: String) -> String? {
+        var address = visible
+        if visible.count >= 7, visible.prefix(7).lowercased() == "mailto:" {
+            address = String(visible.dropFirst(7))
+        }
+        guard isExtendedEmail(address) else { return nil }
+        return address
+    }
+
+    private static func isEmailLocal(_ local: String) -> Bool {
+        guard !local.isEmpty else { return false }
+        return local.allSatisfy { isEmailLocalChar($0) }
+    }
+
+    private static func isEmailDomain(_ domain: String) -> Bool {
+        guard !domain.isEmpty, !domain.hasSuffix("-"), !domain.hasSuffix("_") else { return false }
+        let labels = domain.split(separator: ".", omittingEmptySubsequences: false)
+        guard labels.count >= 2 else { return false }
+        return labels.allSatisfy { label in
+            !label.isEmpty && label.allSatisfy { isEmailDomainChar($0) }
+        }
+    }
+
+    private static func isEmailLocalChar(_ ch: Character) -> Bool {
+        isAlnum(ch) || ch == "." || ch == "-" || ch == "_" || ch == "+"
+    }
+
+    private static func isEmailDomainChar(_ ch: Character) -> Bool {
+        isAlnum(ch) || ch == "-" || ch == "_"
+    }
+
+    private struct EmailHit {
+        var start: Int
+        var end: Int
+        var value: String
+    }
+
+    /// GFM extended email autolink. Code, fences, and indented code stay plain.
+    private static func splitEmails(_ text: String, streaming: Bool) -> [Piece] {
+        let chars = Array(text)
+        let blocked = emailBlocked(text)
+        var pieces: [Piece] = []
+        var last = 0
+        var cursor = 0
+        while cursor < chars.count {
+            guard let hit = nextEmail(chars, cursor, blocked, streaming) else { break }
+            if hit.start > last {
+                pieces.append(Piece(kind: .text, value: String(chars[last..<hit.start])))
+            }
+            pieces.append(Piece(kind: .link, value: hit.value))
+            last = hit.end
+            cursor = hit.end
+        }
+        if last < chars.count {
+            pieces.append(Piece(kind: .text, value: String(chars[last...])))
+        }
+        if pieces.isEmpty || pieces.map(\.value).joined() != text {
+            return [Piece(kind: .text, value: text)]
+        }
+        return pieces
+    }
+
+    private static func nextEmail(
+        _ chars: [Character],
+        _ from: Int,
+        _ blocked: [Range<Int>],
+        _ streaming: Bool
+    ) -> EmailHit? {
+        var i = from
+        while i < chars.count {
+            guard let at = indexOfAt(chars, i) else { return nil }
+            if blocked.contains(where: { $0.contains(at) }) {
+                i = at + 1
+                continue
+            }
+            var local = at
+            while local > 0 && isEmailLocalChar(chars[local - 1]) && !blocked.contains(where: { $0.contains(local - 1) }) {
+                local -= 1
+            }
+            if local == at {
+                i = at + 1
+                continue
+            }
+            guard let domainEnd = readEmailDomain(chars, at + 1, blocked) else {
+                i = at + 1
+                continue
+            }
+            let address = String(chars[local..<domainEnd])
+            if !isExtendedEmail(address) {
+                i = at + 1
+                continue
+            }
+            if streaming && domainEnd == chars.count { return nil }
+            let visible = mailtoPrefixStart(chars, local, blocked)
+            if visible == local && local > 0 && chars[local - 1] == ":" {
+                i = at + 1
+                continue
+            }
+            return EmailHit(start: visible, end: domainEnd, value: String(chars[visible..<domainEnd]))
+        }
+        return nil
+    }
+
+    private static func indexOfAt(_ chars: [Character], _ from: Int) -> Int? {
+        var i = from
+        while i < chars.count {
+            if chars[i] == "@" { return i }
+            i += 1
+        }
+        return nil
+    }
+
+    private static func readEmailDomain(
+        _ chars: [Character],
+        _ start: Int,
+        _ blocked: [Range<Int>]
+    ) -> Int? {
+        var j = start
+        var labels = 0
+        var dots = 0
+        if j >= chars.count || blocked.contains(where: { $0.contains(j) }) || !isEmailDomainChar(chars[j]) {
+            return nil
+        }
+        while j < chars.count && !blocked.contains(where: { $0.contains(j) }) {
+            if isEmailDomainChar(chars[j]) {
+                if labels == dots { labels += 1 }
+                j += 1
+                continue
+            }
+            if chars[j] == ".",
+               j + 1 < chars.count,
+               !blocked.contains(where: { $0.contains(j + 1) }),
+               isEmailDomainChar(chars[j + 1])
+            {
+                dots += 1
+                j += 1
+                continue
+            }
+            break
+        }
+        if dots < 1 || labels < 2 { return nil }
+        return j
+    }
+
+    private static func mailtoPrefixStart(
+        _ chars: [Character],
+        _ localStart: Int,
+        _ blocked: [Range<Int>]
+    ) -> Int {
+        guard localStart >= 7 else { return localStart }
+        let prefixStart = localStart - 7
+        let prefix = String(chars[prefixStart..<localStart])
+        guard prefix.lowercased() == "mailto:" else { return localStart }
+        if blocked.contains(where: { $0.contains(prefixStart) }) { return localStart }
+        if prefixStart > 0 && isAlnum(chars[prefixStart - 1]) { return localStart }
+        return prefixStart
+    }
+
+    private static func emailBlocked(_ text: String) -> [Range<Int>] {
+        let fences = codeRanges(in: text).map { range -> Range<Int> in
+            let lo = text.distance(from: text.startIndex, to: range.lowerBound)
+            let hi = text.distance(from: text.startIndex, to: range.upperBound)
+            return lo..<hi
+        }
+        return fences + indentedEmailRanges(text, fences)
+    }
+
+    private static func indentedEmailRanges(_ text: String, _ fences: [Range<Int>]) -> [Range<Int>] {
+        let chars = Array(text)
+        var ranges: [Range<Int>] = []
+        var inCode = false
+        var codeStart = 0
+        var prevBlank = true
+        var index = 0
+        while index <= chars.count {
+            let end = chars[index...].firstIndex(of: "\n") ?? chars.count
+            let inside = fences.contains { index >= $0.lowerBound && index < $0.upperBound }
+            if inside {
+                if inCode {
+                    ranges.append(codeStart..<index)
+                    inCode = false
+                }
+                prevBlank = false
+            } else {
+                let line = String(chars[index..<end])
+                let indent = emailIndent(line)
+                let blank = line.trimmingCharacters(in: .whitespaces).isEmpty
+                if inCode && !blank && indent < 4 {
+                    ranges.append(codeStart..<index)
+                    inCode = false
+                }
+                if !inCode && prevBlank && !blank && indent >= 4 {
+                    inCode = true
+                    codeStart = index
+                }
+                prevBlank = blank
+            }
+            if end >= chars.count { break }
+            index = end + 1
+        }
+        if inCode { ranges.append(codeStart..<chars.count) }
+        return ranges
+    }
+
+    private static func emailIndent(_ line: String) -> Int {
+        var columns = 0
+        for ch in line {
+            if ch == " " {
+                columns += 1
+            } else if ch == "\t" {
+                columns += 4 - (columns % 4)
+            } else {
+                break
+            }
+        }
+        return columns
     }
 }
