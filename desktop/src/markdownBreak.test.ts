@@ -175,7 +175,7 @@ test("completed replies wire the rule and the strike; copy stays source", () => 
   assert.match(body, /splitThematicBreaks\(text, completed\)/);
   assert.match(body, /className="md-rule"/);
   assert.match(body, /className="md-strike"/);
-  assert.match(body, /remarkPlugins=\{completed \? \[remarkStrikethrough\] : \[\]\}/);
+  assert.match(body, /remarkPlugins=\{completed \? \[remarkHardBreaks, remarkStrikethrough\] : \[\]\}/);
   assert.match(body, /breakAnimates\(false\)/);
   assert.match(body, /h1: \(\{ children \}\) => <h1>/);
   const ruleCss = block(".assistant-md hr");

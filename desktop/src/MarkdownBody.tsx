@@ -55,6 +55,7 @@ import {
   remarkStrikethrough,
   splitThematicBreaks,
 } from "./markdownBreak";
+import { applyHardLineBreaks, remarkHardBreaks } from "./markdownHardBreak";
 import {
   quoteTaskAnimates,
   splitQuoteAndTasks,
@@ -329,12 +330,15 @@ function MarkdownChunk({
 }) {
   const findQuery = useFindQuery();
   const { text: mathText, slots } = extractMath(text);
-  const source = protectMarkdownEscapes(mathText, completed);
+  const source = applyHardLineBreaks(
+    protectMarkdownEscapes(mathText, completed),
+    completed,
+  );
   const enrich = (children?: ReactNode) =>
     enrichChildren(children, knownNames, completed, slots, findQuery);
   return (
     <Markdown
-      remarkPlugins={completed ? [remarkStrikethrough] : []}
+      remarkPlugins={completed ? [remarkHardBreaks, remarkStrikethrough] : []}
       components={{
         a: ({ href, children }) => (
           <MdLink href={href} preview={completed}>
@@ -474,13 +478,16 @@ function TableCellText({
 }) {
   const findQuery = useFindQuery();
   const { text: mathText, slots } = extractMath(text);
-  const source = protectMarkdownEscapes(mathText, completed);
+  const source = applyHardLineBreaks(
+    protectMarkdownEscapes(mathText, completed),
+    completed,
+  );
   if (!source) return null;
   const enrich = (children?: ReactNode) =>
     enrichChildren(children, knownNames, completed, slots, findQuery);
   return (
     <Markdown
-      remarkPlugins={completed ? [remarkStrikethrough] : []}
+      remarkPlugins={completed ? [remarkHardBreaks, remarkStrikethrough] : []}
       components={{
         a: ({ href, children }) => (
           <MdLink href={href} preview={completed}>
