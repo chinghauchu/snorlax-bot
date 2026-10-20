@@ -230,7 +230,7 @@ test("real markdown still renders and copy stays on the raw message", () => {
   assert.match(html, /href="https:\/\/example.com"/);
   assert.match(body, /protectMarkdownEscapes\(mathText, completed\)/);
   assert.match(body, /restoreMarkdownEscapes\(href \?\? ""\)/);
-  assert.match(body, /restoreMarkdownEscapes\(alt\)/);
+  assert.match(body, /restoreMarkdownEscapes\(typeof alt === "string" \? alt : ""\)/);
   assert.equal(body.split("protectMarkdownEscapes(mathText, completed)").length, 3);
   const mathAt = body.indexOf("extractMath(text)");
   const protectAt = body.indexOf("protectMarkdownEscapes(mathText, completed)");

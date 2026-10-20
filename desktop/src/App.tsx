@@ -358,6 +358,7 @@ import { WidgetCard } from "./WidgetCard";
 import { ApproveCard } from "./ApproveCard";
 import { ConnectCard } from "./ConnectCard";
 import { HttpsText, MarkdownBody } from "./MarkdownBody";
+import { MarkdownMediaProvider } from "./markdownImageView";
 import { LinkStatusPill } from "./linkStatusPill";
 import { FindQueryProvider, FindText, useFindQuery } from "./FindText";
 import {
@@ -8147,6 +8148,9 @@ export function App() {
                       ) : null}
                     </>
                     ) : (
+                      <MarkdownMediaProvider
+                        value={{ session, onOpenImage: openImageLightbox }}
+                      >
                       <div className="assistant-md">
                         <MessageAttachmentChrome
                           message={message}
@@ -8241,6 +8245,7 @@ export function App() {
                           />
                         ) : null}
                       </div>
+                      </MarkdownMediaProvider>
                     )}
                     {mine && failedSends.some((row) => row.id === message.id) ? (
                       <p className="failed-send" role="status">
