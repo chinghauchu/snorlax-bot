@@ -2,6 +2,12 @@
 import SwiftUI
 import UIKit
 
+private enum MarkdownFlowPiece {
+    case text(String)
+    case inlineMath(source: String, raw: String, closed: Bool)
+    case image(MarkdownImage.Inline)
+}
+
 /// Assistant LEFT `kind=message` markdown. User-right stays plain `MentionLabel`.
 struct AssistantMarkdown: View {
     let text: String
@@ -776,7 +782,7 @@ private struct MarkdownRun: View {
     }
 
     var body: some View {
-        let pieces = MarkdownSplit.splitInlineMath(source)
+        let pieces = flowPieces
         let content = Group {
             if pieces.count == 1, case .text(let only) = pieces[0] {
                 markdownText(only)
@@ -792,6 +798,8 @@ private struct MarkdownRun: View {
                             } else {
                                 MathFallback(raw: raw, block: false, quoteEnabled: completed)
                             }
+                        case .image(let image):
+                            MarkdownInlineImage(image: image, compact: hugsText)
                         }
                     }
                 }
@@ -804,6 +812,32 @@ private struct MarkdownRun: View {
                 .presentationCompactAdaptation(.popover)
                 .environment(\.markdownFootnotes, markdownFootnotes)
         }
+    }
+
+    /// Inline math stays a flow. Completed images join that flow.
+    /// Streaming text is not split, so a growing bubble stays plain.
+    private var flowPieces: [MarkdownFlowPiece] {
+        var out: [MarkdownFlowPiece] = []
+        for piece in MarkdownSplit.splitInlineMath(source) {
+            switch piece {
+            case .inlineMath(let tex, let raw, let closed):
+                out.append(.inlineMath(source: tex, raw: raw, closed: closed))
+            case .text(let text):
+                if !completed {
+                    if !text.isEmpty { out.append(.text(text)) }
+                    continue
+                }
+                for part in MarkdownImage.split(text, completed: true) {
+                    switch part {
+                    case .text(let value):
+                        if !value.isEmpty { out.append(.text(value)) }
+                    case .image(let image):
+                        out.append(.image(image))
+                    }
+                }
+            }
+        }
+        return out
     }
 
     @ViewBuilder

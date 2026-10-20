@@ -1615,6 +1615,64 @@ mark.find-hit.active {
   text-decoration: underline;
 }
 
+/* v1.42: inline images fit the bubble, keep their aspect ratio.
+   The placeholder is muted. A failed load is muted link-like text.
+   No animation, so Reduce Motion changes nothing. */
+.assistant-md .md-image-btn {
+  display: inline-block;
+  max-width: 100%;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  line-height: 0;
+  vertical-align: middle;
+  cursor: pointer;
+}
+
+.assistant-md .md-image {
+  display: inline-block;
+  position: relative;
+  max-width: 100%;
+  line-height: 0;
+  vertical-align: middle;
+}
+
+.assistant-md .md-inline-image {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  border-radius: 8px;
+}
+
+.assistant-md .md-inline-image[data-state="loading"] {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+}
+
+.assistant-md .md-image-pending {
+  display: inline-block;
+  width: 8em;
+  height: 4.5em;
+  max-width: 100%;
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--text-muted) 28%, transparent);
+  vertical-align: middle;
+}
+
+.assistant-md .md-image-fallback {
+  color: var(--text-muted);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  overflow-wrap: anywhere;
+  line-height: 1.4;
+}
+
 .bubble.user a.md-link:hover {
   text-decoration: underline;
 }

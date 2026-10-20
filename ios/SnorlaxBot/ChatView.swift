@@ -3976,6 +3976,7 @@ private struct MessageBubble: View {
                                         }
                                     }
                                     .environment(\.markdownFootnotes, footnotePrepared.notes)
+                                    .environment(\.markdownImageOpen, onOpenImage)
                                     .padding(.horizontal, 12)
                                     .padding(.vertical, 8)
                                     .background(

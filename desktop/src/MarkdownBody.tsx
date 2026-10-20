@@ -56,6 +56,15 @@ import {
   splitThematicBreaks,
 } from "./markdownBreak";
 import { applyHardLineBreaks, remarkHardBreaks } from "./markdownHardBreak";
+import { neutralizeUnsafeImages } from "./markdownImage";
+import {
+  InMarkdownLink,
+  markdownImageNode,
+  MarkdownMediaProvider,
+  useMarkdownMedia,
+} from "./markdownImageView";
+import type { ImageLightboxTarget } from "./imageLightbox";
+import type { Session } from "./types";
 import {
   quoteTaskAnimates,
   splitQuoteAndTasks,
@@ -106,6 +115,10 @@ type Props = {
   footnoteScope?: string;
   /** Matched notes. Only the last bubble of the message passes these. */
   footnotes?: Footnote[];
+  /** Session for `/v1/attachments` and `/v1/images` image bytes. */
+  session?: Session | null;
+  /** v0.79 lightbox. An image inside a link does not use this. */
+  onOpenImage?: (target: ImageLightboxTarget, trigger: HTMLElement) => void;
 };
 
 type FenceOrder = { n: number };
@@ -139,7 +152,14 @@ export function MarkdownBody({
   fenceOrder,
   footnoteScope = "",
   footnotes,
+  session,
+  onOpenImage,
 }: Props) {
+  const parentMedia = useMarkdownMedia();
+  const media = {
+    session: session !== undefined ? session : parentMedia.session,
+    onOpenImage: onOpenImage ?? parentMedia.onOpenImage,
+  };
   const stable = stabilizeMarkdown(text);
   const segments = splitMarkdownTables(stable, completed);
   const order: FenceOrder = fenceOrder ?? { n: 0 };
@@ -173,8 +193,12 @@ export function MarkdownBody({
       ) : null}
     </>
   );
-  if (!footnoteScope) return body;
-  return <FootnoteScopeProvider scope={footnoteScope}>{body}</FootnoteScopeProvider>;
+  const scoped = footnoteScope ? (
+    <FootnoteScopeProvider scope={footnoteScope}>{body}</FootnoteScopeProvider>
+  ) : (
+    body
+  );
+  return <MarkdownMediaProvider value={media}>{scoped}</MarkdownMediaProvider>;
 }
 
 /**
@@ -329,7 +353,9 @@ function MarkdownChunk({
   order: FenceOrder;
 }) {
   const findQuery = useFindQuery();
-  const { text: mathText, slots } = extractMath(text);
+  const extracted = extractMath(text);
+  const mathText = neutralizeUnsafeImages(extracted.text, completed);
+  const slots = extracted.slots;
   const source = applyHardLineBreaks(
     protectMarkdownEscapes(mathText, completed),
     completed,
@@ -339,6 +365,7 @@ function MarkdownChunk({
   return (
     <Markdown
       remarkPlugins={completed ? [remarkHardBreaks, remarkStrikethrough] : []}
+      urlTransform={(url) => url}
       components={{
         a: ({ href, children }) => (
           <MdLink href={href} preview={completed}>
@@ -356,10 +383,13 @@ function MarkdownChunk({
           </CodeFence>
         ),
         code: InlineCode,
-        img: ({ alt }) => {
-          const shown = typeof alt === "string" ? restoreMarkdownEscapes(alt) : "";
-          return shown ? <span>{shown}</span> : null;
-        },
+        img: ({ alt, src, title }) =>
+          markdownImageNode(
+            completed,
+            restoreMarkdownEscapes(typeof alt === "string" ? alt : ""),
+            restoreMarkdownEscapes(typeof src === "string" ? src : ""),
+            restoreMarkdownEscapes(typeof title === "string" ? title : ""),
+          ),
         del: ({ children }) => <del className="md-strike">{enrich(children)}</del>,
         hr: () => <hr className="md-rule" />,
         p: ({ children }) => {
@@ -477,7 +507,9 @@ function TableCellText({
   completed: boolean;
 }) {
   const findQuery = useFindQuery();
-  const { text: mathText, slots } = extractMath(text);
+  const extracted = extractMath(text);
+  const mathText = neutralizeUnsafeImages(extracted.text, completed);
+  const slots = extracted.slots;
   const source = applyHardLineBreaks(
     protectMarkdownEscapes(mathText, completed),
     completed,
@@ -488,6 +520,7 @@ function TableCellText({
   return (
     <Markdown
       remarkPlugins={completed ? [remarkHardBreaks, remarkStrikethrough] : []}
+      urlTransform={(url) => url}
       components={{
         a: ({ href, children }) => (
           <MdLink href={href} preview={completed}>
@@ -496,10 +529,13 @@ function TableCellText({
         ),
         code: InlineCode,
         del: ({ children }) => <del className="md-strike">{enrich(children)}</del>,
-        img: ({ alt }) => {
-          const shown = typeof alt === "string" ? restoreMarkdownEscapes(alt) : "";
-          return shown ? <span>{shown}</span> : null;
-        },
+        img: ({ alt, src, title }) =>
+          markdownImageNode(
+            completed,
+            restoreMarkdownEscapes(typeof alt === "string" ? alt : ""),
+            restoreMarkdownEscapes(typeof src === "string" ? src : ""),
+            restoreMarkdownEscapes(typeof title === "string" ? title : ""),
+          ),
         pre: ({ children }) => <>{children}</>,
         p: ({ children }) => <>{enrich(children)}</>,
       }}
@@ -558,7 +594,9 @@ export function MdLink({
         void openOsBrowser(url);
       }}
     >
-      <FootnoteMarkers>{children}</FootnoteMarkers>
+      <InMarkdownLink>
+        <FootnoteMarkers>{children}</FootnoteMarkers>
+      </InMarkdownLink>
     </a>
   );
 }
