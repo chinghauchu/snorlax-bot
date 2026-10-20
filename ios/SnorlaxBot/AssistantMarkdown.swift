@@ -10,6 +10,9 @@ struct AssistantMarkdown: View {
     var completed: Bool = true
     /// Session key for per-fence wrap. Empty still keys by fence index.
     var wrapScope: String = ""
+    /// The last bubble of a message draws the footnotes list.
+    var showFootnotes: Bool = false
+    @Environment(\.markdownFootnotes) private var markdownFootnotes
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -45,6 +48,13 @@ struct AssistantMarkdown: View {
                         MathFallback(raw: raw, block: true, quoteEnabled: completed)
                     }
                 }
+            }
+            if showFootnotes && !markdownFootnotes.isEmpty {
+                MarkdownFootnoteList(
+                    notes: markdownFootnotes,
+                    names: names,
+                    completed: completed
+                )
             }
         }
         .transcriptFont(14)
@@ -755,7 +765,9 @@ private struct MarkdownRun: View {
     var header: Bool = false
     @Environment(\.openURL) private var openURL
     @Environment(\.chatFind) private var find
+    @Environment(\.markdownFootnotes) private var markdownFootnotes
     @Environment(AppModel.self) private var model
+    @State private var shownFootnote: MarkdownFootnote.Note?
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @Environment(\.transcriptTextPercent) private var transcriptTextPercent
 
@@ -765,25 +777,32 @@ private struct MarkdownRun: View {
 
     var body: some View {
         let pieces = MarkdownSplit.splitInlineMath(source)
-        if pieces.count == 1, case .text(let only) = pieces[0] {
-            markdownText(only)
-        } else {
-            MathFlowLayout(spacing: 4, lineSpacing: 2) {
-                ForEach(Array(pieces.enumerated()), id: \.offset) { _, piece in
-                    switch piece {
-                    case .text(let text):
-                        markdownText(text)
-                    case .inlineMath(let tex, let raw, let closed):
-                        if completed && closed {
-                            MathInline(source: tex, raw: raw)
-                        } else {
-                            MathFallback(raw: raw, block: false, quoteEnabled: completed)
+        let content = Group {
+            if pieces.count == 1, case .text(let only) = pieces[0] {
+                markdownText(only)
+            } else {
+                MathFlowLayout(spacing: 4, lineSpacing: 2) {
+                    ForEach(Array(pieces.enumerated()), id: \.offset) { _, piece in
+                        switch piece {
+                        case .text(let text):
+                            markdownText(text)
+                        case .inlineMath(let tex, let raw, let closed):
+                            if completed && closed {
+                                MathInline(source: tex, raw: raw)
+                            } else {
+                                MathFallback(raw: raw, block: false, quoteEnabled: completed)
+                            }
                         }
                     }
                 }
+                .fixedSize(horizontal: hugsText, vertical: true)
+                .frame(maxWidth: hugsText ? nil : .infinity, alignment: .leading)
             }
-            .fixedSize(horizontal: hugsText, vertical: true)
-            .frame(maxWidth: hugsText ? nil : .infinity, alignment: .leading)
+        }
+        return content.popover(item: $shownFootnote) { note in
+            MarkdownFootnotePopover(note: note, names: names)
+                .presentationCompactAdaptation(.popover)
+                .environment(\.markdownFootnotes, markdownFootnotes)
         }
     }
 
@@ -815,6 +834,10 @@ private struct MarkdownRun: View {
             expandsHorizontally: hugsText,
             onQuote: { model.quoteIntoComposer($0) },
             onLink: { url in
+                if let note = MarkdownFootnote.note(for: url, in: markdownFootnotes) {
+                    shownFootnote = note
+                    return
+                }
                 guard WebLinks.allows(url) else { return }
                 openURL(url)
             }
@@ -826,7 +849,10 @@ private struct MarkdownRun: View {
         // SwiftUI.Font set on AttributedString does not survive this
         // UITextView round trip. Apply UIFont from the heading intent
         // onto the NS string so #–###### paint as 16/14 semibold.
+        // Footnote tokens are replaced after that, from the end, so
+        // heading ranges already written stay aligned.
         styleHeadings(text, ns: ns)
+        MarkdownFootnote.applyMarkers(ns, baseSize: metrics.body)
         let style = NSMutableParagraphStyle()
         if hugsText {
             style.lineBreakMode = .byClipping
@@ -856,6 +882,7 @@ private struct MarkdownRun: View {
         parsed = WebLinks.applyingLinks(parsed, streaming: false)
         highlightMentions(&parsed)
         markHeadingFonts(&parsed)
+        MarkdownFootnote.applyMarkers(&parsed, baseSize: metrics.body)
         return ChatFind.paint(parsed, query: find.query)
     }
 

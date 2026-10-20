@@ -392,6 +392,7 @@ import {
   isShortcutsQuestion,
 } from "./chatShortcuts";
 import { copyText } from "./markdown";
+import { extractFootnotes, footnoteFindTexts } from "./markdownFootnote";
 import { shouldRenderMarkdown } from "./midStreamPlaintext";
 import {
   assistantBubbleWide,
@@ -5017,7 +5018,13 @@ export function App() {
       if (tool) texts = [message.content ?? ""];
       else if (handoff) texts = [message.userAsk || message.content || ""];
       else if (user) texts = [body];
-      else if (!skip) texts = splitAssistantBubbles(body, completed);
+      else if (!skip) {
+        const footnoted = extractFootnotes(body, completed);
+        const bubbles = footnoted.notes.length
+          ? splitAssistantBubbles(footnoted.text, completed)
+          : splitAssistantBubbles(body, completed);
+        texts = footnoteFindTexts(bubbles, footnoted.notes);
+      }
       return {
         id: message.id,
         texts,
@@ -7784,10 +7791,14 @@ export function App() {
                   message.createdAt,
                   !completed,
                 );
-                const leftBubbles = splitAssistantBubbles(
-                  displayBody(message.content, message.senderName),
-                  completed,
+                const replyBody = displayBody(
+                  message.content,
+                  message.senderName,
                 );
+                const footnoted = extractFootnotes(replyBody, completed);
+                const leftBubbles = footnoted.notes.length
+                  ? splitAssistantBubbles(footnoted.text, completed)
+                  : splitAssistantBubbles(replyBody, completed);
                 const quoteLoadedIds = new Set(messages.map((row) => row.id));
                 const quoteTargets =
                   quoteJumpEpoch >= 0 && active && mine
@@ -8182,6 +8193,8 @@ export function App() {
                                         knownNames={knownNames}
                                         completed={completed}
                                         wrapScope={bubbleRowId}
+                                        footnoteScope={message.id}
+                                        footnotes={bubbleIdx===leftBubbles.length-1?footnoted.notes:[]}
                                       />
                                     ) : (
                                       <pre className="assistant-plain">
