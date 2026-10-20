@@ -168,6 +168,7 @@ struct QuoteSelectableText: UIViewRepresentable {
         font: UIFont,
         expandsHorizontally: Bool
     ) -> NSAttributedString {
+        let titles = linkTitles(text)
         let mutable = NSMutableAttributedString(attributedString: NSAttributedString(text))
         let full = NSRange(location: 0, length: mutable.length)
         if full.length > 0 {
@@ -182,7 +183,31 @@ struct QuoteSelectableText: UIViewRepresentable {
                 mutable.addAttribute(.paragraphStyle, value: style, range: full)
             }
         }
+        for (range, title) in titles where range.location >= 0 && range.location + range.length <= mutable.length {
+            mutable.addAttribute(.snorlaxLinkTitle, value: title, range: range)
+        }
         return mutable
+    }
+
+    /// Custom link titles do not survive the NSAttributedString bridge.
+    /// Read them first, then write them back onto the text view's string.
+    private static func linkTitles(_ text: AttributedString) -> [(NSRange, String)] {
+        var spans: [(NSRange, String)] = []
+        for run in text.runs {
+            guard let title = run.snorlaxLinkTitle, !title.isEmpty else { continue }
+            let range = utf16Range(run.range, in: text)
+            if range.length > 0 { spans.append((range, title)) }
+        }
+        return spans
+    }
+
+    private static func utf16Range(
+        _ range: Range<AttributedString.Index>,
+        in source: AttributedString
+    ) -> NSRange {
+        let prefix = String(source.characters[source.startIndex..<range.lowerBound])
+        let slice = String(source.characters[range])
+        return NSRange(location: prefix.utf16.count, length: slice.utf16.count)
     }
 }
 
@@ -337,6 +362,7 @@ extension QuoteSelectableText {
                 return UITextItem.MenuConfiguration(menu: UIMenu(children: [show]))
             }
             guard WebLinks.allows(url) else { return nil }
+            MarkdownLinkTitle.previewHint = MarkdownLinkTitle.hint(in: textView, at: textItem)
             return LinkPreview.configuration(for: url, open: onLink)
         }
     }

@@ -286,7 +286,7 @@ test("desktop and iOS wire the resolver ahead of footnotes", () => {
   assert.match(app, /resolveReferenceLinks\(body, completed\)/);
   assert.match(app, /resolveReferenceLinks\(replyBody, completed\)/);
   assert.match(app, /extractFootnotes\(linked, completed\)/);
-  assert.match(body, /<MdLink href=\{href\} preview=\{completed\}>/);
+  assert.match(body, /<MdLink href=\{href\} title=\{title\} preview=\{completed\}>/);
   assert.match(body, /className="md-link"/);
   assert.match(body, /isSafeWebUrl/);
   assert.match(chat, /MarkdownReferenceLink\.resolve\(message\.displayContent, completed: completed\)/);

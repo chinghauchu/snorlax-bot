@@ -939,8 +939,10 @@ private struct MarkdownRun: View {
     }
 
     private func selectable(_ src: String) -> QuoteSelectableText {
-        QuoteSelectableText(
-            text: wrapping(attributed(src)),
+        var text = wrapping(attributed(src))
+        MarkdownLinkTitle.annotate(&text, source: src, completed: completed)
+        return QuoteSelectableText(
+            text: text,
             quoteEnabled: completed,
             font: headingFont,
             expandsHorizontally: hugsText,

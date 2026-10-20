@@ -35,6 +35,7 @@ import {
 } from "./codeBlockWrap";
 import { linkHref, splitWebUrls } from "./linkify";
 import { prepareAngleAutolinks, safeLinkHref } from "./markdownAutolink";
+import { linkTitleHint } from "./markdownLinkTitle";
 import {
   linkStatusClearFocus,
   linkStatusClearHover,
@@ -403,11 +404,8 @@ function HeadingInline({
       remarkPlugins={completed ? [remarkHardBreaks, remarkStrikethrough] : []}
       urlTransform={(url) => url}
       components={{
-        a: ({ href, children }) => (
-          <MdLink href={href} preview={completed}>
-            {children}
-          </MdLink>
-        ),
+        a: ({ href, title, children }) =>
+          markdownAnchor(href, title, completed, children),
         code: InlineCode,
         del: ({ children }) => <del className="md-strike">{enrich(children)}</del>,
         img: ({ alt, src, title }) =>
@@ -501,11 +499,8 @@ function MarkdownChunk({
       remarkPlugins={completed ? [remarkHardBreaks, remarkStrikethrough] : []}
       urlTransform={(url) => url}
       components={{
-        a: ({ href, children }) => (
-          <MdLink href={href} preview={completed}>
-            {children}
-          </MdLink>
-        ),
+        a: ({ href, title, children }) =>
+          markdownAnchor(href, title, completed, children),
         pre: ({ children }) => (
           <CodeFence
             completed={completed}
@@ -659,11 +654,8 @@ function TableCellText({
       remarkPlugins={completed ? [remarkHardBreaks, remarkStrikethrough] : []}
       urlTransform={(url) => url}
       components={{
-        a: ({ href, children }) => (
-          <MdLink href={href} preview={completed}>
-            {children}
-          </MdLink>
-        ),
+        a: ({ href, title, children }) =>
+          markdownAnchor(href, title, completed, children),
         code: InlineCode,
         del: ({ children }) => <del className="md-strike">{enrich(children)}</del>,
         img: ({ alt, src, title }) =>
@@ -682,12 +674,28 @@ function TableCellText({
   );
 }
 
+function markdownAnchor(
+  href: string | undefined,
+  title: string | undefined,
+  completed: boolean,
+  children: ReactNode,
+) {
+  return (
+    <MdLink href={href} title={title} preview={completed}>
+      {children}
+    </MdLink>
+  );
+}
+
 export function MdLink({
   href,
+  title,
   children,
   preview = true,
 }: {
   href?: string;
+  /** CommonMark link title. Shown only on a completed reply. */
+  title?: string;
   children?: ReactNode;
   /** Completed message bubbles reveal the destination. Streaming does not. */
   preview?: boolean;
@@ -697,6 +705,7 @@ export function MdLink({
   // http(s) still go through isSafeWebUrl. A mailto email does too.
   const rawHref = restoreMarkdownEscapes(href ?? "");
   const url = safeLinkHref(rawHref);
+  const hint = linkTitleHint(title, preview && url.length > 0);
   const reveal = preview && url.length > 0;
   useEffect(() => {
     if (!reveal) return;
@@ -714,6 +723,8 @@ export function MdLink({
     <a
       href={url}
       className="md-link"
+      title={hint || undefined}
+      aria-description={hint || undefined}
       rel="noopener noreferrer"
       onMouseEnter={reveal ? () => linkStatusHover(id, url) : undefined}
       onMouseLeave={reveal ? () => linkStatusClearHover(id) : undefined}

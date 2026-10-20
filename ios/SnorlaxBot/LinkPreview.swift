@@ -23,7 +23,10 @@ enum LinkPreview {
     }
 
     /// Preview card above the menu. The URL wraps; it is not truncated.
+    /// A CommonMark link title, when the bubble stashed one, sits above
+    /// the URL as the tooltip line and the accessibility hint.
     static func headerView(_ text: String) -> UIView {
+        let hint = MarkdownLinkTitle.consumePreviewHint()
         let label = UILabel()
         label.text = text
         label.font = .systemFont(ofSize: 12)
@@ -34,15 +37,43 @@ enum LinkPreview {
         let maxTextWidth: CGFloat = 280
         label.preferredMaxLayoutWidth = maxTextWidth
         let textSize = label.sizeThatFits(CGSize(width: maxTextWidth, height: 2000))
-        let width = min(300, max(textSize.width + 20, 44))
-        let height = max(textSize.height + 16, 28)
-        label.frame = CGRect(x: 10, y: 8, width: width - 20, height: height - 16)
+        var titleLabel: UILabel?
+        var titleHeight: CGFloat = 0
+        if let hint {
+            let tip = UILabel()
+            tip.text = hint
+            tip.font = .systemFont(ofSize: 12, weight: .semibold)
+            tip.textColor = .label
+            tip.numberOfLines = 0
+            tip.lineBreakMode = .byWordWrapping
+            tip.textAlignment = .natural
+            tip.preferredMaxLayoutWidth = maxTextWidth
+            let tipSize = tip.sizeThatFits(CGSize(width: maxTextWidth, height: 2000))
+            titleHeight = tipSize.height + 4
+            titleLabel = tip
+        }
+        let contentWidth = max(textSize.width, titleLabel?.sizeThatFits(CGSize(width: maxTextWidth, height: 2000)).width ?? 0)
+        let width = min(300, max(contentWidth + 20, 44))
+        let height = max(textSize.height + 16 + titleHeight, 28)
+        if let titleLabel, let hint {
+            titleLabel.text = hint
+            titleLabel.frame = CGRect(x: 10, y: 8, width: width - 20, height: max(titleHeight - 4, 0))
+            label.frame = CGRect(x: 10, y: 8 + titleHeight, width: width - 20, height: textSize.height)
+        } else {
+            label.frame = CGRect(x: 10, y: 8, width: width - 20, height: height - 16)
+        }
         let wrap = UIView(frame: CGRect(x: 0, y: 0, width: width, height: height))
         wrap.backgroundColor = .secondarySystemBackground
         wrap.layer.cornerRadius = 10
         wrap.clipsToBounds = true
         wrap.isAccessibilityElement = true
         wrap.accessibilityLabel = text
+        if let hint {
+            wrap.accessibilityHint = hint
+        }
+        if let titleLabel {
+            wrap.addSubview(titleLabel)
+        }
         wrap.addSubview(label)
         return wrap
     }

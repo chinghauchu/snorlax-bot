@@ -65,7 +65,7 @@ def test_ios_resolves_before_footnotes_and_keeps_links() -> None:
     assert "resolveReferenceLinks(body, completed)" in APP
     assert "resolveReferenceLinks(replyBody, completed)" in APP
     assert "extractFootnotes(linked, completed)" in APP
-    assert "href={href} preview={completed}" in BODY
+    assert "href={href} title={title} preview={completed}" in BODY
     assert 'className="md-link"' in BODY
     assert "isSafeWebUrl" in BODY
     assert "LinkPreview.configuration" in (IOS / "QuoteSelection.swift").read_text(encoding="utf-8")
