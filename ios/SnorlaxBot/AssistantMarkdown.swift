@@ -871,7 +871,11 @@ private struct MarkdownRun: View {
         // Math delimiters are already split out. Escapes and character
         // references become tokens before the markdown parser, then
         // paint as text after autolinks so they cannot form syntax or HTML.
-        let source = MarkdownEscape.protect(src, completed: completed)
+        // A hard break (two spaces or a backslash before the newline)
+        // becomes a token here and a real newline after the parse.
+        // A plain newline stays a soft break, which renders as a space.
+        let escaped = MarkdownEscape.protect(src, completed: completed)
+        let source = MarkdownHardBreak.apply(escaped, completed: completed)
         var parsed: AttributedString
         do {
             var options = AttributedString.MarkdownParsingOptions()
@@ -884,6 +888,7 @@ private struct MarkdownRun: View {
         styleInlineCode(&parsed)
         parsed = WebLinks.applyingLinks(parsed, streaming: false)
         parsed = MarkdownEscape.restore(parsed)
+        parsed = MarkdownHardBreak.restore(parsed)
         dropUnsafeLinks(&parsed)
         highlightMentions(&parsed)
         markHeadingFonts(&parsed)

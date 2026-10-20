@@ -158,3 +158,4 @@ jobs:
           python3 ios/scripts/test_ios_markdown_footnote.py
           python3 ios/scripts/test_ios_markdown_reference_link.py
           python3 ios/scripts/test_ios_markdown_escape.py
+          python3 ios/scripts/test_ios_markdown_hard_break.py
