@@ -4,10 +4,16 @@
  * v1.32: GFM blockquotes and task lists on completed assistant
  * LEFT `kind=message`. A quote line (`>` / nested `>>`) renders
  * with a muted left rule and indent. `- [ ]` / `- [x]` render as
- * read-only checkbox glyphs; checked items are muted. Streaming
- * stays the markdown string, so the bubble renders as it does
- * today. Copy controls keep the message markdown source — this
- * module only splits text for display and does not copy.
+ * read-only checkbox glyphs; checked items are muted.
+ * v1.47: CommonMark lazy continuation of a blockquote. A non-blank
+ * line that continues an open quote paragraph, and does not
+ * itself start a list, an ATX heading, a fence, a thematic
+ * break, or a `$$` block, stays inside that quote. A blank line
+ * ends it. Nested quotes keep the continuation. A margin list,
+ * heading, fence, or rule ends the quote. Streaming stays the
+ * markdown string, so the bubble renders as it does today.
+ * Copy controls keep the message markdown source — this module
+ * only splits text for display and does not copy.
  * No animation. No new HTTP.
  * Keep in lockstep with `ios/SnorlaxBot/MarkdownQuoteTask.swift`.
  */
@@ -85,8 +91,20 @@ export function splitQuoteAndTasks(
     if (stripQuoteMarker(line) != null) {
       const start = i;
       const inner: string[] = [];
-      while (i < lines.length && stripQuoteMarker(lines[i] ?? "") != null) {
-        inner.push(stripQuoteMarker(lines[i] ?? "") ?? "");
+      let open = false;
+      while (i < lines.length) {
+        const current = lines[i] ?? "";
+        const stripped = stripQuoteMarker(current);
+        if (stripped != null) {
+          inner.push(stripped);
+          open = paragraphOpenAfter(stripped, open);
+          i += 1;
+          continue;
+        }
+        // v1.47: a paragraph inside the quote may continue without `>`.
+        if (!open || endsLazyQuote(current, open)) break;
+        inner.push(current);
+        open = true;
         i += 1;
       }
       pushMarkdown(start);
@@ -150,6 +168,167 @@ export function parseTaskLine(line: string): TaskItem | null {
   if (line[i] !== " " && line[i] !== "\t") return null;
   while (line[i] === " " || line[i] === "\t") i += 1;
   return { checked: mark !== " ", text: line.slice(i) };
+}
+
+/**
+ * A quote paragraph stays open after this stripped quote line.
+ * Nested `>` markers peel first, so `> > foo` is still open and
+ * `> # Foo` is not. An empty list item does not open a paragraph.
+ */
+function paragraphOpenAfter(stripped: string, wasOpen: boolean): boolean {
+  const content = innermostQuote(stripped);
+  if (isBlank(content) || isMathFence(content)) return false;
+  if (isThematicBreak(content) || isAtxHeading(content) || isFenceLine(content)) {
+    return false;
+  }
+  if (isMarginListMarker(content)) return listItemOpensParagraph(content);
+  if (!wasOpen && isIndentedCodeLine(content)) return false;
+  return true;
+}
+
+/** Peel one quote marker at a time until the line is not a quote. */
+function innermostQuote(line: string): string {
+  let current = line;
+  for (;;) {
+    const next = stripQuoteMarker(current);
+    if (next == null) return current;
+    current = next;
+  }
+}
+
+/**
+ * This line closes the quote instead of joining it. A blank line,
+ * a `$$` block, a thematic break, an ATX heading, a fence, or a
+ * list marker in the first three columns does. Indented code does
+ * only when no paragraph is open.
+ */
+function endsLazyQuote(line: string, paragraphOpen: boolean): boolean {
+  if (isBlank(line) || isMathFence(line)) return true;
+  if (
+    isThematicBreak(line) ||
+    isAtxHeading(line) ||
+    isFenceLine(line) ||
+    isMarginListMarker(line)
+  ) {
+    return true;
+  }
+  if (!paragraphOpen && isIndentedCodeLine(line)) return true;
+  return false;
+}
+
+function isBlank(line: string): boolean {
+  for (const ch of line) {
+    if (ch !== " " && ch !== "\t") return false;
+  }
+  return true;
+}
+
+function isMathFence(line: string): boolean {
+  return line.trim() === "$$";
+}
+
+function leadingColumns(line: string): { columns: number; index: number } {
+  let columns = 0;
+  let index = 0;
+  while (index < line.length) {
+    const ch = line[index];
+    if (ch === " ") {
+      columns += 1;
+      index += 1;
+      continue;
+    }
+    if (ch === "\t") {
+      columns += 4 - (columns % 4);
+      index += 1;
+      continue;
+    }
+    break;
+  }
+  return { columns, index };
+}
+
+function isThematicBreak(line: string): boolean {
+  const lead = leadingColumns(line);
+  if (lead.columns > 3) return false;
+  const mark = line[lead.index];
+  if (mark !== "-" && mark !== "*" && mark !== "_") return false;
+  let count = 0;
+  for (let i = lead.index; i < line.length; i += 1) {
+    const ch = line[i];
+    if (ch === mark) {
+      count += 1;
+      continue;
+    }
+    if (ch === " " || ch === "\t") continue;
+    return false;
+  }
+  return count >= 3;
+}
+
+function isAtxHeading(line: string): boolean {
+  const lead = leadingColumns(line);
+  if (lead.columns > 3) return false;
+  let i = lead.index;
+  let hashes = 0;
+  while (i < line.length && line[i] === "#" && hashes < 7) {
+    hashes += 1;
+    i += 1;
+  }
+  if (hashes < 1 || hashes > 6) return false;
+  if (i >= line.length) return true;
+  return line[i] === " " || line[i] === "\t";
+}
+
+function isFenceLine(line: string): boolean {
+  const lead = leadingColumns(line);
+  if (lead.columns > 3) return false;
+  const mark = line[lead.index];
+  if (mark !== "`" && mark !== "~") return false;
+  let count = 0;
+  let i = lead.index;
+  while (i < line.length && line[i] === mark) {
+    count += 1;
+    i += 1;
+  }
+  return count >= 3;
+}
+
+function isIndentedCodeLine(line: string): boolean {
+  if (isBlank(line)) return false;
+  return leadingColumns(line).columns >= 4;
+}
+
+/** A bullet or ordered marker in the first three columns. */
+function isMarginListMarker(line: string): boolean {
+  return listMarkerLength(line) > 0;
+}
+
+function listItemOpensParagraph(line: string): boolean {
+  const marker = listMarkerLength(line);
+  if (marker <= 0) return false;
+  const lead = leadingColumns(line);
+  const rest = line.slice(lead.index + marker);
+  let i = 0;
+  while (i < rest.length && (rest[i] === " " || rest[i] === "\t")) i += 1;
+  return rest.slice(i).length > 0;
+}
+
+function listMarkerLength(line: string): number {
+  const lead = leadingColumns(line);
+  if (lead.columns >= 4) return 0;
+  const rest = line.slice(lead.index);
+  const bullet = rest[0];
+  if (bullet === "-" || bullet === "*" || bullet === "+") {
+    if (rest.length === 1) return 1;
+    const next = rest[1];
+    return next === " " || next === "\t" ? 1 : 0;
+  }
+  const ordered = /^(\d{1,9})[.)]/.exec(rest);
+  if (!ordered) return 0;
+  const len = ordered[0].length;
+  if (rest.length === len) return len;
+  const next = rest[len];
+  return next === " " || next === "\t" ? len : 0;
 }
 
 function blockGate(
