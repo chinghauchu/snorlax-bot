@@ -767,6 +767,7 @@ export function HttpsText({
   findQuery,
   active = null,
   streaming = false,
+  emails = false,
 }: {
   text: string;
   knownNames?: string[];
@@ -775,10 +776,15 @@ export function HttpsText({
   active?: { start: number; end: number } | null;
   /** A URL that still touches the end of a growing bubble stays plain. */
   streaming?: boolean;
+  /**
+   * v1.45: bare GFM email autolinks. Completed assistant markdown
+   * only. User bubbles and a streaming plain bubble leave them as text.
+   */
+  emails?: boolean;
 }) {
   const fromContext = useFindQuery();
   const query = findQuery ?? fromContext;
-  const rawPieces = splitWebUrls(text, { streaming });
+  const rawPieces = splitWebUrls(text, { streaming, emails });
   const hasEscape = text.includes("§§SBE");
   const pieces = hasEscape
     ? rawPieces.map((piece) => ({
@@ -1265,6 +1271,7 @@ function renderTextWithMath(
         knownNames={knownNames}
         findQuery={findQuery}
         linkify={linkify}
+        emails={completed}
       />
     );
   }
@@ -1287,6 +1294,7 @@ function renderTextWithMath(
           knownNames={knownNames}
           findQuery={findQuery}
           linkify={linkify}
+          emails={completed}
         />
       </span>
     );
@@ -1339,15 +1347,17 @@ function FootnoteText({
   knownNames,
   findQuery,
   linkify,
+  emails,
 }: {
   text: string;
   knownNames: string[];
   findQuery: string;
   linkify: boolean;
+  emails: boolean;
 }) {
   const scope = useFootnoteScope();
   if (!linkify || !text.includes("§§SBFN")) {
-    return <>{mentionifyString(text, knownNames, 0, findQuery, linkify)}</>;
+    return <>{mentionifyString(text, knownNames, 0, findQuery, linkify, emails)}</>;
   }
   const pieces = splitFootnoteTokens(text);
   return (
@@ -1357,7 +1367,7 @@ function FootnoteText({
           <FootnoteRefButton key={index} number={piece.number} scope={scope} />
         ) : (
           <span key={index}>
-            {mentionifyString(piece.value, knownNames, index, findQuery, linkify)}
+            {mentionifyString(piece.value, knownNames, index, findQuery, linkify, emails)}
           </span>
         ),
       )}
@@ -1433,10 +1443,16 @@ function mentionifyString(
   index: number,
   findQuery: string,
   linkify: boolean,
+  emails: boolean,
 ): ReactNode {
   if (linkify) {
     return (
-      <HttpsText text={text} knownNames={knownNames} findQuery={findQuery} />
+      <HttpsText
+        text={text}
+        knownNames={knownNames}
+        findQuery={findQuery}
+        emails={emails}
+      />
     );
   }
   const pieces = splitMentions(text, knownNames);
