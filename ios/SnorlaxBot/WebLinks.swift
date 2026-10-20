@@ -24,11 +24,37 @@ enum WebLinks {
     private static let trailingChars = ".,;:!?)]}'\"\u{201C}\u{201D}\u{2018}\u{2019}"
 
     static func allows(_ url: URL) -> Bool {
+        if isMailtoEmail(url) { return true }
         let scheme = url.scheme?.lowercased()
         guard scheme == "http" || scheme == "https" else { return false }
         guard let host = url.host, !host.isEmpty else { return false }
         return true
     }
+
+    /// v1.43: `mailto:` plus an email address, and nothing else.
+    /// A query or a fragment stays closed. http(s) rules above are unchanged.
+    static func isMailtoEmail(_ url: URL) -> Bool {
+        guard url.scheme?.lowercased() == "mailto" else { return false }
+        if url.query != nil || url.fragment != nil { return false }
+        var address = url.absoluteString
+        guard let colon = address.firstIndex(of: ":") else { return false }
+        address = String(address[address.index(after: colon)...])
+        if address.hasPrefix("//") { address.removeFirst(2) }
+        if let decoded = address.removingPercentEncoding { address = decoded }
+        return emailAddress(address)
+    }
+
+    /// CommonMark email autolink address. The whole string must match.
+    static func emailAddress(_ address: String) -> Bool {
+        guard let emailRegex else { return false }
+        let range = NSRange(location: 0, length: (address as NSString).length)
+        guard let match = emailRegex.firstMatch(in: address, range: range) else { return false }
+        return match.range.location == 0 && match.range.length == range.length
+    }
+
+    private static let emailRegex: NSRegularExpression? = try? NSRegularExpression(
+        pattern: "^[A-Za-z0-9.!#$%&'*+/=?^_`{|}~-]+@[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?(?:\\.[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?)*$"
+    )
 
     static func url(_ raw: String) -> URL? {
         let candidate = raw.hasPrefix("www.") ? "http://" + raw : raw

@@ -901,13 +901,17 @@ private struct MarkdownRun: View {
         return AttributedString(ns)
     }
 
-    private func attributed(_ src: String) -> AttributedString {
-        // Math delimiters are already split out. Escapes and character
-        // references become tokens before the markdown parser, then
-        // paint as text after autolinks so they cannot form syntax or HTML.
+    private func attributed(_ raw: String) -> AttributedString {
+        // Math delimiters are already split out. Angle-bracket autolinks
+        // with an unsafe scheme become tokens before escapes, so the
+        // brackets stay literal. http(s) and email autolinks stay for
+        // the parser. Escapes and character references become tokens
+        // before the markdown parser, then paint as text after autolinks
+        // so they cannot form syntax or HTML.
         // A hard break (two spaces or a backslash before the newline)
         // becomes a token here and a real newline after the parse.
         // A plain newline stays a soft break, which renders as a space.
+        let src = MarkdownAutolink.prepare(raw, completed: completed)
         let escaped = MarkdownEscape.protect(src, completed: completed)
         let source = MarkdownHardBreak.apply(escaped, completed: completed)
         var parsed: AttributedString

@@ -160,6 +160,14 @@ function escapeToken(value: string): string {
   return `§§SBE${hex}§§`;
 }
 
+/**
+ * Hide a literal from the markdown parser. `restoreMarkdownEscapes`
+ * paints it again. Same token as a backslash escape.
+ */
+export function stashMarkdownText(value: string): string {
+  return escapeToken(value);
+}
+
 function decodeHex(hex: string): string | null {
   if (hex.length % 6 !== 0) return null;
   let out = "";
