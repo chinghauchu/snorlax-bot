@@ -122,6 +122,21 @@ export function splitMarkdownLists(
   return blocks;
 }
 
+/**
+ * Index just after a top-level list that starts at `start`.
+ * Null when that line is not a list marker in the first three columns.
+ * The span includes a loose continuation (`- item`, blank, indented
+ * text) so a later pass does not treat list content as indented code.
+ */
+export function markdownListEnd(lines: string[], start: number): number | null {
+  if (start < 0 || start >= lines.length) return null;
+  const line = lines[start] ?? "";
+  if (isThematicBreak(line)) return null;
+  const marker = parseMarker(line);
+  if (!marker || marker.column > 3) return null;
+  return readList(lines, start, marker).next;
+}
+
 function readList(
   lines: string[],
   start: number,

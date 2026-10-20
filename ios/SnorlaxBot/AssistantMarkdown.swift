@@ -331,13 +331,23 @@ private struct MarkdownListPieces: View {
     var body: some View {
         let blocks = MarkdownList.split(source, completed: completed)
         if blocks.count == 1, case .markdown(let text) = blocks[0] {
-            MarkdownRun(source: text, names: names, completed: completed)
+            MarkdownIndentedPieces(
+                source: text,
+                names: names,
+                completed: completed,
+                wrapScope: wrapScope
+            )
         } else {
             VStack(alignment: .leading, spacing: 8) {
                 ForEach(Array(blocks.enumerated()), id: \.offset) { _, block in
                     switch block {
                     case .markdown(let text):
-                        MarkdownRun(source: text, names: names, completed: completed)
+                        MarkdownIndentedPieces(
+                            source: text,
+                            names: names,
+                            completed: completed,
+                            wrapScope: wrapScope
+                        )
                     case .list(let group):
                         MarkdownListBlock(
                             group: group,
@@ -349,6 +359,45 @@ private struct MarkdownListPieces: View {
                 }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
+        }
+    }
+}
+
+/// Completed indented code uses the fence chrome (Copy, Wrap, monospace).
+/// There is no info string, so the block stays monochrome. Streaming is
+/// one markdown run. List items are already split out above.
+private struct MarkdownIndentedPieces: View {
+    let source: String
+    let names: [String]
+    var completed: Bool
+    var wrapScope: String
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    var body: some View {
+        let blocks = MarkdownIndentedCode.split(source, completed: completed)
+        if blocks.count == 1, case .markdown(let text) = blocks[0] {
+            MarkdownRun(source: text, names: names, completed: completed)
+        } else {
+            VStack(alignment: .leading, spacing: 8) {
+                ForEach(Array(blocks.enumerated()), id: \.offset) { index, block in
+                    switch block {
+                    case .markdown(let text):
+                        MarkdownRun(source: text, names: names, completed: completed)
+                    case .code(let source):
+                        CodeFence(
+                            language: "",
+                            source: source,
+                            completed: completed,
+                            wrapId: CodeBlockWrap.blockId(
+                                scope: wrapScope + "\u{0}indent",
+                                index: index
+                            )
+                        )
+                    }
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .animation(MarkdownIndentedCode.animation(reduceMotion: reduceMotion), value: source)
         }
     }
 }
@@ -1167,6 +1216,11 @@ enum MarkdownSplit {
         var chunk: [String] = []
         var fence: String?
         var inMath = false
+        // v1.48: a blank line inside an indented code block stays in
+        // that bubble. A blank outside one still splits.
+        var inCode = false
+        var paragraph = false
+        var pendingBlanks: [String] = []
 
         func flush() {
             while let first = chunk.first, first.trimmingCharacters(in: .whitespaces).isEmpty {
@@ -1180,9 +1234,26 @@ enum MarkdownSplit {
                 parts.append(joined)
             }
             chunk = []
+            inCode = false
+            paragraph = false
+            pendingBlanks = []
+        }
+
+        func pushText(_ line: String) {
+            chunk.append(line)
+            let columns = MarkdownIndentedCode.contentColumns(line)
+            if !paragraph, let columns, columns >= 4 {
+                inCode = true
+                return
+            }
+            inCode = false
+            paragraph = !MarkdownIndentedCode.isAtxHeadingLine(line)
+                && !MarkdownIndentedCode.isThematicBreakLine(line)
         }
 
         for line in lines {
+            let wasFence = fence != nil
+            let wasMath = inMath
             if !inMath, let _ = line.range(of: #"^( {0,3})(`{3,}|~{3,})(.*)$"#, options: .regularExpression) {
                 if let markerRange = line.range(of: #"[`~]{3,}"#, options: .regularExpression) {
                     let marker = String(line[markerRange])
@@ -1202,12 +1273,38 @@ enum MarkdownSplit {
                     inMath.toggle()
                 }
             }
+            let inFenceOrMath = wasFence || wasMath || fence != nil || inMath
 
-            if fence == nil, !inMath, line.trimmingCharacters(in: .whitespaces).isEmpty {
-                flush()
+            if MarkdownIndentedCode.isBlank(line), !inFenceOrMath {
+                if inCode {
+                    pendingBlanks.append(line)
+                } else {
+                    flush()
+                }
                 continue
             }
-            chunk.append(line)
+
+            if inCode, !pendingBlanks.isEmpty, !inFenceOrMath {
+                let columns = MarkdownIndentedCode.contentColumns(line) ?? 0
+                if columns >= 4 {
+                    chunk.append(contentsOf: pendingBlanks)
+                    pendingBlanks = []
+                } else {
+                    pendingBlanks = []
+                    flush()
+                }
+            } else if !pendingBlanks.isEmpty, inFenceOrMath {
+                pendingBlanks = []
+                flush()
+            }
+
+            if inFenceOrMath {
+                inCode = false
+                paragraph = false
+                chunk.append(line)
+                continue
+            }
+            pushText(line)
         }
         flush()
         return parts
