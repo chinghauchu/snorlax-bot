@@ -172,7 +172,7 @@ test("quotes can hold task lists; fences, math, and streaming stay raw", () => {
 });
 
 test("completed replies style the rule and glyphs; copy still uses markdown source", () => {
-  assert.match(body, /splitQuoteAndTasks\(text, completed\)/);
+  assert.match(body, /splitQuoteAndTasks\(protectLazySetext\(text, completed\), completed\)/);
   assert.match(body, /className="md-quote"/);
   assert.match(body, /className="md-task-list"/);
   assert.match(body, /className=\{[^}]*md-task-item is-checked/);
@@ -202,7 +202,8 @@ test("completed replies style the rule and glyphs; copy still uses markdown sour
   assert.match(swift, /static let checkedGlyph = "☑"/);
   assert.match(swift, /if !completed \{ return \[.markdown\(src\)\] \}/);
   assert.match(swift, /return nil/);
-  assert.match(markdown, /MarkdownQuoteTask\.split\(source, completed: completed\)/);
+  assert.match(markdown, /MarkdownSetext\.protectLazy\(source, completed: completed\)/);
+  assert.match(markdown, /MarkdownQuoteTask\.split\(/);
   assert.match(markdown, /className="md-quote"|MarkdownQuoteBlock/);
   assert.match(markdown, /Rectangle\(\)/);
   assert.match(markdown, /\.frame\(width: 2\)/);

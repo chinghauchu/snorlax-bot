@@ -161,3 +161,4 @@ jobs:
           python3 ios/scripts/test_ios_markdown_hard_break.py
           python3 ios/scripts/test_ios_markdown_image.py
           python3 ios/scripts/test_ios_markdown_angle_autolink.py
+          python3 ios/scripts/test_ios_markdown_setext.py

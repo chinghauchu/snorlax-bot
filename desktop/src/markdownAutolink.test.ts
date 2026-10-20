@@ -250,8 +250,8 @@ test("streaming stays unchanged and copy keeps markdown source", () => {
   assert.match(body, /isSafeWebUrl/);
   assert.match(body, /linkStatusHover/);
   assert.match(body, /openOsBrowser/);
-  assert.equal(body.split("prepareAngleAutolinks(").length, 3);
-  assert.equal(body.split("protectMarkdownEscapes(mathText, completed)").length, 3);
+  assert.equal(body.split("prepareAngleAutolinks(").length, 4);
+  assert.equal(body.split("protectMarkdownEscapes(mathText, completed)").length, 4);
   const prepareAt = body.indexOf("prepareAngleAutolinks(");
   const protectAt = body.indexOf("protectMarkdownEscapes(mathText, completed)");
   assert.ok(prepareAt >= 0 && protectAt > prepareAt);
