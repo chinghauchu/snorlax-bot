@@ -33,7 +33,8 @@ import {
   showCodeBlockWrap,
   toggleCodeBlockWrap,
 } from "./codeBlockWrap";
-import { isSafeWebUrl, linkHref, splitWebUrls } from "./linkify";
+import { linkHref, splitWebUrls } from "./linkify";
+import { prepareAngleAutolinks, safeLinkHref } from "./markdownAutolink";
 import {
   linkStatusClearFocus,
   linkStatusClearHover,
@@ -354,7 +355,10 @@ function MarkdownChunk({
 }) {
   const findQuery = useFindQuery();
   const extracted = extractMath(text);
-  const mathText = neutralizeUnsafeImages(extracted.text, completed);
+  const mathText = prepareAngleAutolinks(
+    neutralizeUnsafeImages(extracted.text, completed),
+    completed,
+  );
   const slots = extracted.slots;
   const source = applyHardLineBreaks(
     protectMarkdownEscapes(mathText, completed),
@@ -508,7 +512,10 @@ function TableCellText({
 }) {
   const findQuery = useFindQuery();
   const extracted = extractMath(text);
-  const mathText = neutralizeUnsafeImages(extracted.text, completed);
+  const mathText = prepareAngleAutolinks(
+    neutralizeUnsafeImages(extracted.text, completed),
+    completed,
+  );
   const slots = extracted.slots;
   const source = applyHardLineBreaks(
     protectMarkdownEscapes(mathText, completed),
@@ -557,8 +564,9 @@ export function MdLink({
 }) {
   const idRef = useRef(0);
   if (idRef.current === 0) idRef.current = nextLinkStatusId();
+  // http(s) still go through isSafeWebUrl. A mailto email does too.
   const rawHref = restoreMarkdownEscapes(href ?? "");
-  const url = isSafeWebUrl(rawHref) && rawHref ? rawHref : "";
+  const url = safeLinkHref(rawHref);
   const reveal = preview && url.length > 0;
   useEffect(() => {
     if (!reveal) return;
