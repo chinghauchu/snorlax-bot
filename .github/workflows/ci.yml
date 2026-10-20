@@ -165,3 +165,4 @@ jobs:
           python3 ios/scripts/test_ios_markdown_email.py
           python3 ios/scripts/test_ios_markdown_link_title.py
           python3 ios/scripts/test_ios_markdown_lazy_quote.py
+          python3 ios/scripts/test_ios_markdown_indented_code.py

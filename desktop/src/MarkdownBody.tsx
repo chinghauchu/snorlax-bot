@@ -34,6 +34,7 @@ import {
   toggleCodeBlockWrap,
 } from "./codeBlockWrap";
 import { linkHref, splitWebUrls } from "./linkify";
+import { splitIndentedCode } from "./markdownIndentedCode";
 import { prepareAngleAutolinks, safeLinkHref } from "./markdownAutolink";
 import { linkTitleHint } from "./markdownLinkTitle";
 import {
@@ -482,6 +483,62 @@ function MarkdownChunk({
   order: FenceOrder;
 }) {
   const findQuery = useFindQuery();
+  const parts = splitIndentedCode(text, completed);
+  if (parts.length === 1 && parts[0]?.type === "markdown") {
+    return (
+      <MarkdownParsed
+        text={parts[0].text}
+        knownNames={knownNames}
+        completed={completed}
+        wrapScope={wrapScope}
+        order={order}
+        findQuery={findQuery}
+      />
+    );
+  }
+  return (
+    <>
+      {parts.map((part, index) =>
+        part.type === "code" ? (
+          <FenceChrome
+            key={`indent-${index}`}
+            language=""
+            source={part.source}
+            completed={completed}
+            findQuery={findQuery}
+            wrapId={codeBlockWrapId(wrapScope, order.n++)}
+          />
+        ) : (
+          <MarkdownParsed
+            key={`md-${index}`}
+            text={part.text}
+            knownNames={knownNames}
+            completed={completed}
+            wrapScope={wrapScope}
+            order={order}
+            findQuery={findQuery}
+          />
+        ),
+      )}
+    </>
+  );
+}
+
+function MarkdownParsed({
+  text,
+  knownNames,
+  completed,
+  wrapScope,
+  order,
+  findQuery,
+}: {
+  text: string;
+  knownNames: string[];
+  completed: boolean;
+  wrapScope: string;
+  order: FenceOrder;
+  findQuery: string;
+}) {
   const extracted = extractMath(text);
   const mathText = prepareAngleAutolinks(
     neutralizeUnsafeImages(extracted.text, completed),
@@ -494,6 +551,19 @@ function MarkdownChunk({
   );
   const enrich = (children?: ReactNode) =>
     enrichChildren(children, knownNames, completed, slots, findQuery);
+  function SnorlaxPre({ children }: { children?: ReactNode }) {
+    return (
+      <CodeFence
+        completed={completed}
+        findQuery={findQuery}
+        wrapScope={wrapScope}
+        fenceIndex={order.n++}
+      >
+        {children}
+      </CodeFence>
+    );
+  }
+  SnorlaxPre.displayName = "SnorlaxPre";
   return (
     <Markdown
       remarkPlugins={completed ? [remarkHardBreaks, remarkStrikethrough] : []}
@@ -501,16 +571,7 @@ function MarkdownChunk({
       components={{
         a: ({ href, title, children }) =>
           markdownAnchor(href, title, completed, children),
-        pre: ({ children }) => (
-          <CodeFence
-            completed={completed}
-            findQuery={findQuery}
-            wrapScope={wrapScope}
-            fenceIndex={order.n++}
-          >
-            {children}
-          </CodeFence>
-        ),
+        pre: SnorlaxPre,
         code: InlineCode,
         img: ({ alt, src, title }) =>
           markdownImageNode(
@@ -1248,6 +1309,21 @@ function enrichChildren(
         child.type === "code" ||
         child.type === "a" ||
         child.type === "pre";
+      // A fence (including indented code) already owns its text. Cloning
+      // it here would turn that text into a footnote node and the block
+      // would copy as empty. Lists pass the fence through `li`.
+      const typeName =
+        typeof child.type === "function"
+          ? (child.type as { displayName?: string }).displayName
+          : "";
+      if (
+        child.type === CodeFence ||
+        child.type === FenceChrome ||
+        child.type === MermaidFence ||
+        typeName === "SnorlaxPre"
+      ) {
+        return child;
+      }
       return cloneElement(
         child,
         undefined,

@@ -1,5 +1,12 @@
 // SPDX-License-Identifier: Apache-2.0
 
+import {
+  contentColumns,
+  containsIndentedCode,
+  isAtxHeadingLine,
+  isBlank,
+  isThematicBreakLine,
+} from "./markdownIndentedCode.ts";
 import { containsMarkdownTable } from "./markdownTable.ts";
 
 /**
@@ -68,6 +75,13 @@ export function splitAssistantBubbles(
   let chunk: string[] = [];
   let fence: string | null = null;
   let inMath = false;
+  // v1.48: a blank line inside an indented code block stays in that
+  // bubble, the same way a blank inside a fence or $$ block does.
+  // A blank outside one still splits. Paragraph continuations and
+  // list lines are not code, so their following blank still splits.
+  let inCode = false;
+  let paragraph = false;
+  let pendingBlanks: string[] = [];
 
   const flush = () => {
     while (chunk.length && chunk[0]!.trim() === "") chunk.shift();
@@ -75,9 +89,25 @@ export function splitAssistantBubbles(
     const joined = chunk.join("\n");
     if (joined.trim()) parts.push(joined);
     chunk = [];
+    inCode = false;
+    paragraph = false;
+    pendingBlanks = [];
+  };
+
+  const pushText = (line: string) => {
+    chunk.push(line);
+    const columns = contentColumns(line);
+    if (!paragraph && columns != null && columns >= 4) {
+      inCode = true;
+      return;
+    }
+    inCode = false;
+    paragraph = !isAtxHeadingLine(line) && !isThematicBreakLine(line);
   };
 
   for (const line of lines) {
+    const wasFence = fence != null;
+    const wasMath = inMath;
     const fenceMatch = /^( {0,3})(`{3,}|~{3,})(.*)$/.exec(line);
     if (fenceMatch && !inMath) {
       const marker = fenceMatch[2]!;
@@ -94,20 +124,45 @@ export function splitAssistantBubbles(
     } else if (!fence) {
       if (line.trim() === "$$") inMath = !inMath;
     }
+    const inFenceOrMath = wasFence || wasMath || fence != null || inMath;
 
-    if (!fence && !inMath && line.trim() === "") {
-      flush();
+    if (isBlank(line) && !inFenceOrMath) {
+      if (inCode) pendingBlanks.push(line);
+      else flush();
       continue;
     }
-    chunk.push(line);
+
+    if (inCode && pendingBlanks.length && !inFenceOrMath) {
+      const columns = contentColumns(line);
+      if (columns != null && columns >= 4) {
+        chunk.push(...pendingBlanks);
+        pendingBlanks = [];
+      } else {
+        pendingBlanks = [];
+        flush();
+      }
+    } else if (pendingBlanks.length && inFenceOrMath) {
+      pendingBlanks = [];
+      flush();
+    }
+
+    if (inFenceOrMath) {
+      inCode = false;
+      paragraph = false;
+      chunk.push(line);
+      continue;
+    }
+
+    pushText(line);
   }
   flush();
   return parts;
 }
 
-/** Fences, block math, and completed tables stretch to the column. */
+/** Fences, block math, indented code, and completed tables stretch to the column. */
 export function assistantBubbleWide(text: string, completed = true): boolean {
   if (/^( {0,3})(`{3,}|~{3,})/m.test(text) || /^\s*\$\$/m.test(text)) return true;
+  if (completed && containsIndentedCode(text)) return true;
   if (!completed) return false;
   return containsMarkdownTable(text);
 }
