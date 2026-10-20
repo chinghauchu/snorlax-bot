@@ -267,7 +267,7 @@ test("attachment images use the session fetch and the lightbox, with a muted fal
   assert.match(body, /neutralizeUnsafeImages/);
   assert.match(body, /markdownImageNode/);
   assert.match(body, /urlTransform=\{\(url\) => url\}/);
-  assert.equal(body.split("urlTransform={(url) => url}").length - 1, 2);
+  assert.equal(body.split("urlTransform={(url) => url}").length - 1, 3);
   assert.match(app, /onOpenImage=\{openImageLightbox\}/);
   assert.match(app, /session=\{session\}/);
   assert.match(css, /\.assistant-md \.md-inline-image \{/);

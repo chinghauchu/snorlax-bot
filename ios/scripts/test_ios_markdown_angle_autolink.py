@@ -83,7 +83,7 @@ def test_wired_without_new_http() -> None:
     assert "isSafeWebUrl" in BODY
     assert "linkStatusHover" in BODY
     assert "openOsBrowser" in BODY
-    assert BODY.count("prepareAngleAutolinks(") == 2
+    assert BODY.count("prepareAngleAutolinks(") == 3
     assert "copyText(reply.content)" in APP
     assert "shouldRenderMarkdown" in APP
     assert "version: 0.18.0" in OPENAPI

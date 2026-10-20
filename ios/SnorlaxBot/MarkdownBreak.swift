@@ -37,6 +37,7 @@ enum MarkdownBreak {
         var inMath = false
         var setextOpen = false
         var inList = false
+        var listContentCol = 0
 
         func pushMarkdown(_ end: Int) {
             guard end > mdStart else { return }
@@ -55,17 +56,27 @@ enum MarkdownBreak {
             if gate.blocked {
                 setextOpen = false
                 inList = false
+                listContentCol = 0
                 index += 1
                 continue
             }
             if let marker = thematicBreakMarker(line) {
+                let indent = leadingSpaceColumns(line)
+                // A solid dash underline indented into the open list item
+                // is a setext heading inside that item, not a rule.
+                let insideList = inList
+                    && marker == "-"
+                    && isSolidRun(line, marker: "-")
+                    && listContentCol > 0
+                    && indent >= listContentCol
                 let setext = marker == "-" && isSolidRun(line, marker: "-") && setextOpen && !inList
-                if !setext {
+                if !setext && !insideList {
                     pushMarkdown(index)
                     blocks.append(.rule)
                     mdStart = index + 1
                     setextOpen = false
                     inList = false
+                    listContentCol = 0
                     index += 1
                     continue
                 }
@@ -73,11 +84,13 @@ enum MarkdownBreak {
             if line.trimmingCharacters(in: .whitespaces).isEmpty {
                 setextOpen = false
                 inList = false
+                listContentCol = 0
                 index += 1
                 continue
             }
             if isListItemLine(line) {
                 inList = true
+                listContentCol = listItemContentColumn(line)
                 setextOpen = false
                 index += 1
                 continue
@@ -135,10 +148,57 @@ enum MarkdownBreak {
     }
 
     private static func isListItemLine(_ line: String) -> Bool {
-        let body = stripIndent(line)
-        if body.range(of: #"^[-+*][ \t]"#, options: .regularExpression) != nil { return true }
-        if body.range(of: #"^\d{1,9}[.)][ \t]"#, options: .regularExpression) != nil { return true }
-        return false
+        listItemContentColumn(line) > 0
+    }
+
+    /// Columns before the list item's text. 0 when the line is not an item.
+    private static func listItemContentColumn(_ line: String) -> Int {
+        let chars = Array(line)
+        var index = 0
+        var columns = 0
+        while index < chars.count, chars[index] == " ", columns < 3 {
+            index += 1
+            columns += 1
+        }
+        let rest = String(chars[index...])
+        var token = 0
+        if rest.range(of: #"^[-+*][ \t]"#, options: .regularExpression) != nil {
+            token = 1
+        } else if let match = rest.range(of: #"^\d{1,9}[.)][ \t]"#, options: .regularExpression) {
+            let marker = String(rest[match])
+            token = marker.count - 1
+        } else {
+            return 0
+        }
+        columns += token
+        let sepIndex = rest.index(rest.startIndex, offsetBy: token, limitedBy: rest.endIndex) ?? rest.endIndex
+        if sepIndex < rest.endIndex {
+            let sep = rest[sepIndex]
+            if sep == " " {
+                columns += 1
+            } else if sep == "\t" {
+                columns += 4 - (columns % 4)
+            } else {
+                columns += 1
+            }
+        } else {
+            columns += 1
+        }
+        return columns
+    }
+
+    private static func leadingSpaceColumns(_ line: String) -> Int {
+        var columns = 0
+        for ch in line {
+            if ch == " " {
+                columns += 1
+            } else if ch == "\t" {
+                columns += 4 - (columns % 4)
+            } else {
+                break
+            }
+        }
+        return columns
     }
 
     private static func isIndentedCode(_ line: String) -> Bool {

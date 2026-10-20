@@ -59,6 +59,7 @@ export function splitThematicBreaks(
   let inMath = false;
   let setextOpen = false;
   let inList = false;
+  let listContentCol = 0;
 
   const pushMarkdown = (end: number) => {
     if (end <= mdStart) return;
@@ -74,28 +75,41 @@ export function splitThematicBreaks(
     if (gate.blocked) {
       setextOpen = false;
       inList = false;
+      listContentCol = 0;
       continue;
     }
     const marker = thematicBreakMarker(line);
     if (marker) {
+      const indent = leadingSpaceColumns(line);
+      // A solid dash underline indented into the open list item is a
+      // setext heading inside that item, not a rule beside the list.
+      const insideList =
+        inList &&
+        marker === "-" &&
+        isSolidRun(line, "-") &&
+        listContentCol > 0 &&
+        indent >= listContentCol;
       const setext =
         marker === "-" && isSolidRun(line, "-") && setextOpen && !inList;
-      if (!setext) {
+      if (!setext && !insideList) {
         pushMarkdown(i);
         blocks.push({ type: "rule" });
         mdStart = i + 1;
         setextOpen = false;
         inList = false;
+        listContentCol = 0;
         continue;
       }
     }
     if (!line.trim()) {
       setextOpen = false;
       inList = false;
+      listContentCol = 0;
       continue;
     }
     if (isListItemLine(line)) {
       inList = true;
+      listContentCol = listItemContentColumn(line);
       setextOpen = false;
       continue;
     }
@@ -255,10 +269,42 @@ function isSetextContentLine(line: string): boolean {
 }
 
 function isListItemLine(line: string): boolean {
-  const body = stripIndent(line);
-  if (/^[-+*][ \t]/.test(body)) return true;
-  if (/^\d{1,9}[.)][ \t]/.test(body)) return true;
-  return false;
+  return listItemContentColumn(line) > 0;
+}
+
+/** Columns before the list item's text. 0 when the line is not an item. */
+function listItemContentColumn(line: string): number {
+  let index = 0;
+  let columns = 0;
+  while (index < line.length && line[index] === " " && columns < 3) {
+    index += 1;
+    columns += 1;
+  }
+  const rest = line.slice(index);
+  let token = 0;
+  if (/^[-+*][ \t]/.test(rest)) token = 1;
+  else {
+    const ordered = /^(\d{1,9}[.)])[ \t]/.exec(rest);
+    if (!ordered) return 0;
+    token = ordered[1]?.length ?? 0;
+  }
+  columns += token;
+  const sep = rest[token];
+  if (sep === " ") columns += 1;
+  else if (sep === "\t") columns += 4 - (columns % 4);
+  else columns += 1;
+  return columns;
+}
+
+function leadingSpaceColumns(line: string): number {
+  let columns = 0;
+  for (let i = 0; i < line.length; i += 1) {
+    const ch = line[i];
+    if (ch === " ") columns += 1;
+    else if (ch === "\t") columns += 4 - (columns % 4);
+    else break;
+  }
+  return columns;
 }
 
 function isIndentedCode(line: string): boolean {

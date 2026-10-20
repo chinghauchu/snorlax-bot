@@ -68,7 +68,8 @@ def test_split_keeps_streaming_and_source() -> None:
 def test_ios_quotes_and_tasks_are_styled_and_static() -> None:
     quote = _slice(MARKDOWN, "struct MarkdownQuoteBlock", "struct MarkdownTaskList")
     tasks = _slice(MARKDOWN, "struct MarkdownTaskList", "struct MarkdownTableBlock")
-    assert "MarkdownQuoteTask.split(source, completed: completed)" in MARKDOWN
+    assert "MarkdownSetext.protectLazy(source, completed: completed)" in MARKDOWN
+    assert "MarkdownQuoteTask.split(" in MARKDOWN
     assert "Rectangle()" in quote
     assert ".frame(width: 2)" in quote
     assert ".padding(.leading, 10)" in quote

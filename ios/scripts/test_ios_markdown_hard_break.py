@@ -83,7 +83,7 @@ def test_order_and_no_copy() -> None:
     assert BODY.index("applyHardLineBreaks(") < BODY.index(
         "protectMarkdownEscapes(mathText, completed)"
     )
-    assert BODY.count("remarkHardBreaks, remarkStrikethrough") == 2
+    assert BODY.count("remarkHardBreaks, remarkStrikethrough") == 3
     assert "copyText(reply.content)" in APP
     assert "applyHardLineBreaks(reply.content" not in APP
     assert "withAnimation" not in SWIFT

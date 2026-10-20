@@ -103,12 +103,15 @@ private struct MarkdownQuoteTaskPieces: View {
     var wrapScope: String
 
     var body: some View {
-        let blocks = MarkdownQuoteTask.split(source, completed: completed)
+        let blocks = MarkdownQuoteTask.split(
+            MarkdownSetext.protectLazy(source, completed: completed),
+            completed: completed
+        )
         VStack(alignment: .leading, spacing: 8) {
             ForEach(Array(blocks.enumerated()), id: \.offset) { _, block in
                 switch block {
                 case .markdown(let text):
-                    MarkdownBreakPieces(
+                    MarkdownSetextPieces(
                         source: text,
                         names: names,
                         completed: completed,
@@ -213,6 +216,68 @@ private struct MarkdownTaskRow: View {
         } else {
             row
         }
+    }
+}
+
+/// Top-level setext headings use the same semibold sizes as ATX.
+/// A multi-line heading is one header; the line break stays inside it.
+private struct MarkdownSetextPieces: View {
+    let source: String
+    let names: [String]
+    var completed: Bool
+    var wrapScope: String
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    var body: some View {
+        let parts = MarkdownSetext.split(source, completed: completed)
+        if parts.count == 1, case .markdown(let text) = parts[0] {
+            MarkdownBreakPieces(
+                source: text,
+                names: names,
+                completed: completed,
+                wrapScope: wrapScope
+            )
+        } else {
+            VStack(alignment: .leading, spacing: 8) {
+                ForEach(Array(parts.enumerated()), id: \.offset) { _, part in
+                    switch part {
+                    case .heading(let level, let text):
+                        MarkdownSetextHeading(
+                            level: level,
+                            text: text,
+                            names: names,
+                            completed: completed
+                        )
+                    case .markdown(let text):
+                        MarkdownBreakPieces(
+                            source: text,
+                            names: names,
+                            completed: completed,
+                            wrapScope: wrapScope
+                        )
+                    }
+                }
+            }
+            .animation(MarkdownSetext.animation(reduceMotion: reduceMotion), value: source)
+        }
+    }
+}
+
+/// One heading. Inline markdown, including emphasis across lines, stays inside it.
+private struct MarkdownSetextHeading: View {
+    let level: Int
+    let text: String
+    let names: [String]
+    var completed: Bool
+
+    var body: some View {
+        MarkdownRun(
+            source: MarkdownSetext.headingInlineSource(text),
+            names: names,
+            completed: completed,
+            headingLevel: level
+        )
+        .accessibilityAddTraits(.isHeader)
     }
 }
 
@@ -426,8 +491,9 @@ private struct MarkdownTableBlock: View {
     }
 
     private func tableCell(_ text: String, column: Int, header: Bool, last: Bool) -> some View {
+        let literal = MarkdownSetext.literalize(text)
         MarkdownRun(
-            source: text.isEmpty ? " " : text,
+            source: literal.isEmpty ? " " : literal,
             names: names,
             completed: completed,
             hugsText: true,
@@ -769,6 +835,8 @@ private struct MarkdownRun: View {
     var hugsText: Bool = false
     /// Header cells use semibold body text.
     var header: Bool = false
+    /// Setext headings use the same 16pt / 14pt semibold font as ATX.
+    var headingLevel: Int? = nil
     @Environment(\.openURL) private var openURL
     @Environment(\.chatFind) private var find
     @Environment(\.markdownFootnotes) private var markdownFootnotes
@@ -779,6 +847,18 @@ private struct MarkdownRun: View {
 
     private var metrics: TranscriptTextScale.Metrics {
         TranscriptTextScale.metrics(percent: transcriptTextPercent, dynamicType: dynamicTypeSize)
+    }
+
+    /// Setext and table-header fonts. ATX headings still come from presentation intent.
+    private var headingFont: UIFont {
+        if let level = headingLevel {
+            let size = level <= 1 ? metrics.heading : metrics.body
+            return UIFont.systemFont(ofSize: size, weight: .semibold)
+        }
+        if header {
+            return UIFont.systemFont(ofSize: metrics.body, weight: .semibold)
+        }
+        return metrics.bodyFont
     }
 
     var body: some View {
@@ -862,9 +942,7 @@ private struct MarkdownRun: View {
         QuoteSelectableText(
             text: wrapping(attributed(src)),
             quoteEnabled: completed,
-            font: header
-                ? UIFont.systemFont(ofSize: metrics.body, weight: .semibold)
-                : metrics.bodyFont,
+            font: headingFont,
             expandsHorizontally: hugsText,
             onQuote: { model.quoteIntoComposer($0) },
             onLink: { url in
@@ -886,6 +964,14 @@ private struct MarkdownRun: View {
         // Footnote tokens are replaced after that, from the end, so
         // heading ranges already written stay aligned.
         styleHeadings(text, ns: ns)
+        if let level = headingLevel {
+            let size = level <= 1 ? metrics.heading : metrics.body
+            let font = UIFont.systemFont(ofSize: size, weight: .semibold)
+            let full = NSRange(location: 0, length: ns.length)
+            if full.length > 0 {
+                ns.addAttribute(.font, value: font, range: full)
+            }
+        }
         MarkdownFootnote.applyMarkers(ns, baseSize: metrics.body)
         let style = NSMutableParagraphStyle()
         if hugsText {
@@ -930,6 +1016,13 @@ private struct MarkdownRun: View {
         dropUnsafeLinks(&parsed)
         highlightMentions(&parsed)
         markHeadingFonts(&parsed)
+        if let level = headingLevel {
+            let size = level <= 1 ? metrics.heading : metrics.body
+            let font = UIFont.systemFont(ofSize: size, weight: .semibold)
+            for run in parsed.runs {
+                parsed[run.range].uiKit.font = font
+            }
+        }
         MarkdownFootnote.applyMarkers(&parsed, baseSize: metrics.body)
         return ChatFind.paint(parsed, query: find.query)
     }

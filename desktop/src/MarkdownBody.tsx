@@ -57,6 +57,13 @@ import {
   splitThematicBreaks,
 } from "./markdownBreak";
 import { applyHardLineBreaks, remarkHardBreaks } from "./markdownHardBreak";
+import {
+  headingInlineSource,
+  literalizeSetextLines,
+  protectLazySetext,
+  setextAnimates,
+  splitSetextHeadings,
+} from "./markdownSetext";
 import { neutralizeUnsafeImages } from "./markdownImage";
 import {
   InMarkdownLink,
@@ -220,7 +227,7 @@ function QuoteTaskPieces({
   wrapScope: string;
   order: FenceOrder;
 }) {
-  const blocks = splitQuoteAndTasks(text, completed);
+  const blocks = splitQuoteAndTasks(protectLazySetext(text, completed), completed);
   const animate = quoteTaskAnimates(false);
   return (
     <>
@@ -282,7 +289,7 @@ function QuoteTaskPieces({
           );
         }
         return (
-          <MarkdownSegment
+          <SetextPieces
             key={`m-${index}`}
             text={block.text}
             knownNames={knownNames}
@@ -293,6 +300,129 @@ function QuoteTaskPieces({
         );
       })}
     </>
+  );
+}
+
+/**
+ * Top-level setext headings become the same h1 / h2 elements as ATX.
+ * A multi-line heading is one element; the line break stays inside it.
+ * Streaming is one markdown run.
+ */
+function SetextPieces({
+  text,
+  knownNames,
+  completed,
+  wrapScope,
+  order,
+}: {
+  text: string;
+  knownNames: string[];
+  completed: boolean;
+  wrapScope: string;
+  order: FenceOrder;
+}) {
+  const parts = splitSetextHeadings(text, completed);
+  const animate = setextAnimates(false);
+  return (
+    <>
+      {parts.map((part, index) =>
+        part.type === "heading" ? (
+          <SetextHeading
+            key={`setext-${index}`}
+            level={part.level}
+            text={part.text}
+            knownNames={knownNames}
+            completed={completed}
+            animate={animate}
+          />
+        ) : (
+          <MarkdownSegment
+            key={`m-${index}`}
+            text={part.text}
+            knownNames={knownNames}
+            completed={completed}
+            wrapScope={wrapScope}
+            order={order}
+          />
+        ),
+      )}
+    </>
+  );
+}
+
+function SetextHeading({
+  level,
+  text,
+  knownNames,
+  completed,
+  animate,
+}: {
+  level: 1 | 2;
+  text: string;
+  knownNames: string[];
+  completed: boolean;
+  animate: boolean;
+}) {
+  const Tag = level === 1 ? "h1" : "h2";
+  return (
+    <Tag data-animate={animate ? "1" : undefined}>
+      <HeadingInline
+        text={headingInlineSource(text)}
+        knownNames={knownNames}
+        completed={completed}
+      />
+    </Tag>
+  );
+}
+
+/** Inline markdown for a setext heading. Paragraph wrappers stay out of the h1. */
+function HeadingInline({
+  text,
+  knownNames,
+  completed,
+}: {
+  text: string;
+  knownNames: string[];
+  completed: boolean;
+}) {
+  const findQuery = useFindQuery();
+  const extracted = extractMath(text);
+  const mathText = prepareAngleAutolinks(
+    neutralizeUnsafeImages(extracted.text, completed),
+    completed,
+  );
+  const slots = extracted.slots;
+  const source = applyHardLineBreaks(
+    protectMarkdownEscapes(mathText, completed),
+    completed,
+  );
+  const enrich = (children?: ReactNode) =>
+    enrichChildren(children, knownNames, completed, slots, findQuery);
+  return (
+    <Markdown
+      remarkPlugins={completed ? [remarkHardBreaks, remarkStrikethrough] : []}
+      urlTransform={(url) => url}
+      components={{
+        a: ({ href, children }) => (
+          <MdLink href={href} preview={completed}>
+            {children}
+          </MdLink>
+        ),
+        code: InlineCode,
+        del: ({ children }) => <del className="md-strike">{enrich(children)}</del>,
+        img: ({ alt, src, title }) =>
+          markdownImageNode(
+            completed,
+            restoreMarkdownEscapes(typeof alt === "string" ? alt : ""),
+            restoreMarkdownEscapes(typeof src === "string" ? src : ""),
+            restoreMarkdownEscapes(typeof title === "string" ? title : ""),
+          ),
+        p: ({ children }) => <>{enrich(children)}</>,
+        pre: ({ children }) => <>{children}</>,
+      }}
+    >
+      {source}
+    </Markdown>
   );
 }
 
@@ -511,7 +641,7 @@ function TableCellText({
   completed: boolean;
 }) {
   const findQuery = useFindQuery();
-  const extracted = extractMath(text);
+  const extracted = extractMath(literalizeSetextLines(text));
   const mathText = prepareAngleAutolinks(
     neutralizeUnsafeImages(extracted.text, completed),
     completed,
