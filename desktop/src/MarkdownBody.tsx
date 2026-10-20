@@ -2,7 +2,9 @@
 import {
   Children,
   cloneElement,
+  createContext,
   isValidElement,
+  useContext,
   useEffect,
   useRef,
   useState,
@@ -66,6 +68,14 @@ import {
   type TableAlign,
 } from "./markdownTable";
 import {
+  FOOTNOTES_TITLE,
+  focusFootnote,
+  footnoteBackLabel,
+  footnoteRefLabel,
+  splitFootnoteTokens,
+  type Footnote,
+} from "./markdownFootnote";
+import {
   extractMath,
   renderKatex,
   shouldRenderMath,
@@ -87,9 +97,34 @@ type Props = {
   wrapScope?: string;
   /** Shared fence index when a quote or task renders nested markdown. */
   fenceOrder?: FenceOrder;
+  /** Message id so a marker in any bubble can focus its note. */
+  footnoteScope?: string;
+  /** Matched notes. Only the last bubble of the message passes these. */
+  footnotes?: Footnote[];
 };
 
 type FenceOrder = { n: number };
+
+const FootnoteScopeContext = createContext("");
+
+/** Message id shared by every bubble so a marker can find its note. */
+export function FootnoteScopeProvider({
+  scope,
+  children,
+}: {
+  scope: string;
+  children: ReactNode;
+}) {
+  return (
+    <FootnoteScopeContext.Provider value={scope}>
+      {children}
+    </FootnoteScopeContext.Provider>
+  );
+}
+
+function useFootnoteScope(): string {
+  return useContext(FootnoteScopeContext);
+}
 
 export function MarkdownBody({
   text,
@@ -97,11 +132,13 @@ export function MarkdownBody({
   completed = true,
   wrapScope = "",
   fenceOrder,
+  footnoteScope = "",
+  footnotes,
 }: Props) {
   const stable = stabilizeMarkdown(text);
   const segments = splitMarkdownTables(stable, completed);
   const order: FenceOrder = fenceOrder ?? { n: 0 };
-  return (
+  const body = (
     <>
       {segments.map((segment, index) =>
         segment.type === "table" ? (
@@ -122,8 +159,17 @@ export function MarkdownBody({
           />
         ),
       )}
+      {footnotes?.length ? (
+        <FootnotesList
+          notes={footnotes}
+          scope={footnoteScope}
+          knownNames={knownNames}
+        />
+      ) : null}
     </>
   );
+  if (!footnoteScope) return body;
+  return <FootnoteScopeProvider scope={footnoteScope}>{body}</FootnoteScopeProvider>;
 }
 
 /**
@@ -492,9 +538,28 @@ export function MdLink({
         void openOsBrowser(url);
       }}
     >
-      {children}
+      <FootnoteMarkers>{children}</FootnoteMarkers>
     </a>
   );
+}
+
+/** A footnote token inside a link label still becomes a marker. */
+function FootnoteMarkers({ children }: { children?: ReactNode }) {
+  const scope = useFootnoteScope();
+  return Children.map(children, (child, index) => {
+    if (typeof child !== "string" || !child.includes("§§SBFN")) return child;
+    return splitFootnoteTokens(child).map((piece, inner) =>
+      piece.type === "ref" ? (
+        <FootnoteRefButton
+          key={`${index}-${inner}`}
+          number={piece.number}
+          scope={scope}
+        />
+      ) : (
+        <span key={`${index}-${inner}`}>{piece.value}</span>
+      ),
+    );
+  });
 }
 
 export function HttpsText({
@@ -988,7 +1053,14 @@ function renderTextWithMath(
 ): ReactNode {
   const pieces = splitMathTokens(text);
   if (pieces.length === 1 && pieces[0]?.type === "text") {
-    return mentionifyString(text, knownNames, keyBase, findQuery, linkify);
+    return (
+      <FootnoteText
+        text={text}
+        knownNames={knownNames}
+        findQuery={findQuery}
+        linkify={linkify}
+      />
+    );
   }
   return pieces.map((piece, inner) => {
     if (piece.type === "math") {
@@ -1004,7 +1076,12 @@ function renderTextWithMath(
     }
     return (
       <span key={`${keyBase}-t-${inner}`}>
-        {mentionifyString(piece.value, knownNames, inner, findQuery, linkify)}
+        <FootnoteText
+          text={piece.value}
+          knownNames={knownNames}
+          findQuery={findQuery}
+          linkify={linkify}
+        />
       </span>
     );
   });
@@ -1048,6 +1125,99 @@ function MathNode({
     <code className="md-math-fallback">
       <FindText text={slot.raw} query={findQuery} />
     </code>
+  );
+}
+
+function FootnoteText({
+  text,
+  knownNames,
+  findQuery,
+  linkify,
+}: {
+  text: string;
+  knownNames: string[];
+  findQuery: string;
+  linkify: boolean;
+}) {
+  const scope = useFootnoteScope();
+  if (!linkify || !text.includes("§§SBFN")) {
+    return <>{mentionifyString(text, knownNames, 0, findQuery, linkify)}</>;
+  }
+  const pieces = splitFootnoteTokens(text);
+  return (
+    <>
+      {pieces.map((piece, index) =>
+        piece.type === "ref" ? (
+          <FootnoteRefButton key={index} number={piece.number} scope={scope} />
+        ) : (
+          <span key={index}>
+            {mentionifyString(piece.value, knownNames, index, findQuery, linkify)}
+          </span>
+        ),
+      )}
+    </>
+  );
+}
+
+function FootnoteRefButton({
+  number,
+  scope,
+}: {
+  number: number;
+  scope: string;
+}) {
+  return (
+    <button
+      type="button"
+      className="md-fn-ref"
+      data-fn-ref={scope}
+      data-fn-number={number}
+      aria-label={footnoteRefLabel(number)}
+      onClick={() => focusFootnote(scope, number, "note")}
+    >
+      <sup>{number}</sup>
+    </button>
+  );
+}
+
+/** Muted numbered list. The back-link returns to the first marker. */
+export function FootnotesList({
+  notes,
+  scope,
+  knownNames,
+}: {
+  notes: Footnote[];
+  scope: string;
+  knownNames: string[];
+}) {
+  if (!notes.length) return null;
+  return (
+    <section className="md-footnotes" aria-label={FOOTNOTES_TITLE}>
+      <p className="md-fn-title">{FOOTNOTES_TITLE}</p>
+      <ol className="md-fn-list">
+        {notes.map((note) => (
+          <li
+            key={note.number}
+            className="md-fn-item"
+            data-fn-note={scope}
+            data-fn-number={note.number}
+            tabIndex={-1}
+          >
+            <div className="md-fn-body">
+              <MarkdownBody text={note.text} knownNames={knownNames} completed />
+            </div>
+            <button
+              type="button"
+              className="md-fn-back"
+              aria-label={footnoteBackLabel(note.number)}
+              onClick={() => focusFootnote(scope, note.number, "ref")}
+            >
+              {"\u21a9"}
+            </button>
+          </li>
+        ))}
+      </ol>
+    </section>
   );
 }
 

@@ -1494,6 +1494,111 @@ mark.find-hit.active {
   }
 }
 
+/* v1.38: GFM footnote marker. Small superscript, same accent as links.
+   No animation. */
+.assistant-md button.md-fn-ref {
+  appearance: none;
+  border: 0;
+  background: none;
+  margin: 0;
+  padding: 0 1px;
+  color: var(--accent);
+  font: inherit;
+  font-size: 0.75em;
+  line-height: 1;
+  vertical-align: super;
+  cursor: pointer;
+  transition: none;
+  animation: none;
+}
+
+.assistant-md button.md-fn-ref sup {
+  font-size: 1em;
+  line-height: 0;
+}
+
+.assistant-md button.md-fn-ref:focus-visible {
+  outline: 1px solid var(--accent);
+  outline-offset: 1px;
+}
+
+/* v1.38: muted numbered Footnotes list at the end of the message. */
+.assistant-md .md-footnotes {
+  align-self: stretch;
+  box-sizing: border-box;
+  max-width: 100%;
+  min-width: 0;
+  margin: 8px 0 0;
+  color: var(--text-muted);
+  font-size: 12px;
+  line-height: 1.4;
+  transition: none;
+  animation: none;
+}
+
+.assistant-md .md-fn-title {
+  margin: 0 0 4px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-muted);
+}
+
+.assistant-md ol.md-fn-list {
+  margin: 0;
+  padding-left: 1.4em;
+}
+
+.assistant-md li.md-fn-item {
+  margin: 0 0 4px;
+  scroll-margin: 12px;
+}
+
+.assistant-md li.md-fn-item:focus {
+  outline: 1px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.assistant-md .md-fn-body {
+  display: inline;
+}
+
+.assistant-md .md-fn-body p {
+  display: inline;
+  margin: 0;
+}
+
+.assistant-md button.md-fn-back {
+  appearance: none;
+  border: 0;
+  background: none;
+  margin: 0 0 0 4px;
+  padding: 0 2px;
+  color: var(--text-muted);
+  font: inherit;
+  font-size: 12px;
+  line-height: 1;
+  cursor: pointer;
+  vertical-align: baseline;
+  transition: none;
+  animation: none;
+}
+
+.assistant-md button.md-fn-back:focus-visible {
+  outline: 1px solid var(--accent);
+  outline-offset: 1px;
+}
+
+/* v1.38: Reduce Motion on → markers and the list stay static. */
+@media (prefers-reduced-motion: reduce) {
+  .assistant-md .md-footnotes,
+  .assistant-md button.md-fn-ref,
+  .assistant-md button.md-fn-back,
+  .assistant-md li.md-fn-item {
+    transition: none;
+    animation: none;
+  }
+}
+
 .assistant-md a.md-link {
   color: var(--accent);
   text-decoration: none;

@@ -2138,7 +2138,18 @@ struct ChatView: View {
             return [message.content]
         }
         if message.isKindMessage {
-            return MarkdownSplit.bubbles(in: message.displayContent, completed: completed)
+            let prepared = MarkdownFootnote.extract(message.displayContent, completed: completed)
+            if prepared.notes.isEmpty {
+                return MarkdownSplit.bubbles(in: message.displayContent, completed: completed)
+            }
+            var texts = MarkdownSplit.bubbles(in: prepared.text, completed: completed)
+            if let last = texts.indices.last {
+                let suffix = prepared.notes
+                    .map { "\($0.number). \(MarkdownFootnote.plain($0.text))" }
+                    .joined(separator: "\n")
+                texts[last] += "\n" + suffix
+            }
+            return texts
         }
         return []
     }
@@ -3759,8 +3770,16 @@ private struct MessageBubble: View {
             )
     }
 
+    private var footnotePrepared: MarkdownFootnote.Prepared {
+        MarkdownFootnote.extract(message.displayContent, completed: completed)
+    }
+
     private var leftBubbles: [String] {
-        MarkdownSplit.bubbles(in: message.displayContent, completed: completed)
+        let prepared = footnotePrepared
+        if prepared.notes.isEmpty {
+            return MarkdownSplit.bubbles(in: message.displayContent, completed: completed)
+        }
+        return MarkdownSplit.bubbles(in: prepared.text, completed: completed)
     }
 
     private var senderAgent: Agent? {
@@ -3934,7 +3953,8 @@ private struct MessageBubble: View {
                                                     text: part,
                                                     names: agents.filter { !$0.isChannel }.map(\.name),
                                                     completed: completed,
-                                                    wrapScope: "\(message.id)#\(offset)"
+                                                    wrapScope: "\(message.id)#\(offset)",
+                                                    showFootnotes: offset == leftBubbles.count - 1
                                                 )
                                             } else {
                                                 MidStreamPlaintextView(
@@ -3947,6 +3967,7 @@ private struct MessageBubble: View {
                                             }
                                         }
                                     }
+                                    .environment(\.markdownFootnotes, footnotePrepared.notes)
                                     .padding(.horizontal, 12)
                                     .padding(.vertical, 8)
                                     .background(

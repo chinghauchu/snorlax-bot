@@ -330,6 +330,12 @@ extension QuoteSelectableText {
         ) -> UITextItem.MenuConfiguration? {
             guard let onLink else { return nil }
             guard case .link(let url) = textItem.content else { return nil }
+            if MarkdownFootnote.isMarker(url) {
+                let show = UIAction(title: MarkdownFootnote.showLabel) { [weak self] _ in
+                    self?.onLink?(url)
+                }
+                return UITextItem.MenuConfiguration(menu: UIMenu(children: [show]))
+            }
             guard WebLinks.allows(url) else { return nil }
             return LinkPreview.configuration(for: url, open: onLink)
         }
