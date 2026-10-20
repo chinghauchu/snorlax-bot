@@ -2138,9 +2138,10 @@ struct ChatView: View {
             return [message.content]
         }
         if message.isKindMessage {
-            let prepared = MarkdownFootnote.extract(message.displayContent, completed: completed)
+            let linked = MarkdownReferenceLink.resolve(message.displayContent, completed: completed)
+            let prepared = MarkdownFootnote.extract(linked, completed: completed)
             if prepared.notes.isEmpty {
-                return MarkdownSplit.bubbles(in: message.displayContent, completed: completed)
+                return MarkdownSplit.bubbles(in: linked, completed: completed)
             }
             var texts = MarkdownSplit.bubbles(in: prepared.text, completed: completed)
             if let last = texts.indices.last {
@@ -3770,13 +3771,20 @@ private struct MessageBubble: View {
             )
     }
 
+    /// Reference links resolve across the whole message before footnotes
+    /// and the blank-line bubble split, so a definition in a later
+    /// paragraph still matches.
+    private var referenceBody: String {
+        MarkdownReferenceLink.resolve(message.displayContent, completed: completed)
+    }
+
     private var footnotePrepared: MarkdownFootnote.Prepared {
-        MarkdownFootnote.extract(message.displayContent, completed: completed)
+        MarkdownFootnote.extract(referenceBody, completed: completed)
     }
 
     private var leftBubbles: [String] {
         let prepared = footnotePrepared
-        if prepared.notes.isEmpty {
+        if prepared.notes.isEmpty && referenceBody == message.displayContent {
             return MarkdownSplit.bubbles(in: message.displayContent, completed: completed)
         }
         return MarkdownSplit.bubbles(in: prepared.text, completed: completed)

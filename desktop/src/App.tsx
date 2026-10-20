@@ -393,6 +393,7 @@ import {
 } from "./chatShortcuts";
 import { copyText } from "./markdown";
 import { extractFootnotes, footnoteFindTexts } from "./markdownFootnote";
+import { resolveReferenceLinks } from "./markdownReferenceLink";
 import { shouldRenderMarkdown } from "./midStreamPlaintext";
 import {
   assistantBubbleWide,
@@ -5019,10 +5020,11 @@ export function App() {
       else if (handoff) texts = [message.userAsk || message.content || ""];
       else if (user) texts = [body];
       else if (!skip) {
-        const footnoted = extractFootnotes(body, completed);
+        const linked = resolveReferenceLinks(body, completed);
+        const footnoted = extractFootnotes(linked, completed);
         const bubbles = footnoted.notes.length
           ? splitAssistantBubbles(footnoted.text, completed)
-          : splitAssistantBubbles(body, completed);
+          : splitAssistantBubbles(linked, completed);
         texts = footnoteFindTexts(bubbles, footnoted.notes);
       }
       return {
@@ -7795,10 +7797,11 @@ export function App() {
                   message.content,
                   message.senderName,
                 );
-                const footnoted = extractFootnotes(replyBody, completed);
+                const linked = resolveReferenceLinks(replyBody, completed);
+                const footnoted = extractFootnotes(linked, completed);
                 const leftBubbles = footnoted.notes.length
                   ? splitAssistantBubbles(footnoted.text, completed)
-                  : splitAssistantBubbles(replyBody, completed);
+                  : splitAssistantBubbles(linked, completed);
                 const quoteLoadedIds = new Set(messages.map((row) => row.id));
                 const quoteTargets =
                   quoteJumpEpoch >= 0 && active && mine
