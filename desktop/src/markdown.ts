@@ -27,6 +27,12 @@ export function stabilizeMarkdown(src: string): string {
 
 export { isSafeWebUrl, linkHref, splitWebUrls, type WebPiece } from "./linkify.ts";
 
+export {
+  dedentFenceLine,
+  dedentFencedContent,
+  openingFence,
+} from "./markdownFenceIndent.ts";
+
 export function fenceLanguage(className?: string | null): string {
   const match = /(?:^|\s)language-([A-Za-z0-9_+-]+)/.exec(className || "");
   return match?.[1] ?? "";

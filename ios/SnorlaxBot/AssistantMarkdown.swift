@@ -1382,7 +1382,13 @@ enum MarkdownSplit {
         var result: [Segment] = []
         var rest = Substring(text)
         while let open = firstFence(in: rest) {
-            let before = String(rest[rest.startIndex..<open.lowerBound])
+            // v1.53: the opening fence's 0–3 spaces are not paragraph
+            // text, and the same columns come off each content line.
+            let indent = MarkdownFenceIndent.indent(before: open.lowerBound, in: rest)
+            let before = MarkdownFenceIndent.withoutOpeningIndent(
+                String(rest[rest.startIndex..<open.lowerBound]),
+                columns: indent
+            )
             if !before.isEmpty { result.append(.markdown(before)) }
             let marker = String(rest[open])
             let afterMarker = rest[open.upperBound...]
@@ -1396,12 +1402,15 @@ enum MarkdownSplit {
             }
             let bodyRest = afterMarker[bodyStart...]
             if let close = closingFence(in: bodyRest, matching: marker) {
-                var source = String(bodyRest[bodyRest.startIndex..<close.lowerBound])
+                let closingLine = MarkdownFenceIndent.lineStart(in: bodyRest, at: close.lowerBound)
+                var source = String(bodyRest[bodyRest.startIndex..<closingLine])
                 if source.hasSuffix("\n") { source.removeLast() }
+                source = MarkdownFenceIndent.dedent(source, columns: indent)
                 result.append(.code(language: language, source: source))
                 rest = bodyRest[close.upperBound...]
             } else {
-                result.append(.code(language: language, source: String(bodyRest)))
+                let source = MarkdownFenceIndent.dedent(String(bodyRest), columns: indent)
+                result.append(.code(language: language, source: source))
                 rest = ""
                 break
             }
