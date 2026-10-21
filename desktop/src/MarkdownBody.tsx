@@ -562,6 +562,9 @@ function MarkdownParsed({
   );
   const enrich = (children?: ReactNode) =>
     enrichChildren(children, knownNames, completed, slots, findQuery);
+  // v1.53: an indented fence (1–3 spaces, backtick or tilde) is
+  // CommonMark. react-markdown drops that indent from the code.
+  // iOS applies the same rule in MarkdownFenceIndent.
   function SnorlaxPre({ children }: { children?: ReactNode }) {
     return (
       <CodeFence
