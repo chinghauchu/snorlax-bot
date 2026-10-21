@@ -168,3 +168,4 @@ jobs:
           python3 ios/scripts/test_ios_markdown_indented_code.py
           python3 ios/scripts/test_ios_markdown_single_strike.py
           python3 ios/scripts/test_ios_markdown_loose_list.py
+          python3 ios/scripts/test_ios_markdown_code_span.py

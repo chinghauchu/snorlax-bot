@@ -556,7 +556,7 @@ enum MarkdownFootnote {
                 }
                 closer = end
             }
-            if !found { break }
+            if !found { index = cursor }
         }
         return ranges
     }

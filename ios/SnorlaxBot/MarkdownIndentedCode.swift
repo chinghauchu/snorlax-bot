@@ -260,6 +260,10 @@ enum MarkdownIndentedCode {
             let body = String(line[match])
             if let markerRange = body.range(of: #"[`~]{3,}"#, options: .regularExpression) {
                 let marker = String(body[markerRange])
+                let info = String(body[markerRange.upperBound...])
+                if !MarkdownCodeSpan.fenceInfoAllowsOpen(marker: marker, info: info) {
+                    return (nil, false, false)
+                }
                 return (marker, false, true)
             }
             return (nil, false, true)

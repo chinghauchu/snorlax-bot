@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 
+import { codeSpanRanges } from "./markdownCodeSpan.ts";
 import {
   contentColumns,
   containsIndentedCode,
@@ -9,6 +10,7 @@ import {
 } from "./markdownIndentedCode.ts";
 import { markdownListEnd } from "./markdownList.ts";
 import { containsMarkdownTable } from "./markdownTable.ts";
+import { fenceInfoAllowsOpen, fenceRanges } from "./math.ts";
 
 /**
  * v0.48: completed LEFT `kind=message` splits on blank lines into short
@@ -72,6 +74,19 @@ export function splitAssistantBubbles(
   if (!completed) return [src];
 
   const lines = src.split("\n");
+  const spans = codeSpanRanges(src);
+  const lineStarts: number[] = [];
+  {
+    let at = 0;
+    for (const line of lines) {
+      lineStarts.push(at);
+      at += line.length + 1;
+    }
+  }
+  const insideCodeSpan = (lineIndex: number) => {
+    const at = lineStarts[lineIndex] ?? 0;
+    return spans.some((span) => at >= span.start && at < span.end);
+  };
   const parts: string[] = [];
   let chunk: string[] = [];
   let fence: string | null = null;
@@ -118,7 +133,7 @@ export function splitAssistantBubbles(
       const marker = fenceMatch[2]!;
       const info = fenceMatch[3] ?? "";
       if (!fence) {
-        fence = marker;
+        if (fenceInfoAllowsOpen(marker, info)) fence = marker;
       } else if (
         marker[0] === fence[0] &&
         marker.length >= fence.length &&
@@ -133,6 +148,7 @@ export function splitAssistantBubbles(
 
     if (isBlank(line) && !inFenceOrMath) {
       if (inCode) pendingBlanks.push(line);
+      else if (insideCodeSpan(index)) chunk.push(line);
       else flush();
       continue;
     }
@@ -176,7 +192,7 @@ export function splitAssistantBubbles(
 
 /** Fences, block math, indented code, and completed tables stretch to the column. */
 export function assistantBubbleWide(text: string, completed = true): boolean {
-  if (/^( {0,3})(`{3,}|~{3,})/m.test(text) || /^\s*\$\$/m.test(text)) return true;
+  if (fenceRanges(text).length > 0 || /^\s*\$\$/m.test(text)) return true;
   if (completed && containsIndentedCode(text)) return true;
   if (!completed) return false;
   return containsMarkdownTable(text);

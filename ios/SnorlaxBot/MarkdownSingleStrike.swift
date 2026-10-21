@@ -267,7 +267,7 @@ enum MarkdownSingleStrike {
                 }
                 j += m
             }
-            if !closed { break }
+            if !closed { i += n }
         }
         return ranges
     }

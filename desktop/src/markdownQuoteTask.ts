@@ -521,7 +521,12 @@ function blockGate(
     if (match) {
       const marker = match[2] ?? "";
       const info = match[3] ?? "";
-      if (!fence) return { fence: marker, inMath, blocked: true };
+      if (!fence) {
+        if (marker[0] === "`" && info.includes("`")) {
+          return { fence: null, inMath, blocked: false };
+        }
+        return { fence: marker, inMath, blocked: true };
+      }
       const same =
         marker[0] === fence[0] &&
         marker.length >= fence.length &&

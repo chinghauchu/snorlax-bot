@@ -72,6 +72,16 @@ export function inRange(index: number, ranges: Range[]): boolean {
   return ranges.some((range) => index >= range.start && index < range.end);
 }
 
+/**
+ * A backtick fence cannot contain a backtick in its info string.
+ * Tilde fences can. A line that fails this is not a fence, so a
+ * multi-backtick code span such as ``` `` ``` stays inline code.
+ */
+export function fenceInfoAllowsOpen(marker: string, info: string): boolean {
+  if (marker.startsWith("`") && info.includes("`")) return false;
+  return true;
+}
+
 /** Fenced ``` / ~~~ ranges, including an unclosed tail. */
 export function fenceRanges(src: string): Range[] {
   const ranges: Range[] = [];
@@ -86,7 +96,7 @@ export function fenceRanges(src: string): Range[] {
       const marker = match[2] ?? "";
       const info = match[3] ?? "";
       if (!open) {
-        open = { marker, start: i };
+        if (fenceInfoAllowsOpen(marker, info)) open = { marker, start: i };
       } else {
         const sameTick = marker[0] === open.marker[0];
         if (
@@ -106,7 +116,13 @@ export function fenceRanges(src: string): Range[] {
   return ranges;
 }
 
-/** Inline `code` ranges outside fences. */
+/**
+ * Inline code spans outside fences. A run of N backticks closes at
+ * the next run of exactly N, so `` `code` `` is one span. A span
+ * stays inside one paragraph: a blank line ends the search and the
+ * opener stays literal. An unmatched opener stays literal and
+ * scanning continues after it.
+ */
 export function inlineCodeRanges(src: string, fences: Range[]): Range[] {
   const ranges: Range[] = [];
   let i = 0;
@@ -122,10 +138,16 @@ export function inlineCodeRanges(src: string, fences: Range[]): Range[] {
     let n = 1;
     while (i + n < src.length && src[i + n] === "`") n += 1;
     let j = i + n;
+    let matched = false;
     while (j < src.length) {
       if (inRange(j, fences)) {
         j += 1;
         continue;
+      }
+      if (src[j] === "\n") {
+        let k = j + 1;
+        while (k < src.length && (src[k] === " " || src[k] === "\t")) k += 1;
+        if (k < src.length && src[k] === "\n") break;
       }
       if (src[j] !== "`") {
         j += 1;
@@ -136,11 +158,12 @@ export function inlineCodeRanges(src: string, fences: Range[]): Range[] {
       if (m === n) {
         ranges.push({ start: i, end: j + m });
         i = j + m;
+        matched = true;
         break;
       }
       j += m;
     }
-    if (j >= src.length) break;
+    if (!matched) i += n;
   }
   return ranges;
 }

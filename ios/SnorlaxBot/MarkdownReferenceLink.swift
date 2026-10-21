@@ -655,7 +655,7 @@ enum MarkdownReferenceLink {
                 }
                 j += m
             }
-            if !closed { break }
+            if !closed { i += n }
         }
         return ranges
     }

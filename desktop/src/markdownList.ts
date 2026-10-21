@@ -350,7 +350,10 @@ function fenceOnLine(line: string): { marker: string; info: string } | null {
   const rest = line.slice(lead.index);
   const match = /^(`{3,}|~{3,})(.*)$/.exec(rest);
   if (!match) return null;
-  return { marker: match[1] ?? "", info: match[2] ?? "" };
+  const marker = match[1] ?? "";
+  const info = match[2] ?? "";
+  if (marker[0] === "`" && info.includes("`")) return null;
+  return { marker, info };
 }
 
 function leadingColumns(line: string): { columns: number; index: number } {
@@ -418,7 +421,12 @@ function blockGate(
     if (match) {
       const marker = match[2] ?? "";
       const info = match[3] ?? "";
-      if (!fence) return { fence: marker, inMath, blocked: true };
+      if (!fence) {
+        if (marker[0] === "`" && info.includes("`")) {
+          return { fence: null, inMath, blocked: false };
+        }
+        return { fence: marker, inMath, blocked: true };
+      }
       const same =
         marker[0] === fence[0] &&
         marker.length >= fence.length &&

@@ -253,7 +253,12 @@ function blockGate(
   if (columns != null && columns >= 4) return { fence, inMath, blocked: false };
   const match = /^( {0,3})(`{3,}|~{3,})(.*)$/.exec(line);
   if (match) {
-    return { fence: match[2] ?? "", inMath, blocked: true };
+    const marker = match[2] ?? "";
+    const info = match[3] ?? "";
+    if (marker[0] === "`" && info.includes("`")) {
+      return { fence, inMath, blocked: false };
+    }
+    return { fence: marker, inMath, blocked: true };
   }
   if (line.trim() === "$$") return { fence, inMath: true, blocked: true };
   return { fence, inMath, blocked: false };
