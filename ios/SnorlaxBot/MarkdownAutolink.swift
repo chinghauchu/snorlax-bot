@@ -206,6 +206,7 @@ enum MarkdownAutolink {
             index += 1
         }
         guard count >= 3 else { return nil }
+        if marker == "`", chars[index..<end].contains("`") { return nil }
         let info = string(chars, index, end).trimmingCharacters(in: .whitespaces)
         return (marker, count, info.isEmpty)
     }
@@ -245,7 +246,7 @@ enum MarkdownAutolink {
                 }
                 cursor += marks
             }
-            if !closed { break }
+            if !closed { index += count }
         }
         return ranges
     }

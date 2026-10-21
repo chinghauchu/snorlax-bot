@@ -476,6 +476,7 @@ enum MarkdownLinkTitle {
             index += 1
         }
         guard count >= 3 else { return nil }
+        if marker == "`", chars[index..<end].contains("`") { return nil }
         var infoEmpty = true
         while index < end {
             if chars[index] != " " && chars[index] != "\t" {
@@ -522,7 +523,7 @@ enum MarkdownLinkTitle {
                 }
                 cursor += marks
             }
-            if !closed { break }
+            if !closed { index += count }
         }
         return ranges
     }

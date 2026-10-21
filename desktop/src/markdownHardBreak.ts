@@ -27,7 +27,7 @@
  * Keep in lockstep with `ios/SnorlaxBot/MarkdownHardBreak.swift`.
  */
 
-import { fenceRanges, inRange, inlineCodeRanges, type Range } from "./math.ts";
+import { fenceInfoAllowsOpen, fenceRanges, inRange, inlineCodeRanges, type Range } from "./math.ts";
 
 /** Placeholder swapped for a `<br>` / newline after the markdown parse. */
 export const HARD_BREAK_TOKEN = "§§SBH§§";
@@ -460,7 +460,9 @@ function isBlank(line: string): boolean {
 function fenceOpen(line: string): string | null {
   const match = /^( {0,3})(`{3,}|~{3,})(.*)$/.exec(line);
   if (!match) return null;
-  return match[2] ?? null;
+  const marker = match[2] ?? "";
+  if (!fenceInfoAllowsOpen(marker, match[3] ?? "")) return null;
+  return marker;
 }
 
 function skipFence(lines: Line[], start: number, marker: string): number {

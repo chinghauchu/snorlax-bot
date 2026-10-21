@@ -476,12 +476,15 @@ enum MarkdownHardBreak {
     }
 
     private static func fenceOpen(_ line: String) -> String? {
-        guard let match = line.range(of: #"^( {0,3})(`{3,}|~{3,})"#, options: .regularExpression) else {
+        guard let match = line.range(of: #"^( {0,3})(`{3,}|~{3,})(.*)$"#, options: .regularExpression) else {
             return nil
         }
         let body = String(line[match])
         guard let ticks = body.range(of: #"[`~]{3,}"#, options: .regularExpression) else { return nil }
-        return String(body[ticks])
+        let marker = String(body[ticks])
+        let info = String(body[ticks.upperBound...])
+        if !MarkdownCodeSpan.fenceInfoAllowsOpen(marker: marker, info: info) { return nil }
+        return marker
     }
 
     private static func skipFence(_ lines: [Line], start: Int, marker: String) -> Int {
@@ -769,7 +772,7 @@ enum MarkdownHardBreak {
                 }
                 cursor += run
             }
-            if !closed { break }
+            if !closed { index += ticks }
         }
         return ranges
     }

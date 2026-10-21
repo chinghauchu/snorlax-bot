@@ -7,9 +7,11 @@ export function stabilizeMarkdown(src: string): string {
   for (const line of lines) {
     const match = /^( {0,3})(`{3,}|~{3,})(.*)$/.exec(line);
     if (!match) continue;
-    const marker = match[2];
+    const marker = match[2] ?? "";
     const info = match[3] ?? "";
     if (!fence) {
+      // ``` `` ``` is a code span, not an opening fence.
+      if (marker[0] === "`" && info.includes("`")) continue;
       fence = marker;
       continue;
     }

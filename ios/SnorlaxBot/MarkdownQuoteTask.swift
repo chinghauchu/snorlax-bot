@@ -526,7 +526,12 @@ enum MarkdownQuoteTask {
             }
             let marker = String(body[markerRange])
             let info = String(body[markerRange.upperBound...])
-            if fence == nil { return (marker, inMath, true) }
+            if fence == nil {
+                if !MarkdownCodeSpan.fenceInfoAllowsOpen(marker: marker, info: info) {
+                    return (nil, inMath, false)
+                }
+                return (marker, inMath, true)
+            }
             if let open = fence,
                marker.first == open.first,
                marker.count >= open.count,

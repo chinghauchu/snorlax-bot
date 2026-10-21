@@ -1221,6 +1221,14 @@ enum MarkdownSplit {
         if text.isEmpty { return [] }
         if !completed { return [text] }
         let lines = text.split(separator: "\n", omittingEmptySubsequences: false).map(String.init)
+        let joined = lines.joined(separator: "\n")
+        let codeSpans = MarkdownCodeSpan.spans(in: joined)
+        var lineStarts: [Int] = []
+        var cursor = 0
+        for line in lines {
+            lineStarts.append(cursor)
+            cursor += line.count + 1
+        }
         var parts: [String] = []
         var chunk: [String] = []
         var fence: String?
@@ -1273,7 +1281,9 @@ enum MarkdownSplit {
                     let marker = String(line[markerRange])
                     let info = String(line[markerRange.upperBound...])
                     if fence == nil {
-                        fence = marker
+                        if MarkdownCodeSpan.fenceInfoAllowsOpen(marker: marker, info: info) {
+                            fence = marker
+                        }
                     } else if let open = fence,
                               marker.first == open.first,
                               marker.count >= open.count,
@@ -1292,6 +1302,8 @@ enum MarkdownSplit {
             if MarkdownIndentedCode.isBlank(line), !inFenceOrMath {
                 if inCode {
                     pendingBlanks.append(line)
+                } else if MarkdownCodeSpan.contains(lineStarts[index], codeSpans) {
+                    chunk.append(line)
                 } else {
                     flush()
                 }
@@ -1349,7 +1361,9 @@ enum MarkdownSplit {
             let marker = String(body[markerRange])
             let info = String(body[markerRange.upperBound...])
             if fence == nil {
-                fence = marker
+                if MarkdownCodeSpan.fenceInfoAllowsOpen(marker: marker, info: info) {
+                    fence = marker
+                }
                 continue
             }
             if let open = fence,
@@ -1531,23 +1545,21 @@ enum MarkdownSplit {
     }
 
     private static func firstInlineDelimiter(in text: Substring, open: Bool) -> Range<Substring.Index>? {
-        let needle = open ? "\\(" : "\\)"
-        var i = text.startIndex
-        var inCode = false
-        while i < text.endIndex {
-            if text[i] == "`" {
-                inCode.toggle()
-                i = text.index(after: i)
+        let needle: [Character] = open ? ["\\", "("] : ["\\", ")"]
+        let chars = Array(text)
+        let spans = MarkdownCodeSpan.spans(in: String(text))
+        var offset = 0
+        while offset < chars.count {
+            if let span = spans.first(where: { offset >= $0.start && offset < $0.end }) {
+                offset = span.end
                 continue
             }
-            if !inCode {
-                let remaining = text[i...]
-                if remaining.hasPrefix(needle) {
-                    let end = text.index(i, offsetBy: 2)
-                    return i..<end
-                }
+            if offset + 1 < chars.count, chars[offset] == needle[0], chars[offset + 1] == needle[1] {
+                let start = text.index(text.startIndex, offsetBy: offset)
+                let end = text.index(start, offsetBy: 2)
+                return start..<end
             }
-            i = text.index(after: i)
+            offset += 1
         }
         return nil
     }
@@ -1595,6 +1607,11 @@ enum MarkdownSplit {
         }
         guard count >= 3 else { return nil }
         if let closing, count < closing.count { return nil }
+        if closing == nil {
+            let marker = String(repeating: String(ch), count: count)
+            let info = String(line[scan...])
+            if !MarkdownCodeSpan.fenceInfoAllowsOpen(marker: marker, info: info) { return nil }
+        }
         if closing != nil {
             let info = line[scan...].trimmingCharacters(in: .whitespaces)
             if !info.isEmpty { return nil }

@@ -355,7 +355,9 @@ enum MarkdownLooseList {
         }
         guard count >= 3 else { return nil }
         let marker = String(repeating: String(first), count: count)
-        return (marker, String(rest[index...]))
+        let info = String(rest[index...])
+        if !MarkdownCodeSpan.fenceInfoAllowsOpen(marker: marker, info: info) { return nil }
+        return (marker, info)
     }
 
     private static func isDigit(_ ch: Character) -> Bool {
@@ -434,7 +436,12 @@ enum MarkdownLooseList {
             }
             let marker = String(body[markerRange])
             let info = String(body[markerRange.upperBound...])
-            if fence == nil { return (marker, inMath, true) }
+            if fence == nil {
+                if !MarkdownCodeSpan.fenceInfoAllowsOpen(marker: marker, info: info) {
+                    return (nil, inMath, false)
+                }
+                return (marker, inMath, true)
+            }
             if let open = fence,
                marker.first == open.first,
                marker.count >= open.count,

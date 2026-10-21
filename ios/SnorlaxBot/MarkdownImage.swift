@@ -498,7 +498,9 @@ enum MarkdownImage {
             index += 1
         }
         guard length >= 3 else { return nil }
-        let info = index < line.count ? String(line[index...]).trimmingCharacters(in: .whitespaces) : ""
+        let rawInfo = index < line.count ? String(line[index...]) : ""
+        if marker == "`", rawInfo.contains("`") { return nil }
+        let info = rawInfo.trimmingCharacters(in: .whitespaces)
         return (marker, length, info.isEmpty)
     }
 
@@ -537,7 +539,7 @@ enum MarkdownImage {
                 }
                 cursor += marks
             }
-            if !closed { break }
+            if !closed { index += length }
         }
         return ranges
     }
