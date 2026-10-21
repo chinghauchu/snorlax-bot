@@ -16,7 +16,16 @@ import SwiftUI
 /// continues at that wider column. Five or more spaces keep one
 /// as the separator and the rest as content. A marker line with
 /// no text, such as `1.` then `   text`, uses a padding of one.
-/// A second blank line before any text ends the item. Streaming
+/// A second blank line before any text ends the item.
+/// v1.56: a list marker does not interrupt an open paragraph
+/// unless CommonMark allows it. An ordered marker interrupts
+/// only when its digits are exactly `1` (`1.` or `1)`), so
+/// `9.`, `14.`, `0.`, `01.`, and `2)` stay paragraph text.
+/// An empty marker (`1.` or `*` with no item text) stays text
+/// too. A bullet that has text still interrupts. A blank line,
+/// an ATX heading, a fence, a block quote, a thematic break,
+/// or the start of the chunk lets any start number begin a
+/// list, including `0.` and `01.`. Streaming
 /// (`completed: false`) returns the text unchanged. Copy controls
 /// keep markdown source — this type only splits text for display
 /// and does not write the pasteboard. No animation. No new HTTP.
@@ -67,6 +76,9 @@ enum MarkdownList {
         let line = lines[start]
         if isThematicBreak(line) { return nil }
         guard let marker = parseMarker(line), marker.column <= 3 else { return nil }
+        if paragraphOpen(before: start, in: lines), !markerInterruptsParagraph(marker) {
+            return nil
+        }
         return readList(lines, start: start, first: marker, classify: false).next
     }
 
@@ -84,6 +96,7 @@ enum MarkdownList {
         var index = 0
         var fence: String?
         var inMath = false
+        var paragraph = false
 
         func pushMarkdown(_ end: Int) {
             guard end > mdStart else { return }
@@ -99,17 +112,21 @@ enum MarkdownList {
             fence = gate.fence
             inMath = gate.inMath
             if gate.blocked {
+                paragraph = false
                 index += 1
                 continue
             }
-            if let marker = parseMarker(line), marker.column <= 3 {
+            if let marker = parseMarker(line), marker.column <= 3,
+               !paragraph || markerInterruptsParagraph(marker) {
                 let found = readList(lines, start: index, first: marker)
                 pushMarkdown(index)
                 blocks.append(.list(found.group))
                 index = found.next
                 mdStart = index
+                paragraph = false
                 continue
             }
+            paragraph = nextParagraphOpen(line, open: paragraph)
             index += 1
         }
         pushMarkdown(lines.count)
@@ -122,6 +139,8 @@ enum MarkdownList {
         var ordered: Bool
         var delimiter: String
         var number: Int
+        /// Digit characters of an ordered marker. Empty for a bullet.
+        var digits: String
         var contentColumn: Int
         var text: String
     }
@@ -287,11 +306,11 @@ enum MarkdownList {
         var ordered = false
         var delimiter = ""
         var number = 1
+        var digits = ""
         var token = ""
         if let bullet = rest.first, bullet == "-" || bullet == "+" || bullet == "*" {
             token = String(bullet)
         } else {
-            var digits = ""
             var idx = rest.startIndex
             while idx < rest.endIndex, digits.count < 9, isDigit(rest[idx]) {
                 digits.append(rest[idx])
@@ -324,6 +343,7 @@ enum MarkdownList {
             ordered: ordered,
             delimiter: delimiter,
             number: number,
+            digits: digits,
             contentColumn: padded.contentColumn,
             text: padded.text
         )
@@ -427,6 +447,82 @@ enum MarkdownList {
         if fenceOnLine(line) != nil { return true }
         if rest.trimmingCharacters(in: .whitespaces) == "$$" { return true }
         return false
+    }
+
+    /// CommonMark only lets some markers interrupt a paragraph.
+    /// An ordered marker interrupts only when its digits are `1`,
+    /// so `01.` and `9.` stay text. A marker with no item text
+    /// (`1.` / `*` alone) stays text too.
+    private static func markerInterruptsParagraph(_ marker: Marker) -> Bool {
+        if marker.text.isEmpty { return false }
+        if marker.ordered && marker.digits != "1" { return false }
+        return true
+    }
+
+    /// True when a paragraph is still open at `index`.
+    private static func paragraphOpen(before index: Int, in lines: [String]) -> Bool {
+        var paragraph = false
+        var fence: String?
+        var inMath = false
+        var cursor = 0
+        while cursor < index, cursor < lines.count {
+            let line = lines[cursor]
+            let gate = blockGate(line, fence: fence, inMath: inMath)
+            fence = gate.fence
+            inMath = gate.inMath
+            if gate.blocked {
+                paragraph = false
+            } else if let marker = parseMarker(line), marker.column <= 3,
+                      !paragraph || markerInterruptsParagraph(marker) {
+                paragraph = false
+            } else {
+                paragraph = nextParagraphOpen(line, open: paragraph)
+            }
+            cursor += 1
+        }
+        return paragraph
+    }
+
+    /// Paragraph state after a line that is not taken as a new list.
+    /// A blank line, heading, quote, or rule closes it. Indented
+    /// code closes it only when no paragraph is already open.
+    private static func nextParagraphOpen(_ line: String, open: Bool) -> Bool {
+        if isBlank(line) { return false }
+        if isThematicBreak(line) || isAtxHeadingLine(line) || isBlockQuoteLine(line) { return false }
+        if !open && isIndentedCodeLine(line) { return false }
+        return true
+    }
+
+    private static func isBlank(_ line: String) -> Bool {
+        for ch in line where ch != " " && ch != "\t" {
+            return false
+        }
+        return true
+    }
+
+    private static func isAtxHeadingLine(_ line: String) -> Bool {
+        let lead = leadingColumns(line)
+        if lead.columns > 3 { return false }
+        var hashes = 0
+        var index = lead.index
+        while index < line.endIndex, line[index] == "#", hashes < 7 {
+            hashes += 1
+            index = line.index(after: index)
+        }
+        if hashes < 1 || hashes > 6 { return false }
+        if index >= line.endIndex { return true }
+        return line[index] == " " || line[index] == "\t"
+    }
+
+    private static func isBlockQuoteLine(_ line: String) -> Bool {
+        let lead = leadingColumns(line)
+        if lead.columns > 3 || lead.index >= line.endIndex { return false }
+        return line[lead.index] == ">"
+    }
+
+    private static func isIndentedCodeLine(_ line: String) -> Bool {
+        if isBlank(line) { return false }
+        return leadingColumns(line).columns >= 4
     }
 
     private static func isThematicBreak(_ line: String) -> Bool {
