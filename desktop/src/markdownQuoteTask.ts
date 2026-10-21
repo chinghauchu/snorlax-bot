@@ -19,8 +19,13 @@
  * Copy controls keep the message markdown source — this module
  * only splits text for display and does not copy.
  * No animation. No new HTTP.
+ * v1.51: a task list is loose when a blank line separates its items
+ * or two blocks of an item, and tight otherwise. Nested task lists
+ * keep their own looseness.
  * Keep in lockstep with `ios/SnorlaxBot/MarkdownQuoteTask.swift`.
  */
+
+import { listIsLoose } from "./markdownLooseList.ts";
 
 /** Empty ballot box. Not a control. */
 export const TASK_UNCHECKED_GLYPH = "☐";
@@ -41,7 +46,7 @@ export type TaskItem = {
 export type QuoteTaskBlock =
   | { type: "markdown"; text: string }
   | { type: "quote"; text: string }
-  | { type: "tasks"; items: TaskItem[] };
+  | { type: "tasks"; items: TaskItem[]; loose: boolean };
 
 /** Never animate, including when Reduce Motion is off. */
 export function quoteTaskAnimates(reduceMotion: boolean): boolean {
@@ -138,7 +143,11 @@ export function splitQuoteAndTasks(
         i = item.next;
       }
       pushMarkdown(start);
-      blocks.push({ type: "tasks", items });
+      blocks.push({
+        type: "tasks",
+        items,
+        loose: listIsLoose(lines.slice(start, i).join("\n")),
+      });
       mdStart = i;
       continue;
     }

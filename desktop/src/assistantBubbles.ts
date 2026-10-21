@@ -7,6 +7,7 @@ import {
   isBlank,
   isThematicBreakLine,
 } from "./markdownIndentedCode.ts";
+import { markdownListEnd } from "./markdownList.ts";
 import { containsMarkdownTable } from "./markdownTable.ts";
 
 /**
@@ -77,8 +78,11 @@ export function splitAssistantBubbles(
   let inMath = false;
   // v1.48: a blank line inside an indented code block stays in that
   // bubble, the same way a blank inside a fence or $$ block does.
-  // A blank outside one still splits. Paragraph continuations and
-  // list lines are not code, so their following blank still splits.
+  // A blank outside one still splits. Paragraph continuations are
+  // not code, so their following blank still splits.
+  // v1.51: a blank line inside a list (between items, or between an
+  // item's blocks) stays in that bubble so the list can render loose.
+  // A blank that ends the list still splits.
   let inCode = false;
   let paragraph = false;
   let pendingBlanks: string[] = [];
@@ -105,7 +109,8 @@ export function splitAssistantBubbles(
     paragraph = !isAtxHeadingLine(line) && !isThematicBreakLine(line);
   };
 
-  for (const line of lines) {
+  for (let index = 0; index < lines.length; index += 1) {
+    const line = lines[index] ?? "";
     const wasFence = fence != null;
     const wasMath = inMath;
     const fenceMatch = /^( {0,3})(`{3,}|~{3,})(.*)$/.exec(line);
@@ -150,6 +155,16 @@ export function splitAssistantBubbles(
       inCode = false;
       paragraph = false;
       chunk.push(line);
+      continue;
+    }
+
+    // A top-level list keeps the blank lines inside it.
+    const listEnd = markdownListEnd(lines, index);
+    if (listEnd != null && listEnd > index) {
+      for (let j = index; j < listEnd; j += 1) chunk.push(lines[j] ?? "");
+      inCode = false;
+      paragraph = false;
+      index = listEnd - 1;
       continue;
     }
 

@@ -254,7 +254,11 @@ function QuoteTaskPieces({
         }
         if (block.type === "tasks") {
           return (
-            <ul className="md-task-list" key={`t-${index}`}>
+            <ul
+              className="md-task-list"
+              data-loose={block.loose ? "true" : "false"}
+              key={`t-${index}`}
+            >
               {block.items.map((item, itemIndex) => (
                 <li
                   key={itemIndex}

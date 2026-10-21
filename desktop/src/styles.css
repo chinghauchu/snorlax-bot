@@ -1365,6 +1365,19 @@ mark.find-hit.active {
   padding-left: 1.2em;
 }
 
+/* v1.51: CommonMark loose lists wrap each item's paragraph in p.
+   That paragraph keeps the 8px paragraph gap, including between
+   items. The last item's last paragraph does not add a trailing
+   gap. A tight list has no p, so its items stay compact. A nested
+   list has its own p tags, so it keeps its own looseness. */
+.assistant-md li > p:last-child {
+  margin-bottom: 8px;
+}
+
+.assistant-md li:last-child > p:last-child {
+  margin-bottom: 0;
+}
+
 .assistant-md ul ul,
 .assistant-md ol ul {
   list-style-type: circle;
@@ -1415,6 +1428,25 @@ mark.find-hit.active {
 }
 
 .assistant-md .md-task-item:last-child {
+  margin-bottom: 0;
+}
+
+/* v1.51: a loose task list uses paragraph spacing (8px), the same
+   gap as a paragraph. A tight task list stays at the 4px compact gap.
+   Nested task lists carry their own data-loose. */
+.assistant-md .md-task-list[data-loose="true"] .md-task-item {
+  margin-bottom: 8px;
+}
+
+.assistant-md .md-task-list[data-loose="true"] .md-task-item:last-child {
+  margin-bottom: 0;
+}
+
+.assistant-md .md-task-list[data-loose="true"] .md-task-body p {
+  margin: 0 0 8px;
+}
+
+.assistant-md .md-task-list[data-loose="true"] .md-task-body p:last-child {
   margin-bottom: 0;
 }
 
