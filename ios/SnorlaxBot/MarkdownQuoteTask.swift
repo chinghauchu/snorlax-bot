@@ -11,6 +11,9 @@ import SwiftUI
 /// break, or a `$$` block, stays inside that quote. A blank line
 /// ends it. Nested quotes keep the continuation. A margin list,
 /// heading, fence, or rule ends the quote.
+/// v1.58: a CommonMark HTML block of types 1–6 ends the quote
+/// before the tag line. A type 7 tag such as `<br>` stays in the
+/// quote and ends further lazy lines.
 /// v1.49: a task item keeps the lines indented to its text.
 /// The text column is the column after the bullet, so two spaces
 /// under `- [ ]` stay in the item and a nested task renders
@@ -103,7 +106,7 @@ enum MarkdownQuoteTask {
                     // v1.47: a paragraph inside the quote may continue without `>`.
                     if !open || endsLazyQuote(current, paragraphOpen: open) { break }
                     inner.append(current)
-                    open = true
+                    open = !MarkdownList.htmlLazyTag(current)
                     index += 1
                 }
                 pushMarkdown(start)
@@ -374,12 +377,14 @@ enum MarkdownQuoteTask {
         return current
     }
 
-    /// This line closes the quote instead of joining it.
+    /// This line closes the quote instead of joining it. Types 1–6
+    /// of an HTML block do. A type 7 tag stays in the quote.
     private static func endsLazyQuote(_ line: String, paragraphOpen: Bool) -> Bool {
         if isBlank(line) || isMathFence(line) { return true }
         if isThematicBreak(line) || isAtxHeading(line) || isFenceLine(line) || isMarginListMarker(line) {
             return true
         }
+        if MarkdownList.htmlBlockInterrupts(line) { return true }
         if !paragraphOpen && isIndentedCodeLine(line) { return true }
         return false
     }

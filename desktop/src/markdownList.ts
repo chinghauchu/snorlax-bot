@@ -36,9 +36,20 @@
  * react-markdown. A later margin item stays in the list only
  * when it uses that same bullet. A nested marker of another
  * character stays inside the item. Ordered `.` and `)` were
- * already different lists. Streaming (`completed: false`)
- * returns the text unchanged. Copy controls keep markdown
- * source — this module does not copy. No animation. No new HTTP.
+ * already different lists.
+ *
+ * v1.58: a CommonMark HTML block ends the list the way
+ * react-markdown does. Types 1–6 (`<div>`, `<script>`, a
+ * comment, and the other block tags) interrupt the item, so
+ * the tag line and everything the block owns stay outside it.
+ * A type 7 tag such as `<br>` cannot interrupt a paragraph,
+ * but on a lazy continuation it stays in the item and stops
+ * further lazy lines. A marker inside the block, including
+ * `9.`, is not a list. Four or more leading columns stay
+ * indented code. Tags stay literal text. Streaming
+ * (`completed: false`) returns the text unchanged. Copy
+ * controls keep markdown source — this module does not copy.
+ * No animation. No new HTTP.
  * Keep in lockstep with `ios/SnorlaxBot/MarkdownList.swift`.
  */
 
@@ -136,6 +147,12 @@ export function splitMarkdownLists(
       i += 1;
       continue;
     }
+    const htmlEnd = htmlBlockEnd(lines, i, paragraph);
+    if (htmlEnd != null) {
+      paragraph = false;
+      i = htmlEnd;
+      continue;
+    }
     const marker = parseMarker(line);
     if (marker && marker.column <= 3 && (!paragraph || markerInterruptsParagraph(marker))) {
       const found = readList(lines, i, marker);
@@ -166,7 +183,9 @@ export function markdownListEnd(lines: string[], start: number): number | null {
   if (isThematicBreak(line)) return null;
   const marker = parseMarker(line);
   if (!marker || marker.column > 3) return null;
-  if (paragraphOpenAt(lines, start) && !markerInterruptsParagraph(marker)) return null;
+  const state = paragraphStateAt(lines, start);
+  if (state.insideHtml) return null;
+  if (state.open && !markerInterruptsParagraph(marker)) return null;
   return readList(lines, start, marker).next;
 }
 
@@ -182,28 +201,46 @@ function markerInterruptsParagraph(marker: Marker): boolean {
   return true;
 }
 
-/** True when a paragraph is still open at `index`. */
-function paragraphOpenAt(lines: string[], index: number): boolean {
+/**
+ * Paragraph state at `index`, and whether that line sits inside
+ * an HTML block that started earlier. A marker on a covered line
+ * is text inside the block, not a new list.
+ */
+function paragraphStateAt(
+  lines: string[],
+  index: number,
+): { open: boolean; insideHtml: boolean } {
   let paragraph = false;
   let fence: string | null = null;
   let inMath = false;
-  for (let i = 0; i < index && i < lines.length; i += 1) {
+  let i = 0;
+  while (i < index && i < lines.length) {
     const line = lines[i] ?? "";
     const gate = blockGate(line, fence, inMath);
     fence = gate.fence;
     inMath = gate.inMath;
     if (gate.blocked) {
       paragraph = false;
+      i += 1;
+      continue;
+    }
+    const htmlEnd = htmlBlockEnd(lines, i, paragraph);
+    if (htmlEnd != null) {
+      if (htmlEnd > index) return { open: false, insideHtml: true };
+      paragraph = false;
+      i = htmlEnd;
       continue;
     }
     const marker = parseMarker(line);
     if (marker && marker.column <= 3 && (!paragraph || markerInterruptsParagraph(marker))) {
       paragraph = false;
+      i += 1;
       continue;
     }
     paragraph = nextParagraphOpen(line, paragraph);
+    i += 1;
   }
-  return paragraph;
+  return { open: paragraph, insideHtml: false };
 }
 
 /**
@@ -379,8 +416,10 @@ function readItem(
     }
     if (sawContent && !sawBlank && !interruptsList(line)) {
       // A lazy line is still the open paragraph. Its partial
-      // indent is not part of the text.
+      // indent is not part of the text. A type 7 tag (`<br>`)
+      // stays in the item and ends further lazy lines.
       body.push(line.replace(/^[ \t]+/, ""));
+      if (htmlLazyTag(line)) sawBlank = true;
       i += 1;
       continue;
     }
@@ -529,7 +568,113 @@ function interruptsList(line: string): boolean {
   if (rest.startsWith(">")) return true;
   if (fenceOnLine(line)) return true;
   if (rest.trim() === "$$") return true;
+  if (htmlBlockInterrupts(line)) return true;
   return false;
+}
+
+const HTML_BLOCK_TAGS = new Set([
+  "address", "article", "aside", "base", "basefont", "blockquote", "body",
+  "caption", "center", "col", "colgroup", "dd", "details", "dialog", "dir",
+  "div", "dl", "dt", "fieldset", "figcaption", "figure", "footer", "form",
+  "frame", "frameset", "h1", "h2", "h3", "h4", "h5", "h6", "head", "header",
+  "hr", "html", "iframe", "legend", "li", "link", "main", "menu", "menuitem",
+  "nav", "noframes", "ol", "optgroup", "option", "p", "param", "search",
+  "section", "summary", "table", "tbody", "td", "tfoot", "th", "thead",
+  "title", "tr", "track", "ul",
+]);
+
+type HtmlKind = { type: "until"; needle: string } | { type: "blank" };
+
+/**
+ * CommonMark HTML block start. Types 1–6 interrupt a paragraph.
+ * Type 7 (any other complete tag) starts only when the paragraph
+ * is already closed. Four or more leading columns are indented
+ * code, not HTML. The optional slash lets `<br/>` be type 7.
+ */
+function htmlBlockKind(line: string, paragraphOpen: boolean): HtmlKind | null {
+  const lead = leadingColumns(line);
+  if (lead.columns > 3) return null;
+  const body = line.slice(lead.index);
+  const open = /^<(pre|script|style|textarea)(\s|>|$)/i.exec(body);
+  if (open) {
+    const name = (open[1] ?? "").toLowerCase();
+    return { type: "until", needle: `</${name}>` };
+  }
+  if (body.startsWith("<!--")) return { type: "until", needle: "-->" };
+  if (body.startsWith("<?")) return { type: "until", needle: "?>" };
+  if (body.startsWith("<![CDATA[")) return { type: "until", needle: "]]>" };
+  if (/^<![A-Z]/.test(body)) return { type: "until", needle: ">" };
+  const tag = htmlBlockTagName(body);
+  if (tag && HTML_BLOCK_TAGS.has(tag)) return { type: "blank" };
+  if (!paragraphOpen && htmlCompleteTag(body)) return { type: "blank" };
+  return null;
+}
+
+function htmlBlockTagName(body: string): string | null {
+  const match = /^<\/?([A-Za-z][A-Za-z0-9-]*)/.exec(body);
+  if (!match) return null;
+  const rest = body.slice(match[0].length);
+  if (rest !== "" && !/^[\s/>]/.test(rest)) return null;
+  return (match[1] ?? "").toLowerCase();
+}
+
+function htmlCompleteTag(body: string): boolean {
+  return /^<\/?[A-Za-z][A-Za-z0-9-]*(\s[^>]*)?\/?>\s*$/.test(body);
+}
+
+function skipHtmlBlock(lines: string[], start: number, kind: HtmlKind): number {
+  if (kind.type === "until") {
+    const needle = kind.needle.toLowerCase();
+    let i = start;
+    while (i < lines.length) {
+      const has = (lines[i] ?? "").toLowerCase().includes(needle);
+      i += 1;
+      if (has) break;
+    }
+    return i;
+  }
+  let i = start + 1;
+  while (i < lines.length && !isBlank(lines[i] ?? "")) i += 1;
+  return i;
+}
+
+/** Index just after an HTML block that starts at `index`, or null. */
+function htmlBlockEnd(lines: string[], index: number, paragraphOpen: boolean): number | null {
+  const kind = htmlBlockKind(lines[index] ?? "", paragraphOpen);
+  if (!kind) return null;
+  return skipHtmlBlock(lines, index, kind);
+}
+
+/**
+ * End index of a type 1–5 HTML block (comment, script, style, pre,
+ * textarea, processing instruction, declaration, CDATA). Those
+ * blocks keep their blank lines. Type 6 and 7 end at a blank line,
+ * so that blank still splits bubbles. Null when this line is not
+ * one of those blocks.
+ */
+export function htmlUntilBlockEnd(
+  lines: string[],
+  index: number,
+  paragraphOpen: boolean,
+): number | null {
+  const kind = htmlBlockKind(lines[index] ?? "", paragraphOpen);
+  if (!kind || kind.type !== "until") return null;
+  return skipHtmlBlock(lines, index, kind);
+}
+
+/** Types 1–6. They end a list item or a lazy quote before this line. */
+export function htmlBlockInterrupts(line: string): boolean {
+  return htmlBlockKind(line, true) != null;
+}
+
+/**
+ * Type 7: a complete tag such as `<br>` that cannot interrupt a
+ * paragraph. On a lazy list or quote line it stays in the block
+ * and ends further lazy lines.
+ */
+export function htmlLazyTag(line: string): boolean {
+  if (htmlBlockKind(line, true) != null) return false;
+  return htmlBlockKind(line, false)?.type === "blank";
 }
 
 function isThematicBreak(line: string): boolean {

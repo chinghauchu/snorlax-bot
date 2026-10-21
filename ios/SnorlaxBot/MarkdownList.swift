@@ -32,7 +32,17 @@ import SwiftUI
 /// react-markdown. A later margin item stays in the list only when
 /// it uses that same bullet. A nested marker of another character
 /// stays inside the item. Ordered `.` and `)` were already different
-/// lists. Streaming (`completed: false`) returns the text unchanged.
+/// lists.
+///
+/// v1.58: a CommonMark HTML block ends the list the way desktop
+/// react-markdown does. Types 1–6 (`<div>`, `<script>`, a comment,
+/// and the other block tags) interrupt the item, so the tag line
+/// and everything the block owns stay outside it. A type 7 tag
+/// such as `<br>` cannot interrupt a paragraph, but on a lazy
+/// continuation it stays in the item and stops further lazy lines.
+/// A marker inside the block, including `9.`, is not a list. Four
+/// or more leading columns stay indented code. Tags stay literal
+/// text. Streaming (`completed: false`) returns the text unchanged.
 /// Copy controls keep markdown source — this type only splits text
 /// for display and does not write the pasteboard. No animation.
 /// No new HTTP.
@@ -83,9 +93,9 @@ enum MarkdownList {
         let line = lines[start]
         if isThematicBreak(line) { return nil }
         guard let marker = parseMarker(line), marker.column <= 3 else { return nil }
-        if paragraphOpen(before: start, in: lines), !markerInterruptsParagraph(marker) {
-            return nil
-        }
+        let state = paragraphState(before: start, in: lines)
+        if state.insideHtml { return nil }
+        if state.open, !markerInterruptsParagraph(marker) { return nil }
         return readList(lines, start: start, first: marker, classify: false).next
     }
 
@@ -121,6 +131,11 @@ enum MarkdownList {
             if gate.blocked {
                 paragraph = false
                 index += 1
+                continue
+            }
+            if let htmlEnd = htmlBlockEnd(lines, index: index, paragraphOpen: paragraph) {
+                paragraph = false
+                index = htmlEnd
                 continue
             }
             if let marker = parseMarker(line), marker.column <= 3,
@@ -296,6 +311,7 @@ enum MarkdownList {
             }
             if sawContent && !sawBlank && !interruptsList(line) {
                 body.append(lazyLine(line))
+                if htmlLazyTag(line) { sawBlank = true }
                 index += 1
                 continue
             }
@@ -460,6 +476,114 @@ enum MarkdownList {
         if rest.hasPrefix(">") { return true }
         if fenceOnLine(line) != nil { return true }
         if rest.trimmingCharacters(in: .whitespaces) == "$$" { return true }
+        if htmlBlockInterrupts(line) { return true }
+        return false
+    }
+
+    private enum HtmlKind {
+        case until(String)
+        case blank
+    }
+
+    private static let htmlBlockTags: Set<String> = [
+        "address", "article", "aside", "base", "basefont", "blockquote", "body",
+        "caption", "center", "col", "colgroup", "dd", "details", "dialog", "dir",
+        "div", "dl", "dt", "fieldset", "figcaption", "figure", "footer", "form",
+        "frame", "frameset", "h1", "h2", "h3", "h4", "h5", "h6", "head", "header",
+        "hr", "html", "iframe", "legend", "li", "link", "main", "menu", "menuitem",
+        "nav", "noframes", "ol", "optgroup", "option", "p", "param", "search",
+        "section", "summary", "table", "tbody", "td", "tfoot", "th", "thead",
+        "title", "tr", "track", "ul",
+    ]
+
+    /// CommonMark HTML block start. Types 1–6 interrupt a paragraph.
+    /// Type 7 starts only when the paragraph is already closed.
+    private static func htmlBlockKind(_ line: String, paragraphOpen: Bool) -> HtmlKind? {
+        let lead = leadingColumns(line)
+        if lead.columns > 3 { return nil }
+        let body = String(line[lead.index...])
+        if let name = htmlRawTextName(body) {
+            return .until("</\(name)>")
+        }
+        if body.hasPrefix("<!--") { return .until("-->") }
+        if body.hasPrefix("<?") { return .until("?>") }
+        if body.hasPrefix("<![CDATA[") { return .until("]]>") }
+        if body.range(of: #"^<![A-Z]"#, options: .regularExpression) != nil { return .until(">") }
+        if let tag = htmlBlockTagName(body), htmlBlockTags.contains(tag) { return .blank }
+        if !paragraphOpen && htmlCompleteTag(body) { return .blank }
+        return nil
+    }
+
+    private static func htmlRawTextName(_ body: String) -> String? {
+        guard let match = body.range(
+            of: #"^<(pre|script|style|textarea)(\s|>|$)"#,
+            options: [.regularExpression, .caseInsensitive]
+        ) else { return nil }
+        let raw = String(body[match])
+        let name = raw.dropFirst().prefix { $0.isLetter }
+        guard !name.isEmpty else { return nil }
+        return String(name).lowercased()
+    }
+
+    private static func htmlBlockTagName(_ body: String) -> String? {
+        guard let match = body.range(of: #"^</?[A-Za-z][A-Za-z0-9-]*"#, options: .regularExpression) else {
+            return nil
+        }
+        let raw = String(body[match])
+        let name = raw.hasPrefix("</") ? String(raw.dropFirst(2)) : String(raw.dropFirst())
+        let rest = String(body[match.upperBound...])
+        if !rest.isEmpty && rest.range(of: #"^[\s/>]"#, options: .regularExpression) == nil { return nil }
+        return name.lowercased()
+    }
+
+    private static func htmlCompleteTag(_ body: String) -> Bool {
+        let pattern = "^</?[A-Za-z][A-Za-z0-9-]*(\\s[^>]*)?" + "/?>\\s*$"
+        return body.range(of: pattern, options: .regularExpression) != nil
+    }
+
+    private static func skipHtmlBlock(_ lines: [String], start: Int, kind: HtmlKind) -> Int {
+        switch kind {
+        case .until(let needle):
+            var index = start
+            let folded = needle.lowercased()
+            while index < lines.count {
+                let has = lines[index].lowercased().contains(folded)
+                index += 1
+                if has { break }
+            }
+            return index
+        case .blank:
+            var index = start + 1
+            while index < lines.count && !isBlank(lines[index]) { index += 1 }
+            return index
+        }
+    }
+
+    /// Index just after an HTML block that starts at `index`, or nil.
+    private static func htmlBlockEnd(_ lines: [String], index: Int, paragraphOpen: Bool) -> Int? {
+        guard let kind = htmlBlockKind(lines[index], paragraphOpen: paragraphOpen) else { return nil }
+        return skipHtmlBlock(lines, start: index, kind: kind)
+    }
+
+    /// End index of a type 1–5 HTML block. Those blocks keep their
+    /// blank lines. Nil when this line is not one of those blocks.
+    static func htmlUntilBlockEnd(_ lines: [String], index: Int, paragraphOpen: Bool) -> Int? {
+        guard index >= 0, index < lines.count else { return nil }
+        guard let kind = htmlBlockKind(lines[index], paragraphOpen: paragraphOpen),
+              case .until = kind
+        else { return nil }
+        return skipHtmlBlock(lines, start: index, kind: kind)
+    }
+
+    /// Types 1–6. They end a list item or a lazy quote before this line.
+    static func htmlBlockInterrupts(_ line: String) -> Bool {
+        htmlBlockKind(line, paragraphOpen: true) != nil
+    }
+
+    /// Type 7: a complete tag such as `<br>` on a lazy line.
+    static func htmlLazyTag(_ line: String) -> Bool {
+        if htmlBlockKind(line, paragraphOpen: true) != nil { return false }
+        if case .some(.blank) = htmlBlockKind(line, paragraphOpen: false) { return true }
         return false
     }
 
@@ -473,8 +597,9 @@ enum MarkdownList {
         return true
     }
 
-    /// True when a paragraph is still open at `index`.
-    private static func paragraphOpen(before index: Int, in lines: [String]) -> Bool {
+    /// Paragraph state at `index`, and whether that line sits inside
+    /// an HTML block that started earlier.
+    private static func paragraphState(before index: Int, in lines: [String]) -> (open: Bool, insideHtml: Bool) {
         var paragraph = false
         var fence: String?
         var inMath = false
@@ -486,15 +611,24 @@ enum MarkdownList {
             inMath = gate.inMath
             if gate.blocked {
                 paragraph = false
-            } else if let marker = parseMarker(line), marker.column <= 3,
-                      !paragraph || markerInterruptsParagraph(marker) {
+                cursor += 1
+                continue
+            }
+            if let htmlEnd = htmlBlockEnd(lines, index: cursor, paragraphOpen: paragraph) {
+                if htmlEnd > index { return (false, true) }
+                paragraph = false
+                cursor = htmlEnd
+                continue
+            }
+            if let marker = parseMarker(line), marker.column <= 3,
+               !paragraph || markerInterruptsParagraph(marker) {
                 paragraph = false
             } else {
                 paragraph = nextParagraphOpen(line, open: paragraph)
             }
             cursor += 1
         }
-        return paragraph
+        return (paragraph, false)
     }
 
     /// Paragraph state after a line that is not taken as a new list.

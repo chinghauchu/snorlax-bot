@@ -8,7 +8,7 @@ import {
   isBlank,
   isThematicBreakLine,
 } from "./markdownIndentedCode.ts";
-import { markdownListEnd } from "./markdownList.ts";
+import { htmlUntilBlockEnd, markdownListEnd } from "./markdownList.ts";
 import { containsMarkdownTable } from "./markdownTable.ts";
 import { fenceInfoAllowsOpen, fenceRanges } from "./math.ts";
 
@@ -98,6 +98,9 @@ export function splitAssistantBubbles(
   // v1.51: a blank line inside a list (between items, or between an
   // item's blocks) stays in that bubble so the list can render loose.
   // A blank that ends the list still splits.
+  // v1.58: a blank line inside a comment, script, style, pre, or
+  // textarea HTML block stays in that bubble. A blank that ends a
+  // `<div>` still splits.
   let inCode = false;
   let paragraph = false;
   let pendingBlanks: string[] = [];
@@ -171,6 +174,17 @@ export function splitAssistantBubbles(
       inCode = false;
       paragraph = false;
       chunk.push(line);
+      continue;
+    }
+
+    // Types 1–5 keep interior blank lines in this bubble so a
+    // marker inside a comment is not parsed as a new list.
+    const htmlEnd = htmlUntilBlockEnd(lines, index, paragraph);
+    if (htmlEnd != null && htmlEnd > index) {
+      for (let j = index; j < htmlEnd; j += 1) chunk.push(lines[j] ?? "");
+      inCode = false;
+      paragraph = false;
+      index = htmlEnd - 1;
       continue;
     }
 

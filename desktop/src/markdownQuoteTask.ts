@@ -11,6 +11,9 @@
  * break, or a `$$` block, stays inside that quote. A blank line
  * ends it. Nested quotes keep the continuation. A margin list,
  * heading, fence, or rule ends the quote.
+ * v1.58: a CommonMark HTML block of types 1–6 ends the quote
+ * before the tag line. A type 7 tag such as `<br>` stays in the
+ * quote and ends further lazy lines.
  * v1.49: a task item keeps the lines indented to its text.
  * The text column is the column after the bullet, so two spaces
  * under `- [ ]` stay in the item and a nested task renders
@@ -25,6 +28,7 @@
  * Keep in lockstep with `ios/SnorlaxBot/MarkdownQuoteTask.swift`.
  */
 
+import { htmlBlockInterrupts, htmlLazyTag } from "./markdownList.ts";
 import { listIsLoose } from "./markdownLooseList.ts";
 
 /** Empty ballot box. Not a control. */
@@ -113,7 +117,7 @@ export function splitQuoteAndTasks(
         // v1.47: a paragraph inside the quote may continue without `>`.
         if (!open || endsLazyQuote(current, open)) break;
         inner.push(current);
-        open = true;
+        open = !htmlLazyTag(current);
         i += 1;
       }
       pushMarkdown(start);
@@ -378,9 +382,10 @@ function innermostQuote(line: string): string {
 
 /**
  * This line closes the quote instead of joining it. A blank line,
- * a `$$` block, a thematic break, an ATX heading, a fence, or a
- * list marker in the first three columns does. Indented code does
- * only when no paragraph is open.
+ * a `$$` block, a thematic break, an ATX heading, a fence, a
+ * list marker in the first three columns, or an HTML block of
+ * types 1–6 does. Indented code does only when no paragraph is
+ * open. A type 7 tag stays in the quote.
  */
 function endsLazyQuote(line: string, paragraphOpen: boolean): boolean {
   if (isBlank(line) || isMathFence(line)) return true;
@@ -388,7 +393,8 @@ function endsLazyQuote(line: string, paragraphOpen: boolean): boolean {
     isThematicBreak(line) ||
     isAtxHeading(line) ||
     isFenceLine(line) ||
-    isMarginListMarker(line)
+    isMarginListMarker(line) ||
+    htmlBlockInterrupts(line)
   ) {
     return true;
   }
