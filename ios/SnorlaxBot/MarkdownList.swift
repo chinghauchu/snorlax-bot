@@ -17,6 +17,7 @@ import SwiftUI
 /// as the separator and the rest as content. A marker line with
 /// no text, such as `1.` then `   text`, uses a padding of one.
 /// A second blank line before any text ends the item.
+///
 /// v1.56: a list marker does not interrupt an open paragraph
 /// unless CommonMark allows it. An ordered marker interrupts
 /// only when its digits are exactly `1` (`1.` or `1)`), so
@@ -25,10 +26,16 @@ import SwiftUI
 /// too. A bullet that has text still interrupts. A blank line,
 /// an ATX heading, a fence, a block quote, a thematic break,
 /// or the start of the chunk lets any start number begin a
-/// list, including `0.` and `01.`. Streaming
-/// (`completed: false`) returns the text unchanged. Copy controls
-/// keep markdown source — this type only splits text for display
-/// and does not write the pasteboard. No animation. No new HTTP.
+/// list, including `0.` and `01.`.
+///
+/// v1.57: `-`, `*`, and `+` are different lists, matching desktop
+/// react-markdown. A later margin item stays in the list only when
+/// it uses that same bullet. A nested marker of another character
+/// stays inside the item. Ordered `.` and `)` were already different
+/// lists. Streaming (`completed: false`) returns the text unchanged.
+/// Copy controls keep markdown source — this type only splits text
+/// for display and does not write the pasteboard. No animation.
+/// No new HTTP.
 /// Keep in lockstep with `desktop/src/markdownList.ts`.
 enum MarkdownList {
     struct Group: Equatable {
@@ -143,6 +150,8 @@ enum MarkdownList {
         var digits: String
         var contentColumn: Int
         var text: String
+        /// `-`, `*`, or `+`. Ordered markers use "".
+        var bullet: String
     }
 
     private struct ReadList {
@@ -296,7 +305,9 @@ enum MarkdownList {
     }
 
     private static func sameList(_ marker: Marker, _ first: Marker) -> Bool {
-        marker.ordered == first.ordered && marker.delimiter == first.delimiter
+        marker.ordered == first.ordered
+            && marker.delimiter == first.delimiter
+            && marker.bullet == first.bullet
     }
 
     private static func parseMarker(_ line: String) -> Marker? {
@@ -308,8 +319,10 @@ enum MarkdownList {
         var number = 1
         var digits = ""
         var token = ""
-        if let bullet = rest.first, bullet == "-" || bullet == "+" || bullet == "*" {
-            token = String(bullet)
+        var bullet = ""
+        if let mark = rest.first, mark == "-" || mark == "+" || mark == "*" {
+            token = String(mark)
+            bullet = token
         } else {
             var idx = rest.startIndex
             while idx < rest.endIndex, digits.count < 9, isDigit(rest[idx]) {
@@ -345,7 +358,8 @@ enum MarkdownList {
             number: number,
             digits: digits,
             contentColumn: padded.contentColumn,
-            text: padded.text
+            text: padded.text,
+            bullet: bullet
         )
     }
 
