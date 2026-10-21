@@ -51,6 +51,15 @@ def test_split_keeps_streaming_and_source() -> None:
     assert "if !completed { return [.markdown(src)] }" in SWIFT
     assert "static func stripQuoteMarker" in SWIFT
     assert "static func parseTaskLine" in SWIFT
+    assert "private static func parseTaskMarker" in SWIFT
+    assert "private static func readTaskItem" in SWIFT
+    assert "private static func bulletContentColumn" in SWIFT
+    assert "private static func dedentLine" in SWIFT
+    assert "v1.49" in SWIFT
+    assert "function parseTaskMarker" in DESKTOP
+    assert "function readTaskItem" in DESKTOP
+    assert "function bulletContentColumn" in DESKTOP
+    assert "v1.49" in DESKTOP
     assert "return nil" in SWIFT
     assert "Not a control" in SWIFT
     assert "markdown source" in SWIFT
@@ -108,8 +117,12 @@ def test_docs_and_openapi() -> None:
     assert "version: 0.19" not in OPENAPI
     assert PHRASE in ROADMAP
     assert "/ v1.32 " in ROADMAP
+    assert "/ v1.49 " in ROADMAP
+    assert "v1.49 GFM task items keep indented continuation in completed assistant replies" in ROADMAP
     assert "## 132. v1.32" in SPEC
+    assert "## 149. v1.49" in SPEC
     assert "blockquotes and task lists in completed assistant replies" in SPEC
+    assert "task items keep indented continuation in completed assistant replies" in SPEC
     assert "test_ios_markdown_quote_task.py" in CI
     assert "markdownQuoteTask.test.ts" in (ROOT / "desktop" / "package.json").read_text(
         encoding="utf-8"

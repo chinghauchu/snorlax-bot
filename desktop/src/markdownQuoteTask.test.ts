@@ -132,6 +132,88 @@ test("task markers become read-only glyphs; checked is distinct", () => {
   ]);
 });
 
+test("v1.49 indented continuation and nested tasks stay in the item", () => {
+  const continued = splitQuoteAndTasks("- [ ] open\n  the organic one\n- [x] done", true);
+  assert.equal(continued.length, 1);
+  assert.equal(continued[0]?.type, "tasks");
+  if (continued[0]?.type !== "tasks") return;
+  assert.deepEqual(continued[0].items, [
+    { checked: false, text: "open\nthe organic one" },
+    { checked: true, text: "done" },
+  ]);
+
+  const nested = splitQuoteAndTasks(
+    "- [ ] parent\n  - [ ] child\n  - [x] also\n- [ ] sib",
+    true,
+  );
+  assert.equal(nested.length, 1);
+  if (nested[0]?.type !== "tasks") return;
+  assert.equal(nested[0].items.length, 2);
+  assert.equal(nested[0].items[1]?.text, "sib");
+  const inner = splitQuoteAndTasks(nested[0].items[0]?.text ?? "", true);
+  assert.equal(inner[0]?.type, "markdown");
+  assert.equal(inner[1]?.type, "tasks");
+  if (inner[1]?.type === "tasks") {
+    assert.deepEqual(inner[1].items, [
+      { checked: false, text: "child" },
+      { checked: true, text: "also" },
+    ]);
+  }
+
+  const starred = splitQuoteAndTasks("* [ ] a\n  more\n+ [x] b", true);
+  if (starred[0]?.type === "tasks") {
+    assert.equal(starred[0].items[0]?.text, "a\nmore");
+    assert.equal(starred[0].items[1]?.checked, true);
+  }
+
+  const margin = splitQuoteAndTasks("- [ ] open\nmore\n- [x] later", true);
+  assert.equal(margin[0]?.type, "tasks");
+  assert.equal(margin[1]?.type, "markdown");
+  assert.equal(margin[2]?.type, "tasks");
+  if (margin[0]?.type === "tasks") assert.equal(margin[0].items[0]?.text, "open");
+  if (margin[1]?.type === "markdown") assert.equal(margin[1].text, "more");
+
+  const loose = splitQuoteAndTasks("- [ ] open\n\n  still open\n\n- [x] next", true);
+  assert.equal(loose.length, 1);
+  if (loose[0]?.type === "tasks") {
+    assert.deepEqual(loose[0].items, [
+      { checked: false, text: "open\n\nstill open" },
+      { checked: true, text: "next" },
+    ]);
+  }
+
+  const fenced = splitQuoteAndTasks("- [ ] a\n  ```\n  line\n  ```\n- [x] b", true);
+  assert.equal(fenced.length, 1);
+  if (fenced[0]?.type === "tasks") {
+    assert.match(fenced[0].items[0]?.text ?? "", /```\nline\n```/);
+    assert.equal(fenced[0].items[1]?.text, "b");
+  }
+  const marginFence = splitQuoteAndTasks("- [ ] a\n```\ncode\n```\n- [x] b", true);
+  assert.deepEqual(
+    marginFence.map((part) => part.type),
+    ["tasks", "markdown", "tasks"],
+  );
+  if (marginFence[1]?.type === "markdown") assert.match(marginFence[1].text, /code/);
+
+  const math = splitQuoteAndTasks("- [ ] a\n  $$\nx\n  $$\n- [ ] b", true);
+  assert.equal(math.length, 1);
+  if (math[0]?.type === "tasks") assert.match(math[0].items[0]?.text ?? "", /\$\$/);
+
+  const quoted = splitQuoteAndTasks("> - [ ] parent\n>   - [ ] child", true);
+  assert.equal(quoted[0]?.type, "quote");
+  if (quoted[0]?.type === "quote") {
+    const inside = splitQuoteAndTasks(quoted[0].text, true);
+    assert.equal(inside[0]?.type, "tasks");
+    if (inside[0]?.type === "tasks") {
+      const nestedTask = splitQuoteAndTasks(inside[0].items[0]?.text ?? "", true);
+      assert.equal(nestedTask.some((part) => part.type === "tasks"), true);
+    }
+  }
+
+  const live = "- [ ] open\n  more\n  - [ ] child";
+  assert.deepEqual(splitQuoteAndTasks(live, false), [{ type: "markdown", text: live }]);
+});
+
 test("quotes can hold task lists; fences, math, and streaming stay raw", () => {
   const mixed = "Hello\n\n> quoted text\n>> nested\n\n- [ ] open\n- [x] done";
   const parts = splitQuoteAndTasks(mixed, true);
@@ -216,8 +298,20 @@ test("completed replies style the rule and glyphs; copy still uses markdown sour
   assert.match(markdown, /byCharWrapping/);
   assert.ok(roadmap.includes(PHRASE));
   assert.match(roadmap, /\/ v1\.32 /);
+  assert.match(roadmap, /\/ v1\.49 /);
+  assert.match(
+    roadmap,
+    /v1\.49 GFM task items keep indented continuation in completed assistant replies/,
+  );
   assert.match(spec, /## 132\. v1\.32/);
+  assert.match(spec, /## 149\. v1\.49/);
   assert.match(spec, /blockquotes and task lists in completed assistant replies/i);
+  assert.match(spec, /task items keep indented continuation in completed assistant replies/i);
+  assert.match(src, /function readTaskItem/);
+  assert.match(src, /function parseTaskMarker/);
+  assert.match(swift, /private static func readTaskItem/);
+  assert.match(swift, /private static func parseTaskMarker/);
+  assert.match(swift, /v1\.49/);
   assert.match(ci, /python3 ios\/scripts\/test_ios_markdown_quote_task\.py/);
   assert.match(pkg, /markdownQuoteTask\.test\.ts/);
   assert.match(openapi, /version: 0\.18\.0/);
