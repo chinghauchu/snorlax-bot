@@ -10,7 +10,11 @@
  * itself start a list, an ATX heading, a fence, a thematic
  * break, or a `$$` block, stays inside that quote. A blank line
  * ends it. Nested quotes keep the continuation. A margin list,
- * heading, fence, or rule ends the quote. Streaming stays the
+ * heading, fence, or rule ends the quote.
+ * v1.49: a task item keeps the lines indented to its text.
+ * The text column is the column after the bullet, so two spaces
+ * under `- [ ]` stay in the item and a nested task renders
+ * inside it. A margin line ends the item. Streaming stays the
  * markdown string, so the bubble renders as it does today.
  * Copy controls keep the message markdown source — this module
  * only splits text for display and does not copy.
@@ -112,15 +116,26 @@ export function splitQuoteAndTasks(
       mdStart = i;
       continue;
     }
-    const task = parseTaskLine(line);
-    if (task) {
+    const task = parseTaskMarker(line);
+    if (task && task.column <= 3) {
       const start = i;
       const items: TaskItem[] = [];
       while (i < lines.length) {
-        const next = parseTaskLine(lines[i] ?? "");
-        if (!next) break;
-        items.push(next);
-        i += 1;
+        const current = lines[i] ?? "";
+        if (isBlank(current)) {
+          const next = nextNonBlank(lines, i + 1);
+          const sibling = next >= 0 ? parseTaskMarker(lines[next] ?? "") : null;
+          if (sibling && sibling.column <= 3) {
+            i = next;
+            continue;
+          }
+          break;
+        }
+        const next = parseTaskMarker(current);
+        if (!next || next.column > 3) break;
+        const item = readTaskItem(lines, i, next);
+        items.push(item.task);
+        i = item.next;
       }
       pushMarkdown(start);
       blocks.push({ type: "tasks", items });
@@ -168,6 +183,162 @@ export function parseTaskLine(line: string): TaskItem | null {
   if (line[i] !== " " && line[i] !== "\t") return null;
   while (line[i] === " " || line[i] === "\t") i += 1;
   return { checked: mark !== " ", text: line.slice(i) };
+}
+
+type TaskMarker = {
+  checked: boolean;
+  text: string;
+  /** Columns before the bullet. A margin task is 0–3. */
+  column: number;
+  /** Column where the item text begins, immediately after `- `. */
+  contentColumn: number;
+};
+
+/**
+ * A margin or nested task marker. The content column is the
+ * CommonMark list column after the bullet, not the column after
+ * the checkbox, so `  more` continues `- [ ] item`.
+ */
+function parseTaskMarker(line: string): TaskMarker | null {
+  const task = parseTaskLine(line);
+  if (!task) return null;
+  const lead = leadingColumns(line);
+  if (lead.columns > 3) return null;
+  const contentColumn = bulletContentColumn(line, lead);
+  if (contentColumn <= lead.columns) return null;
+  return {
+    checked: task.checked,
+    text: task.text,
+    column: lead.columns,
+    contentColumn,
+  };
+}
+
+/** Column of the first character of the list item's text. */
+function bulletContentColumn(
+  line: string,
+  lead: { columns: number; index: number },
+): number {
+  const afterMarker = lead.columns + 1;
+  const sepIndex = lead.index + 1;
+  if (sepIndex >= line.length) return afterMarker + 1;
+  const sep = line[sepIndex];
+  if (sep === " ") return afterMarker + 1;
+  if (sep === "\t") return afterMarker + (4 - (afterMarker % 4));
+  return afterMarker + 1;
+}
+
+/**
+ * One task item plus every following line that belongs to it.
+ * Indented lines, including a nested task, stay in `text` and are
+ * dedented so the item body parses again. A margin line, including
+ * the next task, is left for the caller.
+ */
+function readTaskItem(
+  lines: string[],
+  start: number,
+  marker: TaskMarker,
+): { task: TaskItem; next: number } {
+  const body: string[] = [marker.text];
+  let i = start + 1;
+  let fence: string | null = null;
+  let inMath = false;
+
+  while (i < lines.length) {
+    const line = lines[i] ?? "";
+    if (fence) {
+      body.push(dedentLine(line, marker.contentColumn));
+      const opened = fenceMark(line);
+      if (
+        opened &&
+        opened.marker[0] === fence[0] &&
+        opened.marker.length >= fence.length &&
+        opened.info.trim() === ""
+      ) {
+        fence = null;
+      }
+      i += 1;
+      continue;
+    }
+    if (inMath) {
+      body.push(dedentLine(line, marker.contentColumn));
+      if (line.trim() === "$$") inMath = false;
+      i += 1;
+      continue;
+    }
+    if (isBlank(line)) {
+      const next = nextNonBlank(lines, i + 1);
+      if (next < 0) break;
+      const upcoming = lines[next] ?? "";
+      if (leadingColumns(upcoming).columns >= marker.contentColumn) {
+        body.push("");
+        i += 1;
+        continue;
+      }
+      break;
+    }
+    if (leadingColumns(line).columns < marker.contentColumn) break;
+    const opened = fenceMark(line);
+    if (opened) {
+      fence = opened.marker;
+      body.push(dedentLine(line, marker.contentColumn));
+      i += 1;
+      continue;
+    }
+    if (line.trim() === "$$") {
+      inMath = true;
+      body.push(dedentLine(line, marker.contentColumn));
+      i += 1;
+      continue;
+    }
+    body.push(dedentLine(line, marker.contentColumn));
+    i += 1;
+  }
+  return {
+    task: { checked: marker.checked, text: trimEdgeNewlines(body.join("\n")) },
+    next: i,
+  };
+}
+
+function fenceMark(line: string): { marker: string; info: string } | null {
+  const lead = leadingColumns(line);
+  const rest = line.slice(lead.index);
+  const match = /^(`{3,}|~{3,})(.*)$/.exec(rest);
+  if (!match) return null;
+  return { marker: match[1] ?? "", info: match[2] ?? "" };
+}
+
+function dedentLine(line: string, columns: number): string {
+  let col = 0;
+  let index = 0;
+  while (index < line.length && col < columns) {
+    const ch = line[index];
+    if (ch === " ") {
+      col += 1;
+      index += 1;
+      continue;
+    }
+    if (ch === "\t") {
+      const next = col + (4 - (col % 4));
+      index += 1;
+      if (next > columns) return `${" ".repeat(next - columns)}${line.slice(index)}`;
+      col = next;
+      continue;
+    }
+    break;
+  }
+  return line.slice(index);
+}
+
+function trimEdgeNewlines(text: string): string {
+  return text.replace(/^\n+|\n+$/g, "");
+}
+
+function nextNonBlank(lines: string[], start: number): number {
+  for (let i = start; i < lines.length; i += 1) {
+    if (!isBlank(lines[i] ?? "")) return i;
+  }
+  return -1;
 }
 
 /**

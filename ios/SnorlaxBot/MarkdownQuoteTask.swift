@@ -10,7 +10,11 @@ import SwiftUI
 /// itself start a list, an ATX heading, a fence, a thematic
 /// break, or a `$$` block, stays inside that quote. A blank line
 /// ends it. Nested quotes keep the continuation. A margin list,
-/// heading, fence, or rule ends the quote. Streaming stays the
+/// heading, fence, or rule ends the quote.
+/// v1.49: a task item keeps the lines indented to its text.
+/// The text column is the column after the bullet, so two spaces
+/// under `- [ ]` stay in the item and a nested task renders
+/// inside it. A margin line ends the item. Streaming stays the
 /// markdown string. Copy controls keep markdown source — this
 /// type only splits text for display and does not write the
 /// pasteboard. No animation. No new HTTP.
@@ -104,12 +108,24 @@ enum MarkdownQuoteTask {
                 mdStart = index
                 continue
             }
-            if parseTaskLine(line) != nil {
+            if let task = parseTaskMarker(line), task.column <= 3 {
                 let start = index
                 var items: [TaskItem] = []
-                while index < lines.count, let task = parseTaskLine(lines[index]) {
-                    items.append(task)
-                    index += 1
+                while index < lines.count {
+                    let current = lines[index]
+                    if isBlank(current) {
+                        let next = nextNonBlank(lines, start: index + 1)
+                        let sibling = next >= 0 ? parseTaskMarker(lines[next]) : nil
+                        if let sibling, sibling.column <= 3 {
+                            index = next
+                            continue
+                        }
+                        break
+                    }
+                    guard let next = parseTaskMarker(current), next.column <= 3 else { break }
+                    let item = readTaskItem(lines, start: index, marker: next)
+                    items.append(item.task)
+                    index = item.next
                 }
                 pushMarkdown(start)
                 blocks.append(.tasks(items))
@@ -171,6 +187,166 @@ enum MarkdownQuoteTask {
             i = line.index(after: i)
         }
         return TaskItem(checked: mark != " ", text: String(line[i...]))
+    }
+
+    private struct TaskMarker {
+        var checked: Bool
+        var text: String
+        /// Columns before the bullet. A margin task is 0–3.
+        var column: Int
+        /// Column where the item text begins, immediately after `- `.
+        var contentColumn: Int
+    }
+
+    /// The content column is the CommonMark list column after the
+    /// bullet, not the column after the checkbox, so `  more`
+    /// continues `- [ ] item`.
+    private static func parseTaskMarker(_ line: String) -> TaskMarker? {
+        guard let task = parseTaskLine(line) else { return nil }
+        let lead = leadingColumns(line)
+        if lead.columns > 3 { return nil }
+        let contentColumn = bulletContentColumn(line, lead: lead)
+        if contentColumn <= lead.columns { return nil }
+        return TaskMarker(
+            checked: task.checked,
+            text: task.text,
+            column: lead.columns,
+            contentColumn: contentColumn
+        )
+    }
+
+    private static func bulletContentColumn(
+        _ line: String,
+        lead: (columns: Int, index: String.Index)
+    ) -> Int {
+        let afterMarker = lead.columns + 1
+        let sepIndex = line.index(after: lead.index)
+        if sepIndex >= line.endIndex { return afterMarker + 1 }
+        let sep = line[sepIndex]
+        if sep == " " { return afterMarker + 1 }
+        if sep == "\t" { return afterMarker + (4 - (afterMarker % 4)) }
+        return afterMarker + 1
+    }
+
+    /// One task item plus every following line that belongs to it.
+    /// Indented lines, including a nested task, stay in `text` and
+    /// are dedented so the item body parses again.
+    private static func readTaskItem(
+        _ lines: [String],
+        start: Int,
+        marker: TaskMarker
+    ) -> (task: TaskItem, next: Int) {
+        var body: [String] = [marker.text]
+        var index = start + 1
+        var fence: String?
+        var inMath = false
+
+        while index < lines.count {
+            let line = lines[index]
+            if let open = fence {
+                body.append(dedentLine(line, columns: marker.contentColumn))
+                if let opened = fenceMark(line),
+                   opened.marker.first == open.first,
+                   opened.marker.count >= open.count,
+                   opened.info.trimmingCharacters(in: .whitespaces).isEmpty
+                {
+                    fence = nil
+                }
+                index += 1
+                continue
+            }
+            if inMath {
+                body.append(dedentLine(line, columns: marker.contentColumn))
+                if line.trimmingCharacters(in: .whitespaces) == "$$" { inMath = false }
+                index += 1
+                continue
+            }
+            if isBlank(line) {
+                let next = nextNonBlank(lines, start: index + 1)
+                if next < 0 { break }
+                let upcoming = lines[next]
+                if leadingColumns(upcoming).columns >= marker.contentColumn {
+                    body.append("")
+                    index += 1
+                    continue
+                }
+                break
+            }
+            if leadingColumns(line).columns < marker.contentColumn { break }
+            if let opened = fenceMark(line) {
+                fence = opened.marker
+                body.append(dedentLine(line, columns: marker.contentColumn))
+                index += 1
+                continue
+            }
+            if line.trimmingCharacters(in: .whitespaces) == "$$" {
+                inMath = true
+                body.append(dedentLine(line, columns: marker.contentColumn))
+                index += 1
+                continue
+            }
+            body.append(dedentLine(line, columns: marker.contentColumn))
+            index += 1
+        }
+        return (
+            TaskItem(checked: marker.checked, text: trimEdgeNewlines(body.joined(separator: "\n"))),
+            index
+        )
+    }
+
+    private static func fenceMark(_ line: String) -> (marker: String, info: String)? {
+        let lead = leadingColumns(line)
+        var index = lead.index
+        guard index < line.endIndex else { return nil }
+        let mark = line[index]
+        guard mark == "`" || mark == "~" else { return nil }
+        var count = 0
+        while index < line.endIndex, line[index] == mark {
+            count += 1
+            index = line.index(after: index)
+        }
+        if count < 3 { return nil }
+        return (String(repeating: String(mark), count: count), String(line[index...]))
+    }
+
+    private static func dedentLine(_ line: String, columns: Int) -> String {
+        var col = 0
+        var index = line.startIndex
+        while index < line.endIndex, col < columns {
+            let ch = line[index]
+            if ch == " " {
+                col += 1
+                index = line.index(after: index)
+                continue
+            }
+            if ch == "\t" {
+                let next = col + (4 - (col % 4))
+                index = line.index(after: index)
+                if next > columns {
+                    return String(repeating: " ", count: next - columns) + String(line[index...])
+                }
+                col = next
+                continue
+            }
+            break
+        }
+        return String(line[index...])
+    }
+
+    private static func trimEdgeNewlines(_ text: String) -> String {
+        var result = text
+        while result.first == "\n" { result.removeFirst() }
+        while result.last == "\n" { result.removeLast() }
+        return result
+    }
+
+    private static func nextNonBlank(_ lines: [String], start: Int) -> Int {
+        var index = start
+        while index < lines.count {
+            if !isBlank(lines[index]) { return index }
+            index += 1
+        }
+        return -1
     }
 
     /// A quote paragraph stays open after this stripped quote line.
