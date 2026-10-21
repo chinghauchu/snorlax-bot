@@ -6,6 +6,10 @@ import SwiftUI
 /// Copy puts the table's markdown source on the clipboard, then
 /// shows Copied for 1.5s. A wide table scrolls horizontally.
 /// Streaming stays plain text. No animation. No new HTTP.
+/// v1.55: delimiter cells set column alignment (`:---` left,
+/// `:---:` center, `---:` right). A `\|` inside an inline code span
+/// becomes a literal pipe in that cell. The escape pass leaves code
+/// spans unchanged, so the backslash has to come off here.
 /// Keep in lockstep with `desktop/src/markdownTable.ts`.
 enum MarkdownTable {
     enum Align: Equatable {
@@ -157,6 +161,8 @@ enum MarkdownTable {
     }
 
     /// Cells split on unescaped pipes outside inline code. Outer pipes drop.
+    /// v1.55: `\|` inside a code span is stored as `|`. Outside a code
+    /// span the backslash stays so the escape pass can paint the pipe.
     static func splitRow(_ line: String) -> [String]? {
         let indent = line.prefix { $0 == " " }.count
         if indent >= 4 { return nil }
@@ -176,6 +182,14 @@ enum MarkdownTable {
                     current += String(repeating: "`", count: n)
                     index += n
                     if n == code { code = 0 }
+                    continue
+                }
+                // v1.55: `\|` inside a code span is a literal pipe. The
+                // escape pass leaves code spans unchanged, so the
+                // backslash has to come off here or the chip shows `\|`.
+                if ch == "\\", index + 1 < chars.count, chars[index + 1] == "|" {
+                    current.append("|")
+                    index += 2
                     continue
                 }
                 current.append(ch)
