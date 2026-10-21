@@ -22,6 +22,16 @@
  * `   text`, uses a padding of one. A second blank line before
  * any text ends the item.
  *
+ * v1.56: a list marker does not interrupt an open paragraph
+ * unless CommonMark allows it. An ordered marker interrupts
+ * only when its digits are exactly `1` (`1.` or `1)`), so
+ * `9.`, `14.`, `0.`, `01.`, and `2)` stay paragraph text.
+ * An empty marker (`1.` or `*` with no item text) stays text
+ * too. A bullet that has text still interrupts. A blank line,
+ * an ATX heading, a fence, a block quote, a thematic break,
+ * or the start of the chunk lets any start number begin a
+ * list, including `0.` and `01.`.
+ *
  * v1.57: `-`, `*`, and `+` are different lists, matching
  * react-markdown. A later margin item stays in the list only
  * when it uses that same bullet. A nested marker of another
@@ -52,6 +62,8 @@ type Marker = {
   /** `-`, `*`, or `+`. Ordered markers use "". */
   bullet: "-" | "*" | "+" | "";
   number: number;
+  /** Digit characters of an ordered marker. Empty for a bullet. */
+  digits: string;
   contentColumn: number;
   text: string;
 };
@@ -106,6 +118,7 @@ export function splitMarkdownLists(
   let i = 0;
   let fence: string | null = null;
   let inMath = false;
+  let paragraph = false;
 
   const pushMarkdown = (end: number) => {
     if (end <= mdStart) return;
@@ -119,18 +132,21 @@ export function splitMarkdownLists(
     fence = gate.fence;
     inMath = gate.inMath;
     if (gate.blocked) {
+      paragraph = false;
       i += 1;
       continue;
     }
     const marker = parseMarker(line);
-    if (marker && marker.column <= 3) {
+    if (marker && marker.column <= 3 && (!paragraph || markerInterruptsParagraph(marker))) {
       const found = readList(lines, i, marker);
       pushMarkdown(i);
       blocks.push({ type: "list", list: found.list });
       i = found.next;
       mdStart = i;
+      paragraph = false;
       continue;
     }
+    paragraph = nextParagraphOpen(line, paragraph);
     i += 1;
   }
   pushMarkdown(lines.length);
@@ -150,7 +166,88 @@ export function markdownListEnd(lines: string[], start: number): number | null {
   if (isThematicBreak(line)) return null;
   const marker = parseMarker(line);
   if (!marker || marker.column > 3) return null;
+  if (paragraphOpenAt(lines, start) && !markerInterruptsParagraph(marker)) return null;
   return readList(lines, start, marker).next;
+}
+
+/**
+ * CommonMark only lets some markers interrupt a paragraph.
+ * An ordered marker interrupts only when its digits are `1`,
+ * so `01.` and `9.` stay text. A marker with no item text
+ * (`1.` / `*` alone) stays text too.
+ */
+function markerInterruptsParagraph(marker: Marker): boolean {
+  if (marker.text === "") return false;
+  if (marker.ordered && marker.digits !== "1") return false;
+  return true;
+}
+
+/** True when a paragraph is still open at `index`. */
+function paragraphOpenAt(lines: string[], index: number): boolean {
+  let paragraph = false;
+  let fence: string | null = null;
+  let inMath = false;
+  for (let i = 0; i < index && i < lines.length; i += 1) {
+    const line = lines[i] ?? "";
+    const gate = blockGate(line, fence, inMath);
+    fence = gate.fence;
+    inMath = gate.inMath;
+    if (gate.blocked) {
+      paragraph = false;
+      continue;
+    }
+    const marker = parseMarker(line);
+    if (marker && marker.column <= 3 && (!paragraph || markerInterruptsParagraph(marker))) {
+      paragraph = false;
+      continue;
+    }
+    paragraph = nextParagraphOpen(line, paragraph);
+  }
+  return paragraph;
+}
+
+/**
+ * Paragraph state after a line that is not taken as a new list.
+ * A blank line, heading, quote, or rule closes it. Indented
+ * code closes it only when no paragraph is already open.
+ */
+function nextParagraphOpen(line: string, open: boolean): boolean {
+  if (isBlank(line)) return false;
+  if (isThematicBreak(line) || isAtxHeadingLine(line) || isBlockQuoteLine(line)) return false;
+  if (!open && isIndentedCodeLine(line)) return false;
+  return true;
+}
+
+function isBlank(line: string): boolean {
+  for (const ch of line) {
+    if (ch !== " " && ch !== "\t") return false;
+  }
+  return true;
+}
+
+function isAtxHeadingLine(line: string): boolean {
+  const lead = leadingColumns(line);
+  if (lead.columns > 3) return false;
+  let i = lead.index;
+  let hashes = 0;
+  while (i < line.length && line[i] === "#" && hashes < 7) {
+    hashes += 1;
+    i += 1;
+  }
+  if (hashes < 1 || hashes > 6) return false;
+  if (i >= line.length) return true;
+  return line[i] === " " || line[i] === "\t";
+}
+
+function isBlockQuoteLine(line: string): boolean {
+  const lead = leadingColumns(line);
+  if (lead.columns > 3 || lead.index >= line.length) return false;
+  return line[lead.index] === ">";
+}
+
+function isIndentedCodeLine(line: string): boolean {
+  if (isBlank(line)) return false;
+  return leadingColumns(line).columns >= 4;
 }
 
 function readList(
@@ -308,6 +405,7 @@ function parseMarker(line: string): Marker | null {
   let delimiter: "." | ")" | "" = "";
   let bullet: "-" | "*" | "+" | "" = "";
   let number = 1;
+  let digits = "";
   let token = "";
   const bulletMatch = /^([-+*])/.exec(rest);
   const orderedMatch = /^(\d{1,9})([.)])/.exec(rest);
@@ -318,9 +416,10 @@ function parseMarker(line: string): Marker | null {
     bullet = mark;
   } else if (orderedMatch) {
     ordered = true;
-    token = `${orderedMatch[1] ?? ""}${orderedMatch[2] ?? ""}`;
+    digits = orderedMatch[1] ?? "";
+    token = `${digits}${orderedMatch[2] ?? ""}`;
     delimiter = orderedMatch[2] === ")" ? ")" : ".";
-    number = Number(orderedMatch[1]);
+    number = Number(digits);
     if (!Number.isFinite(number)) return null;
   } else {
     return null;
@@ -337,6 +436,7 @@ function parseMarker(line: string): Marker | null {
     delimiter,
     bullet,
     number,
+    digits,
     contentColumn: padded.contentColumn,
     text: padded.text,
   };

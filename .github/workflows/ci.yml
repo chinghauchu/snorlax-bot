@@ -172,4 +172,5 @@ jobs:
           python3 ios/scripts/test_ios_markdown_fence_indent.py
           python3 ios/scripts/test_ios_markdown_list_padding.py
           python3 ios/scripts/test_ios_markdown_table_align.py
+          python3 ios/scripts/test_ios_markdown_list_interrupt.py
           python3 ios/scripts/test_ios_markdown_bullet_list.py
