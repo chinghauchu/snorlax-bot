@@ -1238,6 +1238,9 @@ enum MarkdownSplit {
         // v1.51: a blank line inside a list stays in that bubble so a
         // loose list can render with paragraph spacing. A blank that
         // ends the list still splits.
+        // v1.58: a blank line inside a comment, script, style, pre, or
+        // textarea HTML block stays in that bubble. A blank that ends
+        // a `<div>` still splits.
         var inCode = false
         var paragraph = false
         var pendingBlanks: [String] = []
@@ -1330,6 +1333,15 @@ enum MarkdownSplit {
                 paragraph = false
                 chunk.append(line)
                 index += 1
+                continue
+            }
+
+            if let htmlEnd = MarkdownList.htmlUntilBlockEnd(lines, index: index, paragraphOpen: paragraph),
+               htmlEnd > index {
+                chunk.append(contentsOf: lines[index..<htmlEnd])
+                inCode = false
+                paragraph = false
+                index = htmlEnd
                 continue
             }
 
