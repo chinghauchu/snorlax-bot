@@ -59,6 +59,7 @@ import {
   splitThematicBreaks,
 } from "./markdownBreak";
 import { applyHardLineBreaks, remarkHardBreaks } from "./markdownHardBreak";
+import { promoteSingleTilde } from "./markdownSingleStrike";
 import {
   headingInlineSource,
   literalizeSetextLines,
@@ -394,8 +395,11 @@ function HeadingInline({
     completed,
   );
   const slots = extracted.slots;
-  const source = applyHardLineBreaks(
-    protectMarkdownEscapes(mathText, completed),
+  const source = promoteSingleTilde(
+    applyHardLineBreaks(
+      protectMarkdownEscapes(mathText, completed),
+      completed,
+    ),
     completed,
   );
   const enrich = (children?: ReactNode) =>
@@ -545,8 +549,11 @@ function MarkdownParsed({
     completed,
   );
   const slots = extracted.slots;
-  const source = applyHardLineBreaks(
-    protectMarkdownEscapes(mathText, completed),
+  const source = promoteSingleTilde(
+    applyHardLineBreaks(
+      protectMarkdownEscapes(mathText, completed),
+      completed,
+    ),
     completed,
   );
   const enrich = (children?: ReactNode) =>
@@ -703,8 +710,11 @@ function TableCellText({
     completed,
   );
   const slots = extracted.slots;
-  const source = applyHardLineBreaks(
-    protectMarkdownEscapes(mathText, completed),
+  const source = promoteSingleTilde(
+    applyHardLineBreaks(
+      protectMarkdownEscapes(mathText, completed),
+      completed,
+    ),
     completed,
   );
   if (!source) return null;
