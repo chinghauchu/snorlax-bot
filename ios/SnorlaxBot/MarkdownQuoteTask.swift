@@ -18,6 +18,7 @@ import SwiftUI
 /// markdown string. Copy controls keep markdown source — this
 /// type only splits text for display and does not write the
 /// pasteboard. No animation. No new HTTP.
+/// v1.51: a task list is loose or tight by the CommonMark rule.
 /// Keep in lockstep with `desktop/src/markdownQuoteTask.ts`.
 enum MarkdownQuoteTask {
     /// Empty ballot box. Not a control.
@@ -36,7 +37,9 @@ enum MarkdownQuoteTask {
     enum Block: Equatable {
         case markdown(String)
         case quote(String)
-        case tasks([TaskItem])
+        /// `loose` follows CommonMark: a blank between items, or between
+        /// an item's own blocks, loosens the whole task list.
+        case tasks([TaskItem], loose: Bool)
     }
 
     static func glyph(checked: Bool) -> String {
@@ -128,7 +131,8 @@ enum MarkdownQuoteTask {
                     index = item.next
                 }
                 pushMarkdown(start)
-                blocks.append(.tasks(items))
+                let slice = lines[start..<index].joined(separator: "\n")
+                blocks.append(.tasks(items, loose: MarkdownLooseList.isLoose(slice, completed: true)))
                 mdStart = index
                 continue
             }

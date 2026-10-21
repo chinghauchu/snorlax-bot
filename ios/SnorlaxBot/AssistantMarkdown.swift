@@ -124,9 +124,10 @@ private struct MarkdownQuoteTaskPieces: View {
                         completed: completed,
                         wrapScope: wrapScope
                     )
-                case .tasks(let items):
+                case .tasks(let items, let loose):
                     MarkdownTaskList(
                         items: items,
+                        loose: loose,
                         names: names,
                         completed: completed,
                         wrapScope: wrapScope
@@ -168,13 +169,14 @@ private struct MarkdownQuoteBlock: View {
 /// Read-only checkbox glyphs. Checked rows are muted. Not a toggle.
 private struct MarkdownTaskList: View {
     let items: [MarkdownQuoteTask.TaskItem]
+    let loose: Bool
     let names: [String]
     var completed: Bool
     var wrapScope: String
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 4) {
+        VStack(alignment: .leading, spacing: MarkdownLooseList.itemSpacing(loose: loose)) {
             ForEach(Array(items.enumerated()), id: \.offset) { _, item in
                 MarkdownTaskRow(
                     item: item,
@@ -186,6 +188,7 @@ private struct MarkdownTaskList: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .animation(MarkdownQuoteTask.animation(reduceMotion: reduceMotion), value: items)
+        .animation(MarkdownLooseList.animation(reduceMotion: reduceMotion), value: loose)
     }
 }
 
@@ -413,7 +416,7 @@ private struct MarkdownListBlock: View {
     @Environment(\.markdownListDepth) private var depth
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 4) {
+        VStack(alignment: .leading, spacing: MarkdownLooseList.itemSpacing(loose: group.loose)) {
             ForEach(Array(group.items.enumerated()), id: \.offset) { index, item in
                 HStack(alignment: .top, spacing: 8) {
                     Text(
@@ -450,6 +453,7 @@ private struct MarkdownListBlock: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .animation(MarkdownList.animation(reduceMotion: reduceMotion), value: group.items)
+        .animation(MarkdownLooseList.animation(reduceMotion: reduceMotion), value: group.loose)
     }
 }
 
@@ -1223,6 +1227,9 @@ enum MarkdownSplit {
         var inMath = false
         // v1.48: a blank line inside an indented code block stays in
         // that bubble. A blank outside one still splits.
+        // v1.51: a blank line inside a list stays in that bubble so a
+        // loose list can render with paragraph spacing. A blank that
+        // ends the list still splits.
         var inCode = false
         var paragraph = false
         var pendingBlanks: [String] = []
@@ -1256,7 +1263,9 @@ enum MarkdownSplit {
                 && !MarkdownIndentedCode.isThematicBreakLine(line)
         }
 
-        for line in lines {
+        var index = 0
+        while index < lines.count {
+            let line = lines[index]
             let wasFence = fence != nil
             let wasMath = inMath
             if !inMath, let _ = line.range(of: #"^( {0,3})(`{3,}|~{3,})(.*)$"#, options: .regularExpression) {
@@ -1286,6 +1295,7 @@ enum MarkdownSplit {
                 } else {
                     flush()
                 }
+                index += 1
                 continue
             }
 
@@ -1307,9 +1317,20 @@ enum MarkdownSplit {
                 inCode = false
                 paragraph = false
                 chunk.append(line)
+                index += 1
                 continue
             }
+
+            if let listEnd = MarkdownList.listEnd(lines, start: index), listEnd > index {
+                chunk.append(contentsOf: lines[index..<listEnd])
+                inCode = false
+                paragraph = false
+                index = listEnd
+                continue
+            }
+
             pushText(line)
+            index += 1
         }
         flush()
         return parts

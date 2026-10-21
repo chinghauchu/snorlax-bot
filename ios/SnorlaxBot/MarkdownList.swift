@@ -22,6 +22,8 @@ enum MarkdownList {
         /// `.` or `)` for an ordered list. Bullets use "".
         var delimiter: String
         var items: [String]
+        /// CommonMark loose list. Tight lists stay compact.
+        var loose: Bool
     }
 
     enum Block: Equatable {
@@ -47,6 +49,18 @@ enum MarkdownList {
     static func markerLabel(ordered: Bool, start: Int, index: Int, depth: Int) -> String {
         if ordered { return marker(ordered: true, start: start, index: index, depth: depth) }
         return "Bullet"
+    }
+
+    /// Index just after a top-level list that starts at `start`.
+    /// The span includes a loose continuation so a blank line inside
+    /// the list stays with it. Nil when that line is not a margin marker.
+    /// Does not classify looseness.
+    static func listEnd(_ lines: [String], start: Int) -> Int? {
+        guard start >= 0, start < lines.count else { return nil }
+        let line = lines[start]
+        if isThematicBreak(line) { return nil }
+        guard let marker = parseMarker(line), marker.column <= 3 else { return nil }
+        return readList(lines, start: start, first: marker, classify: false).next
     }
 
     /// `completed: false` returns the text unchanged.
@@ -115,7 +129,12 @@ enum MarkdownList {
         var next: Int
     }
 
-    private static func readList(_ lines: [String], start: Int, first: Marker) -> ReadList {
+    private static func readList(
+        _ lines: [String],
+        start: Int,
+        first: Marker,
+        classify: Bool = true
+    ) -> ReadList {
         var items: [String] = []
         var index = start
         while index < lines.count {
@@ -139,12 +158,15 @@ enum MarkdownList {
             items.append(item.text)
             index = item.next
         }
+        let slice = lines[start..<index].joined(separator: "\n")
+        let loose = classify && MarkdownLooseList.isLoose(slice, completed: true)
         return ReadList(
             group: Group(
                 ordered: first.ordered,
                 start: first.number,
                 delimiter: first.delimiter,
-                items: items
+                items: items,
+                loose: loose
             ),
             next: index
         )
