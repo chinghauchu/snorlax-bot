@@ -1050,7 +1050,12 @@ private struct MarkdownRun: View {
         // A plain newline stays a soft break, which renders as a space.
         let src = MarkdownAutolink.prepare(raw, completed: completed)
         let escaped = MarkdownEscape.protect(src, completed: completed)
-        let source = MarkdownHardBreak.apply(escaped, completed: completed)
+        // ~text~ becomes ~~text~~ so the parser's strikethrough matches
+        // the single-tilde form the same way it already matches ~~text~~.
+        let source = MarkdownSingleStrike.promote(
+            MarkdownHardBreak.apply(escaped, completed: completed),
+            completed: completed
+        )
         var parsed: AttributedString
         do {
             var options = AttributedString.MarkdownParsingOptions()
