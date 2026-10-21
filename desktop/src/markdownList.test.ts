@@ -220,8 +220,8 @@ test("the iOS parser keeps start numbers and nested markers", () => {
   assert.equal(plain.length, 1);
   assert.equal(plain[0]?.type, "markdown");
   const wide = splitMarkdownLists("1234567890. no\n3. yes", true);
+  assert.equal(wide.length, 1);
   assert.equal(wide[0]?.type, "markdown");
-  if (wide[1]?.type === "list") assert.equal(wide[1].list.start, 3);
 
   const math = splitMarkdownLists("$$\n1. not\n$$\n2. yes", true);
   assert.equal(math[0]?.type, "markdown");
