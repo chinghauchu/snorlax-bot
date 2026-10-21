@@ -9,7 +9,14 @@ import SwiftUI
 /// markers. This parser follows the same CommonMark rules: the
 /// first marker's number is the start, later items in that list
 /// count up, a paragraph or fence ends the list, and an indented
-/// `-` or `1.` under an item is a nested list. Streaming
+/// `-` or `1.` under an item is a nested list.
+///
+/// v1.54: the column where item text starts follows CommonMark.
+/// One to four spaces after the marker are padding, so `-   item`
+/// continues at that wider column. Five or more spaces keep one
+/// as the separator and the rest as content. A marker line with
+/// no text, such as `1.` then `   text`, uses a padding of one.
+/// A second blank line before any text ends the item. Streaming
 /// (`completed: false`) returns the text unchanged. Copy controls
 /// keep markdown source — this type only splits text for display
 /// and does not write the pasteboard. No animation. No new HTTP.
@@ -178,11 +185,15 @@ enum MarkdownList {
         marker: Marker,
         listMarker: Marker
     ) -> ReadItem {
-        var body: [String] = [marker.text]
+        // A marker with no text is already the item's one allowed
+        // blank line. Content has to be indented to the content
+        // column; a second blank line ends the item.
+        var body: [String] = marker.text.isEmpty ? [] : [marker.text]
         var index = start + 1
         var fence: String?
         var inMath = false
         var sawBlank = false
+        var sawContent = !marker.text.isEmpty
 
         while index < lines.count {
             let line = lines[index]
@@ -205,6 +216,7 @@ enum MarkdownList {
                 continue
             }
             if line.trimmingCharacters(in: .whitespaces).isEmpty {
+                if !sawContent { break }
                 let next = nextNonBlank(lines, start: index)
                 if next < 0 { break }
                 let upcoming = lines[next]
@@ -227,6 +239,7 @@ enum MarkdownList {
                 if leadingColumns(line).columns < marker.contentColumn { break }
                 fence = opened.marker
                 body.append(dedent(line, columns: marker.contentColumn))
+                sawContent = true
                 index += 1
                 continue
             }
@@ -234,12 +247,14 @@ enum MarkdownList {
                 if leadingColumns(line).columns < marker.contentColumn { break }
                 inMath = true
                 body.append(dedent(line, columns: marker.contentColumn))
+                sawContent = true
                 index += 1
                 continue
             }
             if let nested = parseMarker(line) {
                 if nested.column >= marker.contentColumn {
                     body.append(dedent(line, columns: marker.contentColumn))
+                    sawContent = true
                     index += 1
                     continue
                 }
@@ -247,11 +262,12 @@ enum MarkdownList {
             }
             if leadingColumns(line).columns >= marker.contentColumn {
                 body.append(dedent(line, columns: marker.contentColumn))
+                sawContent = true
                 index += 1
                 continue
             }
-            if !sawBlank && !interruptsList(line) {
-                body.append(line)
+            if sawContent && !sawBlank && !interruptsList(line) {
+                body.append(lazyLine(line))
                 index += 1
                 continue
             }
@@ -294,28 +310,112 @@ enum MarkdownList {
             guard contentIndex < line.endIndex else { break }
             contentIndex = line.index(after: contentIndex)
         }
-        var contentColumn = lead.columns + token.count
         if contentIndex < line.endIndex {
             let sep = line[contentIndex]
             if sep != " " && sep != "\t" { return nil }
-            if sep == " " {
-                contentColumn += 1
-                contentIndex = line.index(after: contentIndex)
-            } else {
-                contentColumn += 4 - (contentColumn % 4)
-                contentIndex = line.index(after: contentIndex)
-            }
-        } else {
-            contentColumn += 1
         }
+        let padded = listMarkerPadding(
+            line,
+            markerIndex: contentIndex,
+            markerColumn: lead.columns + token.count
+        )
         return Marker(
             column: lead.columns,
             ordered: ordered,
             delimiter: delimiter,
             number: number,
-            contentColumn: contentColumn,
-            text: String(line[contentIndex...])
+            contentColumn: padded.contentColumn,
+            text: padded.text
         )
+    }
+
+    /// CommonMark list padding. `markerColumn` is the column just
+    /// after the marker. One to four columns of spaces or a tab are
+    /// padding. Five or more keep a single column as the separator
+    /// and leave the rest in `text`. A blank marker line uses one
+    /// column of padding and empty text.
+    static func listMarkerPadding(
+        _ line: String,
+        markerIndex: String.Index,
+        markerColumn: Int
+    ) -> (contentColumn: Int, text: String) {
+        let start = MarkerCursor(col: markerColumn, index: markerIndex, partial: 0)
+        var cur = start
+        var guardCount = 0
+        repeat {
+            let before = cur.col
+            advanceMarkerColumn(line, &cur)
+            if cur.col == before { break }
+            guardCount += 1
+        } while cur.col - start.col < 5 && isMarkerSpace(peekMarker(line, cur)) && guardCount < 32
+        let spacesAfter = cur.col - start.col
+        let blank = peekMarker(line, cur) == nil
+        if spacesAfter >= 5 || spacesAfter < 1 || blank {
+            var back = start
+            if isMarkerSpace(peekMarker(line, back)) {
+                advanceMarkerColumn(line, &back)
+            }
+            return (markerColumn + 1, blank ? "" : markerRemainder(line, back))
+        }
+        return (markerColumn + spacesAfter, markerRemainder(line, cur))
+    }
+
+    private struct MarkerCursor {
+        var col: Int
+        var index: String.Index
+        var partial: Int
+    }
+
+    private static func advanceMarkerColumn(_ line: String, _ cur: inout MarkerCursor) {
+        if cur.partial > 0 {
+            cur.partial -= 1
+            cur.col += 1
+            if cur.partial == 0, cur.index < line.endIndex {
+                cur.index = line.index(after: cur.index)
+            }
+            return
+        }
+        if cur.index >= line.endIndex { return }
+        let ch = line[cur.index]
+        if ch == "\t" {
+            let width = 4 - (cur.col % 4)
+            cur.col += 1
+            if width > 1 {
+                cur.partial = width - 1
+            } else {
+                cur.index = line.index(after: cur.index)
+            }
+            return
+        }
+        cur.col += 1
+        cur.index = line.index(after: cur.index)
+    }
+
+    private static func peekMarker(_ line: String, _ cur: MarkerCursor) -> Character? {
+        if cur.partial > 0 { return "\t" }
+        if cur.index >= line.endIndex { return nil }
+        return line[cur.index]
+    }
+
+    private static func isMarkerSpace(_ ch: Character?) -> Bool {
+        ch == " " || ch == "\t"
+    }
+
+    private static func markerRemainder(_ line: String, _ cur: MarkerCursor) -> String {
+        if cur.partial > 0 {
+            let next = line.index(after: cur.index)
+            return String(repeating: " ", count: cur.partial) + String(line[next...])
+        }
+        return String(line[cur.index...])
+    }
+
+    /// Drop the partial indent on a lazy continuation line.
+    private static func lazyLine(_ line: String) -> String {
+        var index = line.startIndex
+        while index < line.endIndex, line[index] == " " || line[index] == "\t" {
+            index = line.index(after: index)
+        }
+        return String(line[index...])
     }
 
     private static func interruptsList(_ line: String) -> Bool {

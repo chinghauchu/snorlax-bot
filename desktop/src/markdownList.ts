@@ -12,9 +12,17 @@
  * the first marker's number is the start, a later item in that
  * list counts up from there, a paragraph or fence ends the
  * list, and an indented `-` or `1.` under an item is a nested
- * list. Streaming (`completed: false`) returns the text
- * unchanged. Copy controls keep markdown source — this module
- * does not copy. No animation. No new HTTP.
+ * list.
+ *
+ * v1.54: the column where item text starts follows CommonMark.
+ * One to four spaces after the marker are padding, so `-   item`
+ * continues at that wider column. Five or more spaces keep one
+ * as the separator and the rest as content (often indented
+ * code). A marker line with no text, such as `1.` then
+ * `   text`, uses a padding of one. A second blank line before
+ * any text ends the item. Streaming (`completed: false`)
+ * returns the text unchanged. Copy controls keep markdown
+ * source — this module does not copy. No animation. No new HTTP.
  * Keep in lockstep with `ios/SnorlaxBot/MarkdownList.swift`.
  */
 
@@ -179,11 +187,15 @@ function readItem(
   marker: Marker,
   listMarker: Marker,
 ): { text: string; next: number } {
-  const body: string[] = [marker.text];
+  // A marker with no text is already the item's one allowed
+  // blank line. Content has to be indented to the content
+  // column; a second blank line ends the item.
+  const body: string[] = marker.text === "" ? [] : [marker.text];
   let i = start + 1;
   let fence: string | null = null;
   let inMath = false;
   let sawBlank = false;
+  let sawContent = marker.text !== "";
 
   while (i < lines.length) {
     const line = lines[i] ?? "";
@@ -208,6 +220,7 @@ function readItem(
       continue;
     }
     if (line.trim() === "") {
+      if (!sawContent) break;
       const next = nextNonBlank(lines, i);
       if (next < 0) break;
       const upcoming = lines[next] ?? "";
@@ -233,6 +246,7 @@ function readItem(
       if (leadingColumns(line).columns < marker.contentColumn) break;
       fence = opened.marker;
       body.push(dedent(line, marker.contentColumn));
+      sawContent = true;
       i += 1;
       continue;
     }
@@ -240,23 +254,28 @@ function readItem(
       if (leadingColumns(line).columns < marker.contentColumn) break;
       inMath = true;
       body.push(dedent(line, marker.contentColumn));
+      sawContent = true;
       i += 1;
       continue;
     }
     const nested = parseMarker(line);
     if (nested && nested.column >= marker.contentColumn) {
       body.push(dedent(line, marker.contentColumn));
+      sawContent = true;
       i += 1;
       continue;
     }
     if (nested && nested.column < marker.contentColumn) break;
     if (leadingColumns(line).columns >= marker.contentColumn) {
       body.push(dedent(line, marker.contentColumn));
+      sawContent = true;
       i += 1;
       continue;
     }
-    if (!sawBlank && !interruptsList(line)) {
-      body.push(line);
+    if (sawContent && !sawBlank && !interruptsList(line)) {
+      // A lazy line is still the open paragraph. Its partial
+      // indent is not part of the text.
+      body.push(line.replace(/^[ \t]+/, ""));
       i += 1;
       continue;
     }
@@ -291,29 +310,98 @@ function parseMarker(line: string): Marker | null {
     return null;
   }
   const after = lead.index + token.length;
-  let contentColumn = lead.columns + token.length;
-  let contentIndex = after;
-  if (contentIndex < line.length) {
-    const sep = line[contentIndex];
+  if (after < line.length) {
+    const sep = line[after];
     if (sep !== " " && sep !== "\t") return null;
-    if (sep === " ") {
-      contentColumn += 1;
-      contentIndex += 1;
-    } else {
-      contentColumn += 4 - (contentColumn % 4);
-      contentIndex += 1;
-    }
-  } else {
-    contentColumn += 1;
   }
+  const padded = listMarkerPadding(line, after, lead.columns + token.length);
   return {
     column: lead.columns,
     ordered,
     delimiter,
     number,
-    contentColumn,
-    text: line.slice(contentIndex),
+    contentColumn: padded.contentColumn,
+    text: padded.text,
   };
+}
+
+/**
+ * CommonMark list padding. `markerColumn` is the column just
+ * after the marker. One to four columns of spaces or a tab are
+ * padding. Five or more keep a single column as the separator
+ * and leave the rest in `text`. A blank marker line uses one
+ * column of padding and empty text, even when spaces follow
+ * the marker.
+ */
+export function listMarkerPadding(
+  line: string,
+  markerIndex: number,
+  markerColumn: number,
+): { contentColumn: number; text: string } {
+  const start = { col: markerColumn, index: markerIndex, partial: 0 };
+  const cur = { col: start.col, index: start.index, partial: 0 };
+  let guard = 0;
+  do {
+    const before = cur.col;
+    advanceMarkerColumn(line, cur);
+    if (cur.col === before) break;
+    guard += 1;
+  } while (
+    cur.col - start.col < 5 &&
+    isMarkerSpace(peekMarker(line, cur)) &&
+    guard < 32
+  );
+  const spacesAfter = cur.col - start.col;
+  const blank = peekMarker(line, cur) === null;
+  if (spacesAfter >= 5 || spacesAfter < 1 || blank) {
+    const back = { col: start.col, index: start.index, partial: 0 };
+    if (isMarkerSpace(peekMarker(line, back))) advanceMarkerColumn(line, back);
+    return {
+      contentColumn: markerColumn + 1,
+      text: blank ? "" : markerRemainder(line, back),
+    };
+  }
+  return {
+    contentColumn: markerColumn + spacesAfter,
+    text: markerRemainder(line, cur),
+  };
+}
+
+type MarkerCursor = { col: number; index: number; partial: number };
+
+function advanceMarkerColumn(line: string, cur: MarkerCursor): void {
+  if (cur.partial > 0) {
+    cur.partial -= 1;
+    cur.col += 1;
+    if (cur.partial === 0) cur.index += 1;
+    return;
+  }
+  if (cur.index >= line.length) return;
+  const ch = line[cur.index] ?? "";
+  if (ch === "\t") {
+    const width = 4 - (cur.col % 4);
+    cur.col += 1;
+    if (width > 1) cur.partial = width - 1;
+    else cur.index += 1;
+    return;
+  }
+  cur.col += 1;
+  cur.index += 1;
+}
+
+function peekMarker(line: string, cur: MarkerCursor): string | null {
+  if (cur.partial > 0) return "\t";
+  if (cur.index >= line.length) return null;
+  return line[cur.index] ?? null;
+}
+
+function isMarkerSpace(ch: string | null): boolean {
+  return ch === " " || ch === "\t";
+}
+
+function markerRemainder(line: string, cur: MarkerCursor): string {
+  if (cur.partial > 0) return `${" ".repeat(cur.partial)}${line.slice(cur.index + 1)}`;
+  return line.slice(cur.index);
 }
 
 function interruptsList(line: string): boolean {

@@ -14,14 +14,17 @@
  * between the parent's own blocks does not change the child.
  *
  * Fences, `$$`, and indented code swallow the blank lines inside
- * them, so those blanks do not loosen the list. Streaming
+ * them, so those blanks do not loosen the list. v1.54 list
+ * padding (one to four spaces, or a blank marker line) decides
+ * which lines belong to the item before looseness is classified.
+ * Streaming
  * (`completed: false`) is tight, because the bubble is still plain
  * text. Copy controls keep markdown source — this module does not
  * copy. No animation. No new HTTP.
  * Keep in lockstep with `ios/SnorlaxBot/MarkdownLooseList.swift`.
  */
 
-import { markdownListEnd } from "./markdownList.ts";
+import { listMarkerPadding, markdownListEnd } from "./markdownList.ts";
 
 /** Compact gap between items of a tight list. iOS rows and task rows. */
 export const TIGHT_LIST_ITEM_SPACING_PX = 4;
@@ -100,11 +103,12 @@ function readItem(
   marker: Marker,
   listMarker: Marker,
 ): { text: string; next: number } {
-  const body: string[] = [marker.text];
+  const body: string[] = marker.text === "" ? [] : [marker.text];
   let i = start + 1;
   let fence: string | null = null;
   let inMath = false;
   let sawBlank = false;
+  let sawContent = marker.text !== "";
 
   while (i < lines.length) {
     const line = lines[i] ?? "";
@@ -129,6 +133,7 @@ function readItem(
       continue;
     }
     if (line.trim() === "") {
+      if (!sawContent) break;
       const next = nextNonBlank(lines, i);
       if (next < 0) break;
       const upcoming = lines[next] ?? "";
@@ -154,6 +159,7 @@ function readItem(
       if (leadingColumns(line).columns < marker.contentColumn) break;
       fence = opened.marker;
       body.push(dedent(line, marker.contentColumn));
+      sawContent = true;
       i += 1;
       continue;
     }
@@ -161,23 +167,26 @@ function readItem(
       if (leadingColumns(line).columns < marker.contentColumn) break;
       inMath = true;
       body.push(dedent(line, marker.contentColumn));
+      sawContent = true;
       i += 1;
       continue;
     }
     const nested = parseMarker(line);
     if (nested && nested.column >= marker.contentColumn) {
       body.push(dedent(line, marker.contentColumn));
+      sawContent = true;
       i += 1;
       continue;
     }
     if (nested && nested.column < marker.contentColumn) break;
     if (leadingColumns(line).columns >= marker.contentColumn) {
       body.push(dedent(line, marker.contentColumn));
+      sawContent = true;
       i += 1;
       continue;
     }
-    if (!sawBlank && !interruptsList(line)) {
-      body.push(line);
+    if (sawContent && !sawBlank && !interruptsList(line)) {
+      body.push(line.replace(/^[ \t]+/, ""));
       i += 1;
       continue;
     }
@@ -296,27 +305,17 @@ function parseMarker(line: string): Marker | null {
     return null;
   }
   const after = lead.index + token.length;
-  let contentColumn = lead.columns + token.length;
-  let contentIndex = after;
-  if (contentIndex < line.length) {
-    const sep = line[contentIndex];
+  if (after < line.length) {
+    const sep = line[after];
     if (sep !== " " && sep !== "\t") return null;
-    if (sep === " ") {
-      contentColumn += 1;
-      contentIndex += 1;
-    } else {
-      contentColumn += 4 - (contentColumn % 4);
-      contentIndex += 1;
-    }
-  } else {
-    contentColumn += 1;
   }
+  const padded = listMarkerPadding(line, after, lead.columns + token.length);
   return {
     column: lead.columns,
     ordered,
     delimiter,
-    contentColumn,
-    text: line.slice(contentIndex),
+    contentColumn: padded.contentColumn,
+    text: padded.text,
   };
 }
 

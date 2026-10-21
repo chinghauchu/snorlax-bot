@@ -9,7 +9,9 @@ import SwiftUI
 /// item — renders those items with paragraph spacing. Bullet, ordered,
 /// and task lists follow that rule. A nested list keeps its own
 /// looseness. Fences, `$$`, and indented code swallow the blank lines
-/// inside them. Streaming (`completed: false`) is not loose. Copy
+/// inside them. v1.54 list padding decides which lines belong to the
+/// item before looseness is classified. Streaming (`completed: false`)
+/// is not loose. Copy
 /// controls keep markdown source — this type does not write the
 /// pasteboard. No animation. No new HTTP.
 /// Keep in lockstep with `desktop/src/markdownLooseList.ts`.
@@ -96,11 +98,12 @@ enum MarkdownLooseList {
         marker: Marker,
         listMarker: Marker
     ) -> ReadItem {
-        var body: [String] = [marker.text]
+        var body: [String] = marker.text.isEmpty ? [] : [marker.text]
         var index = start + 1
         var fence: String?
         var inMath = false
         var sawBlank = false
+        var sawContent = !marker.text.isEmpty
 
         while index < lines.count {
             let line = lines[index]
@@ -123,6 +126,7 @@ enum MarkdownLooseList {
                 continue
             }
             if line.trimmingCharacters(in: .whitespaces).isEmpty {
+                if !sawContent { break }
                 let next = nextNonBlank(lines, start: index)
                 if next < 0 { break }
                 let upcoming = lines[next]
@@ -145,6 +149,7 @@ enum MarkdownLooseList {
                 if leadingColumns(line).columns < marker.contentColumn { break }
                 fence = opened.marker
                 body.append(dedent(line, columns: marker.contentColumn))
+                sawContent = true
                 index += 1
                 continue
             }
@@ -152,12 +157,14 @@ enum MarkdownLooseList {
                 if leadingColumns(line).columns < marker.contentColumn { break }
                 inMath = true
                 body.append(dedent(line, columns: marker.contentColumn))
+                sawContent = true
                 index += 1
                 continue
             }
             if let nested = parseMarker(line) {
                 if nested.column >= marker.contentColumn {
                     body.append(dedent(line, columns: marker.contentColumn))
+                    sawContent = true
                     index += 1
                     continue
                 }
@@ -165,11 +172,12 @@ enum MarkdownLooseList {
             }
             if leadingColumns(line).columns >= marker.contentColumn {
                 body.append(dedent(line, columns: marker.contentColumn))
+                sawContent = true
                 index += 1
                 continue
             }
-            if !sawBlank && !interruptsList(line) {
-                body.append(line)
+            if sawContent && !sawBlank && !interruptsList(line) {
+                body.append(lazyLine(line))
                 index += 1
                 continue
             }
@@ -285,27 +293,30 @@ enum MarkdownLooseList {
             guard contentIndex < line.endIndex else { break }
             contentIndex = line.index(after: contentIndex)
         }
-        var contentColumn = lead.columns + token.count
         if contentIndex < line.endIndex {
             let sep = line[contentIndex]
             if sep != " " && sep != "\t" { return nil }
-            if sep == " " {
-                contentColumn += 1
-                contentIndex = line.index(after: contentIndex)
-            } else {
-                contentColumn += 4 - (contentColumn % 4)
-                contentIndex = line.index(after: contentIndex)
-            }
-        } else {
-            contentColumn += 1
         }
+        let padded = MarkdownList.listMarkerPadding(
+            line,
+            markerIndex: contentIndex,
+            markerColumn: lead.columns + token.count
+        )
         return Marker(
             column: lead.columns,
             ordered: ordered,
             delimiter: delimiter,
-            contentColumn: contentColumn,
-            text: String(line[contentIndex...])
+            contentColumn: padded.contentColumn,
+            text: padded.text
         )
+    }
+
+    private static func lazyLine(_ line: String) -> String {
+        var index = line.startIndex
+        while index < line.endIndex, line[index] == " " || line[index] == "\t" {
+            index = line.index(after: index)
+        }
+        return String(line[index...])
     }
 
     private static func interruptsList(_ line: String) -> Bool {
