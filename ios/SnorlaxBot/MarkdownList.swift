@@ -16,10 +16,16 @@ import SwiftUI
 /// continues at that wider column. Five or more spaces keep one
 /// as the separator and the rest as content. A marker line with
 /// no text, such as `1.` then `   text`, uses a padding of one.
-/// A second blank line before any text ends the item. Streaming
-/// (`completed: false`) returns the text unchanged. Copy controls
-/// keep markdown source — this type only splits text for display
-/// and does not write the pasteboard. No animation. No new HTTP.
+/// A second blank line before any text ends the item.
+///
+/// v1.57: `-`, `*`, and `+` are different lists, matching desktop
+/// react-markdown. A later margin item stays in the list only when
+/// it uses that same bullet. A nested marker of another character
+/// stays inside the item. Ordered `.` and `)` were already different
+/// lists. Streaming (`completed: false`) returns the text unchanged.
+/// Copy controls keep markdown source — this type only splits text
+/// for display and does not write the pasteboard. No animation.
+/// No new HTTP.
 /// Keep in lockstep with `desktop/src/markdownList.ts`.
 enum MarkdownList {
     struct Group: Equatable {
@@ -124,6 +130,8 @@ enum MarkdownList {
         var number: Int
         var contentColumn: Int
         var text: String
+        /// `-`, `*`, or `+`. Ordered markers use "".
+        var bullet: String
     }
 
     private struct ReadList {
@@ -277,7 +285,9 @@ enum MarkdownList {
     }
 
     private static func sameList(_ marker: Marker, _ first: Marker) -> Bool {
-        marker.ordered == first.ordered && marker.delimiter == first.delimiter
+        marker.ordered == first.ordered
+            && marker.delimiter == first.delimiter
+            && marker.bullet == first.bullet
     }
 
     private static func parseMarker(_ line: String) -> Marker? {
@@ -288,8 +298,10 @@ enum MarkdownList {
         var delimiter = ""
         var number = 1
         var token = ""
-        if let bullet = rest.first, bullet == "-" || bullet == "+" || bullet == "*" {
-            token = String(bullet)
+        var bullet = ""
+        if let mark = rest.first, mark == "-" || mark == "+" || mark == "*" {
+            token = String(mark)
+            bullet = token
         } else {
             var digits = ""
             var idx = rest.startIndex
@@ -325,7 +337,8 @@ enum MarkdownList {
             delimiter: delimiter,
             number: number,
             contentColumn: padded.contentColumn,
-            text: padded.text
+            text: padded.text,
+            bullet: bullet
         )
     }
 
