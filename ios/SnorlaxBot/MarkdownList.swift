@@ -99,6 +99,16 @@ enum MarkdownList {
         return readList(lines, start: start, first: marker, classify: false).next
     }
 
+    /// v1.59: end of an ordered list at `start`, or nil when that
+    /// line is not one. Bullet lists stay nil so `- [ ]` extraction
+    /// still owns them. A nested task indented into this list stays
+    /// in the item.
+    static func orderedListEnd(_ lines: [String], start: Int) -> Int? {
+        guard let end = listEnd(lines, start: start), end > start else { return nil }
+        guard let marker = parseMarker(lines[start]), marker.ordered else { return nil }
+        return end
+    }
+
     /// `completed: false` returns the text unchanged.
     static func split(_ text: String, completed: Bool) -> [Block] {
         if text.isEmpty { return [] }

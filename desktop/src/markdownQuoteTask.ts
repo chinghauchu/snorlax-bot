@@ -25,10 +25,14 @@
  * v1.51: a task list is loose when a blank line separates its items
  * or two blocks of an item, and tight otherwise. Nested task lists
  * keep their own looseness.
+ * v1.59: an ordered list (`1.` / `1)`) is not a bullet task list.
+ * Its lines, including a nested `- [ ]`, stay in the markdown so
+ * the ordered item can show its own checkbox. `- [ ]` / `* [x]`
+ * at the margin still extract here.
  * Keep in lockstep with `ios/SnorlaxBot/MarkdownQuoteTask.swift`.
  */
 
-import { htmlBlockInterrupts, htmlLazyTag } from "./markdownList.ts";
+import { htmlBlockInterrupts, htmlLazyTag, orderedListEnd } from "./markdownList.ts";
 import { listIsLoose } from "./markdownLooseList.ts";
 
 /** Empty ballot box. Not a control. */
@@ -123,6 +127,12 @@ export function splitQuoteAndTasks(
       pushMarkdown(start);
       blocks.push({ type: "quote", text: inner.join("\n") });
       mdStart = i;
+      continue;
+    }
+    // v1.59: keep ordered lists intact, including a nested task.
+    const orderedEnd = orderedListEnd(lines, i);
+    if (orderedEnd != null && orderedEnd > i) {
+      i = orderedEnd;
       continue;
     }
     const task = parseTaskMarker(line);

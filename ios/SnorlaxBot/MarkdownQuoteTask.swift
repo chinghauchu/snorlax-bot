@@ -22,6 +22,10 @@ import SwiftUI
 /// type only splits text for display and does not write the
 /// pasteboard. No animation. No new HTTP.
 /// v1.51: a task list is loose or tight by the CommonMark rule.
+/// v1.59: an ordered list (`1.` / `1)`) is not a bullet task list.
+/// Its lines, including a nested `- [ ]`, stay in the markdown so
+/// the ordered item can show its own checkbox. Margin `- [ ]` /
+/// `* [x]` still extract here.
 /// Keep in lockstep with `desktop/src/markdownQuoteTask.ts`.
 enum MarkdownQuoteTask {
     /// Empty ballot box. Not a control.
@@ -112,6 +116,11 @@ enum MarkdownQuoteTask {
                 pushMarkdown(start)
                 blocks.append(.quote(inner.joined(separator: "\n")))
                 mdStart = index
+                continue
+            }
+            // v1.59: keep ordered lists intact, including a nested task.
+            if let orderedEnd = MarkdownList.orderedListEnd(lines, start: index), orderedEnd > index {
+                index = orderedEnd
                 continue
             }
             if let task = parseTaskMarker(line), task.column <= 3 {

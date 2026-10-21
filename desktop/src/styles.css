@@ -1454,6 +1454,22 @@ mark.find-hit.active {
   color: var(--text-muted);
 }
 
+/* v1.59: ordered task items keep the list marker. The glyph is
+   not a control. A checked row is muted. No animation. */
+.assistant-md li.md-inline-task.is-checked {
+  color: var(--text-muted);
+}
+
+.assistant-md li.md-inline-task .md-task-glyph {
+  margin-right: 0.35em;
+}
+
+.assistant-md li.md-inline-task,
+.assistant-md li.md-inline-task .md-task-glyph {
+  transition: none;
+  animation: none;
+}
+
 .assistant-md .md-task-glyph {
   flex: none;
   line-height: 1.4;
@@ -1483,7 +1499,9 @@ mark.find-hit.active {
   .assistant-md blockquote.md-quote,
   .assistant-md .md-task-list,
   .assistant-md .md-task-item,
-  .assistant-md .md-task-glyph {
+  .assistant-md .md-task-glyph,
+  .assistant-md li.md-inline-task,
+  .assistant-md li.md-inline-task .md-task-glyph {
     transition: none;
     animation: none;
   }

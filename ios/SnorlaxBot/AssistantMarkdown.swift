@@ -407,53 +407,99 @@ private struct MarkdownIndentedPieces: View {
 
 /// Markers sit beside the item. The item body is markdown again,
 /// so a nested list indents under this marker.
+/// v1.59: an item that starts with `[ ]` / `[x]` / `[X]` also
+/// shows a read-only checkbox. The number stays.
 private struct MarkdownListBlock: View {
     let group: MarkdownList.Group
     let names: [String]
     var completed: Bool
     var wrapScope: String
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @Environment(\.markdownListDepth) private var depth
 
     var body: some View {
         VStack(alignment: .leading, spacing: MarkdownLooseList.itemSpacing(loose: group.loose)) {
             ForEach(Array(group.items.enumerated()), id: \.offset) { index, item in
-                HStack(alignment: .top, spacing: 8) {
-                    Text(
-                        MarkdownList.marker(
-                            ordered: group.ordered,
-                            start: group.start,
-                            index: index,
-                            depth: depth
-                        )
-                    )
-                    .transcriptFont(14)
-                    .fixedSize(horizontal: true, vertical: true)
-                    .accessibilityLabel(
-                        MarkdownList.markerLabel(
-                            ordered: group.ordered,
-                            start: group.start,
-                            index: index,
-                            depth: depth
-                        )
-                    )
-                    if !item.isEmpty {
-                        AssistantMarkdown(
-                            text: item,
-                            names: names,
-                            completed: completed,
-                            wrapScope: wrapScope
-                        )
-                        .environment(\.markdownListDepth, depth + 1)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                    }
-                }
-                .frame(maxWidth: .infinity, alignment: .leading)
+                MarkdownListItemRow(
+                    item: item,
+                    index: index,
+                    ordered: group.ordered,
+                    start: group.start,
+                    names: names,
+                    completed: completed,
+                    wrapScope: wrapScope
+                )
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .animation(MarkdownList.animation(reduceMotion: reduceMotion), value: group.items)
         .animation(MarkdownLooseList.animation(reduceMotion: reduceMotion), value: group.loose)
+        .animation(MarkdownOrderedTask.animation(reduceMotion: reduceMotion), value: group.items)
+    }
+}
+
+/// One list row. A task marker becomes a glyph; the rest is markdown.
+private struct MarkdownListItemRow: View {
+    let item: String
+    let index: Int
+    let ordered: Bool
+    let start: Int
+    let names: [String]
+    var completed: Bool
+    var wrapScope: String
+    @Environment(\.markdownListDepth) private var depth
+
+    var body: some View {
+        let task = MarkdownOrderedTask.parseItem(item)
+        let row = HStack(alignment: .top, spacing: 8) {
+            Text(
+                MarkdownList.marker(
+                    ordered: ordered,
+                    start: start,
+                    index: index,
+                    depth: depth
+                )
+            )
+            .transcriptFont(14)
+            .fixedSize(horizontal: true, vertical: true)
+            .accessibilityLabel(
+                MarkdownList.markerLabel(
+                    ordered: ordered,
+                    start: start,
+                    index: index,
+                    depth: depth
+                )
+            )
+            if let task {
+                Text(MarkdownQuoteTask.glyph(checked: task.checked))
+                    .transcriptFont(14)
+                    .accessibilityLabel(MarkdownQuoteTask.glyphLabel(checked: task.checked))
+                if !task.text.isEmpty {
+                    AssistantMarkdown(
+                        text: task.text,
+                        names: names,
+                        completed: completed,
+                        wrapScope: wrapScope
+                    )
+                    .environment(\.markdownListDepth, depth + 1)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                }
+            } else if !item.isEmpty {
+                AssistantMarkdown(
+                    text: item,
+                    names: names,
+                    completed: completed,
+                    wrapScope: wrapScope
+                )
+                .environment(\.markdownListDepth, depth + 1)
+                .frame(maxWidth: .infinity, alignment: .leading)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        if task?.checked == true {
+            row.foregroundStyle(.secondary)
+        } else {
+            row
+        }
     }
 }
 

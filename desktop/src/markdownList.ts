@@ -190,6 +190,20 @@ export function markdownListEnd(lines: string[], start: number): number | null {
 }
 
 /**
+ * v1.59: end of an ordered list at `start`, or null when that
+ * line is not one. Bullet lists stay null so `- [ ]` extraction
+ * still owns them. A nested task indented into this list is part
+ * of the item, not a following task list.
+ */
+export function orderedListEnd(lines: string[], start: number): number | null {
+  const end = markdownListEnd(lines, start);
+  if (end == null || end <= start) return null;
+  const marker = parseMarker(lines[start] ?? "");
+  if (!marker?.ordered) return null;
+  return end;
+}
+
+/**
  * CommonMark only lets some markers interrupt a paragraph.
  * An ordered marker interrupts only when its digits are `1`,
  * so `01.` and `9.` stay text. A marker with no item text

@@ -83,6 +83,12 @@ import {
   taskGlyphLabel,
 } from "./markdownQuoteTask";
 import {
+  orderedTaskAnimates,
+  peelOrderedTaskChildren,
+  remarkOrderedTaskMarkers,
+  withOrderedTaskGlyph,
+} from "./markdownOrderedTask";
+import {
   TABLE_COPY_MS,
   showTableCopy,
   splitMarkdownTables,
@@ -580,7 +586,11 @@ function MarkdownParsed({
   SnorlaxPre.displayName = "SnorlaxPre";
   return (
     <Markdown
-      remarkPlugins={completed ? [remarkHardBreaks, remarkStrikethrough] : []}
+      remarkPlugins={
+        completed
+          ? [remarkOrderedTaskMarkers, remarkHardBreaks, remarkStrikethrough]
+          : []
+      }
       urlTransform={(url) => url}
       components={{
         a: ({ href, title, children }) =>
@@ -610,7 +620,40 @@ function MarkdownParsed({
           ) : (
             <ol>{children}</ol>
           ),
-        li: ({ children }) => <li>{enrich(children)}</li>,
+        // v1.59: a list item that starts with `[ ]` / `[x]` / `[X]`
+        // shows a read-only glyph. The number or bullet stays.
+        // Streaming does not run the marker plugin, so there is no token.
+        li: ({ children }) => {
+          const peeled = completed
+            ? peelOrderedTaskChildren(children)
+            : { checked: null as boolean | null, children };
+          if (peeled.checked == null) return <li>{enrich(children)}</li>;
+          const glyph = (
+            <span
+              className={
+                peeled.checked
+                  ? "md-task-glyph is-checked"
+                  : "md-task-glyph"
+              }
+              role="img"
+              aria-label={taskGlyphLabel(peeled.checked)}
+            >
+              <span aria-hidden="true">{taskGlyph(peeled.checked)}</span>
+            </span>
+          );
+          return (
+            <li
+              className={
+                peeled.checked
+                  ? "md-inline-task is-checked"
+                  : "md-inline-task"
+              }
+              data-animate={orderedTaskAnimates(false) ? "1" : undefined}
+            >
+              {withOrderedTaskGlyph(enrich(peeled.children), glyph)}
+            </li>
+          );
+        },
         h1: ({ children }) => <h1>{enrich(children)}</h1>,
         h2: ({ children }) => <h2>{enrich(children)}</h2>,
         h3: ({ children }) => <h3>{enrich(children)}</h3>,
