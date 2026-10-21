@@ -6,6 +6,10 @@
  * table's markdown source on the clipboard (header, delimiter, and
  * rows as written), then shows Copied for 1.5s. Streaming stays
  * plain text. No animation. No new HTTP.
+ * v1.55: delimiter cells set column alignment (`:---` left,
+ * `:---:` center, `---:` right). A `\|` inside an inline code span
+ * becomes a literal pipe in that cell. The escape pass leaves code
+ * spans unchanged, so the backslash has to come off here.
  * Keep in lockstep with `ios/SnorlaxBot/MarkdownTable.swift`.
  */
 
@@ -190,7 +194,11 @@ function isTableLine(line: string): boolean {
   return true;
 }
 
-/** Cells split on unescaped pipes outside inline code. Outer pipes drop. */
+/**
+ * Cells split on unescaped pipes outside inline code. Outer pipes drop.
+ * v1.55: `\|` inside a code span is stored as `|`. Outside a code
+ * span the backslash stays so the escape pass can paint the pipe.
+ */
 export function splitRow(line: string): string[] | null {
   const indent = line.match(/^ */)?.[0].length ?? 0;
   if (indent >= 4) return null;
@@ -208,6 +216,14 @@ export function splitRow(line: string): string[] | null {
         current += "`".repeat(n);
         i += n;
         if (n === code) code = 0;
+        continue;
+      }
+      // v1.55: `\|` inside a code span is a literal pipe. The escape
+      // pass leaves code spans byte-for-byte, so the backslash has to
+      // come off here or the chip shows `\|`.
+      if (ch === "\\" && (body[i + 1] ?? "") === "|") {
+        current += "|";
+        i += 2;
         continue;
       }
       current += ch;
