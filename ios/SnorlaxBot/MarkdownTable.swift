@@ -10,6 +10,9 @@ import SwiftUI
 /// `:---:` center, `---:` right). A `\|` inside an inline code span
 /// becomes a literal pipe in that cell. The escape pass leaves code
 /// spans unchanged, so the backslash has to come off here.
+/// v1.64: a cell is inline markdown. A heading, list, quote, rule,
+/// or fence at the start of the cell stays the characters. Bold,
+/// italic, code, and links still parse. Intraword `_` stays literal.
 /// Keep in lockstep with `desktop/src/markdownTable.ts`.
 enum MarkdownTable {
     enum Align: Equatable {
@@ -260,6 +263,114 @@ enum MarkdownTable {
             else { align.append(.left) }
         }
         return align
+    }
+
+    /// v1.64: GFM parses a table cell as inlines. A block start is
+    /// escaped so the cell does not become a heading, list, quote,
+    /// rule, or fence. The escape pass paints the marker.
+    /// `completed: false` returns `text`.
+    static func protectCellBlocks(_ text: String, completed: Bool = true) -> String {
+        if !completed || text.isEmpty { return text }
+        let src = text
+            .replacingOccurrences(of: "\r\n", with: "\n")
+            .replacingOccurrences(of: "\r", with: "\n")
+        let lines = src.split(separator: "\n", omittingEmptySubsequences: false).map(String.init)
+        var changed = false
+        let out = lines.map { line -> String in
+            let next = protectCellLine(line)
+            if next != line { changed = true }
+            return next
+        }
+        if !changed { return text.contains("\r") ? src : text }
+        return out.joined(separator: "\n")
+    }
+
+    /// Never animate, including when Reduce Motion is off.
+    static func cellInlineAnimation(reduceMotion: Bool) -> Animation? {
+        _ = reduceMotion
+        return nil
+    }
+
+    private static func protectCellLine(_ line: String) -> String {
+        let chars = Array(line)
+        var indent = 0
+        while indent < chars.count && indent < 3 && chars[indent] == " " { indent += 1 }
+        if indent < chars.count && chars[indent] == " " { return line }
+        let rest = String(chars.dropFirst(indent))
+        if rest.isEmpty { return line }
+        if let fence = fenceOpener(rest) {
+            return escapeRun(chars, start: indent, count: fence)
+        }
+        if isThematicCell(rest) { return escapeMarks(chars, indent: indent) }
+        if rest.range(of: #"^#{1,6}(?:[ \t]|$)"#, options: .regularExpression) != nil {
+            return insertBackslash(chars, indent)
+        }
+        if rest.hasPrefix(">") { return insertBackslash(chars, indent) }
+        if rest.range(of: #"^[-*+](?:[ \t]|$)"#, options: .regularExpression) != nil {
+            return insertBackslash(chars, indent)
+        }
+        if let match = rest.range(of: #"^(\d{1,9})([.)])(?:[ \t]|$)"#, options: .regularExpression) {
+            let head = String(rest[match])
+            let digits = head.prefix { $0.isNumber }.count
+            return insertBackslash(chars, indent + digits)
+        }
+        return line
+    }
+
+    /// Length of a real opening fence marker, or nil when the line is not one.
+    private static func fenceOpener(_ rest: String) -> Int? {
+        let chars = Array(rest)
+        guard let mark = chars.first, mark == "`" || mark == "~" else { return nil }
+        var count = 0
+        while count < chars.count, chars[count] == mark { count += 1 }
+        if count < 3 { return nil }
+        let marker = String(repeating: String(mark), count: count)
+        let info = String(chars.dropFirst(count))
+        if !MarkdownCodeSpan.fenceInfoAllowsOpen(marker: marker, info: info) { return nil }
+        return count
+    }
+
+    private static func isThematicCell(_ rest: String) -> Bool {
+        let chars = Array(rest)
+        guard let mark = chars.first, mark == "-" || mark == "*" || mark == "_" else { return false }
+        var count = 0
+        for ch in chars {
+            if ch == mark { count += 1 }
+            else if ch == " " || ch == "\t" { continue }
+            else { return false }
+        }
+        return count >= 3
+    }
+
+    private static func insertBackslash(_ chars: [Character], _ index: Int) -> String {
+        var out = ""
+        out.append(contentsOf: chars[..<index])
+        out.append("\\")
+        out.append(contentsOf: chars[index...])
+        return out
+    }
+
+    private static func escapeRun(_ chars: [Character], start: Int, count: Int) -> String {
+        var out = ""
+        out.append(contentsOf: chars[..<start])
+        for offset in 0..<count {
+            out.append("\\")
+            out.append(chars[start + offset])
+        }
+        out.append(contentsOf: chars[(start + count)...])
+        return out
+    }
+
+    private static func escapeMarks(_ chars: [Character], indent: Int) -> String {
+        var out = ""
+        out.append(contentsOf: chars[..<indent])
+        for ch in chars[indent...] {
+            if ch == "-" || ch == "*" || ch == "_" {
+                out.append("\\")
+            }
+            out.append(ch)
+        }
+        return out
     }
 
     private static func rectangular(

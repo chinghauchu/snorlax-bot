@@ -179,3 +179,4 @@ jobs:
           python3 ios/scripts/test_ios_markdown_html_literal.py
           python3 ios/scripts/test_ios_markdown_entity.py
           python3 ios/scripts/test_ios_markdown_autolink_trail.py
+          python3 ios/scripts/test_ios_markdown_table_cell.py
