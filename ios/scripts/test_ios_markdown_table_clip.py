@@ -5,7 +5,7 @@
 A completed LEFT kind=message table uses the header's column count.
 A wider body row drops the extra cells. A shorter row pads with empty
 cells, and those cells keep the delimiter alignment. Copy still copies
-the original lines. A line with no pipe still ends the table.
+the original lines. A pipe-less body row is v1.66.
 Streaming stays plain text. No animation. No new HTTP.
 OpenAPI stays 0.18.0. Never reintroduce computerPane.ts.
 """

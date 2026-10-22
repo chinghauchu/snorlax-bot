@@ -747,31 +747,7 @@ enum MarkdownReferenceLink {
     }
 
     private static func tableEnd(_ lines: [LineSpan], _ start: Int) -> Int {
-        if start + 1 >= lines.count { return start }
-        let headerLine = lines[start].text
-        let delimLine = lines[start + 1].text
-        if !isTableLine(headerLine) || !isTableLine(delimLine) { return start }
-        guard let header = MarkdownTable.splitRow(headerLine),
-              let delim = MarkdownTable.splitRow(delimLine),
-              header.count == delim.count,
-              delim.allSatisfy({ $0.range(of: #"^:?-+:?$"#, options: .regularExpression) != nil })
-        else { return start }
-        var next = start + 2
-        while next < lines.count {
-            let line = lines[next].text
-            if !isTableLine(line) || MarkdownTable.splitRow(line) == nil { break }
-            next += 1
-        }
-        return next
-    }
-
-    private static func isTableLine(_ line: String) -> Bool {
-        let indent = line.prefix { $0 == " " }.count
-        if indent >= 4 { return false }
-        let trimmed = line.trimmingCharacters(in: .whitespaces)
-        if trimmed.isEmpty || trimmed.hasPrefix(">") { return false }
-        if trimmed.range(of: #"^([-*+]|\d+[.)])\s"#, options: .regularExpression) != nil { return false }
-        return true
+        MarkdownTable.lineEnd(lines.map(\.text), start: start)
     }
 
     private static func blockGate(
