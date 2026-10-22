@@ -53,6 +53,7 @@ import {
   protectMarkdownEscapes,
   restoreMarkdownEscapes,
 } from "./markdownEscape";
+import { literalizeRawHtml } from "./markdownHtmlLiteral";
 import {
   breakAnimates,
   remarkStrikethrough,
@@ -407,7 +408,10 @@ function HeadingInline({
   const slots = extracted.slots;
   const source = promoteSingleTilde(
     applyHardLineBreaks(
-      protectMarkdownEscapes(mathText, completed),
+      literalizeRawHtml(
+        protectMarkdownEscapes(mathText, completed),
+        completed,
+      ),
       completed,
     ),
     completed,
@@ -561,7 +565,10 @@ function MarkdownParsed({
   const slots = extracted.slots;
   const source = promoteSingleTilde(
     applyHardLineBreaks(
-      protectMarkdownEscapes(mathText, completed),
+      literalizeRawHtml(
+        protectMarkdownEscapes(mathText, completed),
+        completed,
+      ),
       completed,
     ),
     completed,
@@ -762,7 +769,10 @@ function TableCellText({
   const slots = extracted.slots;
   const source = promoteSingleTilde(
     applyHardLineBreaks(
-      protectMarkdownEscapes(mathText, completed),
+      literalizeRawHtml(
+        protectMarkdownEscapes(mathText, completed),
+        completed,
+      ),
       completed,
     ),
     completed,

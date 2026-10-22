@@ -257,6 +257,14 @@ function blockedRanges(src: string): Range[] {
 }
 
 /**
+ * Spans the raw-HTML pass must not rewrite. Same ranges as
+ * `protectMarkdownEscapes`: fences, inline code, indented code.
+ */
+export function opaqueMarkdownRanges(src: string): Range[] {
+  return blockedRanges(src);
+}
+
+/**
  * A top-level indented code block (blank line, then a line indented
  * four or more columns). List continuations that micromark still
  * treats as paragraphs are left for the inline parser when they are

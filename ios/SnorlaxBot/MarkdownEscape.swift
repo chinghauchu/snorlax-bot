@@ -79,6 +79,12 @@ enum MarkdownEscape {
         "cross": "\u{2717}",
     ]
 
+    /// Fences, inline code, and indented code, as character offsets.
+    /// The raw-HTML pass skips these spans.
+    static func opaqueSpans(in text: String) -> [(start: Int, end: Int)] {
+        protectedRanges(Array(text)).map { (start: $0.start, end: $0.end) }
+    }
+
     /// Rewrite escapes and character references outside code.
     /// `completed: false` returns `text` unchanged.
     static func protect(_ text: String, completed: Bool = true) -> String {
