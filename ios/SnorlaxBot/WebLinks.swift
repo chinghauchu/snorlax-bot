@@ -9,6 +9,12 @@ import SwiftUI
 /// plain. javascript:, file:, and any other scheme stay plain. While a
 /// bubble is still streaming, a URL that reaches the end of the buffer
 /// stays plain so a half-typed address is not a link.
+/// v1.62: a bare http(s) autolink uses the same GFM extended-autolink
+/// delimiter as `www.`. Trailing `?`, `!`, `.`, `,`, `:`, `*`, `_`, and
+/// `~` stay outside. A trailing `)` stays outside only when parentheses
+/// are unbalanced. A trailing entity-like `&hl;` stays outside. `<`
+/// ends the link. A trailing `]`, `}`, or curly quote on http(s) still
+/// stays outside, as v0.82 already did.
 /// v1.45: GFM extended email autolinks on a completed assistant reply.
 /// `foo@bar.baz` is a `mailto:` link whose text is the address. A
 /// `mailto:` prefix stays in the text. A scheme other than mailto
@@ -25,8 +31,6 @@ enum WebLinks {
         var kind: Kind
         var value: String
     }
-
-    private static let trailingChars = ".,;:!?)]}'\"\u{201C}\u{201D}\u{2018}\u{2019}"
 
     static func allows(_ url: URL) -> Bool {
         if isMailtoEmail(url) { return true }
@@ -198,24 +202,33 @@ enum WebLinks {
         return false
     }
 
+    /// v1.62: GFM extended-autolink delimiter for a bare http(s) URL.
+    /// `autolinkDelim` is the same pass `www.` already uses. v0.82 still
+    /// peels a trailing `]`, `}`, or curly quote after that pass.
     private static func trimTrailing(_ url: String) -> String {
+        let chars = Array(url)
         let lower = url.lowercased()
-        let minCount = lower.hasPrefix("https://") ? 8 : (lower.hasPrefix("http://") ? 7 : url.count)
-        var end = url.endIndex
-        while url.distance(from: url.startIndex, to: end) > minCount {
-            let prev = url.index(before: end)
-            let ch = url[prev]
-            guard trailingChars.contains(ch) else { break }
-            if ch == ")" || ch == "]" || ch == "}" {
-                let head = url[..<end]
-                let open: Character = ch == ")" ? "(" : (ch == "]" ? "[" : "{")
+        let minCount = lower.hasPrefix("https://") ? 8 : (lower.hasPrefix("http://") ? 7 : chars.count)
+        var end = chars.count
+        let legacy: Set<Character> = ["]", "}", "\u{201C}", "\u{201D}", "\u{2018}", "\u{2019}"]
+        while end > minCount {
+            let gfm = autolinkDelim(chars, 0, end)
+            if gfm < end {
+                end = gfm
+                continue
+            }
+            let ch = chars[end - 1]
+            guard legacy.contains(ch) else { break }
+            if ch == "]" || ch == "}" {
+                let open: Character = ch == "]" ? "[" : "{"
+                let head = chars[0..<end]
                 let opens = head.filter { $0 == open }.count
                 let closes = head.filter { $0 == ch }.count
                 if opens >= closes { break }
             }
-            end = prev
+            end -= 1
         }
-        return String(url[..<end])
+        return String(chars[0..<end])
     }
 
     private struct WwwHit {
