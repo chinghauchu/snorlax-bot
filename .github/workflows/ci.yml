@@ -186,3 +186,4 @@ jobs:
           python3 ios/scripts/test_ios_markdown_table_row.py
           python3 ios/scripts/test_ios_markdown_underscore.py
           python3 ios/scripts/test_ios_markdown_symbol.py
+          python3 ios/scripts/test_ios_markdown_strike_run.py

@@ -17,9 +17,16 @@ import Foundation
 /// and math stay literal. A backslash-escaped tilde is not a
 /// delimiter. Streaming (`completed: false`) returns the text
 /// unchanged. Copy keeps markdown source. No animation. No new HTTP.
+/// v1.70: a single tilde that was not promoted is stashed so the
+/// markdown parser cannot pair it. `~foo~~bar~` stays literal on
+/// both clients. A run of two stays `~~`. A run of three or more
+/// stays the characters. A tilde in a URL, a link destination, or
+/// code is not stashed.
 /// Keep in lockstep with `desktop/src/markdownSingleStrike.ts`.
 enum MarkdownSingleStrike {
     private static let breakToken = Array("§§SBH§§")
+    /// U+007E, same token `stashMarkdownText("~")` writes.
+    private static let strayTildeToken = Array("§§SBE00007E§§")
 
     /// `completed: false` returns `text`.
     static func promote(_ text: String, completed: Bool) -> String {
@@ -54,6 +61,42 @@ enum MarkdownSingleStrike {
             out.append("~")
             out.append("~")
             i = close + 1
+        }
+        return shieldStrayTildes(String(out))
+    }
+
+    /// Hide a leftover length-1 tilde. Length 2 stays the marker.
+    /// `end - i == 1` is the only run this pass rewrites.
+    private static func shieldStrayTildes(_ text: String) -> String {
+        if !text.contains("~") { return text }
+        let chars = Array(text)
+        let blocked = protectedRanges(chars)
+        var out: [Character] = []
+        var i = 0
+        while i < chars.count {
+            if let span = rangeAt(i, blocked) {
+                out.append(contentsOf: chars[i..<span.end])
+                i = span.end
+                continue
+            }
+            if chars[i] != "~" || isEscaped(chars, i) {
+                out.append(chars[i])
+                i += 1
+                continue
+            }
+            var end = i + 1
+            while end < chars.count
+                && chars[end] == "~"
+                && !isEscaped(chars, end)
+                && rangeAt(end, blocked) == nil {
+                end += 1
+            }
+            if end - i == 1 && !tildeInUrl(chars, i) && !inLinkDestination(chars, i) {
+                out.append(contentsOf: strayTildeToken)
+            } else {
+                out.append(contentsOf: chars[i..<end])
+            }
+            i = end
         }
         return String(out)
     }

@@ -19,9 +19,15 @@
  * delimiter. Streaming (`completed: false`) returns the text
  * unchanged. Copy controls keep markdown source — this module
  * does not copy. No animation. No new HTTP.
+ * v1.70: a single tilde that was not promoted is stashed so the
+ * markdown parser cannot pair it. `~foo~~bar~` stays literal on
+ * both clients. A run of two stays `~~`. A run of three or more
+ * stays the characters. A tilde in a URL, a link destination, or
+ * code is not stashed.
  * Keep in lockstep with `ios/SnorlaxBot/MarkdownSingleStrike.swift`.
  */
 
+import { stashMarkdownText } from "./markdownEscape.ts";
 import { HARD_BREAK_TOKEN } from "./markdownHardBreak.ts";
 import { fenceRanges, inRange, inlineCodeRanges, type Range } from "./math.ts";
 
@@ -59,6 +65,49 @@ export function promoteSingleTilde(text: string, completed = true): string {
     out += src.slice(i + 1, close);
     out += "~~";
     i = close + 1;
+  }
+  return shieldStrayTildes(out);
+}
+
+/**
+ * Hide a leftover length-1 tilde. cmark-gfm would match it across
+ * an inner `~~` (`~foo~~bar~`). The visible character comes back
+ * when escapes are restored. Length 2 is the strikethrough marker.
+ * Length 3+ is not a marker either, and stays visible so a fence
+ * of tildes is unchanged.
+ */
+function shieldStrayTildes(src: string): string {
+  if (!src.includes("~")) return src;
+  const blocked = protectedRanges(src);
+  let out = "";
+  let i = 0;
+  while (i < src.length) {
+    const span = rangeAt(i, blocked);
+    if (span) {
+      out += src.slice(i, span.end);
+      i = span.end;
+      continue;
+    }
+    if (src[i] !== "~" || isEscaped(src, i)) {
+      out += src[i] ?? "";
+      i += 1;
+      continue;
+    }
+    let end = i + 1;
+    while (
+      end < src.length &&
+      src[end] === "~" &&
+      !isEscaped(src, end) &&
+      !rangeAt(end, blocked)
+    ) {
+      end += 1;
+    }
+    if (end - i === 1 && !tildeInUrl(src, i) && !inLinkDestination(src, i)) {
+      out += stashMarkdownText("~");
+    } else {
+      out += src.slice(i, end);
+    }
+    i = end;
   }
   return out;
 }

@@ -46,13 +46,17 @@ const runtimeOpenapi = readFileSync(
 
 const PHRASE = "v1.50 GFM single-tilde strikethrough in completed assistant replies";
 
+const STRAY = "§§SBE00007E§§";
+
 function render(text: string, completed = true): string {
   const source = completed ? promoteSingleTilde(text, true) : text;
-  return renderToStaticMarkup(
-    React.createElement(Markdown, {
-      remarkPlugins: completed ? [remarkHardBreaks, remarkStrikethrough] : [],
-      children: source,
-    }),
+  return restoreMarkdownEscapes(
+    renderToStaticMarkup(
+      React.createElement(Markdown, {
+        remarkPlugins: completed ? [remarkHardBreaks, remarkStrikethrough] : [],
+        children: source,
+      }),
+    ),
   );
 }
 
@@ -74,19 +78,23 @@ test("~text~ strikes and ~~text~~ still strikes", () => {
 });
 
 test("unclosed, spaced, triple, and mixed tildes stay literal", () => {
-  assert.equal(promoteSingleTilde("~gone", true), "~gone");
-  assert.equal(promoteSingleTilde("~ foo ~", true), "~ foo ~");
-  assert.equal(promoteSingleTilde("~foo ~", true), "~foo ~");
-  assert.equal(promoteSingleTilde("~foo\nbar~", true), "~foo\nbar~");
+  assert.equal(restoreMarkdownEscapes(promoteSingleTilde("~gone", true)), "~gone");
+  assert.equal(promoteSingleTilde("~gone", true), `${STRAY}gone`);
+  assert.equal(promoteSingleTilde("~ foo ~", true), `${STRAY} foo ${STRAY}`);
+  assert.equal(promoteSingleTilde("~foo ~", true), `${STRAY}foo ${STRAY}`);
+  assert.equal(promoteSingleTilde("~foo\nbar~", true), `${STRAY}foo\nbar${STRAY}`);
   assert.equal(promoteSingleTilde("~~~gone~~~", true), "~~~gone~~~");
-  assert.equal(promoteSingleTilde("~foo~~bar~", true), "~foo~~bar~");
-  assert.equal(promoteSingleTilde("~gone~~", true), "~gone~~");
-  assert.equal(promoteSingleTilde("~~gone~", true), "~~gone~");
+  assert.equal(promoteSingleTilde("~foo~~bar~", true), `${STRAY}foo~~bar${STRAY}`);
+  assert.equal(promoteSingleTilde("~gone~~", true), `${STRAY}gone~~`);
+  assert.equal(promoteSingleTilde("~~gone~", true), `~~gone${STRAY}`);
   assert.doesNotMatch(render("~ foo ~"), /<del/);
   assert.match(render("~ foo ~"), /~ foo ~/);
+  assert.doesNotMatch(render("~foo~~bar~"), /<del/);
+  assert.match(render("~foo~~bar~"), /~foo~~bar~/);
   const broken = applyHardLineBreaks("~foo  \nbar~", true);
   assert.ok(broken.includes(HARD_BREAK_TOKEN));
-  assert.equal(promoteSingleTilde(broken, true), broken);
+  assert.equal(restoreMarkdownEscapes(promoteSingleTilde(broken, true)), broken);
+  assert.match(promoteSingleTilde(broken, true), new RegExp(STRAY));
   assert.doesNotMatch(render(broken), /~~/);
 });
 
@@ -113,10 +121,15 @@ test("code, math, urls, link destinations, and escapes stay literal", () => {
   assert.match(render("[~docs~](https://example.com)"), /<del class="md-strike">docs<\/del>/);
   assert.match(render("[~docs~](https://example.com)"), /href="https:\/\/example.com"/);
   const escaped = protectMarkdownEscapes("\\~not~", true);
-  assert.equal(promoteSingleTilde(escaped, true), escaped);
+  assert.equal(
+    restoreMarkdownEscapes(promoteSingleTilde(escaped, true)),
+    restoreMarkdownEscapes(escaped),
+  );
+  assert.match(promoteSingleTilde(escaped, true), new RegExp(`${STRAY}$`));
   assert.doesNotMatch(render(escaped), /<del/);
   assert.match(restoreMarkdownEscapes(render(escaped)), /~not~/);
-  assert.equal(promoteSingleTilde("\\~not~", true), "\\~not~");
+  assert.equal(restoreMarkdownEscapes(promoteSingleTilde("\\~not~", true)), "\\~not~");
+  assert.match(promoteSingleTilde("\\~not~", true), /\\~not§§SBE00007E§§/);
   const codeHtml = render("say `~nope~` and ~yes~");
   assert.match(codeHtml, /<code>~nope~<\/code>/);
   assert.match(codeHtml, /<del class="md-strike">yes<\/del>/);
