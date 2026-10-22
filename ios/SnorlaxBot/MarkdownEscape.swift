@@ -19,8 +19,11 @@ import UIKit
 ///
 /// The decoded character is a `§§SBE` token until the text is
 /// painted, so a later pass cannot treat it as syntax and it is
-/// never injected as HTML. Streaming (`completed: false`) returns
-/// the source unchanged. Copy controls keep markdown source.
+/// never injected as HTML. v1.61: a raw-HTML stash can wrap one
+/// of these tokens. Restoring repeats until the character shows,
+/// including inside a tag or an inline comment. Streaming
+/// (`completed: false`) returns the source unchanged. Copy
+/// controls keep markdown source.
 /// No animation. No new HTTP.
 /// Keep in lockstep with `desktop/src/markdownEscape.ts`.
 enum MarkdownEscape {
@@ -156,29 +159,36 @@ enum MarkdownEscape {
         return restoreLinkTargets(output)
     }
 
+    /// Paint tokens as characters. A raw-HTML stash can wrap an
+    /// entity token, so this repeats until none remain.
     static func restoreString(_ text: String) -> String {
-        guard text.contains("§§SBE") else { return text }
-        guard let re = try? NSRegularExpression(pattern: #"§§SBE((?:[0-9A-F]{6})+)§§"#) else {
-            return text
-        }
-        let ns = text as NSString
-        let matches = re.matches(in: text, range: NSRange(location: 0, length: ns.length))
-        if matches.isEmpty { return text }
-        var out = ""
-        var cursor = 0
-        for match in matches {
-            let range = match.range
-            if range.location > cursor {
-                out += ns.substring(with: NSRange(location: cursor, length: range.location - cursor))
+        var current = text
+        for _ in 0..<8 {
+            guard current.contains("§§SBE") else { return current }
+            guard let re = try? NSRegularExpression(pattern: #"§§SBE((?:[0-9A-F]{6})+)§§"#) else {
+                return current
             }
-            let hex = ns.substring(with: match.range(at: 1))
-            out += decodeHex(hex) ?? ns.substring(with: range)
-            cursor = range.location + range.length
+            let ns = current as NSString
+            let matches = re.matches(in: current, range: NSRange(location: 0, length: ns.length))
+            if matches.isEmpty { return current }
+            var out = ""
+            var cursor = 0
+            for match in matches {
+                let range = match.range
+                if range.location > cursor {
+                    out += ns.substring(with: NSRange(location: cursor, length: range.location - cursor))
+                }
+                let hex = ns.substring(with: match.range(at: 1))
+                out += decodeHex(hex) ?? ns.substring(with: range)
+                cursor = range.location + range.length
+            }
+            if cursor < ns.length {
+                out += ns.substring(from: cursor)
+            }
+            if out == current { return current }
+            current = out
         }
-        if cursor < ns.length {
-            out += ns.substring(from: cursor)
-        }
-        return out
+        return current
     }
 
     private static func token(_ value: String) -> String {
@@ -473,30 +483,36 @@ enum MarkdownEscape {
 
     /// Decode a token that a URL percent-encoded (`§` is `%C2%A7`).
     /// Other percent-escapes in the destination stay as written.
+    /// Repeats so a percent-encoded stash that wraps an entity token
+    /// paints the character.
     private static func restoreURL(_ absolute: String) -> String {
         var text = absolute
         let encoded = #"%[Cc]2%[Aa]7%[Cc]2%[Aa]7SBE((?:[0-9A-F]{6})+)%[Cc]2%[Aa]7%[Cc]2%[Aa]7"#
-        if let re = try? NSRegularExpression(pattern: encoded) {
-            let ns = text as NSString
-            let matches = re.matches(in: text, range: NSRange(location: 0, length: ns.length))
-            if !matches.isEmpty {
-                var out = ""
-                var cursor = 0
-                for match in matches {
-                    let range = match.range
-                    if range.location > cursor {
-                        out += ns.substring(with: NSRange(location: cursor, length: range.location - cursor))
+        for _ in 0..<8 {
+            let before = text
+            if let re = try? NSRegularExpression(pattern: encoded) {
+                let ns = text as NSString
+                let matches = re.matches(in: text, range: NSRange(location: 0, length: ns.length))
+                if !matches.isEmpty {
+                    var out = ""
+                    var cursor = 0
+                    for match in matches {
+                        let range = match.range
+                        if range.location > cursor {
+                            out += ns.substring(with: NSRange(location: cursor, length: range.location - cursor))
+                        }
+                        let hex = ns.substring(with: match.range(at: 1))
+                        out += decodeHex(hex) ?? ns.substring(with: range)
+                        cursor = range.location + range.length
                     }
-                    let hex = ns.substring(with: match.range(at: 1))
-                    out += decodeHex(hex) ?? ns.substring(with: range)
-                    cursor = range.location + range.length
+                    if cursor < ns.length { out += ns.substring(from: cursor) }
+                    text = out
                 }
-                if cursor < ns.length { out += ns.substring(from: cursor) }
-                text = out
             }
-        }
-        if text.contains("§§SBE") {
-            text = restoreString(text)
+            if text.contains("§§SBE") {
+                text = restoreString(text)
+            }
+            if text == before { break }
         }
         return text
     }
