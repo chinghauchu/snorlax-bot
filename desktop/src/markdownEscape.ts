@@ -21,6 +21,9 @@
  * is painted. A second pass (strikethrough, autolink, the platform
  * markdown parser) therefore cannot treat it as syntax, and the
  * character is React / SwiftUI text, never injected HTML.
+ * v1.61: a raw-HTML stash can wrap one of these tokens. Restoring
+ * repeats until the character shows, including inside a tag or an
+ * inline comment. The character is still not markdown syntax.
  * Streaming (`completed: false`) returns the source unchanged.
  * Copy controls keep markdown source — this module does not copy.
  * No animation. No new HTTP.
@@ -136,17 +139,28 @@ export function protectMarkdownEscapes(text: string, completed = true): string {
   return out;
 }
 
-/** Paint tokens as characters. A string with no token is unchanged. */
+/**
+ * Paint tokens as characters. A string with no token is unchanged.
+ * Repeats so a token wrapped by another stash (a raw HTML tag that
+ * already held an entity token) paints the character, not the token.
+ * Eight passes is past any wrap this pipeline builds.
+ */
 export function restoreMarkdownEscapes(text: string): string {
   if (!text) return text;
-  const encoded = /%C2%A7%C2%A7SBE/i.test(text);
-  if (!text.includes("§§SBE") && !encoded) return text;
   let out = text;
-  if (out.includes("§§SBE")) {
-    out = out.replace(ESCAPE_TOKEN, (raw, hex: string) => decodeHex(hex) ?? raw);
-  }
-  if (encoded) {
-    out = out.replace(ESCAPE_TOKEN_ENCODED, (raw, hex: string) => decodeHex(hex) ?? raw);
+  for (let pass = 0; pass < 8; pass += 1) {
+    const encoded = /%C2%A7%C2%A7SBE/i.test(out);
+    if (!out.includes("§§SBE") && !encoded) break;
+    const before = out;
+    if (out.includes("§§SBE")) {
+      ESCAPE_TOKEN.lastIndex = 0;
+      out = out.replace(ESCAPE_TOKEN, (raw, hex: string) => decodeHex(hex) ?? raw);
+    }
+    if (/%C2%A7%C2%A7SBE/i.test(out)) {
+      ESCAPE_TOKEN_ENCODED.lastIndex = 0;
+      out = out.replace(ESCAPE_TOKEN_ENCODED, (raw, hex: string) => decodeHex(hex) ?? raw);
+    }
+    if (out === before) break;
   }
   return out;
 }

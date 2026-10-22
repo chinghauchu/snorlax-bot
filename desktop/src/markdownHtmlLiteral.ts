@@ -13,7 +13,9 @@
  * and the iOS parser drops it.
  *
  * The whole tag is stashed in a `§§SBE` token, then painted back
- * as text. Characters inside the tag stay literal, including
+ * as text. A character reference inside the tag is already its
+ * own token; restore unwraps that too (v1.61), so the character
+ * shows and is not markdown syntax. Characters inside the tag stay literal, including
  * `*` in an attribute and the body of an inline comment.
  * Inline tags and type 7 (`<br>`, `<kbd>`, `x<y>`, a mid-line
  * comment) are stashed. A type 1–6 HTML block that starts a

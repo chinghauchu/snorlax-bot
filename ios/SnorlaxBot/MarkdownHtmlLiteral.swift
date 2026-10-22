@@ -10,9 +10,12 @@ import SwiftUI
 /// which the parser would otherwise drop.
 ///
 /// The whole tag is a `§§SBE` token until the text is painted.
-/// Inline tags and type 7 (`<br>`, `<kbd>`, `x<y>`, a mid-line
-/// comment) are stashed. A type 1–6 HTML block that starts a
-/// line stays raw so a list or quote still ends there.
+/// A character reference inside the tag is already its own token;
+/// restore unwraps that too (v1.61), so the character shows and
+/// is not markdown syntax. Inline tags and type 7 (`<br>`,
+/// `<kbd>`, `x<y>`, a mid-line comment) are stashed. A type 1–6
+/// HTML block that starts a line stays raw so a list or quote
+/// still ends there.
 ///
 /// Code, angle autolinks, and link destinations stay as written.
 /// Streaming (`completed: false`) returns the source unchanged.

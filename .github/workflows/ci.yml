@@ -177,3 +177,4 @@ jobs:
           python3 ios/scripts/test_ios_markdown_html_block.py
           python3 ios/scripts/test_ios_markdown_ordered_task.py
           python3 ios/scripts/test_ios_markdown_html_literal.py
+          python3 ios/scripts/test_ios_markdown_entity.py
