@@ -97,7 +97,11 @@ test("named and numeric references decode, and invalid ones stay literal", () =>
   assert.equal(restoreMarkdownEscapes(pipeline("&#x1F600;")), "😀");
   assert.equal(restoreMarkdownEscapes(pipeline("&#X22;")), '"');
   assert.equal(protectMarkdownEscapes("&foo;", true), "&foo;");
-  assert.equal(protectMarkdownEscapes("&#87654321;", true), "&#87654321;");
+  assert.equal(
+    restoreMarkdownEscapes(protectMarkdownEscapes("&#87654321;", true)),
+    "&#87654321;",
+  );
+  assert.match(protectMarkdownEscapes("&#87654321;", true), /§§SBE/);
   assert.equal(protectMarkdownEscapes("bare & here", true), "bare & here");
   assert.equal(protectMarkdownEscapes("&amp", true), "&amp");
   assert.equal(restoreMarkdownEscapes(pipeline("&#0;")), "\uFFFD");

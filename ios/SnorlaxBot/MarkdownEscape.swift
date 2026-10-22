@@ -24,6 +24,9 @@ import UIKit
 /// including inside a tag or an inline comment. Streaming
 /// (`completed: false`) returns the source unchanged. Copy
 /// controls keep markdown source.
+/// v1.69: 8 or more decimal digits, or 7 or more hex digits, stay
+/// the source characters. `&#87654321;` is not U+FFFD and
+/// `&#x0001F600;` is not an emoji.
 /// No animation. No new HTTP.
 /// Keep in lockstep with `desktop/src/markdownEscape.ts`.
 enum MarkdownEscape {
@@ -93,6 +96,9 @@ enum MarkdownEscape {
     /// v1.67 stashes `__init__`-style identifiers first, so a
     /// word-boundary dunder stays literal when there is no escape.
     /// v1.68 then stashes BMP Unicode symbols so `*` flanking matches.
+    /// v1.69 stashes a numeric reference with more digits than
+    /// CommonMark allows, so `&#87654321;` and `&#x0001F600;` stay
+    /// the characters instead of U+FFFD or an emoji.
     static func protect(_ text: String, completed: Bool = true) -> String {
         if !completed || text.isEmpty { return text }
         let underscored = MarkdownUnderscore.protect(text, completed: true)
@@ -262,12 +268,18 @@ enum MarkdownEscape {
         }
         let max = hex ? 6 : 7
         let start = cursor
-        while cursor < chars.count, cursor - start < max, isDigit(chars[cursor], hex: hex) {
+        while cursor < chars.count, isDigit(chars[cursor], hex: hex) {
             cursor += 1
         }
-        guard cursor > start, cursor < chars.count, chars[cursor] == ";" else { return nil }
-        let digits = String(chars[start..<cursor])
-        guard let code = Int(digits, radix: hex ? 16 : 10) else { return nil }
+        let digits = cursor - start
+        guard digits > 0, cursor < chars.count, chars[cursor] == ";" else { return nil }
+        // v1.69: more digits than CommonMark allows stay literal.
+        // cmark-gfm would decode &#87654321; and &#x0001F600;.
+        if digits > max {
+            return (String(chars[index...cursor]), cursor + 1)
+        }
+        let text = String(chars[start..<cursor])
+        guard let code = Int(text, radix: hex ? 16 : 10) else { return nil }
         return (decodeNumeric(code), cursor + 1)
     }
 
