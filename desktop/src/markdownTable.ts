@@ -13,6 +13,10 @@
  * v1.64: a cell is inline markdown. A heading, list, quote, rule,
  * or fence at the start of the cell stays the characters. Bold,
  * italic, code, and links still parse. Intraword `_` stays literal.
+ * v1.65: a body row is clipped to the header width. Extra cells
+ * are dropped. A short row is padded with empty cells. Alignment
+ * stays the delimiter row. The clipboard source stays the original
+ * lines. A line with no pipe still ends the table.
  * Keep in lockstep with `ios/SnorlaxBot/MarkdownTable.swift`.
  */
 
@@ -381,19 +385,25 @@ function escapeMarks(line: string, indent: number): string {
   return out;
 }
 
+/**
+ * v1.65: column count is the header, which matches the delimiter.
+ * A short body row gains empty cells. Cells past that width are
+ * dropped, so a wider row does not grow a left-aligned column.
+ * Alignment stays the delimiter row. The clipboard source is still
+ * the original lines, extra cells included.
+ */
 function rectangular(
   header: string[],
   rows: string[][],
   align: TableAlign[],
 ): { header: string[]; rows: string[][]; align: TableAlign[] } {
-  let width = Math.max(header.length, align.length);
-  for (const row of rows) width = Math.max(width, row.length);
-  const pad = (cells: string[]) => {
+  const width = header.length;
+  const fit = (cells: string[]) => {
     const next = cells.slice(0, width);
     while (next.length < width) next.push("");
     return next;
   };
   const nextAlign = align.slice(0, width);
   while (nextAlign.length < width) nextAlign.push("left");
-  return { header: pad(header), rows: rows.map(pad), align: nextAlign };
+  return { header: fit(header), rows: rows.map(fit), align: nextAlign };
 }

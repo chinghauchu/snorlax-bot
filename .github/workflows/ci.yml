@@ -181,3 +181,4 @@ jobs:
           python3 ios/scripts/test_ios_markdown_autolink_trail.py
           python3 ios/scripts/test_ios_markdown_list_block_spacing.py
           python3 ios/scripts/test_ios_markdown_table_cell.py
+          python3 ios/scripts/test_ios_markdown_table_clip.py
