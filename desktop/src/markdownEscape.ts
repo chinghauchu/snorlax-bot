@@ -31,6 +31,11 @@
  * is not one of those names.
  * v1.68: BMP Unicode symbols are stashed in the same pass so `*`
  * flanking matches on both parsers. `*£50*` still emphasizes.
+ * v1.69: a numeric reference with more digits than CommonMark
+ * allows (8 or more decimal, 7 or more hex) is stashed as those
+ * characters. cmark-gfm would turn `&#87654321;` into U+FFFD and
+ * `&#x0001F600;` into an emoji. micromark already left them
+ * literal. In-range references still decode.
  * No animation. No new HTTP.
  * Keep in lockstep with `ios/SnorlaxBot/MarkdownEscape.swift`.
  */
@@ -253,8 +258,14 @@ function readNumeric(
   }
   const max = hex ? 6 : 7;
   const start = j;
-  while (j < src.length && j - start < max && isRefDigit(src[j] ?? "", hex)) j += 1;
-  if (j === start || src[j] !== ";") return null;
+  while (j < src.length && isRefDigit(src[j] ?? "", hex)) j += 1;
+  const digits = j - start;
+  if (digits === 0 || src[j] !== ";") return null;
+  // More digits than CommonMark allows is not a reference.
+  // cmark-gfm still consumes it. Stash the source characters.
+  if (digits > max) {
+    return { value: src.slice(i, j + 1), next: j + 1 };
+  }
   const code = Number.parseInt(src.slice(start, j), hex ? 16 : 10);
   if (!Number.isFinite(code)) return null;
   return { value: decodeNumericReference(code), next: j + 1 };

@@ -105,7 +105,12 @@ test("named and numeric references decode, and invalid ones stay safe", () => {
   assert.equal(protectMarkdownEscapes("&amp", true), "&amp");
   assert.equal(protectMarkdownEscapes("&#;", true), "&#;");
   assert.equal(protectMarkdownEscapes("&#x;", true), "&#x;");
-  assert.equal(protectMarkdownEscapes("&#00000065;", true), "&#00000065;");
+  assert.equal(
+    restoreMarkdownEscapes(protectMarkdownEscapes("&#00000065;", true)),
+    "&#00000065;",
+  );
+  assert.match(protectMarkdownEscapes("&#00000065;", true), /§§SBE/);
+  assert.equal(visible("&#00000065;"), "&#00000065;");
   assert.equal(restoreMarkdownEscapes(protectMarkdownEscapes("&#0;", true)), "\uFFFD");
   assert.equal(restoreMarkdownEscapes(protectMarkdownEscapes("&#x0;", true)), "\uFFFD");
   assert.equal(restoreMarkdownEscapes(protectMarkdownEscapes("&#xD800;", true)), "\uFFFD");
