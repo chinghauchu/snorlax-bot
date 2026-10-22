@@ -26,10 +26,14 @@
  * inline comment. The character is still not markdown syntax.
  * Streaming (`completed: false`) returns the source unchanged.
  * Copy controls keep markdown source — this module does not copy.
+ * v1.67: before the early return, `__init__`-style identifiers are
+ * stashed so a word-boundary dunder stays literal. `__strong__`
+ * is not one of those names.
  * No animation. No new HTTP.
  * Keep in lockstep with `ios/SnorlaxBot/MarkdownEscape.swift`.
  */
 
+import { protectIntrawordUnderscores } from "./markdownUnderscore.ts";
 import { fenceRanges, inlineCodeRanges, type Range } from "./math.ts";
 
 /** Placeholder. Six uppercase hex digits per Unicode scalar. */
@@ -106,27 +110,28 @@ const PUNCT = new Set(ASCII_PUNCT);
  */
 export function protectMarkdownEscapes(text: string, completed = true): string {
   if (!completed || !text) return text;
-  if (!text.includes("\\") && !text.includes("&")) return text;
-  const blocked = blockedRanges(text);
+  const prepared = protectIntrawordUnderscores(text, true);
+  if (!prepared.includes("\\") && !prepared.includes("&")) return prepared;
+  const blocked = blockedRanges(prepared);
   let out = "";
   let i = 0;
   let bi = 0;
-  while (i < text.length) {
+  while (i < prepared.length) {
     if (bi < blocked.length && i >= blocked[bi]!.start && i < blocked[bi]!.end) {
-      out += text.slice(i, blocked[bi]!.end);
+      out += prepared.slice(i, blocked[bi]!.end);
       i = blocked[bi]!.end;
       bi += 1;
       continue;
     }
     while (bi < blocked.length && i >= blocked[bi]!.end) bi += 1;
-    const ch = text[i] ?? "";
-    if (ch === "\\" && i + 1 < text.length && PUNCT.has(text[i + 1] ?? "")) {
-      out += escapeToken(text[i + 1] ?? "");
+    const ch = prepared[i] ?? "";
+    if (ch === "\\" && i + 1 < prepared.length && PUNCT.has(prepared[i + 1] ?? "")) {
+      out += escapeToken(prepared[i + 1] ?? "");
       i += 2;
       continue;
     }
     if (ch === "&") {
-      const ref = readReference(text, i);
+      const ref = readReference(prepared, i);
       if (ref) {
         out += escapeToken(ref.value);
         i = ref.next;

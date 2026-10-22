@@ -90,10 +90,13 @@ enum MarkdownEscape {
 
     /// Rewrite escapes and character references outside code.
     /// `completed: false` returns `text` unchanged.
+    /// v1.67 stashes `__init__`-style identifiers first, so a
+    /// word-boundary dunder stays literal when there is no escape.
     static func protect(_ text: String, completed: Bool = true) -> String {
         if !completed || text.isEmpty { return text }
-        if !text.contains("\\") && !text.contains("&") { return text }
-        let chars = Array(text)
+        let prepared = MarkdownUnderscore.protect(text, completed: true)
+        if !prepared.contains("\\") && !prepared.contains("&") { return prepared }
+        let chars = Array(prepared)
         let blocked = protectedRanges(chars)
         var out = ""
         out.reserveCapacity(chars.count)
