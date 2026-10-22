@@ -29,10 +29,13 @@
  * v1.67: before the early return, `__init__`-style identifiers are
  * stashed so a word-boundary dunder stays literal. `__strong__`
  * is not one of those names.
+ * v1.68: BMP Unicode symbols are stashed in the same pass so `*`
+ * flanking matches on both parsers. `*£50*` still emphasizes.
  * No animation. No new HTTP.
  * Keep in lockstep with `ios/SnorlaxBot/MarkdownEscape.swift`.
  */
 
+import { protectSymbolFlanks } from "./markdownSymbol.ts";
 import { protectIntrawordUnderscores } from "./markdownUnderscore.ts";
 import { fenceRanges, inlineCodeRanges, type Range } from "./math.ts";
 
@@ -110,7 +113,7 @@ const PUNCT = new Set(ASCII_PUNCT);
  */
 export function protectMarkdownEscapes(text: string, completed = true): string {
   if (!completed || !text) return text;
-  const prepared = protectIntrawordUnderscores(text, true);
+  const prepared = protectSymbolFlanks(protectIntrawordUnderscores(text, true), true);
   if (!prepared.includes("\\") && !prepared.includes("&")) return prepared;
   const blocked = blockedRanges(prepared);
   let out = "";
