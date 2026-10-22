@@ -9,6 +9,12 @@
  * plain. javascript:, file:, and any other scheme stay plain. While a
  * bubble is still streaming, a URL that reaches the end of the buffer
  * stays plain so a half-typed address is not a link.
+ * v1.62: a bare http(s) autolink uses the same GFM extended-autolink
+ * delimiter as `www.`. Trailing `?`, `!`, `.`, `,`, `:`, `*`, `_`, and
+ * `~` stay outside. A trailing `)` stays outside only when parentheses
+ * are unbalanced. A trailing entity-like `&hl;` stays outside. `<`
+ * ends the link. A trailing `]`, `}`, or curly quote on http(s) still
+ * stays outside, as v0.82 already did.
  * v1.45: GFM extended email autolinks on a completed assistant reply.
  * `foo@bar.baz` is a `mailto:` link whose text is the address. A
  * `mailto:` prefix stays in the text. `xmpp:` is not linked. Pass
@@ -21,10 +27,10 @@ export type WebPiece =
   | { type: "text"; value: string }
   | { type: "link"; value: string };
 
-const TRAILING_PUNCT = ".,;:!?)]}'\"\u201c\u201d\u2018\u2019";
+/** v0.82 closers that are not part of the GFM extended-autolink set. */
+const LEGACY_HTTP_TRAIL = new Set(["]", "}", "\u201c", "\u201d", "\u2018", "\u2019"]);
 
 const CLOSER_TO_OPEN: Record<string, string> = {
-  ")": "(",
   "]": "[",
   "}": "{",
 };
@@ -323,6 +329,11 @@ function isAlnum(ch: string): boolean {
   );
 }
 
+/**
+ * v1.62: GFM extended-autolink delimiter for a bare http(s) URL.
+ * `autolinkDelim` is the same pass `www.` already uses. v0.82 still
+ * peels a trailing `]`, `}`, or curly quote after that pass.
+ */
 function trimTrailingPunctuation(url: string): string {
   const lower = url.toLowerCase();
   const min = lower.startsWith("https://")
@@ -331,8 +342,14 @@ function trimTrailingPunctuation(url: string): string {
       ? "http://".length
       : url.length;
   let end = url.length;
-  while (end > min && TRAILING_PUNCT.includes(url[end - 1]!)) {
+  while (end > min) {
+    const gfm = autolinkDelim(url, 0, end);
+    if (gfm < end) {
+      end = gfm;
+      continue;
+    }
     const ch = url[end - 1]!;
+    if (!LEGACY_HTTP_TRAIL.has(ch)) break;
     const open = CLOSER_TO_OPEN[ch];
     if (open) {
       const head = url.slice(0, end);
