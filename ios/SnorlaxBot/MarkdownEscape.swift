@@ -92,9 +92,11 @@ enum MarkdownEscape {
     /// `completed: false` returns `text` unchanged.
     /// v1.67 stashes `__init__`-style identifiers first, so a
     /// word-boundary dunder stays literal when there is no escape.
+    /// v1.68 then stashes BMP Unicode symbols so `*` flanking matches.
     static func protect(_ text: String, completed: Bool = true) -> String {
         if !completed || text.isEmpty { return text }
-        let prepared = MarkdownUnderscore.protect(text, completed: true)
+        let underscored = MarkdownUnderscore.protect(text, completed: true)
+        let prepared = MarkdownSymbol.protect(underscored, completed: true)
         if !prepared.contains("\\") && !prepared.contains("&") { return prepared }
         let chars = Array(prepared)
         let blocked = protectedRanges(chars)
