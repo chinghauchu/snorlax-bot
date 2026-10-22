@@ -20,6 +20,8 @@
  * Keep in lockstep with `ios/SnorlaxBot/MarkdownBreak.swift`.
  */
 
+import { splitWebUrls } from "./linkify.ts";
+
 export type BreakBlock =
   | { type: "markdown"; text: string }
   | { type: "rule" };
@@ -147,8 +149,16 @@ export function thematicBreakMarker(line: string): "-" | "*" | "_" | null {
 
 /**
  * remark plugin: `~~text~~` becomes a `delete` node (`<del>`).
- * Inline code and fenced code are left alone. A pair may wrap
- * other inline nodes (`~~**bold**~~`). Unclosed tildes stay text.
+ * v1.70: a delimiter is a run of exactly two tildes. A longer run
+ * is not a pair of `~~` plus extras, so `x ~~~foo~~~ y` stays
+ * literal and `~~a~~~b~~` strikes `a~~~b`. The opener is not
+ * followed by whitespace and the closer is not preceded by it,
+ * so `~~ foo ~~` stays literal. A soft newline may sit inside.
+ * A hard break still ends the pair (v1.41). A `~~` run inside an
+ * http(s), `www.`, or email autolink is not a delimiter, so
+ * `https://example.com/~~foo~~` stays one address. Inline code and
+ * fenced code are left alone. A pair may wrap other inline nodes
+ * (`~~**bold**~~`). Unclosed tildes stay text.
  */
 export function remarkStrikethrough(): (tree: MdastNode) => void {
   return (tree) => {
@@ -162,15 +172,21 @@ export function rewriteStrikeNodes(nodes: MdastNode[]): MdastNode[] {
   let i = 0;
   while (i < prepared.length) {
     const node = prepared[i]!;
-    if (node.type !== "text" || !node.value?.includes("~~")) {
+    const value = node.value ?? "";
+    const links = node.type === "text" ? linkSpans(value) : [];
+    if (node.type !== "text" || !hasDoubleRun(value, links)) {
       out.push(node);
       i += 1;
       continue;
     }
-    const value = node.value ?? "";
-    const open = value.indexOf("~~");
-    const close = value.indexOf("~~", open + 2);
-    if (close >= 0 && !value.slice(open + 2, close).includes("\n")) {
+    const open = findOpener(value, 0, i, prepared, links);
+    if (open < 0) {
+      out.push(node);
+      i += 1;
+      continue;
+    }
+    const close = findCloserInValue(value, open + 2, links);
+    if (close >= 0) {
       if (open > 0) out.push(textNode(value.slice(0, open)));
       const inner = value.slice(open + 2, close);
       if (inner.length > 0) out.push(strikeNode([textNode(inner)]));
@@ -183,9 +199,15 @@ export function rewriteStrikeNodes(nodes: MdastNode[]): MdastNode[] {
       i += 1;
       continue;
     }
-    const ahead = findStrikeClose(prepared, i + 1);
+    const ahead = findStrikeClose(prepared, i);
     if (!ahead) {
-      out.push(node);
+      if (open > 0) out.push(textNode(value.slice(0, open)));
+      out.push(textNode(value.slice(open, open + 2)));
+      const rest = value.slice(open + 2);
+      if (rest) {
+        prepared[i] = textNode(rest);
+        continue;
+      }
       i += 1;
       continue;
     }
@@ -207,6 +229,110 @@ export function rewriteStrikeNodes(nodes: MdastNode[]): MdastNode[] {
   return out;
 }
 
+type Span = { start: number; end: number };
+
+/**
+ * Spans an extended autolink already owns. Tildes inside the
+ * trimmed URL are not strikethrough delimiters.
+ */
+function linkSpans(value: string): Span[] {
+  if (!/https?:\/\//i.test(value) && !/www\./i.test(value) && !value.includes("@")) {
+    return [];
+  }
+  const pieces = splitWebUrls(value, { emails: true });
+  const spans: Span[] = [];
+  let at = 0;
+  for (const piece of pieces) {
+    const next = at + piece.value.length;
+    if (piece.type === "link") spans.push({ start: at, end: next });
+    at = next;
+  }
+  return spans;
+}
+
+function runInLink(spans: Span[], start: number, end: number): boolean {
+  return spans.some((span) => start < span.end && end > span.start);
+}
+
+/** Index of a tilde run whose length is exactly 2, or -1. */
+function findDoubleRun(value: string, from: number, links: Span[]): number {
+  let i = from;
+  while (i < value.length) {
+    if (value[i] !== "~") {
+      i += 1;
+      continue;
+    }
+    let end = i + 1;
+    while (end < value.length && value[end] === "~") end += 1;
+    if (end - i === 2 && !runInLink(links, i, end)) return i;
+    i = end;
+  }
+  return -1;
+}
+
+function hasDoubleRun(value: string, links: Span[]): boolean {
+  return findDoubleRun(value, 0, links) >= 0;
+}
+
+function isWs(ch: string | undefined): boolean {
+  return ch === " " || ch === "\t" || ch === "\n" || ch === "\r" || ch === "\f" || ch === "\v";
+}
+
+/** First exact `~~` that is not followed by whitespace. */
+function findOpener(
+  value: string,
+  from: number,
+  nodeIndex: number,
+  nodes: MdastNode[],
+  links: Span[],
+): number {
+  let i = from;
+  while (i < value.length) {
+    const mark = findDoubleRun(value, i, links);
+    if (mark < 0) return -1;
+    if (canOpen(value, mark, nodeIndex, nodes)) return mark;
+    i = mark + 2;
+  }
+  return -1;
+}
+
+function canOpen(
+  value: string,
+  mark: number,
+  nodeIndex: number,
+  nodes: MdastNode[],
+): boolean {
+  if (mark + 2 < value.length) return !isWs(value[mark + 2]);
+  return neighborNonWs(nodes, nodeIndex, 1);
+}
+
+/** Closer in this text: exact `~~`, not preceded by whitespace. */
+function findCloserInValue(value: string, from: number, links: Span[]): number {
+  let i = from;
+  while (i < value.length) {
+    const mark = findDoubleRun(value, i, links);
+    if (mark < 0) return -1;
+    if (mark > 0 && !isWs(value[mark - 1])) return mark;
+    i = mark + 2;
+  }
+  return -1;
+}
+
+function neighborNonWs(nodes: MdastNode[], index: number, step: 1 | -1): boolean {
+  for (let k = index + step; k >= 0 && k < nodes.length; k += step) {
+    const node = nodes[k]!;
+    if (node.type === "text") {
+      const value = node.value ?? "";
+      if (!value) continue;
+      const ch = step > 0 ? value[0] : value[value.length - 1];
+      return !isWs(ch);
+    }
+    if (node.type === "break") return false;
+    return true;
+  }
+  return false;
+}
+
 function prepareStrikeNode(node: MdastNode): MdastNode {
   if (node.children && node.type !== "code" && node.type !== "inlineCode") {
     node.children = rewriteStrikeNodes(node.children);
@@ -216,22 +342,29 @@ function prepareStrikeNode(node: MdastNode): MdastNode {
 
 function findStrikeClose(
   nodes: MdastNode[],
-  start: number,
+  openerIndex: number,
 ): { index: number; before: string; after: string } | null {
-  for (let k = start; k < nodes.length; k += 1) {
+  for (let k = openerIndex + 1; k < nodes.length; k += 1) {
     const node = nodes[k]!;
+    // v1.41: a hard break ends the pair. A soft newline does not.
     if (node.type === "break") return null;
     if (node.type !== "text") continue;
     const value = node.value ?? "";
-    const nl = value.indexOf("\n");
-    const mark = value.indexOf("~~");
-    if (nl >= 0 && (mark < 0 || nl < mark)) return null;
-    if (mark >= 0) {
-      return {
-        index: k,
-        before: value.slice(0, mark),
-        after: value.slice(mark + 2),
-      };
+    const links = linkSpans(value);
+    let search = 0;
+    while (search < value.length) {
+      const mark = findDoubleRun(value, search, links);
+      if (mark < 0) break;
+      const preceded =
+        mark > 0 ? !isWs(value[mark - 1]) : neighborNonWs(nodes, k, -1);
+      if (preceded) {
+        return {
+          index: k,
+          before: value.slice(0, mark),
+          after: value.slice(mark + 2),
+        };
+      }
+      search = mark + 2;
     }
   }
   return null;
