@@ -92,6 +92,7 @@ import {
 import {
   TABLE_COPY_MS,
   showTableCopy,
+  protectTableCellBlocks,
   splitMarkdownTables,
   tableClipboardText,
   tableCopyAriaLabel,
@@ -761,7 +762,10 @@ function TableCellText({
   completed: boolean;
 }) {
   const findQuery = useFindQuery();
-  const extracted = extractMath(literalizeSetextLines(text));
+  // v1.64: block starts stay characters. Inline formatting still parses.
+  const extracted = extractMath(
+    protectTableCellBlocks(literalizeSetextLines(text), completed),
+  );
   const mathText = prepareAngleAutolinks(
     neutralizeUnsafeImages(extracted.text, completed),
     completed,

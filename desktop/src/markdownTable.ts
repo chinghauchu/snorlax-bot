@@ -10,8 +10,13 @@
  * `:---:` center, `---:` right). A `\|` inside an inline code span
  * becomes a literal pipe in that cell. The escape pass leaves code
  * spans unchanged, so the backslash has to come off here.
+ * v1.64: a cell is inline markdown. A heading, list, quote, rule,
+ * or fence at the start of the cell stays the characters. Bold,
+ * italic, code, and links still parse. Intraword `_` stays literal.
  * Keep in lockstep with `ios/SnorlaxBot/MarkdownTable.swift`.
  */
+
+import { fenceInfoAllowsOpen } from "./math.ts";
 
 export const TABLE_COPY_LABEL = "Copy";
 
@@ -290,6 +295,90 @@ function delimiterAlign(cells: string[]): TableAlign[] | null {
     else align.push("left");
   }
   return align;
+}
+
+/**
+ * v1.64: GFM parses a table cell as inlines. A block start is escaped
+ * so the cell does not become a heading, list, quote, rule, or fence.
+ * The escape pass paints the marker, so the backslash is not shown.
+ * `**bold**`, `*italic*`, `` `code` ``, and `[links](url)` are not
+ * block starts and stay formatted. `completed: false` returns `text`.
+ */
+export function protectTableCellBlocks(text: string, completed = true): string {
+  if (!completed || !text) return text;
+  const src = text.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
+  const lines = src.split("\n");
+  let changed = false;
+  const out = lines.map((line) => {
+    const next = protectCellLine(line);
+    if (next !== line) changed = true;
+    return next;
+  });
+  if (!changed) return text.includes("\r") ? src : text;
+  return out.join("\n");
+}
+
+/** Never animate, including when Reduce Motion is off. */
+export function tableCellInlineAnimates(reduceMotion: boolean): boolean {
+  if (reduceMotion) return false;
+  return false;
+}
+
+function protectCellLine(line: string): string {
+  let indent = 0;
+  while (indent < line.length && indent < 3 && line[indent] === " ") indent += 1;
+  if (indent < line.length && line[indent] === " ") return line;
+  const rest = line.slice(indent);
+  if (!rest) return line;
+  const fence = fenceOpener(rest);
+  if (fence > 0) return escapeRun(line, indent, fence);
+  if (isThematicCell(rest)) return escapeMarks(line, indent);
+  if (/^#{1,6}(?:[ \t]|$)/.test(rest)) return insertBackslash(line, indent);
+  if (rest.startsWith(">")) return insertBackslash(line, indent);
+  if (/^[-*+](?:[ \t]|$)/.test(rest)) return insertBackslash(line, indent);
+  const ordered = /^(\d{1,9})([.)])(?:[ \t]|$)/.exec(rest);
+  if (ordered) return insertBackslash(line, indent + (ordered[1] ?? "").length);
+  return line;
+}
+
+/** Length of a real opening fence marker, or 0 when the line is not one. */
+function fenceOpener(rest: string): number {
+  const match = /^(`{3,}|~{3,})(.*)$/.exec(rest);
+  if (!match) return 0;
+  const marker = match[1] ?? "";
+  if (!fenceInfoAllowsOpen(marker, match[2] ?? "")) return 0;
+  return marker.length;
+}
+
+function isThematicCell(rest: string): boolean {
+  const mark = rest[0];
+  if (mark !== "-" && mark !== "*" && mark !== "_") return false;
+  let count = 0;
+  for (const ch of rest) {
+    if (ch === mark) count += 1;
+    else if (ch === " " || ch === "\t") continue;
+    else return false;
+  }
+  return count >= 3;
+}
+
+function insertBackslash(line: string, index: number): string {
+  return `${line.slice(0, index)}\\${line.slice(index)}`;
+}
+
+function escapeRun(line: string, start: number, count: number): string {
+  let out = line.slice(0, start);
+  for (let n = 0; n < count; n += 1) out += `\\${line[start + n] ?? ""}`;
+  return out + line.slice(start + count);
+}
+
+function escapeMarks(line: string, indent: number): string {
+  let out = line.slice(0, indent);
+  for (const ch of line.slice(indent)) {
+    if (ch === "-" || ch === "*" || ch === "_") out += `\\${ch}`;
+    else out += ch;
+  }
+  return out;
 }
 
 function rectangular(

@@ -606,7 +606,11 @@ private struct MarkdownTableBlock: View {
     }
 
     private func tableCell(_ text: String, column: Int, header: Bool, last: Bool) -> some View {
-        let literal = MarkdownSetext.literalize(text)
+        // v1.64: block starts stay characters. Inline formatting still parses.
+        let literal = MarkdownTable.protectCellBlocks(
+            MarkdownSetext.literalize(text),
+            completed: completed
+        )
         MarkdownRun(
             source: literal.isEmpty ? " " : literal,
             names: names,
@@ -624,6 +628,7 @@ private struct MarkdownTableBlock: View {
             }
         }
         .gridColumnAlignment(columnAlign(column))
+        .animation(MarkdownTable.cellInlineAnimation(reduceMotion: reduceMotion), value: literal)
     }
 
     private func columnAlign(_ column: Int) -> HorizontalAlignment {
