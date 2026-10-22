@@ -13,6 +13,10 @@ import SwiftUI
 /// v1.64: a cell is inline markdown. A heading, list, quote, rule,
 /// or fence at the start of the cell stays the characters. Bold,
 /// italic, code, and links still parse. Intraword `_` stays literal.
+/// v1.65: a body row is clipped to the header width. Extra cells
+/// are dropped. A short row is padded with empty cells. Alignment
+/// stays the delimiter row. The clipboard source stays the original
+/// lines. A line with no pipe still ends the table.
 /// Keep in lockstep with `desktop/src/markdownTable.ts`.
 enum MarkdownTable {
     enum Align: Equatable {
@@ -373,21 +377,25 @@ enum MarkdownTable {
         return out
     }
 
+    /// v1.65: column count is the header, which matches the delimiter.
+    /// A short body row gains empty cells. Cells past that width are
+    /// dropped, so a wider row does not grow a left-aligned column.
+    /// Alignment stays the delimiter row. The clipboard source is still
+    /// the original lines, extra cells included.
     private static func rectangular(
         header: [String],
         rows: [[String]],
         align: [Align]
     ) -> (header: [String], rows: [[String]], align: [Align]) {
-        var width = max(header.count, align.count)
-        for row in rows { width = max(width, row.count) }
-        func pad(_ cells: [String]) -> [String] {
+        let width = header.count
+        func fit(_ cells: [String]) -> [String] {
             var next = Array(cells.prefix(width))
             while next.count < width { next.append("") }
             return next
         }
         var nextAlign = Array(align.prefix(width))
         while nextAlign.count < width { nextAlign.append(.left) }
-        return (pad(header), rows.map { pad($0) }, nextAlign)
+        return (fit(header), rows.map { fit($0) }, nextAlign)
     }
 }
 
