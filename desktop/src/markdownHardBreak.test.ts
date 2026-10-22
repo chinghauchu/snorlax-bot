@@ -207,7 +207,10 @@ test("streaming stays literal and copy keeps markdown source", () => {
   assert.equal(prepared(raw, false), raw);
   assert.equal(splitHardBreakToken(`a${HARD_BREAK_TOKEN}b`)?.join("|"), "a|b");
   assert.equal(splitHardBreakToken("plain"), null);
-  assert.match(body, /applyHardLineBreaks\(\s*protectMarkdownEscapes\(mathText, completed\),\s*completed,\s*\)/);
+  assert.match(
+    body,
+    /applyHardLineBreaks\(\s*literalizeRawHtml\(\s*protectMarkdownEscapes\(mathText, completed\),\s*completed,\s*\),\s*completed,\s*\)/,
+  );
   assert.match(body, /remarkHardBreaks, remarkStrikethrough/);
   assert.equal(body.split("remarkHardBreaks, remarkStrikethrough").length, 4);
   const protectAt = body.indexOf("protectMarkdownEscapes(mathText, completed)");

@@ -130,7 +130,7 @@ test("streaming stays plain and copy keeps markdown source", () => {
   assert.equal(body.split("promoteSingleTilde(").length, 4);
   assert.match(
     body,
-    /promoteSingleTilde\(\s*applyHardLineBreaks\(\s*protectMarkdownEscapes\(mathText, completed\),\s*completed,\s*\),\s*completed,\s*\)/,
+    /promoteSingleTilde\(\s*applyHardLineBreaks\(\s*literalizeRawHtml\(\s*protectMarkdownEscapes\(mathText, completed\),\s*completed,\s*\),\s*completed,\s*\),\s*completed,\s*\)/,
   );
   assert.match(body, /remarkPlugins=\{completed \? \[remarkHardBreaks, remarkStrikethrough\] : \[\]\}/);
   assert.match(markdown, /MarkdownSingleStrike\.promote\(\s*MarkdownHardBreak\.apply\(escaped, completed: completed\),\s*completed: completed\s*\)/);

@@ -1099,7 +1099,13 @@ private struct MarkdownRun: View {
         // becomes a token here and a real newline after the parse.
         // A plain newline stays a soft break, which renders as a space.
         let src = MarkdownAutolink.prepare(raw, completed: completed)
-        let escaped = MarkdownEscape.protect(src, completed: completed)
+        // Inline and type-7 raw HTML become tokens so the parser cannot
+        // drop the characters. A type 1–6 block that starts a line stays
+        // raw so the list and quote split still ends there.
+        let escaped = MarkdownHtmlLiteral.literalize(
+            MarkdownEscape.protect(src, completed: completed),
+            completed: completed
+        )
         // ~text~ becomes ~~text~~ so the parser's strikethrough matches
         // the single-tilde form the same way it already matches ~~text~~.
         let source = MarkdownSingleStrike.promote(
