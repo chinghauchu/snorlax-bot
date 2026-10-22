@@ -10,7 +10,9 @@ import SwiftUI
 /// and task lists follow that rule. A nested list keeps its own
 /// looseness. Fences, `$$`, and indented code swallow the blank lines
 /// inside them. v1.54 list padding decides which lines belong to the
-/// item before looseness is classified. Streaming (`completed: false`)
+/// item before looseness is classified. v1.63: that looseness also
+/// sets the gap in front of a nested list. Tight is flush. Loose is
+/// the paragraph gap. Streaming (`completed: false`)
 /// is not loose. Copy
 /// controls keep markdown source — this type does not write the
 /// pasteboard. No animation. No new HTTP.
@@ -30,6 +32,14 @@ enum MarkdownLooseList {
     /// Item gap. Tight stays compact. Loose uses paragraph spacing.
     static func itemSpacing(loose: Bool) -> CGFloat {
         loose ? looseSpacing : tightSpacing
+    }
+
+    /// v1.63: gap before a nested block inside one list item.
+    /// A tight list is flush. A loose list uses paragraph spacing,
+    /// including when the blank is between sibling items. `nil` is
+    /// outside a list, which keeps the 8pt block gap.
+    static func blockSpacing(listLoose: Bool?) -> CGFloat {
+        listLoose == false ? 0 : looseSpacing
     }
 
     /// Whether the list that starts this text is loose.
@@ -468,5 +478,20 @@ enum MarkdownLooseList {
         }
         if inMath { return (fence, inMath, true) }
         return (fence, inMath, false)
+    }
+}
+
+private struct MarkdownListLooseKey: EnvironmentKey {
+    /// nil: not inside a list item. false: tight. true: loose.
+    static let defaultValue: Bool? = nil
+}
+
+extension EnvironmentValues {
+    /// Looseness of the list item being drawn. Drives the gap
+    /// before a nested list. A quote resets this so the quote's
+    /// own blocks keep the normal 8pt gap.
+    var markdownListLoose: Bool? {
+        get { self[MarkdownListLooseKey.self] }
+        set { self[MarkdownListLooseKey.self] = newValue }
     }
 }

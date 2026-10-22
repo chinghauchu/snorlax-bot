@@ -1442,12 +1442,19 @@ mark.find-hit.active {
   margin-bottom: 0;
 }
 
-.assistant-md .md-task-list[data-loose="true"] .md-task-body p {
-  margin: 0 0 8px;
+/* v1.63: a loose task item's nested list is not wrapped in p,
+   because each item is rendered on its own. The column gap is
+   the paragraph spacing a loose CommonMark list would get from
+   that p. A tight task body stays block layout, so the nested
+   list stays flush. */
+.assistant-md .md-task-list[data-loose="true"] .md-task-body {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
 }
 
-.assistant-md .md-task-list[data-loose="true"] .md-task-body p:last-child {
-  margin-bottom: 0;
+.assistant-md .md-task-list[data-loose="true"] .md-task-body p {
+  margin: 0;
 }
 
 .assistant-md .md-task-item.is-checked {

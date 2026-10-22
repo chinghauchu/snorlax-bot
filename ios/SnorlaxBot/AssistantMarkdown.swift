@@ -153,6 +153,7 @@ private struct MarkdownQuoteBlock: View {
             completed: completed,
             wrapScope: wrapScope
         )
+        .environment(\.markdownListLoose, nil as Bool?)
         .foregroundStyle(.secondary)
         .padding(.leading, 10)
         .overlay(alignment: .leading) {
@@ -180,6 +181,7 @@ private struct MarkdownTaskList: View {
             ForEach(Array(items.enumerated()), id: \.offset) { _, item in
                 MarkdownTaskRow(
                     item: item,
+                    loose: loose,
                     names: names,
                     completed: completed,
                     wrapScope: wrapScope
@@ -194,9 +196,11 @@ private struct MarkdownTaskList: View {
 
 private struct MarkdownTaskRow: View {
     let item: MarkdownQuoteTask.TaskItem
+    let loose: Bool
     let names: [String]
     var completed: Bool
     var wrapScope: String
+    @Environment(\.markdownListDepth) private var depth
 
     var body: some View {
         let row = HStack(alignment: .top, spacing: 8) {
@@ -210,6 +214,10 @@ private struct MarkdownTaskRow: View {
                     completed: completed,
                     wrapScope: wrapScope
                 )
+                // The task row is a ul on desktop, so the next bullet
+                // is a circle, then a square. Depth 4+ stays square.
+                .environment(\.markdownListDepth, depth + 1)
+                .environment(\.markdownListLoose, loose)
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
         }
@@ -330,6 +338,7 @@ private struct MarkdownListPieces: View {
     let names: [String]
     var completed: Bool
     var wrapScope: String
+    @Environment(\.markdownListLoose) private var listLoose
 
     var body: some View {
         let blocks = MarkdownList.split(source, completed: completed)
@@ -341,7 +350,10 @@ private struct MarkdownListPieces: View {
                 wrapScope: wrapScope
             )
         } else {
-            VStack(alignment: .leading, spacing: 8) {
+            VStack(
+                alignment: .leading,
+                spacing: MarkdownLooseList.blockSpacing(listLoose: listLoose)
+            ) {
                 ForEach(Array(blocks.enumerated()), id: \.offset) { _, block in
                     switch block {
                     case .markdown(let text):
@@ -424,6 +436,7 @@ private struct MarkdownListBlock: View {
                     index: index,
                     ordered: group.ordered,
                     start: group.start,
+                    loose: group.loose,
                     names: names,
                     completed: completed,
                     wrapScope: wrapScope
@@ -443,6 +456,7 @@ private struct MarkdownListItemRow: View {
     let index: Int
     let ordered: Bool
     let start: Int
+    let loose: Bool
     let names: [String]
     var completed: Bool
     var wrapScope: String
@@ -481,6 +495,7 @@ private struct MarkdownListItemRow: View {
                         wrapScope: wrapScope
                     )
                     .environment(\.markdownListDepth, depth + 1)
+                    .environment(\.markdownListLoose, loose)
                     .frame(maxWidth: .infinity, alignment: .leading)
                 }
             } else if !item.isEmpty {
@@ -491,6 +506,7 @@ private struct MarkdownListItemRow: View {
                     wrapScope: wrapScope
                 )
                 .environment(\.markdownListDepth, depth + 1)
+                .environment(\.markdownListLoose, loose)
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
         }

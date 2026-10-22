@@ -17,7 +17,8 @@
  * them, so those blanks do not loosen the list. v1.54 list
  * padding (one to four spaces, or a blank marker line) decides
  * which lines belong to the item before looseness is classified.
- * Streaming
+ * v1.63: that looseness also sets the gap in front of a nested
+ * list. Tight is flush. Loose is the paragraph gap. Streaming
  * (`completed: false`) is tight, because the bubble is still plain
  * text. Copy controls keep markdown source — this module does not
  * copy. No animation. No new HTTP.
@@ -44,6 +45,23 @@ export function looseListAnimates(reduceMotion: boolean): boolean {
 /** Item gap in px. Tight stays compact. Loose uses paragraph spacing. */
 export function listItemSpacing(loose: boolean): number {
   return loose ? LOOSE_LIST_ITEM_SPACING_PX : TIGHT_LIST_ITEM_SPACING_PX;
+}
+
+/**
+ * v1.63: gap before a nested block inside one list item.
+ * A tight list is flush — CommonMark does not wrap that
+ * paragraph in `<p>`, so a nested list sits against the
+ * text. A loose list uses the paragraph gap, including
+ * when the blank line is between sibling items and this
+ * item's own nested list has no blank of its own.
+ * `null` is outside a list; blocks there keep 8px.
+ * iOS draws this directly. Desktop regular lists get it
+ * from the `<p>` margin; a loose task body uses the same
+ * 8px as a column gap.
+ */
+export function listBlockSpacing(listLoose: boolean | null): number {
+  if (listLoose === false) return 0;
+  return LOOSE_LIST_ITEM_SPACING_PX;
 }
 
 /**
