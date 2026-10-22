@@ -125,26 +125,12 @@ test("extra cells are dropped and short rows pad to the header", () => {
   assert.equal(renderCell(kept.rows[0]?.[0] ?? "").includes("DROPME"), false);
 });
 
-test("a mismatched delimiter is not a table, and a pipe-less line still ends it", () => {
+test("a mismatched delimiter is not a table, and streaming stays plain", () => {
   const mismatch = "| abc | def |\n| --- |\n| bar | baz | boo |";
   const plain = splitMarkdownTables(mismatch, true);
   assert.equal(plain.length, 1);
   assert.equal(plain[0]?.type, "markdown");
   if (plain[0]?.type === "markdown") assert.match(plain[0].text, /boo/);
-
-  const continued = ["| abc | def |", "| --- | --- |", "| bar | baz |", "bar", "", "later"].join(
-    "\n",
-  );
-  const parts = splitMarkdownTables(continued, true);
-  assert.equal(parts[0]?.type, "table");
-  if (parts[0]?.type !== "table") return;
-  assert.deepEqual(parts[0].table.rows, [["bar", "baz"]]);
-  assert.doesNotMatch(parts[0].table.source, /\nbar$/);
-  const rest = parts
-    .filter((part) => part.type === "markdown")
-    .map((part) => (part.type === "markdown" ? part.text : ""))
-    .join("\n");
-  assert.match(rest, /^bar\n\nlater$/);
 
   const live = "| a | b |\n| --- | --- |\n| 1 | 2 | 3 |";
   const streaming = splitMarkdownTables(live, false);

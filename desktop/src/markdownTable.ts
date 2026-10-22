@@ -16,10 +16,16 @@
  * v1.65: a body row is clipped to the header width. Extra cells
  * are dropped. A short row is padded with empty cells. Alignment
  * stays the delimiter row. The clipboard source stays the original
- * lines. A line with no pipe still ends the table.
+ * lines.
+ * v1.66: a body line with no unescaped pipe is one cell, then
+ * padded to the header. A blank line ends the table. A heading,
+ * rule, quote, list, fence, indented code, raw HTML block, or
+ * `$$` line still ends it. A pipe-less header does not start a
+ * table, so `foo` over `---` stays a setext heading.
  * Keep in lockstep with `ios/SnorlaxBot/MarkdownTable.swift`.
  */
 
+import { htmlBlockInterrupts, htmlLazyTag } from "./markdownList.ts";
 import { fenceInfoAllowsOpen } from "./math.ts";
 
 export const TABLE_COPY_LABEL = "Copy";
@@ -176,8 +182,8 @@ function parseTable(
   let next = start + 2;
   while (next < lines.length) {
     const line = lines[next] ?? "";
-    if (!isTableLine(line)) break;
-    const row = splitRow(line);
+    if (!isTableLine(line) || interruptsTable(line)) break;
+    const row = splitRow(line, true);
     if (!row) break;
     body.push(row);
     next += 1;
@@ -194,13 +200,82 @@ function parseTable(
   };
 }
 
+/**
+ * Index just after a table that starts at `start`, or `start`
+ * when those lines are not a table. Reference links and footnotes
+ * use this so a pipe-less body row is not stolen as a definition.
+ */
+export function markdownTableEnd(lines: string[], start: number): number {
+  return parseTable(lines, start)?.next ?? start;
+}
+
 function isTableLine(line: string): boolean {
-  if (/^ {4,}/.test(line)) return false;
+  if (leadingColumns(line).columns >= 4) return false;
   const trimmed = line.trim();
   if (!trimmed) return false;
   if (trimmed.startsWith(">")) return false;
-  if (/^([-*+]|\d+[.)])\s/.test(trimmed)) return false;
+  // An empty item (`-`, `*`, `1.`) is still a list. Ordered markers
+  // are at most nine digits, so `1234567890. item` is a cell.
+  if (/^[-*+](?:[ \t]|$)/.test(trimmed)) return false;
+  if (/^\d{1,9}[.)](?:[ \t]|$)/.test(trimmed)) return false;
   return true;
+}
+
+/**
+ * Block starts end the table instead of becoming a one-cell row.
+ * A pipe row such as `| # not a heading |` does not match these.
+ */
+function interruptsTable(line: string): boolean {
+  const lead = leadingColumns(line);
+  if (lead.columns > 3) return false;
+  const rest = line.slice(lead.index);
+  if (/^#{1,6}(?:[ \t]|$)/.test(rest)) return true;
+  if (isThematicBreak(line)) return true;
+  if (isFenceLine(line)) return true;
+  if (rest.trim() === "$$") return true;
+  if (htmlBlockInterrupts(line) || htmlLazyTag(line)) return true;
+  return false;
+}
+
+function isThematicBreak(line: string): boolean {
+  let i = 0;
+  while (i < line.length && i < 3 && line[i] === " ") i += 1;
+  const mark = line[i];
+  if (mark !== "-" && mark !== "*" && mark !== "_") return false;
+  let count = 0;
+  for (let j = i; j < line.length; j += 1) {
+    const ch = line[j];
+    if (ch === mark) count += 1;
+    else if (ch === " " || ch === "\t") continue;
+    else return false;
+  }
+  return count >= 3;
+}
+
+function isFenceLine(line: string): boolean {
+  const match = /^( {0,3})(`{3,}|~{3,})(.*)$/.exec(line);
+  if (!match) return false;
+  return fenceInfoAllowsOpen(match[2] ?? "", match[3] ?? "");
+}
+
+function leadingColumns(line: string): { columns: number; index: number } {
+  let columns = 0;
+  let index = 0;
+  while (index < line.length) {
+    const ch = line[index];
+    if (ch === " ") {
+      columns += 1;
+      index += 1;
+      continue;
+    }
+    if (ch === "\t") {
+      columns += 4 - (columns % 4);
+      index += 1;
+      continue;
+    }
+    break;
+  }
+  return { columns, index };
 }
 
 /**
@@ -208,7 +283,12 @@ function isTableLine(line: string): boolean {
  * v1.55: `\|` inside a code span is stored as `|`. Outside a code
  * span the backslash stays so the escape pass can paint the pipe.
  */
-export function splitRow(line: string): string[] | null {
+/**
+ * `pipeLess` is for a body row. A line with no unescaped pipe is
+ * then one cell. Header and delimiter rows stay pipe-required, so
+ * `foo` over `---` is still a setext heading.
+ */
+export function splitRow(line: string, pipeLess = false): string[] | null {
   const indent = line.match(/^ */)?.[0].length ?? 0;
   if (indent >= 4) return null;
   const body = line.slice(indent);
@@ -267,7 +347,13 @@ export function splitRow(line: string): string[] | null {
     i += 1;
   }
   cells.push(current.trim());
-  if (pipes === 0) return null;
+  if (pipes === 0) {
+    if (!pipeLess) return null;
+    if (leadingColumns(line).columns >= 4) return null;
+    const text = body.trim();
+    if (!text) return null;
+    return [text];
+  }
   let start = 0;
   let end = cells.length;
   const trimmed = body.trim();

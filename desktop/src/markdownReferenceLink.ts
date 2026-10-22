@@ -19,7 +19,7 @@
  * Keep in lockstep with `ios/SnorlaxBot/MarkdownReferenceLink.swift`.
  */
 
-import { splitRow } from "./markdownTable.ts";
+import { markdownTableEnd } from "./markdownTable.ts";
 import {
   fenceRanges,
   inRange,
@@ -636,29 +636,10 @@ function tableLineSet(lines: LineSpan[]): Set<number> {
 }
 
 function tableEnd(lines: LineSpan[], start: number): number {
-  if (start + 1 >= lines.length) return start;
-  const headerLine = lines[start]!.text;
-  const delimLine = lines[start + 1]!.text;
-  if (!isTableLine(headerLine) || !isTableLine(delimLine)) return start;
-  const header = splitRow(headerLine);
-  const delim = splitRow(delimLine);
-  if (!header || !delim || header.length !== delim.length) return start;
-  if (!delim.every((cell) => /^:?-+:?$/.test(cell))) return start;
-  let next = start + 2;
-  while (next < lines.length) {
-    const line = lines[next]!.text;
-    if (!isTableLine(line) || !splitRow(line)) break;
-    next += 1;
-  }
-  return next;
-}
-
-function isTableLine(line: string): boolean {
-  if (/^ {4,}/.test(line)) return false;
-  const trimmed = line.trim();
-  if (!trimmed || trimmed.startsWith(">")) return false;
-  if (/^([-*+]|\d+[.)])\s/.test(trimmed)) return false;
-  return true;
+  return markdownTableEnd(
+    lines.map((line) => line.text),
+    start,
+  );
 }
 
 function blockGate(

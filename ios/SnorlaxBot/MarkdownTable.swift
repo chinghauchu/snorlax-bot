@@ -16,7 +16,12 @@ import SwiftUI
 /// v1.65: a body row is clipped to the header width. Extra cells
 /// are dropped. A short row is padded with empty cells. Alignment
 /// stays the delimiter row. The clipboard source stays the original
-/// lines. A line with no pipe still ends the table.
+/// lines.
+/// v1.66: a body line with no unescaped pipe is one cell, then
+/// padded to the header. A blank line ends the table. A heading,
+/// rule, quote, list, fence, indented code, raw HTML block, or
+/// `$$` line still ends it. A pipe-less header does not start a
+/// table, so `foo` over `---` stays a setext heading.
 /// Keep in lockstep with `desktop/src/markdownTable.ts`.
 enum MarkdownTable {
     enum Align: Equatable {
@@ -105,7 +110,8 @@ enum MarkdownTable {
         var next = start + 2
         while next < lines.count {
             let line = lines[next]
-            guard isTableLine(line), let row = splitRow(line) else { break }
+            if !isTableLine(line) || interruptsTable(line) { break }
+            guard let row = splitRow(line, pipeLess: true) else { break }
             body.append(row)
             next += 1
         }
@@ -119,6 +125,13 @@ enum MarkdownTable {
             ),
             next: next
         )
+    }
+
+    /// Index just after a table that starts at `start`, or `start`
+    /// when those lines are not a table. Reference links and footnotes
+    /// use this so a pipe-less body row is not stolen as a definition.
+    static func lineEnd(_ lines: [String], start: Int) -> Int {
+        parseTable(lines, start: start)?.next ?? start
     }
 
     private static func blockGate(
@@ -157,20 +170,93 @@ enum MarkdownTable {
     }
 
     private static func isTableLine(_ line: String) -> Bool {
-        let indent = line.prefix { $0 == " " }.count
-        if indent >= 4 { return false }
+        if leadingColumns(line).columns >= 4 { return false }
         let trimmed = line.trimmingCharacters(in: .whitespaces)
         if trimmed.isEmpty || trimmed.hasPrefix(">") { return false }
-        if trimmed.range(of: #"^([-*+]|\d+[.)])\s"#, options: .regularExpression) != nil {
+        // An empty item (`-`, `*`, `1.`) is still a list. Ordered markers
+        // are at most nine digits, so `1234567890. item` is a cell.
+        if trimmed.range(of: #"^[-*+](?:[ \t]|$)"#, options: .regularExpression) != nil {
+            return false
+        }
+        if trimmed.range(of: #"^\d{1,9}[.)](?:[ \t]|$)"#, options: .regularExpression) != nil {
             return false
         }
         return true
     }
 
+    /// Block starts end the table instead of becoming a one-cell row.
+    private static func interruptsTable(_ line: String) -> Bool {
+        let lead = leadingColumns(line)
+        if lead.columns > 3 { return false }
+        let rest = String(line.dropFirst(lead.index))
+        if rest.range(of: #"^#{1,6}(?:[ \t]|$)"#, options: .regularExpression) != nil { return true }
+        if isThematicBreak(line) { return true }
+        if isFenceLine(line) { return true }
+        if rest.trimmingCharacters(in: .whitespaces) == "$$" { return true }
+        if MarkdownList.htmlBlockInterrupts(line) || MarkdownList.htmlLazyTag(line) { return true }
+        return false
+    }
+
+    private static func isThematicBreak(_ line: String) -> Bool {
+        var index = line.startIndex
+        var spaces = 0
+        while index < line.endIndex, spaces < 3, line[index] == " " {
+            index = line.index(after: index)
+            spaces += 1
+        }
+        guard index < line.endIndex else { return false }
+        let mark = line[index]
+        guard mark == "-" || mark == "*" || mark == "_" else { return false }
+        var count = 0
+        var cursor = index
+        while cursor < line.endIndex {
+            let ch = line[cursor]
+            if ch == mark {
+                count += 1
+            } else if ch != " " && ch != "\t" {
+                return false
+            }
+            cursor = line.index(after: cursor)
+        }
+        return count >= 3
+    }
+
+    private static func isFenceLine(_ line: String) -> Bool {
+        guard let match = line.range(of: #"^( {0,3})(`{3,}|~{3,})(.*)$"#, options: .regularExpression) else {
+            return false
+        }
+        let body = String(line[match])
+        guard let ticks = body.range(of: #"[`~]{3,}"#, options: .regularExpression) else { return false }
+        let marker = String(body[ticks])
+        let info = String(body[ticks.upperBound...])
+        return MarkdownCodeSpan.fenceInfoAllowsOpen(marker: marker, info: info)
+    }
+
+    private static func leadingColumns(_ line: String) -> (columns: Int, index: Int) {
+        var columns = 0
+        var index = 0
+        for ch in line {
+            if ch == " " {
+                columns += 1
+                index += 1
+                continue
+            }
+            if ch == "\t" {
+                columns += 4 - (columns % 4)
+                index += 1
+                continue
+            }
+            break
+        }
+        return (columns, index)
+    }
+
     /// Cells split on unescaped pipes outside inline code. Outer pipes drop.
     /// v1.55: `\|` inside a code span is stored as `|`. Outside a code
     /// span the backslash stays so the escape pass can paint the pipe.
-    static func splitRow(_ line: String) -> [String]? {
+    /// `pipeLess` is for a body row. A line with no unescaped pipe is
+    /// then one cell. Header and delimiter rows stay pipe-required.
+    static func splitRow(_ line: String, pipeLess: Bool = false) -> [String]? {
         let indent = line.prefix { $0 == " " }.count
         if indent >= 4 { return nil }
         let body = String(line.dropFirst(indent))
@@ -232,7 +318,13 @@ enum MarkdownTable {
             index += 1
         }
         cells.append(current.trimmingCharacters(in: .whitespaces))
-        if pipes == 0 { return nil }
+        if pipes == 0 {
+            if !pipeLess { return nil }
+            if leadingColumns(line).columns >= 4 { return nil }
+            let text = body.trimmingCharacters(in: .whitespaces)
+            if text.isEmpty { return nil }
+            return [text]
+        }
         var start = 0
         var end = cells.count
         let trimmed = body.trimmingCharacters(in: .whitespaces)

@@ -17,6 +17,7 @@
  */
 
 import { fenceRanges, inRange, inlineCodeRanges, type Range } from "./math.ts";
+import { markdownTableEnd } from "./markdownTable.ts";
 
 export const FOOTNOTES_TITLE = "Footnotes";
 
@@ -225,6 +226,14 @@ function collectDefs(src: string, blocked: Range[]): Def[] {
     const line = lines[i]!;
     if (inRange(line.start, blocked)) {
       i += 1;
+      continue;
+    }
+    const tableEnd = markdownTableEnd(
+      lines.map((span) => span.text),
+      i,
+    );
+    if (tableEnd > i) {
+      i = tableEnd;
       continue;
     }
     const match = DEF_RE.exec(line.text);

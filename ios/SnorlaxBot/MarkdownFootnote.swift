@@ -225,6 +225,11 @@ enum MarkdownFootnote {
                 index += 1
                 continue
             }
+            let tableEnd = MarkdownTable.lineEnd(lines.map(\.text), start: index)
+            if tableEnd > index {
+                index = tableEnd
+                continue
+            }
             guard let match = definition(line.text) else {
                 index += 1
                 continue
