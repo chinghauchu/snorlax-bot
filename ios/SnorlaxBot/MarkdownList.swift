@@ -46,6 +46,14 @@ import SwiftUI
 /// Copy controls keep markdown source — this type only splits text
 /// for display and does not write the pasteboard. No animation.
 /// No new HTTP.
+///
+/// v1.72: indented code inside a list item keeps cmark-gfm tab
+/// stops. A tab is measured from its column on the original
+/// line, not from column 0 after the marker is stripped.
+/// A tab that crosses the code indent becomes the leftover
+/// spaces, and a later tab stays a tab. A line that continues
+/// an open paragraph is not code. A fence whose indent is
+/// under four columns is unchanged. Streaming stays plain text.
 /// Keep in lockstep with `desktop/src/markdownList.ts`.
 enum MarkdownList {
     struct Group: Equatable {
@@ -241,7 +249,20 @@ enum MarkdownList {
         // A marker with no text is already the item's one allowed
         // blank line. Content has to be indented to the content
         // column; a second blank line ends the item.
-        var body: [String] = marker.text.isEmpty ? [] : [marker.text]
+        // v1.72: a code line is stored as four spaces plus the text
+        // cmark-gfm would keep, so the indented-code pass (which
+        // starts at column 0) does not remeasure a shifted tab.
+        let openingCode = listItemIndentedCode(lines[start], contentColumn: marker.contentColumn)
+        var body: [String] = []
+        var paragraph = false
+        if !marker.text.isEmpty {
+            if let code = openingCode {
+                body.append(String(repeating: " ", count: 4) + code)
+            } else {
+                body.append(marker.text)
+                paragraph = true
+            }
+        }
         var index = start + 1
         var fence: String?
         var inMath = false
@@ -283,16 +304,25 @@ enum MarkdownList {
                 if leadingColumns(upcoming).columns >= marker.contentColumn {
                     body.append("")
                     sawBlank = true
+                    paragraph = false
                     index += 1
                     continue
                 }
                 break
+            }
+            if !paragraph, let code = listItemIndentedCode(line, contentColumn: marker.contentColumn) {
+                body.append(String(repeating: " ", count: 4) + code)
+                sawContent = true
+                paragraph = false
+                index += 1
+                continue
             }
             if let opened = fenceOnLine(line) {
                 if leadingColumns(line).columns < marker.contentColumn { break }
                 fence = opened.marker
                 body.append(dedent(line, columns: marker.contentColumn))
                 sawContent = true
+                paragraph = false
                 index += 1
                 continue
             }
@@ -301,6 +331,7 @@ enum MarkdownList {
                 inMath = true
                 body.append(dedent(line, columns: marker.contentColumn))
                 sawContent = true
+                paragraph = false
                 index += 1
                 continue
             }
@@ -308,6 +339,7 @@ enum MarkdownList {
                 if nested.column >= marker.contentColumn {
                     body.append(dedent(line, columns: marker.contentColumn))
                     sawContent = true
+                    paragraph = true
                     index += 1
                     continue
                 }
@@ -316,11 +348,13 @@ enum MarkdownList {
             if leadingColumns(line).columns >= marker.contentColumn {
                 body.append(dedent(line, columns: marker.contentColumn))
                 sawContent = true
+                paragraph = true
                 index += 1
                 continue
             }
             if sawContent && !sawBlank && !interruptsList(line) {
                 body.append(lazyLine(line))
+                paragraph = true
                 if htmlLazyTag(line) { sawBlank = true }
                 index += 1
                 continue
@@ -746,6 +780,47 @@ enum MarkdownList {
             break
         }
         return (columns, index)
+    }
+
+    /// Indented-code body of a list line, or nil when the line is
+    /// not indented four columns past `contentColumn`.
+    ///
+    /// Columns are the original line, so a tab keeps its stop. The
+    /// marker's own characters sit before `contentColumn` and are
+    /// skipped. A tab that starts before the code indent and ends
+    /// after it contributes the leftover spaces. A tab that starts
+    /// at or after that indent stays in the returned text.
+    static func listItemIndentedCode(_ line: String, contentColumn: Int) -> String? {
+        let limit = contentColumn + 4
+        var col = 0
+        var index = line.startIndex
+        while index < line.endIndex, col < limit {
+            let ch = line[index]
+            if ch == " " {
+                col += 1
+                index = line.index(after: index)
+                continue
+            }
+            if ch == "\t" {
+                let next = col + (4 - (col % 4))
+                if next <= limit {
+                    col = next
+                    index = line.index(after: index)
+                    continue
+                }
+                let leftover = String(repeating: " ", count: next - limit)
+                let rest = String(line[line.index(after: index)...])
+                return leftover + rest
+            }
+            if col < contentColumn {
+                col += 1
+                index = line.index(after: index)
+                continue
+            }
+            return nil
+        }
+        if col < limit { return nil }
+        return String(line[index...])
     }
 
     private static func dedent(_ line: String, columns: Int) -> String {

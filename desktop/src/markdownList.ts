@@ -50,6 +50,14 @@
  * (`completed: false`) returns the text unchanged. Copy
  * controls keep markdown source — this module does not copy.
  * No animation. No new HTTP.
+ *
+ * v1.72: indented code inside a list item keeps cmark-gfm tab
+ * stops. A tab is measured from its column on the original
+ * line, not from column 0 after the marker is stripped.
+ * A tab that crosses the code indent becomes the leftover
+ * spaces, and a later tab stays a tab. A line that continues
+ * an open paragraph is not code. A fence whose indent is
+ * under four columns is unchanged. Streaming stays plain text.
  * Keep in lockstep with `ios/SnorlaxBot/MarkdownList.swift`.
  */
 
@@ -337,6 +345,47 @@ function readList(
   };
 }
 
+/**
+ * Indented-code body of a list line, or null when the line is
+ * not indented four columns past `contentColumn`.
+ *
+ * Columns are the original line, so a tab keeps its stop. The
+ * marker's own characters sit before `contentColumn` and are
+ * skipped. A tab that starts before the code indent and ends
+ * after it contributes the leftover spaces. A tab that starts
+ * at or after that indent stays in the returned text.
+ */
+export function listItemIndentedCode(line: string, contentColumn: number): string | null {
+  const limit = contentColumn + 4;
+  let col = 0;
+  let index = 0;
+  while (index < line.length && col < limit) {
+    const ch = line[index] ?? "";
+    if (ch === " ") {
+      col += 1;
+      index += 1;
+      continue;
+    }
+    if (ch === "\t") {
+      const next = col + (4 - (col % 4));
+      if (next <= limit) {
+        col = next;
+        index += 1;
+        continue;
+      }
+      return `${" ".repeat(next - limit)}${line.slice(index + 1)}`;
+    }
+    if (col < contentColumn) {
+      col += 1;
+      index += 1;
+      continue;
+    }
+    return null;
+  }
+  if (col < limit) return null;
+  return line.slice(index);
+}
+
 function readItem(
   lines: string[],
   start: number,
@@ -346,7 +395,19 @@ function readItem(
   // A marker with no text is already the item's one allowed
   // blank line. Content has to be indented to the content
   // column; a second blank line ends the item.
-  const body: string[] = marker.text === "" ? [] : [marker.text];
+  // v1.72: a code line is stored as four spaces plus the text
+  // cmark-gfm would keep, so the indented-code pass (which
+  // starts at column 0) does not remeasure a shifted tab.
+  const openingCode = listItemIndentedCode(lines[start] ?? "", marker.contentColumn);
+  const body: string[] = [];
+  let paragraph = false;
+  if (marker.text !== "") {
+    if (openingCode != null) body.push(`    ${openingCode}`);
+    else {
+      body.push(marker.text);
+      paragraph = true;
+    }
+  }
   let i = start + 1;
   let fence: string | null = null;
   let inMath = false;
@@ -392,10 +453,21 @@ function readItem(
       if (leadingColumns(upcoming).columns >= marker.contentColumn) {
         body.push("");
         sawBlank = true;
+        paragraph = false;
         i += 1;
         continue;
       }
       break;
+    }
+    if (!paragraph) {
+      const code = listItemIndentedCode(line, marker.contentColumn);
+      if (code != null) {
+        body.push(`    ${code}`);
+        sawContent = true;
+        paragraph = false;
+        i += 1;
+        continue;
+      }
     }
     const opened = fenceOnLine(line);
     if (opened) {
@@ -403,6 +475,7 @@ function readItem(
       fence = opened.marker;
       body.push(dedent(line, marker.contentColumn));
       sawContent = true;
+      paragraph = false;
       i += 1;
       continue;
     }
@@ -411,6 +484,7 @@ function readItem(
       inMath = true;
       body.push(dedent(line, marker.contentColumn));
       sawContent = true;
+      paragraph = false;
       i += 1;
       continue;
     }
@@ -418,6 +492,7 @@ function readItem(
     if (nested && nested.column >= marker.contentColumn) {
       body.push(dedent(line, marker.contentColumn));
       sawContent = true;
+      paragraph = true;
       i += 1;
       continue;
     }
@@ -425,6 +500,7 @@ function readItem(
     if (leadingColumns(line).columns >= marker.contentColumn) {
       body.push(dedent(line, marker.contentColumn));
       sawContent = true;
+      paragraph = true;
       i += 1;
       continue;
     }
@@ -433,6 +509,7 @@ function readItem(
       // indent is not part of the text. A type 7 tag (`<br>`)
       // stays in the item and ends further lazy lines.
       body.push(line.replace(/^[ \t]+/, ""));
+      paragraph = true;
       if (htmlLazyTag(line)) sawBlank = true;
       i += 1;
       continue;
