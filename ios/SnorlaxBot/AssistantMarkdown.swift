@@ -1124,6 +1124,8 @@ private struct MarkdownRun: View {
         // Inline and type-7 raw HTML become tokens so the parser cannot
         // drop the characters. A type 1–6 block that starts a line stays
         // raw so the list and quote split still ends there.
+        // v1.75: a bare br / kbd / sub / sup is a render token. The
+        // kbd, sub, and sup tokens are painted after the parse.
         let escaped = MarkdownHtmlLiteral.literalize(
             MarkdownEscape.protect(src, completed: completed),
             completed: completed
@@ -1147,6 +1149,7 @@ private struct MarkdownRun: View {
         parsed = WebLinks.applyingLinks(parsed, streaming: false)
         parsed = MarkdownEscape.restore(parsed)
         parsed = MarkdownHardBreak.restore(parsed)
+        parsed = MarkdownHtmlLiteral.restoreSafeTags(parsed)
         dropUnsafeLinks(&parsed)
         highlightMentions(&parsed)
         markHeadingFonts(&parsed)

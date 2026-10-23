@@ -191,3 +191,4 @@ jobs:
           python3 ios/scripts/test_ios_markdown_list_code_tab.py
           python3 ios/scripts/test_ios_markdown_quote_tab.py
           python3 ios/scripts/test_ios_markdown_angle_dest.py
+          python3 ios/scripts/test_ios_markdown_inline_html.py

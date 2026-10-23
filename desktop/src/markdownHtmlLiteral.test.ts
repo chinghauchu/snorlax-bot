@@ -160,13 +160,7 @@ test("inline tags round-trip and type 1–6 blocks stay raw", () => {
   }
 
   const stashed = [
-    "use <kbd>Ctrl</kbd>",
     "x<y>",
-    "foo<br>bar",
-    "<br>",
-    "<br/>",
-    "<br />",
-    "<BR>",
     '<span class="x">t</span>',
     "foo <!-- c --> bar",
     "foo <!-- **x** --> bar",
@@ -187,7 +181,7 @@ test("inline tags round-trip and type 1–6 blocks stay raw", () => {
     assert.equal(restoreMarkdownEscapes(next), sample);
   }
   assert.equal(literalizeRawHtml("use <br> and <3>").includes("<3>"), true);
-  assert.equal(literalizeRawHtml("use <kbd>Ctrl</kbd>").split("§§SBE").length, 3);
+  assert.equal(literalizeRawHtml('<span class="x">t</span>').split("§§SBE").length, 3);
   const streaming = "use <br> now";
   assert.equal(literalizeRawHtml(streaming, false), streaming);
   assert.equal(htmlLiteralAnimates(false), false);
@@ -196,19 +190,12 @@ test("inline tags round-trip and type 1–6 blocks stay raw", () => {
 
 test("completed replies show the same characters desktop already showed", () => {
   const same = [
-    "use <br> now",
-    "use <kbd>Ctrl</kbd>",
     "x<y>",
-    "foo<br>bar",
     '<span class="x">t</span>',
     "foo <!-- c --> bar",
     "foo <!-- **x** --> bar",
     "foo <!--> foo -->",
     'see <span class="*not*">**y**</span>',
-    "use <kbd>**Ctrl**</kbd>",
-    "foo\n<br>\n9. bar",
-    "foo\n<br>\n1. bar",
-    "foo\n<br>\nbar",
     "foo\n<div>\n9. not\n</div>\n9. yes",
     "foo\n<!-- c -->\n9. bar",
     "foo\n<script>\n9. not\n\n9. still\n</script>\n9. yes",
@@ -244,8 +231,6 @@ test("completed replies show the same characters desktop already showed", () => 
   for (const sample of same) {
     assert.equal(shown(sample), render(sample), sample);
   }
-  assert.match(shown("<br>"), /<p>&lt;br&gt;<\/p>/);
-  assert.match(shown("foo\n\n<br>\n\nbar"), /<p>&lt;br&gt;<\/p>/);
   assert.match(shown("foo\n\n<br>\n\nbar"), /<p>foo<\/p>/);
   assert.match(shown("foo\n\n<br>\n\nbar"), /<p>bar<\/p>/);
   assert.doesNotMatch(shown("```\n<br>\n```"), /SBE/);
@@ -254,7 +239,7 @@ test("completed replies show the same characters desktop already showed", () => 
   assert.match(shown("[a](<http://ex.com>)"), /href="http:\/\/ex.com"/);
   assert.match(shown("<https://example.com>"), /href="https:\/\/example.com"/);
   assert.doesNotMatch(shown('see <span class="*not*">x</span>'), /<em>/);
-  assert.match(shown("use <kbd>**Ctrl**</kbd>"), /<strong>Ctrl<\/strong>/);
+  assert.match(shown('see <span class="x">**y**</span>'), /<strong>y<\/strong>/);
   assert.equal(pipeline("use <br>", false), "use <br>");
 });
 
