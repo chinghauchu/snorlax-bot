@@ -163,7 +163,7 @@ function takeInline(
   }
   const dest = scanLinkUrl(src, destAt);
   if (!dest) return bracketAt + 1;
-  let cursor = dest.next;
+  let cursor = dest.end;
   const titleAt = skipLinkSpace(src, cursor, blockedAt);
   if (titleAt != null && titleAt !== cursor && isTitleOpen(src[titleAt] ?? "")) {
     const title = readTitle(src, titleAt, blockedAt);
@@ -218,7 +218,7 @@ function definitionDest(
   if (destAt == null) return null;
   const dest = scanLinkUrl(src, destAt);
   if (!dest) return null;
-  j = dest.next;
+  j = dest.end;
   const titleAt = skipDestWs(src, j, blockedAt);
   if (titleAt != null && titleAt !== j && isTitleOpen(src[titleAt] ?? "")) {
     const title = readTitle(src, titleAt, blockedAt);
@@ -251,7 +251,7 @@ function scanLinkUrl(src: string, offset: number): DestHit | null {
     }
     // cmark rejects an angle destination that ends the input.
     if (!closed || i >= src.length) return null;
-    return { raw: src.slice(offset + 1, i - 1), start: offset, end: i, next: i };
+    return { raw: src.slice(offset + 1, i - 1), start: offset, end: i };
   }
   let i = offset;
   let depth = 0;
@@ -280,7 +280,7 @@ function scanLinkUrl(src: string, offset: number): DestHit | null {
     i += 1;
   }
   if (i >= src.length) return null;
-  return { raw: src.slice(offset, i), start: offset, end: i, next: i };
+  return { raw: src.slice(offset, i), start: offset, end: i };
 }
 
 function readTitle(
