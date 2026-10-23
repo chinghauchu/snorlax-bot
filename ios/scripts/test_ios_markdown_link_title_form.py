@@ -71,7 +71,8 @@ def test_title_scan_matches_cmark() -> None:
 
 def test_render_path_copy_and_openapi() -> None:
     assert "MarkdownLinkTitle.prepare(" in MARKDOWN
-    assert "prepareSpacedDestinations(self.source, completed: completed)" in MARKDOWN
+    assert "MarkdownLinkDest.prepare(self.source, completed: completed)" in MARKDOWN
+    assert "prepareSpacedDestinations(" in MARKDOWN
     assert "prepareLinkTitleForms(" in BODY
     assert "copyText(reply.content)" in APP
     assert "MarkdownLinkTitle" not in (IOS / "MidStreamPlaintext.swift").read_text(encoding="utf-8")

@@ -1019,7 +1019,10 @@ private struct MarkdownRun: View {
     private var flowPieces: [MarkdownFlowPiece] {
         let source = MarkdownLinkTitle.prepare(
             MarkdownImage.prepareAlts(
-                MarkdownReferenceLink.prepareSpacedDestinations(self.source, completed: completed),
+                MarkdownReferenceLink.prepareSpacedDestinations(
+                    MarkdownLinkDest.prepare(self.source, completed: completed),
+                    completed: completed
+                ),
                 completed: completed
             ),
             completed: completed

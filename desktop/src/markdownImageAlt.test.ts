@@ -228,7 +228,10 @@ test("docs, CI, and OpenAPI record v1.77 without a new route", () => {
   assert.match(src, /prepareImageAlts/);
   assert.match(src, /stashMarkdownText/);
   assert.match(image, /prepareImageAlts/);
-  assert.match(body, /prepareImageAlts\(prepareSpacedLinkDestinations/);
+  assert.match(
+    body,
+    /prepareImageAlts\(\s*prepareSpacedLinkDestinations\(\s*prepareLinkDestinations\(sourceText, completed\),/,
+  );
   assert.match(swift, /v1\.77/);
   assert.match(swift, /static func flatten/);
   assert.match(imageSwift, /MarkdownEscape\.stash/);

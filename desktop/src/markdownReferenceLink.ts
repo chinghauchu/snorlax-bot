@@ -655,10 +655,16 @@ function readDestination(src: string, i: number): { dest: string; next: number }
   let depth = 0;
   while (j < src.length) {
     const ch = src[j] ?? "";
+    // v1.79: a backslash escapes ASCII punctuation only. `\b` keeps
+    // the backslash so the destination pass can encode `%5C`.
     if (ch === "\\") {
-      if (j + 1 >= src.length) break;
-      out += src[j + 1];
-      j += 2;
+      if (j + 1 < src.length && ASCII_PUNCT.includes(src[j + 1] ?? "")) {
+        out += src[j + 1];
+        j += 2;
+        continue;
+      }
+      out += ch;
+      j += 1;
       continue;
     }
     if (ch === " " || ch === "\t" || ch === "\n" || ch === "\r") break;

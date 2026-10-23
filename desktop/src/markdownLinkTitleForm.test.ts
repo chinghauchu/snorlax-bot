@@ -276,7 +276,10 @@ test("docs, copy, and OpenAPI stay on the v1.78 path", () => {
   assert.match(swift, /static func read/);
   assert.match(swift, /&#38;/);
   assert.match(markdown, /MarkdownLinkTitle\.prepare\(/);
-  assert.match(markdown, /prepareSpacedDestinations\(self\.source, completed: completed\)/);
+  assert.match(
+    markdown,
+    /prepareSpacedDestinations\(\s*MarkdownLinkDest\.prepare\(self\.source, completed: completed\),/,
+  );
   assert.ok(roadmap.includes(PHRASE));
   assert.match(roadmap, /\/ v1\.78 /);
   assert.match(spec, /## 178\. v1\.78/);

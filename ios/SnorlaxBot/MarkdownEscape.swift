@@ -88,7 +88,13 @@ enum MarkdownEscape {
     /// Fences, inline code, and indented code, as character offsets.
     /// The raw-HTML pass skips these spans.
     static func opaqueSpans(in text: String) -> [(start: Int, end: Int)] {
-        protectedRanges(Array(text)).map { (start: $0.start, end: $0.end) }
+        codeSpans(in: Array(text))
+    }
+
+    /// Fences, inline code, and indented code. Destinations are not
+    /// included, so a destination scan can call this without looping.
+    static func codeSpans(in chars: [Character]) -> [(start: Int, end: Int)] {
+        protectedCode(chars).map { (start: $0.start, end: $0.end) }
     }
 
     /// Rewrite escapes and character references outside code.
@@ -99,6 +105,8 @@ enum MarkdownEscape {
     /// v1.69 stashes a numeric reference with more digits than
     /// CommonMark allows, so `&#87654321;` and `&#x0001F600;` stay
     /// the characters instead of U+FFFD or an emoji.
+    /// v1.79 leaves a link or image destination untouched so
+    /// `&#38;` in the href reaches the markdown parser.
     static func protect(_ text: String, completed: Bool = true) -> String {
         if !completed || text.isEmpty { return text }
         let underscored = MarkdownUnderscore.protect(text, completed: true)
@@ -309,11 +317,19 @@ enum MarkdownEscape {
         return (scalar >= "a" && scalar <= "f") || (scalar >= "A" && scalar <= "F")
     }
 
-    private static func protectedRanges(_ chars: [Character]) -> [Span] {
+    private static func protectedCode(_ chars: [Character]) -> [Span] {
         let fences = fenceRanges(chars)
         let codes = inlineCodeRanges(chars, fences)
         let indented = indentedCodeRanges(chars, fences)
         return merge(fences + codes + indented)
+    }
+
+    private static func protectedRanges(_ chars: [Character]) -> [Span] {
+        var spans = protectedCode(chars)
+        for dest in MarkdownLinkDest.spans(chars) {
+            spans.append(Span(start: dest.start, end: dest.end))
+        }
+        return merge(spans)
     }
 
     private static func fenceRanges(_ chars: [Character]) -> [Span] {

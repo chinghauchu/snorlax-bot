@@ -36,6 +36,7 @@ import {
 import { linkHref, splitWebUrls } from "./linkify";
 import { splitIndentedCode } from "./markdownIndentedCode";
 import { prepareAngleAutolinks, safeLinkHref } from "./markdownAutolink";
+import { prepareLinkDestinations } from "./markdownLinkDest";
 import { prepareSpacedLinkDestinations } from "./markdownReferenceLink";
 import { linkTitleHint, prepareLinkTitleForms } from "./markdownLinkTitle";
 import {
@@ -403,7 +404,13 @@ function HeadingInline({
   completed: boolean;
 }) {
   const text = prepareLinkTitleForms(
-    prepareImageAlts(prepareSpacedLinkDestinations(sourceText, completed), completed),
+    prepareImageAlts(
+      prepareSpacedLinkDestinations(
+        prepareLinkDestinations(sourceText, completed),
+        completed,
+      ),
+      completed,
+    ),
     completed,
   );
   const findQuery = useFindQuery();
@@ -565,7 +572,13 @@ function MarkdownParsed({
   findQuery: string;
 }) {
   const text = prepareLinkTitleForms(
-    prepareImageAlts(prepareSpacedLinkDestinations(sourceText, completed), completed),
+    prepareImageAlts(
+      prepareSpacedLinkDestinations(
+        prepareLinkDestinations(sourceText, completed),
+        completed,
+      ),
+      completed,
+    ),
     completed,
   );
   const extracted = extractMath(text);
@@ -772,7 +785,13 @@ function TableCellText({
   completed: boolean;
 }) {
   const text = prepareLinkTitleForms(
-    prepareImageAlts(prepareSpacedLinkDestinations(sourceText, completed), completed),
+    prepareImageAlts(
+      prepareSpacedLinkDestinations(
+        prepareLinkDestinations(sourceText, completed),
+        completed,
+      ),
+      completed,
+    ),
     completed,
   );
   const findQuery = useFindQuery();

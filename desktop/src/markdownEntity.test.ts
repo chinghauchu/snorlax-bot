@@ -165,15 +165,15 @@ test("a reference inside a raw HTML stash decodes and does not leak the token", 
 test("link destinations and titles decode character references", () => {
   const relative = '[a](/u?x=1&amp;y=2 "t&amp;t")';
   const relativeHtml = markup(relative);
-  assert.equal(restoreMarkdownEscapes(hrefOf(relativeHtml)), "/u?x=1&y=2");
+  assert.equal(hrefOf(relativeHtml), "/u?x=1&amp;y=2");
   assert.equal(linkTitleHint(titleOf(relativeHtml)), "t&t");
   assert.match(relativeHtml, />a</);
   assert.doesNotMatch(painted(relative), /SBE/);
   const absolute = '[a](https://example.com/u?x=1&amp;y=2 "A &amp; B")';
   const absoluteHtml = markup(absolute);
   assert.equal(
-    restoreMarkdownEscapes(hrefOf(absoluteHtml)),
-    "https://example.com/u?x=1&y=2",
+    hrefOf(absoluteHtml),
+    "https://example.com/u?x=1&amp;y=2",
   );
   assert.equal(linkTitleHint(titleOf(absoluteHtml)), "A & B");
   assert.doesNotMatch(painted(absolute), /SBE/);
