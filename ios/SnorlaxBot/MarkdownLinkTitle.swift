@@ -20,6 +20,8 @@ import UIKit
 enum MarkdownLinkTitle {
     static var previewHint: String?
 
+    private static let asciiPunct = Set("!\"#$%&'()*+,-./:;<=>?@[\\]^_`{|}~")
+
     static func hint(_ title: String?, completed: Bool) -> String {
         if !completed { return "" }
         guard let title else { return "" }
@@ -323,7 +325,8 @@ enum MarkdownLinkTitle {
                 if inSpan(index, blocked) { return nil }
                 let ch = chars[index]
                 if ch == "\n" || ch == "<" { return nil }
-                if ch == "\\", index + 1 < chars.count {
+                // v1.74: spaces stay. A backslash escapes ASCII punctuation only.
+                if ch == "\\", index + 1 < chars.count, asciiPunct.contains(chars[index + 1]) {
                     value.append(chars[index + 1])
                     index += 2
                     continue

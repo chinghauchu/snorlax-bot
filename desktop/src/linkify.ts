@@ -40,6 +40,25 @@ const CLOSER_TO_OPEN: Record<string, string> = {
   "}": "{",
 };
 
+/**
+ * v1.74: a pointy-bracket link destination may contain spaces and
+ * tabs. URL parsers reject those, and a literal backslash or angle
+ * bracket in that destination is not a URL character. Percent-encode
+ * just those. An already-encoded `%20` is left as written.
+ */
+export function encodeLinkDestination(dest: string): string {
+  let out = "";
+  for (const ch of dest) {
+    if (ch === " ") out += "%20";
+    else if (ch === "\t") out += "%09";
+    else if (ch === "\\") out += "%5C";
+    else if (ch === "<") out += "%3C";
+    else if (ch === ">") out += "%3E";
+    else out += ch;
+  }
+  return out;
+}
+
 /** http and https only. javascript:, file:, data:, and ftp: are not. */
 export function isSafeWebUrl(href: string | undefined | null): boolean {
   if (!href) return false;

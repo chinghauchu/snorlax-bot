@@ -16,9 +16,17 @@
  * leave `![alt][ref]` behind. Streaming (`completed: false`) returns
  * the text unchanged. Copy controls keep markdown source.
  * No animation. No new HTTP.
+ * v1.74: a pointy destination may contain spaces and tabs, including
+ * when a title follows in single quotes or parentheses. A backslash
+ * escapes ASCII punctuation only, so `\ ` stays a backslash and a
+ * space. `prepareSpacedLinkDestinations` percent-encodes that
+ * destination for the markdown parser. Streaming stays plain.
+ * Copy keeps markdown source.
  * Keep in lockstep with `ios/SnorlaxBot/MarkdownReferenceLink.swift`.
  */
 
+import { ASCII_PUNCT } from "./markdownEscape.ts";
+import { encodeLinkDestination } from "./linkify.ts";
 import { markdownTableEnd } from "./markdownTable.ts";
 import {
   fenceRanges,
@@ -54,6 +62,146 @@ export function resolveReferenceLinks(text: string, completed = true): string {
   if (collected.cuts.length === 0) return text;
   const stripped = removeRanges(src, collected.cuts);
   return applyReferences(stripped, collected.map, protectedRanges(stripped));
+}
+
+/**
+ * v1.74: percent-encode spaces and tabs inside pointy link and image
+ * destinations, and inside a link reference definition's pointy
+ * destination. Code, fences, indented code, and math stay literal.
+ * `completed: false` returns `text`. The characters outside those
+ * brackets stay as written, so find still sees a space until render.
+ */
+export function prepareSpacedLinkDestinations(text: string, completed = true): string {
+  if (!completed || !text || !text.includes("<")) return text;
+  const src = text.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
+  const blocked = prepareBlocked(src);
+  const edits: { start: number; end: number; text: string }[] = [];
+  const pushPointy = (destAt: number) => {
+    if (src[destAt] !== "<" || inRange(destAt, blocked)) return;
+    const dest = readDestination(src, destAt);
+    if (!dest) return;
+    if (!dest.dest.includes(" ") && !dest.dest.includes("\t")) return;
+    edits.push({
+      start: destAt,
+      end: dest.next,
+      text: `<${encodeLinkDestination(dest.dest)}>`,
+    });
+  };
+
+  let i = 0;
+  while (i < src.length) {
+    const blockedAt = rangeAt(i, blocked);
+    if (blockedAt) {
+      i = blockedAt.end;
+      continue;
+    }
+    const image = src[i] === "!" && src[i + 1] === "[" && !isEscaped(src, i);
+    if ((src[i] === "[" || image) && !isEscaped(src, i)) {
+      const openBracket = image ? i + 1 : i;
+      const bracket = readBracket(src, openBracket, blocked);
+      if (bracket) {
+        const paren = skipLinkSpace(src, bracket.next, blocked);
+        if (paren != null && src[paren] === "(") {
+          const destAt = skipLinkSpace(src, paren + 1, blocked);
+          if (destAt != null) pushPointy(destAt);
+        }
+        i = bracket.next;
+        continue;
+      }
+    }
+    i += 1;
+  }
+
+  for (const line of lineSpans(src)) {
+    if (inRange(line.start, blocked)) continue;
+    const parsed = parseDefinition(src, line.start, blocked);
+    if (!parsed) continue;
+    if (!parsed.dest.includes(" ") && !parsed.dest.includes("\t")) continue;
+    const prefix = quotePrefixLength(line.text);
+    let labelAt = line.start + prefix;
+    while (src[labelAt] === " " && labelAt < line.start + prefix + 4) labelAt += 1;
+    const label = readBracket(src, labelAt, blocked);
+    if (!label) continue;
+    const colon = skipSpTab(src, label.next);
+    if (src[colon] !== ":") continue;
+    const destAt = skipDestWs(src, colon + 1, blocked);
+    if (destAt == null) continue;
+    pushPointy(destAt);
+  }
+
+  if (edits.length === 0) return text.includes("\r") ? src : text;
+  edits.sort((a, b) => a.start - b.start || a.end - b.end);
+  let out = "";
+  let cursor = 0;
+  for (const edit of edits) {
+    if (edit.start < cursor) continue;
+    out += src.slice(cursor, edit.start);
+    out += edit.text;
+    cursor = edit.end;
+  }
+  out += src.slice(cursor);
+  return out;
+}
+
+function prepareBlocked(src: string): Range[] {
+  const fences = fenceRanges(src);
+  const codes = inlineCodeRanges(src, fences);
+  const indented = indentedCodeRanges(src, fences);
+  const skip = [...fences, ...codes, ...indented];
+  return mergeRanges([...skip, ...mathRanges(src, skip)]);
+}
+
+function indentedCodeRanges(src: string, fences: Range[]): Range[] {
+  const ranges: Range[] = [];
+  let inCode = false;
+  let codeStart = 0;
+  let prevBlank = true;
+  let i = 0;
+  while (i <= src.length) {
+    const nl = src.indexOf("\n", i);
+    const end = nl < 0 ? src.length : nl;
+    const inFence = fences.some((fence) => i >= fence.start && i < fence.end);
+    if (inFence) {
+      if (inCode) {
+        ranges.push({ start: codeStart, end: i });
+        inCode = false;
+      }
+      prevBlank = false;
+    } else {
+      const line = src.slice(i, end);
+      const indent = contentIndent(line);
+      const blank = indent == null;
+      if (inCode && indent != null && indent < 4) {
+        ranges.push({ start: codeStart, end: i });
+        inCode = false;
+      }
+      if (!inCode && prevBlank && indent != null && indent >= 4) {
+        inCode = true;
+        codeStart = i;
+      }
+      prevBlank = blank;
+    }
+    if (nl < 0) break;
+    i = nl + 1;
+  }
+  if (inCode) ranges.push({ start: codeStart, end: src.length });
+  return ranges;
+}
+
+function contentIndent(line: string): number | null {
+  let col = 0;
+  for (const ch of line) {
+    if (ch === " ") {
+      col += 1;
+      continue;
+    }
+    if (ch === "\t") {
+      col += 4 - (col % 4);
+      continue;
+    }
+    return col;
+  }
+  return null;
 }
 
 function collectDefinitions(
@@ -351,9 +499,10 @@ function readDestination(src: string, i: number): { dest: string; next: number }
     let out = "";
     while (j < src.length) {
       const ch = src[j] ?? "";
-      if (ch === "\n" || ch === "<" || ch === " " || ch === "\t") return null;
-      if (ch === "\\") {
-        if (j + 1 >= src.length) return null;
+      // v1.74: spaces and tabs are part of the destination. A newline
+      // or a second `<` ends it. A backslash escapes punctuation only.
+      if (ch === "\n" || ch === "<") return null;
+      if (ch === "\\" && j + 1 < src.length && ASCII_PUNCT.includes(src[j + 1] ?? "")) {
         out += src[j + 1];
         j += 2;
         continue;
@@ -432,6 +581,27 @@ function tryTitle(
   const opener = src[at];
   if (opener !== '"' && opener !== "'" && opener !== "(") return null;
   return readTitle(src, at);
+}
+
+/** Spaces, tabs, and at most one newline. CommonMark link spacing. */
+function skipLinkSpace(src: string, i: number, blocked: Range[]): number | null {
+  let j = i;
+  let newline = false;
+  while (j < src.length) {
+    if (inRange(j, blocked)) return null;
+    const ch = src[j] ?? "";
+    if (ch === " " || ch === "\t") {
+      j += 1;
+      continue;
+    }
+    if (ch === "\n" && !newline) {
+      newline = true;
+      j += 1;
+      continue;
+    }
+    break;
+  }
+  return j;
 }
 
 function skipDestWs(src: string, i: number, blocked: Range[]): number | null {

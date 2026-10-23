@@ -22,6 +22,7 @@
 
 import { safeLinkHref } from "./markdownAutolink.ts";
 import {
+  ASCII_PUNCT,
   protectMarkdownEscapes,
   restoreMarkdownEscapes,
 } from "./markdownEscape.ts";
@@ -192,7 +193,8 @@ function readDestination(
       if (inRange(j, blocked)) return null;
       const ch = src[j] ?? "";
       if (ch === "\n" || ch === "<") return null;
-      if (ch === "\\" && j + 1 < src.length) {
+      // v1.74: spaces stay. A backslash escapes ASCII punctuation only.
+      if (ch === "\\" && j + 1 < src.length && ASCII_PUNCT.includes(src[j + 1] ?? "")) {
         value += src[j + 1];
         j += 2;
         continue;
