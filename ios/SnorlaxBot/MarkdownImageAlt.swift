@@ -391,6 +391,7 @@ enum MarkdownImageAlt {
               let dest = readDestination(src, destAt) else { return nil }
         var cursor = dest
         if let titleAt = skipLinkSpace(src, cursor),
+           titleAt != cursor,
            titleAt < src.count,
            src[titleAt] == "\"" || src[titleAt] == "'" || src[titleAt] == "(" {
             guard let title = readTitle(src, titleAt) else { return nil }
@@ -451,21 +452,7 @@ enum MarkdownImageAlt {
     }
 
     private static func readTitle(_ src: [Character], _ start: Int) -> Int? {
-        guard start < src.count else { return nil }
-        let open = src[start]
-        let close: Character = open == "(" ? ")" : open
-        guard open == "\"" || open == "'" || open == "(" else { return nil }
-        var cursor = start + 1
-        while cursor < src.count {
-            let ch = src[cursor]
-            if ch == "\\", cursor + 1 < src.count {
-                cursor += 2
-                continue
-            }
-            if ch == close { return cursor + 1 }
-            cursor += 1
-        }
-        return nil
+        MarkdownLinkTitleForm.read(src, start)?.next
     }
 
     private static func skipLinkSpace(_ src: [Character], _ start: Int) -> Int? {

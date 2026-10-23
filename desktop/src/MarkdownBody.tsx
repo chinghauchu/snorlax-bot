@@ -37,7 +37,7 @@ import { linkHref, splitWebUrls } from "./linkify";
 import { splitIndentedCode } from "./markdownIndentedCode";
 import { prepareAngleAutolinks, safeLinkHref } from "./markdownAutolink";
 import { prepareSpacedLinkDestinations } from "./markdownReferenceLink";
-import { linkTitleHint } from "./markdownLinkTitle";
+import { linkTitleHint, prepareLinkTitleForms } from "./markdownLinkTitle";
 import {
   linkStatusClearFocus,
   linkStatusClearHover,
@@ -402,7 +402,10 @@ function HeadingInline({
   knownNames: string[];
   completed: boolean;
 }) {
-  const text = prepareImageAlts(prepareSpacedLinkDestinations(sourceText, completed), completed);
+  const text = prepareLinkTitleForms(
+    prepareImageAlts(prepareSpacedLinkDestinations(sourceText, completed), completed),
+    completed,
+  );
   const findQuery = useFindQuery();
   const extracted = extractMath(text);
   const mathText = prepareAngleAutolinks(
@@ -561,7 +564,10 @@ function MarkdownParsed({
   order: FenceOrder;
   findQuery: string;
 }) {
-  const text = prepareImageAlts(prepareSpacedLinkDestinations(sourceText, completed), completed);
+  const text = prepareLinkTitleForms(
+    prepareImageAlts(prepareSpacedLinkDestinations(sourceText, completed), completed),
+    completed,
+  );
   const extracted = extractMath(text);
   const mathText = prepareAngleAutolinks(
     neutralizeUnsafeImages(extracted.text, completed),
@@ -765,7 +771,10 @@ function TableCellText({
   knownNames: string[];
   completed: boolean;
 }) {
-  const text = prepareImageAlts(prepareSpacedLinkDestinations(sourceText, completed), completed);
+  const text = prepareLinkTitleForms(
+    prepareImageAlts(prepareSpacedLinkDestinations(sourceText, completed), completed),
+    completed,
+  );
   const findQuery = useFindQuery();
   // v1.64: block starts stay characters. Inline formatting still parses.
   const extracted = extractMath(

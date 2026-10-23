@@ -27,6 +27,11 @@ import {
   restoreMarkdownEscapes,
 } from "./markdownEscape.ts";
 import {
+  commonMarkTitleHint,
+  normalizedTitle,
+  readCommonMarkTitle,
+} from "./markdownLinkTitleForm.ts";
+import {
   fenceRanges,
   inRange,
   inlineCodeRanges,
@@ -58,6 +63,75 @@ export function linkTitleHint(
   if (!completed || title == null) return "";
   const restored = restoreMarkdownEscapes(title).replace(/\s+/g, " ").trim();
   return restored;
+}
+
+/**
+ * v1.78: rewrite a valid title to one double-quoted line so desktop
+ * and iOS parse the same tooltip. An invalid title is not a link:
+ * the opening bracket is escaped so the platform parser keeps the
+ * characters literal. `completed: false` returns `text`.
+ */
+export function prepareLinkTitleForms(text: string, completed = true): string {
+  if (!completed || !text || !text.includes("[")) return text;
+  const src = text.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
+  const blocked = blockedRanges(src);
+  const edits: { start: number; end: number; text: string }[] = [];
+  const seen = new Set<number>();
+  let i = 0;
+  while (i < src.length) {
+    if (inRange(i, blocked)) {
+      i += 1;
+      continue;
+    }
+    let bracketAt = -1;
+    if (src.startsWith("![", i) && !isEscaped(src, i)) bracketAt = i + 1;
+    else if (src[i] === "[" && !isEscaped(src, i)) bracketAt = i;
+    if (bracketAt >= 0) {
+      const edit = titleEditAt(src, bracketAt, blocked);
+      if (edit && !seen.has(edit.start)) {
+        seen.add(edit.start);
+        edits.push(edit);
+      }
+    }
+    i += 1;
+  }
+  if (edits.length === 0) return text.includes("\r") ? src : text;
+  edits.sort((a, b) => a.start - b.start || a.end - b.end);
+  let out = "";
+  let cursor = 0;
+  for (const edit of edits) {
+    if (edit.start < cursor) continue;
+    out += src.slice(cursor, edit.start);
+    out += edit.text;
+    cursor = edit.end;
+  }
+  out += src.slice(cursor);
+  return out;
+}
+
+function titleEditAt(
+  src: string,
+  bracketAt: number,
+  blocked: Range[],
+): { start: number; end: number; text: string } | null {
+  const label = readBracket(src, bracketAt, blocked);
+  if (!label || src[label.next] !== "(") return null;
+  const destAt = skipLinkSpace(src, label.next + 1, blocked);
+  if (destAt == null || src[destAt] === ")") return null;
+  const dest = readDestination(src, destAt, blocked);
+  if (!dest) return null;
+  const titleAt = skipLinkSpace(src, dest.next, blocked);
+  if (titleAt == null || titleAt === dest.next) return null;
+  const opener = src[titleAt];
+  if (opener !== '"' && opener !== "'" && opener !== "(") return null;
+  const literal = { start: bracketAt, end: bracketAt + 1, text: "\\[" };
+  const title = readTitle(src, titleAt);
+  if (!title) return literal;
+  const close = skipLinkSpace(src, title.next, blocked);
+  if (close == null || src[close] !== ")") return literal;
+  const replacement = normalizedTitle(title.value);
+  if (replacement === src.slice(titleAt, title.next)) return null;
+  return { start: titleAt, end: title.next, text: replacement };
 }
 
 /** Every inline link outside code and math, including unsafe schemes. */
@@ -113,9 +187,10 @@ function parseInlineLink(
   const titleAt = skipLinkSpace(src, k, blocked);
   if (
     titleAt != null &&
+    titleAt !== k &&
     (src[titleAt] === '"' || src[titleAt] === "'" || src[titleAt] === "(")
   ) {
-    const read = readTitle(src, titleAt, blocked);
+    const read = readTitle(src, titleAt);
     if (!read) return null;
     title = read.value;
     k = read.next;
@@ -134,7 +209,8 @@ function parseInlineLink(
 
 function cleanTitle(raw: string | null): string | null {
   if (raw == null) return null;
-  const hint = linkTitleHint(decodeInline(raw), true);
+  // v1.78: entities, then backslash escapes, then collapse.
+  const hint = commonMarkTitleHint(raw);
   return hint.length > 0 ? hint : null;
 }
 
@@ -237,29 +313,12 @@ function readDestination(
   return { value, next: j };
 }
 
-function readTitle(
-  src: string,
-  i: number,
-  blocked: Range[],
-): { value: string; next: number } | null {
-  const open = src[i];
-  const close = open === "(" ? ")" : open;
-  if (open !== '"' && open !== "'" && open !== "(") return null;
-  let j = i + 1;
-  let value = "";
-  while (j < src.length) {
-    if (inRange(j, blocked)) return null;
-    const ch = src[j] ?? "";
-    if (ch === "\\" && j + 1 < src.length) {
-      value += src[j + 1];
-      j += 2;
-      continue;
-    }
-    if (ch === close) return { value, next: j + 1 };
-    value += ch;
-    j += 1;
-  }
-  return null;
+function readTitle(src: string, i: number): { value: string; next: number } | null {
+  // A title is a string, not nested markdown. `\(` is an escaped
+  // parenthesis here, including when the math pass also sees it.
+  const read = readCommonMarkTitle(src, i);
+  if (!read) return null;
+  return { value: read.raw, next: read.next };
 }
 
 /** Spaces, tabs, and at most one newline. CommonMark link spacing. */

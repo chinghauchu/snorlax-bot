@@ -87,6 +87,77 @@ enum MarkdownLinkTitle {
         return hint
     }
 
+    /// v1.78: rewrite a valid title to one double-quoted line.
+    /// An invalid title is not a link: the opening bracket is escaped
+    /// so the platform parser keeps the characters literal.
+    /// `completed: false` returns `text`.
+    static func prepare(_ text: String, completed: Bool = true) -> String {
+        if !completed || text.isEmpty || !text.contains("[") { return text }
+        let src = text
+            .replacingOccurrences(of: "\r\n", with: "\n")
+            .replacingOccurrences(of: "\r", with: "\n")
+        let chars = Array(src)
+        let blocked = blockedRanges(chars)
+        var edits: [(start: Int, end: Int, text: String)] = []
+        var seen = Set<Int>()
+        var index = 0
+        while index < chars.count {
+            if inSpan(index, blocked) {
+                index += 1
+                continue
+            }
+            var bracketAt = -1
+            if index + 1 < chars.count, chars[index] == "!", chars[index + 1] == "[", !isEscaped(chars, index) {
+                bracketAt = index + 1
+            } else if chars[index] == "[", !isEscaped(chars, index) {
+                bracketAt = index
+            }
+            if bracketAt >= 0, let edit = titleEdit(chars, bracketAt, blocked), !seen.contains(edit.start) {
+                seen.insert(edit.start)
+                edits.append(edit)
+            }
+            index += 1
+        }
+        if edits.isEmpty { return text == src ? text : src }
+        edits.sort { $0.start < $1.start }
+        var out = ""
+        var cursor = 0
+        for edit in edits {
+            if edit.start < cursor { continue }
+            out += slice(chars, cursor, edit.start)
+            out += edit.text
+            cursor = edit.end
+        }
+        out += slice(chars, cursor, chars.count)
+        return out
+    }
+
+    private static func titleEdit(
+        _ chars: [Character],
+        _ bracketAt: Int,
+        _ blocked: [Span]
+    ) -> (start: Int, end: Int, text: String)? {
+        guard let label = readBracket(chars, bracketAt, blocked), char(chars, label.next) == "(" else { return nil }
+        guard let destAt = skipLinkSpace(chars, label.next + 1, blocked), char(chars, destAt) != ")" else { return nil }
+        guard let dest = readDestination(chars, destAt, blocked) else { return nil }
+        guard let titleAt = skipLinkSpace(chars, dest.next, blocked), titleAt != dest.next else { return nil }
+        let opener = char(chars, titleAt)
+        if opener != "\"" && opener != "'" && opener != "(" { return nil }
+        let literal = (bracketAt, bracketAt + 1, "\\[")
+        guard let title = readTitle(chars, titleAt) else { return literal }
+        guard let close = skipLinkSpace(chars, title.next, blocked), char(chars, close) == ")" else {
+            return literal
+        }
+        let replacement = MarkdownLinkTitleForm.normalized(title.value)
+        if replacement == slice(chars, titleAt, title.next) { return nil }
+        return (titleAt, title.next, replacement)
+    }
+
+    private static func slice(_ chars: [Character], _ start: Int, _ end: Int) -> String {
+        guard start >= 0, end <= chars.count, start < end else { return "" }
+        return String(chars[start..<end])
+    }
+
     private struct Span {
         var start: Int
         var end: Int
@@ -162,10 +233,11 @@ enum MarkdownLinkTitle {
         var cursor = dest.next
         var title: String?
         if let titleAt = skipLinkSpace(chars, cursor, blocked),
+           titleAt != cursor,
            let mark = char(chars, titleAt),
            mark == "\"" || mark == "'" || mark == "("
         {
-            guard let read = readTitle(chars, titleAt, blocked) else { return nil }
+            guard let read = readTitle(chars, titleAt) else { return nil }
             title = read.value
             cursor = read.next
         }
@@ -180,7 +252,7 @@ enum MarkdownLinkTitle {
 
     private static func cleanTitle(_ raw: String?) -> String? {
         guard let raw else { return nil }
-        let cleaned = hint(decodeInline(raw), completed: true)
+        let cleaned = MarkdownLinkTitleForm.hint(raw)
         return cleaned.isEmpty ? nil : cleaned
     }
 
@@ -371,27 +443,11 @@ enum MarkdownLinkTitle {
 
     private static func readTitle(
         _ chars: [Character],
-        _ start: Int,
-        _ blocked: [Span]
+        _ start: Int
     ) -> (value: String, next: Int)? {
-        guard let open = char(chars, start) else { return nil }
-        let close: Character = open == "(" ? ")" : open
-        if open != "\"" && open != "'" && open != "(" { return nil }
-        var index = start + 1
-        var value = ""
-        while index < chars.count {
-            if inSpan(index, blocked) { return nil }
-            let ch = chars[index]
-            if ch == "\\", index + 1 < chars.count {
-                value.append(chars[index + 1])
-                index += 2
-                continue
-            }
-            if ch == close { return (value, index + 1) }
-            value.append(ch)
-            index += 1
-        }
-        return nil
+        // A title is a string. `\(` is an escaped parenthesis, not math.
+        guard let read = MarkdownLinkTitleForm.read(chars, start) else { return nil }
+        return (read.raw, read.next)
     }
 
     private static func skipLinkSpace(_ chars: [Character], _ start: Int, _ blocked: [Span]) -> Int? {
