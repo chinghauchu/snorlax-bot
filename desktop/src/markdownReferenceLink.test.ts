@@ -246,17 +246,16 @@ test("destination may sit on the next line and titles use quotes or parentheses"
   );
 });
 
-test("full reference beats shortcut, and a missing second label falls back", () => {
+test("full reference beats shortcut, and a missing second label stays literal", () => {
   const both = "[foo][bar]\n\n[foo]: https://example.com/foo\n[bar]: https://example.com/bar";
   assert.match(
     resolveReferenceLinks(both, true),
     /^\[foo\]\(https:\/\/example\.com\/bar\)/,
   );
+  // cmark: a following label that is not defined does not fall back to the shortcut.
   const onlyFoo = "[foo][bar]\n\n[foo]: https://example.com/foo";
-  assert.equal(
-    resolveReferenceLinks(onlyFoo, true).startsWith("[foo](https://example.com/foo)[bar]"),
-    true,
-  );
+  assert.equal(resolveReferenceLinks(onlyFoo, true).includes("[foo][bar]"), true);
+  assert.equal(resolveReferenceLinks(onlyFoo, true).includes("example.com/foo"), false);
 });
 
 test("streaming and messages without a definition stay byte-for-byte", () => {
