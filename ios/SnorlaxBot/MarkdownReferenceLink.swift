@@ -19,6 +19,13 @@ import Foundation
 /// when a title follows in single quotes or parentheses. A backslash
 /// escapes ASCII punctuation only. `prepareSpacedDestinations`
 /// percent-encodes that destination for the markdown parser.
+/// v1.76: link text follows CommonMark. Balanced brackets stay inside
+/// one link. A link may not contain another link, so
+/// `[foo [bar](/uri)][ref]` is the inner link plus the reference.
+/// An undefined full label does not fall back to a shortcut.
+/// Code spans, autolinks, and raw HTML bind tighter than brackets.
+/// `noLinkOpeners` and `bracketAfter` match cmark. Streaming stays
+/// plain. Copy keeps markdown source.
 /// Keep in lockstep with `desktop/src/markdownReferenceLink.ts`.
 enum MarkdownReferenceLink {
     private struct Target {
@@ -244,192 +251,301 @@ enum MarkdownReferenceLink {
         )
     }
 
+    /// v1.76: walk brackets the way cmark does. The nearest `[` is the
+    /// only candidate for a `]`. A matched link (not an image) sets
+    /// `noLinkOpeners`, so an outer `[` cannot contain that link.
+    /// Balanced brackets that are not themselves links stay in the text.
+    /// Code spans, autolinks, and raw HTML are skipped, so a `]` inside
+    /// them does not close a link. `bracketAfter` blocks a shortcut when
+    /// a nested bracket was seen.
     private static func applyReferences(
         _ chars: [Character],
         map: [String: Target],
         blocked: [Span]
     ) -> [Character] {
-        var parts: [Character] = []
+        struct Opener {
+            var index: Int
+            var image: Bool
+            var bracketAfter: Bool
+        }
+        struct Edit {
+            var start: Int
+            var end: Int
+            var text: String
+        }
+        var edits: [Edit] = []
+        var stack: [Opener] = []
+        var noLinkOpeners = false
+
+        func sliceResolved(_ start: Int, _ end: Int) -> String {
+            var out = ""
+            var cursor = start
+            for edit in edits {
+                if edit.start < cursor || edit.end > end || edit.start >= end { continue }
+                out += slice(chars, cursor, edit.start)
+                out += edit.text
+                cursor = edit.end
+            }
+            out += slice(chars, cursor, end)
+            return out
+        }
+
+        func absorb(_ start: Int, _ end: Int, _ text: String) {
+            edits.removeAll { $0.start >= start && $0.end <= end }
+            edits.append(Edit(start: start, end: end, text: text))
+        }
+
+        func pushOpener(_ index: Int, _ image: Bool) {
+            if !stack.isEmpty {
+                stack[stack.count - 1].bracketAfter = true
+            }
+            stack.append(Opener(index: index, image: image, bracketAfter: false))
+            if !image { noLinkOpeners = false }
+        }
+
         var i = 0
         while i < chars.count {
             if let blockedAt = rangeAt(i, blocked) {
-                parts.append(contentsOf: chars[i..<blockedAt.end])
+                if isBlockRange(chars, blockedAt) {
+                    stack.removeAll()
+                    noLinkOpeners = false
+                }
                 i = blockedAt.end
                 continue
             }
-            if char(chars, i) == "!" && char(chars, i + 1) == "[" && !isEscaped(chars, i) {
-                let image = takeImage(chars, i + 1, blocked, map)
-                parts.append(contentsOf: Array(image.replacement))
-                i = image.next
-                continue
-            }
-            if char(chars, i) != "[" || isEscaped(chars, i) {
-                if let ch = char(chars, i) { parts.append(ch) }
-                i += 1
-                continue
-            }
-            if let footnoteEnd = footnoteBracketEnd(chars, i) {
-                parts.append(contentsOf: chars[i..<footnoteEnd])
-                i = footnoteEnd
-                continue
-            }
-            guard let bracket = readBracket(chars, i, blocked) else {
-                if let ch = char(chars, i) { parts.append(ch) }
-                i += 1
-                continue
-            }
-            let after = bracket.next
-            if char(chars, after) == "(" {
-                if let inlineEnd = skipInline(chars, after) {
-                    parts.append(contentsOf: chars[i..<inlineEnd])
-                    i = inlineEnd
-                    continue
-                }
-            }
-            if char(chars, after) == "[" {
-                if let second = readBracket(chars, after, blocked) {
-                    let collapsed = second.raw.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-                    let labelRaw = collapsed ? bracket.raw : second.raw
-                    if let target = lookupLabel(map, labelRaw),
-                       !(collapsed && isFootnoteLabel(bracket.raw))
-                    {
-                        parts.append(contentsOf: Array(emitLink(bracket.raw, target, false)))
-                        i = second.next
-                        continue
-                    }
-                }
-            }
-            if validLabel(bracket.raw) && !isFootnoteLabel(bracket.raw) && !isTaskMarker(chars, i) {
-                if let target = lookupLabel(map, bracket.raw) {
-                    parts.append(contentsOf: Array(emitLink(bracket.raw, target, false)))
-                    i = bracket.next
-                    continue
-                }
-            }
-            if let ch = char(chars, i) { parts.append(ch) }
-            i += 1
-        }
-        return parts
-    }
-
-    private static func takeImage(
-        _ chars: [Character],
-        _ open: Int,
-        _ blocked: [Span],
-        _ map: [String: Target]
-    ) -> (replacement: String, next: Int) {
-        let bang = open - 1
-        guard let bracket = readBracket(chars, open, blocked) else {
-            return (String(char(chars, bang) ?? "!"), bang + 1)
-        }
-        let after = bracket.next
-        if char(chars, after) == "(" {
-            if let inlineEnd = skipInline(chars, after) {
-                return (slice(chars, bang, inlineEnd), inlineEnd)
-            }
-        }
-        if char(chars, after) == "[" {
-            if let second = readBracket(chars, after, blocked) {
-                let collapsed = second.raw.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-                let labelRaw = collapsed ? bracket.raw : second.raw
-                if let target = lookupLabel(map, labelRaw),
-                   !(collapsed && isFootnoteLabel(bracket.raw))
-                {
-                    return (emitLink(bracket.raw, target, true), second.next)
-                }
-                return (slice(chars, bang, second.next), second.next)
-            }
-        }
-        if let target = lookupLabel(map, bracket.raw), !isFootnoteLabel(bracket.raw) {
-            return (emitLink(bracket.raw, target, true), bracket.next)
-        }
-        return (slice(chars, bang, bracket.next), bracket.next)
-    }
-
-    private static func lookupLabel(_ map: [String: Target], _ raw: String) -> Target? {
-        if !validLabel(raw) || isFootnoteLabel(raw) { return nil }
-        return map[normalizeLabel(raw)]
-    }
-
-    private static func emitLink(_ text: String, _ target: Target, _ image: Bool) -> String {
-        let dest = formatDest(target.dest)
-        let body: String
-        if let title = target.title {
-            body = "[\(text)](\(dest) \"\(formatTitle(title))\")"
-        } else {
-            body = "[\(text)](\(dest))"
-        }
-        return image ? "!\(body)" : body
-    }
-
-    private static func formatDest(_ dest: String) -> String {
-        if dest.contains(where: { $0 == " " || $0 == "\t" || $0 == "\n" || $0 == "<" || $0 == ">" || $0 == "(" || $0 == ")" }) {
-            let safe = dest.replacingOccurrences(of: "<", with: "%3C").replacingOccurrences(of: ">", with: "%3E")
-            return "<\(safe)>"
-        }
-        return dest
-    }
-
-    private static func formatTitle(_ title: String) -> String {
-        title.replacingOccurrences(of: "\\", with: "\\\\").replacingOccurrences(of: "\"", with: "\\\"")
-    }
-
-    private static func readBracket(_ chars: [Character], _ open: Int, _ blocked: [Span]) -> Bracket? {
-        if char(chars, open) != "[" || isEscaped(chars, open) || rangeAt(open, blocked) != nil { return nil }
-        var i = open + 1
-        var depth = 1
-        var raw = ""
-        while i < chars.count {
-            if rangeAt(i, blocked) != nil { return nil }
-            let ch = chars[i]
-            if ch == "\\" && i + 1 < chars.count {
-                raw.append(ch)
-                raw.append(chars[i + 1])
+            if char(chars, i) == "\n" && char(chars, i + 1) == "\n" {
+                stack.removeAll()
+                noLinkOpeners = false
                 i += 2
                 continue
             }
-            if ch == "[" {
-                depth += 1
-                raw.append(ch)
+            if char(chars, i) == "\\", let next = char(chars, i + 1), isAsciiPunct(next) {
+                i += 2
+                continue
+            }
+            if char(chars, i) == "<" && !isEscaped(chars, i) {
+                if let auto = autolinkEnd(chars, i) {
+                    i = auto
+                    continue
+                }
+                if let html = MarkdownHtmlLiteral.htmlTagEnd(chars, i), html > i {
+                    i = html
+                    continue
+                }
+            }
+            if char(chars, i) == "!" && char(chars, i + 1) == "[" && !isEscaped(chars, i) {
+                pushOpener(i + 1, true)
+                i += 2
+                continue
+            }
+            if char(chars, i) == "[" && !isEscaped(chars, i) {
+                if let footnoteEnd = footnoteBracketEnd(chars, i) {
+                    i = footnoteEnd
+                    continue
+                }
+                if isTaskMarker(chars, i) {
+                    i += 3
+                    continue
+                }
+                pushOpener(i, false)
                 i += 1
                 continue
             }
-            if ch == "]" {
-                depth -= 1
-                if depth == 0 { return Bracket(raw: raw, next: i + 1) }
-                raw.append(ch)
+            if char(chars, i) != "]" || isEscaped(chars, i) {
                 i += 1
                 continue
             }
-            if ch == "\n" && char(chars, i + 1) == "\n" { return nil }
-            raw.append(ch)
-            i += 1
+            guard let opener = stack.popLast() else {
+                i += 1
+                continue
+            }
+            if !opener.image && noLinkOpeners {
+                i += 1
+                continue
+            }
+            guard let matched = matchCloser(
+                chars,
+                opener.index,
+                opener.bracketAfter,
+                i,
+                blocked,
+                map
+            ) else {
+                i += 1
+                continue
+            }
+            if matched.kind == "ref", let target = matched.target {
+                let text = sliceResolved(opener.index + 1, i)
+                let start = opener.image ? opener.index - 1 : opener.index
+                absorb(start, matched.end, emitLink(text, target, opener.image))
+            }
+            if !opener.image { noLinkOpeners = true }
+            i = matched.end
         }
-        return nil
+
+        if edits.isEmpty { return chars }
+        edits.sort { lhs, rhs in
+            lhs.start < rhs.start || (lhs.start == rhs.start && lhs.end < rhs.end)
+        }
+        var out: [Character] = []
+        var cursor = 0
+        for edit in edits {
+            if edit.start < cursor { continue }
+            if cursor < edit.start { out.append(contentsOf: chars[cursor..<edit.start]) }
+            out.append(contentsOf: Array(edit.text))
+            cursor = edit.end
+        }
+        if cursor < chars.count { out.append(contentsOf: chars[cursor...]) }
+        return out
     }
 
-    private static func skipInline(_ chars: [Character], _ openParen: Int) -> Int? {
-        if char(chars, openParen) != "(" { return nil }
-        var j = openParen + 1
-        var lineBreaks = 0
-        while char(chars, j) == " " || char(chars, j) == "\t" || char(chars, j) == "\n" {
-            if char(chars, j) == "\n" {
-                lineBreaks += 1
-                if lineBreaks > 1 || char(chars, j + 1) == "\n" { return nil }
+    private struct CloserMatch {
+        var kind: String
+        var end: Int
+        var target: Target?
+    }
+
+    private static func matchCloser(
+        _ chars: [Character],
+        _ openerIndex: Int,
+        _ bracketAfter: Bool,
+        _ close: Int,
+        _ blocked: [Span],
+        _ map: [String: Target]
+    ) -> CloserMatch? {
+        let after = close + 1
+        if char(chars, after) == "(" {
+            if let inlineEnd = matchInline(chars, after, blocked) {
+                return CloserMatch(kind: "inline", end: inlineEnd, target: nil)
             }
+        }
+        if char(chars, after) == "[" {
+            if let label = linkLabel(chars, after) {
+                if label.raw.isEmpty {
+                    if bracketAfter { return nil }
+                    let text = slice(chars, openerIndex + 1, close)
+                    guard let target = lookupLabel(map, text) else { return nil }
+                    return CloserMatch(kind: "ref", end: label.next, target: target)
+                }
+                guard let target = lookupLabel(map, label.raw) else { return nil }
+                return CloserMatch(kind: "ref", end: label.next, target: target)
+            }
+        }
+        if bracketAfter { return nil }
+        let text = slice(chars, openerIndex + 1, close)
+        if !validLabel(text) || isFootnoteLabel(text) { return nil }
+        guard let target = lookupLabel(map, text) else { return nil }
+        return CloserMatch(kind: "ref", end: after, target: target)
+    }
+
+    /// Inline `(dest)`, including an empty `()` or `<>`.
+    private static func matchInline(_ chars: [Character], _ openParen: Int, _ blocked: [Span]) -> Int? {
+        if char(chars, openParen) != "(" { return nil }
+        guard let destAt = skipLinkSpace(chars, openParen + 1, blocked) else { return nil }
+        var afterDest: Int
+        if char(chars, destAt) == ")" { return destAt + 1 }
+        if char(chars, destAt) == "<" && char(chars, destAt + 1) == ">" {
+            afterDest = destAt + 2
+        } else {
+            guard let dest = readDestination(chars, destAt) else { return nil }
+            afterDest = dest.next
+        }
+        var cursor = afterDest
+        if let titleAt = skipLinkSpace(chars, cursor, blocked),
+           titleAt != cursor,
+           let mark = char(chars, titleAt),
+           mark == "\"" || mark == "'" || mark == "("
+        {
+            guard let title = readTitle(chars, titleAt) else { return nil }
+            cursor = title.next
+        } else if let titleAt = skipLinkSpace(chars, cursor, blocked) {
+            cursor = titleAt
+        }
+        guard let close = skipLinkSpace(chars, cursor, blocked), char(chars, close) == ")" else { return nil }
+        return close + 1
+    }
+
+    /// A link label. `[]` is collapsed. Longer than 999 fails.
+    private static func linkLabel(_ chars: [Character], _ open: Int) -> (raw: String, next: Int)? {
+        guard char(chars, open) == "[" else { return nil }
+        var i = open + 1
+        var raw = ""
+        while i < chars.count {
+            let ch = chars[i]
+            if ch == "[" || ch == "]" { break }
+            if ch == "\\", i + 1 < chars.count {
+                raw.append(ch)
+                raw.append(chars[i + 1])
+                i += 2
+            } else {
+                raw.append(ch)
+                i += 1
+            }
+            if raw.count > 999 { return nil }
+        }
+        guard i < chars.count, chars[i] == "]" else { return nil }
+        return (raw, i + 1)
+    }
+
+    /// End index of a CommonMark autolink starting at `<`, or nil.
+    private static func autolinkEnd(_ chars: [Character], _ start: Int) -> Int? {
+        guard char(chars, start) == "<" else { return nil }
+        var j = start + 1
+        while j < chars.count {
+            let ch = chars[j]
+            if ch == ">" { break }
+            if ch == "<" || isAutolinkStop(ch) { return nil }
             j += 1
         }
-        if char(chars, j) == ")" { return nil }
-        guard let dest = readDestination(chars, j) else { return nil }
-        j = dest.next
-        while char(chars, j) == " " || char(chars, j) == "\t" { j += 1 }
-        if char(chars, j) == "\"" || char(chars, j) == "'" || (char(chars, j) == "(" && !dest.dest.isEmpty) {
-            guard let title = readTitle(chars, j) else { return nil }
-            j = title.next
-            while char(chars, j) == " " || char(chars, j) == "\t" { j += 1 }
-        }
-        if char(chars, j) != ")" { return nil }
+        guard j < chars.count, chars[j] == ">" else { return nil }
+        let inner = slice(chars, start + 1, j)
+        if inner.isEmpty { return nil }
+        if !isSchemeAutolink(inner) && !WebLinks.emailAddress(inner) { return nil }
         return j + 1
+    }
+
+    private static func isAutolinkStop(_ ch: Character) -> Bool {
+        guard let scalar = ch.unicodeScalars.first, ch.unicodeScalars.count == 1 else { return true }
+        return scalar.value <= 32 || scalar.value == 127
+    }
+
+    private static func isSchemeAutolink(_ text: String) -> Bool {
+        let chars = Array(text)
+        guard chars.count >= 3, isAsciiLetter(chars[0]) else { return false }
+        var index = 1
+        while index < chars.count && index < 32 && isSchemeChar(chars[index]) {
+            index += 1
+        }
+        return index >= 2 && index < chars.count && chars[index] == ":"
+    }
+
+    private static func isAsciiLetter(_ ch: Character) -> Bool {
+        guard let scalar = ch.unicodeScalars.first, ch.unicodeScalars.count == 1 else { return false }
+        return (scalar >= "A" && scalar <= "Z") || (scalar >= "a" && scalar <= "z")
+    }
+
+    private static func isSchemeChar(_ ch: Character) -> Bool {
+        if isAsciiLetter(ch) { return true }
+        guard let scalar = ch.unicodeScalars.first, ch.unicodeScalars.count == 1 else { return false }
+        return (scalar >= "0" && scalar <= "9") || ch == "+" || ch == "." || ch == "-"
+    }
+
+    /// A fence, indented code, or math block. An inline code span is not one.
+    private static func isBlockRange(_ chars: [Character], _ range: Span) -> Bool {
+        var hasNewline = false
+        var index = range.start
+        while index < range.end && index < chars.count {
+            if chars[index] == "\n" {
+                hasNewline = true
+                break
+            }
+            index += 1
+        }
+        if !hasNewline { return false }
+        var line = range.start
+        while line > 0 && chars[line - 1] != "\n" { line -= 1 }
+        let prefix = slice(chars, line, range.start)
+        return prefix.count <= 3 && prefix.allSatisfy { $0 == " " }
     }
 
     private static func readDestination(_ chars: [Character], _ i: Int) -> (dest: String, next: Int)? {

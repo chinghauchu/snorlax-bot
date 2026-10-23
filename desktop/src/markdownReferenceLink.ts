@@ -22,10 +22,18 @@
  * space. `prepareSpacedLinkDestinations` percent-encodes that
  * destination for the markdown parser. Streaming stays plain.
  * Copy keeps markdown source.
+ * v1.76: link text follows CommonMark. Balanced brackets stay inside
+ * one link (`[link [foo [bar]]](/uri)`). A link may not contain
+ * another link, so `[foo [bar](/uri)][ref]` is the inner link plus
+ * the reference, not one outer link. An undefined full label does
+ * not fall back to a shortcut. Code spans, autolinks, and raw HTML
+ * bind tighter than brackets. Streaming stays plain. Copy keeps
+ * markdown source.
  * Keep in lockstep with `ios/SnorlaxBot/MarkdownReferenceLink.swift`.
  */
 
 import { ASCII_PUNCT } from "./markdownEscape.ts";
+import { htmlTagEnd } from "./markdownHtmlLiteral.ts";
 import { encodeLinkDestination } from "./linkify.ts";
 import { markdownTableEnd } from "./markdownTable.ts";
 import {
@@ -294,116 +302,263 @@ function parseDefinition(
   };
 }
 
+/**
+ * v1.76: walk brackets the way cmark does. The nearest `[` is the
+ * only candidate for a `]`. A matched link (not an image) sets
+ * `noLinkOpeners`, so an outer `[` cannot contain that link.
+ * Balanced brackets that are not themselves links stay in the text.
+ * Code spans, autolinks, and raw HTML are skipped, so a `]` inside
+ * them does not close a link.
+ */
 function applyReferences(src: string, map: Map<string, Target>, blocked: Range[]): string {
-  const parts: string[] = [];
+  type Opener = { index: number; image: boolean; bracketAfter: boolean };
+  type Edit = { start: number; end: number; text: string };
+  const edits: Edit[] = [];
+  const stack: Opener[] = [];
+  let noLinkOpeners = false;
+
+  const sliceResolved = (start: number, end: number): string => {
+    let out = "";
+    let cursor = start;
+    for (const edit of edits) {
+      if (edit.start < cursor || edit.end > end || edit.start >= end) continue;
+      out += src.slice(cursor, edit.start);
+      out += edit.text;
+      cursor = edit.end;
+    }
+    out += src.slice(cursor, end);
+    return out;
+  };
+
+  const absorb = (start: number, end: number, text: string) => {
+    for (let k = edits.length - 1; k >= 0; k -= 1) {
+      const edit = edits[k];
+      if (edit && edit.start >= start && edit.end <= end) edits.splice(k, 1);
+    }
+    edits.push({ start, end, text });
+  };
+
+  const pushOpener = (index: number, image: boolean) => {
+    const top = stack[stack.length - 1];
+    if (top) top.bracketAfter = true;
+    stack.push({ index, image, bracketAfter: false });
+    if (!image) noLinkOpeners = false;
+  };
+
   let i = 0;
   while (i < src.length) {
     const blockedAt = rangeAt(i, blocked);
     if (blockedAt) {
-      parts.push(src.slice(i, blockedAt.end));
+      if (isBlockRange(src, blockedAt)) {
+        stack.length = 0;
+        noLinkOpeners = false;
+      }
       i = blockedAt.end;
       continue;
     }
-    if (
-      src[i] === "!" &&
-      src[i + 1] === "[" &&
-      !isEscaped(src, i)
-    ) {
-      const image = takeImage(src, i + 1, blocked, map);
-      parts.push(image.replacement);
-      i = image.next;
+    if (src[i] === "\n" && src[i + 1] === "\n") {
+      stack.length = 0;
+      noLinkOpeners = false;
+      i += 2;
       continue;
     }
-    if (src[i] !== "[" || isEscaped(src, i)) {
-      parts.push(src[i] ?? "");
-      i += 1;
+    if (src[i] === "\\" && i + 1 < src.length && ASCII_PUNCT.includes(src[i + 1] ?? "")) {
+      i += 2;
       continue;
     }
-    const footnoteEnd = footnoteBracketEnd(src, i);
-    if (footnoteEnd != null) {
-      parts.push(src.slice(i, footnoteEnd));
-      i = footnoteEnd;
-      continue;
-    }
-    const bracket = readBracket(src, i, blocked);
-    if (!bracket) {
-      parts.push(src[i] ?? "");
-      i += 1;
-      continue;
-    }
-    const after = bracket.next;
-    if (src[after] === "(") {
-      const inlineEnd = skipInline(src, after);
-      if (inlineEnd != null) {
-        parts.push(src.slice(i, inlineEnd));
-        i = inlineEnd;
+    if (src[i] === "<" && !isEscaped(src, i)) {
+      const auto = autolinkEnd(src, i);
+      if (auto != null) {
+        i = auto;
+        continue;
+      }
+      const html = htmlTagEnd(src, i);
+      if (html > i) {
+        i = html;
         continue;
       }
     }
-    if (src[after] === "[") {
-      const second = readBracket(src, after, blocked);
-      if (second) {
-        const collapsed = second.raw.trim() === "";
-        const labelRaw = collapsed ? bracket.raw : second.raw;
-        const target = lookupLabel(map, labelRaw);
-        if (target && !(collapsed && isFootnoteLabel(bracket.raw))) {
-          parts.push(emitLink(bracket.raw, target, false));
-          i = second.next;
-          continue;
-        }
-      }
+    if (src[i] === "!" && src[i + 1] === "[" && !isEscaped(src, i)) {
+      pushOpener(i + 1, true);
+      i += 2;
+      continue;
     }
-    if (
-      validLabel(bracket.raw) &&
-      !isFootnoteLabel(bracket.raw) &&
-      !isTaskMarker(src, i)
-    ) {
-      const target = lookupLabel(map, bracket.raw);
-      if (target) {
-        parts.push(emitLink(bracket.raw, target, false));
-        i = bracket.next;
+    if (src[i] === "[" && !isEscaped(src, i)) {
+      const footnoteEnd = footnoteBracketEnd(src, i);
+      if (footnoteEnd != null) {
+        i = footnoteEnd;
         continue;
       }
+      if (isTaskMarker(src, i)) {
+        i += 3;
+        continue;
+      }
+      pushOpener(i, false);
+      i += 1;
+      continue;
     }
-    parts.push(src[i] ?? "");
-    i += 1;
+    if (src[i] !== "]" || isEscaped(src, i)) {
+      i += 1;
+      continue;
+    }
+    const opener = stack.pop();
+    if (!opener) {
+      i += 1;
+      continue;
+    }
+    if (!opener.image && noLinkOpeners) {
+      i += 1;
+      continue;
+    }
+    const matched = matchCloser(src, opener, i, blocked, map);
+    if (!matched) {
+      i += 1;
+      continue;
+    }
+    if (matched.kind === "ref") {
+      const text = sliceResolved(opener.index + 1, i);
+      const start = opener.image ? opener.index - 1 : opener.index;
+      absorb(start, matched.end, emitLink(text, matched.target, opener.image));
+    }
+    if (!opener.image) noLinkOpeners = true;
+    i = matched.end;
   }
-  return parts.join("");
+
+  if (edits.length === 0) return src;
+  edits.sort((a, b) => a.start - b.start || a.end - b.end);
+  let out = "";
+  let cursor = 0;
+  for (const edit of edits) {
+    if (edit.start < cursor) continue;
+    out += src.slice(cursor, edit.start);
+    out += edit.text;
+    cursor = edit.end;
+  }
+  out += src.slice(cursor);
+  return out;
 }
 
-function takeImage(
+type CloserMatch =
+  | { kind: "inline"; end: number }
+  | { kind: "ref"; end: number; target: Target };
+
+function matchCloser(
   src: string,
-  open: number,
+  opener: { index: number; image: boolean; bracketAfter: boolean },
+  close: number,
   blocked: Range[],
   map: Map<string, Target>,
-): { replacement: string; next: number } {
-  const bang = open - 1;
-  const bracket = readBracket(src, open, blocked);
-  if (!bracket) return { replacement: src[bang] ?? "!", next: bang + 1 };
-  const after = bracket.next;
+): CloserMatch | null {
+  const after = close + 1;
   if (src[after] === "(") {
-    const inlineEnd = skipInline(src, after);
-    if (inlineEnd != null) {
-      return { replacement: src.slice(bang, inlineEnd), next: inlineEnd };
-    }
+    const inlineEnd = matchInline(src, after, blocked);
+    if (inlineEnd != null) return { kind: "inline", end: inlineEnd };
   }
   if (src[after] === "[") {
-    const second = readBracket(src, after, blocked);
-    if (second) {
-      const collapsed = second.raw.trim() === "";
-      const labelRaw = collapsed ? bracket.raw : second.raw;
-      const target = lookupLabel(map, labelRaw);
-      if (target && !(collapsed && isFootnoteLabel(bracket.raw))) {
-        return { replacement: emitLink(bracket.raw, target, true), next: second.next };
+    const label = linkLabel(src, after);
+    if (label) {
+      // `[]` is collapsed. A label of only spaces is not a label and
+      // does not fall back to the shortcut (CommonMark).
+      if (label.raw.length === 0) {
+        if (opener.bracketAfter) return null;
+        const text = src.slice(opener.index + 1, close);
+        const target = lookupLabel(map, text);
+        return target ? { kind: "ref", end: label.next, target } : null;
       }
-      return { replacement: src.slice(bang, second.next), next: second.next };
+      const target = lookupLabel(map, label.raw);
+      return target ? { kind: "ref", end: label.next, target } : null;
     }
   }
-  const target = lookupLabel(map, bracket.raw);
-  if (target && !isFootnoteLabel(bracket.raw)) {
-    return { replacement: emitLink(bracket.raw, target, true), next: bracket.next };
+  if (opener.bracketAfter) return null;
+  const text = src.slice(opener.index + 1, close);
+  if (!validLabel(text) || isFootnoteLabel(text)) return null;
+  const target = lookupLabel(map, text);
+  return target ? { kind: "ref", end: after, target } : null;
+}
+
+/** Inline `(dest)`, including an empty `()` or `<>`. Spaces may surround the dest and title. */
+function matchInline(src: string, openParen: number, blocked: Range[]): number | null {
+  if (src[openParen] !== "(") return null;
+  const destAt = skipLinkSpace(src, openParen + 1, blocked);
+  if (destAt == null) return null;
+  let afterDest: number;
+  if (src[destAt] === ")") return destAt + 1;
+  if (src[destAt] === "<" && src[destAt + 1] === ">") {
+    afterDest = destAt + 2;
+  } else {
+    const dest = readDestination(src, destAt);
+    if (!dest) return null;
+    afterDest = dest.next;
   }
-  return { replacement: src.slice(bang, bracket.next), next: bracket.next };
+  let j = afterDest;
+  const titleAt = skipLinkSpace(src, j, blocked);
+  if (
+    titleAt != null &&
+    titleAt !== j &&
+    (src[titleAt] === '"' || src[titleAt] === "'" || src[titleAt] === "(")
+  ) {
+    const title = readTitle(src, titleAt);
+    if (!title) return null;
+    j = title.next;
+  } else if (titleAt != null) {
+    j = titleAt;
+  }
+  const close = skipLinkSpace(src, j, blocked);
+  if (close == null || src[close] !== ")") return null;
+  return close + 1;
+}
+
+/**
+ * A link label: `[` ... `]` with no unescaped brackets inside.
+ * An empty label is the collapsed form. Longer than 999 fails.
+ */
+function linkLabel(src: string, open: number): { raw: string; next: number } | null {
+  if (src[open] !== "[") return null;
+  let i = open + 1;
+  let raw = "";
+  while (i < src.length) {
+    const ch = src[i] ?? "";
+    if (ch === "[" || ch === "]") break;
+    if (ch === "\\" && i + 1 < src.length) {
+      raw += ch + (src[i + 1] ?? "");
+      i += 2;
+    } else {
+      raw += ch;
+      i += 1;
+    }
+    if (raw.length > 999) return null;
+  }
+  if (src[i] !== "]") return null;
+  return { raw, next: i + 1 };
+}
+
+const AUTOLINK_SCHEME = /^[A-Za-z][A-Za-z0-9+.-]{1,31}:/;
+const AUTOLINK_EMAIL =
+  /^[A-Za-z0-9.!#$%&'*+/=?^_`{|}~-]+@[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?(?:\.[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?)*$/;
+
+/** End index of a CommonMark autolink starting at `<`, or null. */
+function autolinkEnd(src: string, start: number): number | null {
+  if (src[start] !== "<") return null;
+  let j = start + 1;
+  while (j < src.length) {
+    const ch = src[j] ?? "";
+    if (ch === ">") break;
+    const code = ch.codePointAt(0) ?? 0;
+    if (ch === "<" || code <= 32 || code === 127) return null;
+    j += 1;
+  }
+  if (src[j] !== ">") return null;
+  const inner = src.slice(start + 1, j);
+  if (!inner || (!AUTOLINK_SCHEME.test(inner) && !AUTOLINK_EMAIL.test(inner))) return null;
+  return j + 1;
+}
+
+/** A fence, indented code, or math block. An inline code span is not one. */
+function isBlockRange(src: string, range: Range): boolean {
+  if (!src.slice(range.start, range.end).includes("\n")) return false;
+  let k = range.start;
+  while (k > 0 && src[k - 1] !== "\n") k -= 1;
+  return /^ {0,3}$/.test(src.slice(k, range.start));
 }
 
 function lookupLabel(map: Map<string, Target>, raw: string): Target | null {
@@ -464,32 +619,6 @@ function readBracket(src: string, open: number, blocked: Range[]): Bracket | nul
     i += 1;
   }
   return null;
-}
-
-function skipInline(src: string, openParen: number): number | null {
-  if (src[openParen] !== "(") return null;
-  let j = openParen + 1;
-  let lineBreaks = 0;
-  while (src[j] === " " || src[j] === "\t" || src[j] === "\n") {
-    if (src[j] === "\n") {
-      lineBreaks += 1;
-      if (lineBreaks > 1 || src[j + 1] === "\n") return null;
-    }
-    j += 1;
-  }
-  if (src[j] === ")") return null;
-  const dest = readDestination(src, j);
-  if (!dest) return null;
-  j = dest.next;
-  while (src[j] === " " || src[j] === "\t") j += 1;
-  if (src[j] === '"' || src[j] === "'" || (src[j] === "(" && dest.dest.length > 0)) {
-    const title = readTitle(src, j);
-    if (!title) return null;
-    j = title.next;
-    while (src[j] === " " || src[j] === "\t") j += 1;
-  }
-  if (src[j] !== ")") return null;
-  return j + 1;
 }
 
 function readDestination(src: string, i: number): { dest: string; next: number } | null {

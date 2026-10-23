@@ -200,7 +200,7 @@ enum MarkdownHtmlLiteral {
     }
 
     /// End of a raw HTML tag starting at `index`, or nil.
-    private static func htmlTagEnd(_ chars: [Character], _ index: Int) -> Int? {
+    static func htmlTagEnd(_ chars: [Character], _ index: Int) -> Int? {
         guard index < chars.count, chars[index] == "<" else { return nil }
         if hasPrefix(chars, index, "<!--") {
             guard let close = find(Array("-->"), in: chars, from: index + 2) else { return nil }

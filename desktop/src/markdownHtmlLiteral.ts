@@ -240,7 +240,7 @@ function mergeRanges(ranges: Range[]): Range[] {
  * letters, digits, and hyphens. Attributes follow the spec,
  * including one line ending in the whitespace.
  */
-function htmlTagEnd(src: string, i: number): number {
+export function htmlTagEnd(src: string, i: number): number {
   if (src[i] !== "<") return -1;
   if (src.startsWith("<!--", i)) {
     const close = src.indexOf("-->", i + 2);
