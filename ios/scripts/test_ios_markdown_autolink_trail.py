@@ -61,7 +61,7 @@ def test_http_uses_the_www_delimiter() -> None:
     assert "\\u{201C}" in LINKS
     assert "\\u201c" in DESKTOP
     http = LINKS.split("func splitHttp", 1)[1].split("static func attributed", 1)[0]
-    assert http.index("streaming && range.upperBound") < http.index("trimTrailing")
+    assert http.index("streaming && rawEnd == text.endIndex") < http.index("trimTrailing")
     desktop_http = DESKTOP.split("function splitHttp", 1)[1].split("const WWW_TRAIL", 1)[0]
     assert desktop_http.index("streaming && idx + raw.length") < desktop_http.index(
         "trimTrailingPunctuation"

@@ -258,7 +258,7 @@ test("streaming still leaves an end-of-buffer URL plain, and copy stays source",
     /const WWW_TRAIL = new Set\(\["\?", "!", "\.", ",", ":", "\*", "_", "~", "'", '"'\]\)/,
   );
   const swiftHttp = swift.split("func splitHttp")[1]?.split("static func attributed")[0] ?? "";
-  assert.ok(swiftHttp.indexOf("streaming && range.upperBound") < swiftHttp.indexOf("trimTrailing"));
+  assert.ok(swiftHttp.indexOf("streaming && rawEnd == text.endIndex") < swiftHttp.indexOf("trimTrailing"));
   assert.match(swift, /autolinkDelim\(chars, 0, end\)/);
   assert.match(swift, /v1\.62/);
   assert.match(swift, /\["\?", "!", "\.", ",", ":", "\*", "_", "~", "'", "\\""\]/);
