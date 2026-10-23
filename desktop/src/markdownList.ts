@@ -730,7 +730,11 @@ function skipHtmlBlock(lines: string[], start: number, kind: HtmlKind): number {
 }
 
 /** Index just after an HTML block that starts at `index`, or null. */
-function htmlBlockEnd(lines: string[], index: number, paragraphOpen: boolean): number | null {
+export function htmlBlockEnd(
+  lines: string[],
+  index: number,
+  paragraphOpen: boolean,
+): number | null {
   const kind = htmlBlockKind(lines[index] ?? "", paragraphOpen);
   if (!kind) return null;
   return skipHtmlBlock(lines, index, kind);

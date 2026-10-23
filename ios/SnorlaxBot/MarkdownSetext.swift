@@ -21,6 +21,20 @@ import SwiftUI
 /// headings. Underline-shaped lines inside a table cell stay
 /// literal too.
 ///
+/// v1.80: the underline rules match cmark-gfm at the edges v1.44
+/// still missed. A multi-line paragraph plus `===` or `---` is one
+/// heading. Up to three leading spaces and any trailing spaces or
+/// tabs are an underline; four or more columns are not. A solid
+/// `---` closes an open paragraph as an h2, and the same line with
+/// no paragraph above it stays a thematic break. A line of `=`
+/// with nothing above it stays text. Internal spaces (`= =`,
+/// `--- -`) are not an underline. A lazy list or quote continuation
+/// is not an underline. An HTML block uses the CommonMark end
+/// rule, so `<a title="a lot` then `---` is a heading, while
+/// `<div>`, `<script>`, and a comment keep the underline inside
+/// the block. Indented code may follow another block with no
+/// blank line, so that code is not heading text.
+///
 /// Streaming (`completed: false`) returns the text unchanged.
 /// Copy controls keep markdown source — this type does not write
 /// the pasteboard. No animation. No new HTTP.
@@ -56,24 +70,26 @@ enum MarkdownSetext {
         var out: [String] = []
         var mode: Mode = .none
         var para = false
-        var prevBlank = true
         var index = 0
         while index < lines.count {
             let line = lines[index]
             if isBlank(line) {
                 para = false
                 mode = .none
-                prevBlank = true
                 out.append(line)
                 index += 1
                 continue
             }
-            let skipped = skipOpaque(lines, index, allowIndent: prevBlank && !para)
+            let skipped = skipOpaque(
+                lines,
+                index,
+                allowCode: isNone(mode) && !para,
+                paragraphOpen: para
+            )
             if skipped > index {
                 out.append(contentsOf: lines[index..<skipped])
                 para = false
                 mode = .none
-                prevBlank = false
                 index = skipped
                 continue
             }
@@ -83,7 +99,6 @@ enum MarkdownSetext {
                 if fits {
                     para = false
                     out.append(line)
-                    prevBlank = false
                     index += 1
                     continue
                 }
@@ -92,13 +107,11 @@ enum MarkdownSetext {
                     para = false
                     mode = .none
                     out.append(line)
-                    prevBlank = false
                     index += 1
                     continue
                 }
                 if let raw {
                     out.append(protectUnderline(line, raw.index))
-                    prevBlank = false
                     index += 1
                     continue
                 }
@@ -106,7 +119,14 @@ enum MarkdownSetext {
             if raw != nil && para && isNone(mode) {
                 para = false
                 out.append(line)
-                prevBlank = false
+                index += 1
+                continue
+            }
+            // v1.80: a break with no open paragraph is not paragraph text.
+            if isThematic(line) {
+                para = false
+                mode = .none
+                out.append(line)
                 index += 1
                 continue
             }
@@ -114,7 +134,6 @@ enum MarkdownSetext {
                 mode = .quote
                 para = true
                 out.append(line)
-                prevBlank = false
                 index += 1
                 continue
             }
@@ -122,14 +141,12 @@ enum MarkdownSetext {
                 mode = .list(contentCol: item.contentCol)
                 para = true
                 out.append(line)
-                prevBlank = false
                 index += 1
                 continue
             }
             if !para { mode = .none }
             para = true
             out.append(line)
-            prevBlank = false
             index += 1
         }
         let next = out.joined(separator: "\n")
@@ -147,7 +164,6 @@ enum MarkdownSetext {
         var md: [String] = []
         var para: [String] = []
         var mode: Mode = .none
-        var prevBlank = true
         var index = 0
 
         func flushMd() {
@@ -170,16 +186,20 @@ enum MarkdownSetext {
                 dumpPara()
                 md.append(line)
                 mode = .none
-                prevBlank = true
                 index += 1
                 continue
             }
-            let skipped = skipOpaque(lines, index, allowIndent: prevBlank && para.isEmpty)
+            let paragraphOpen = !para.isEmpty
+            let skipped = skipOpaque(
+                lines,
+                index,
+                allowCode: isNone(mode) && !paragraphOpen,
+                paragraphOpen: paragraphOpen
+            )
             if skipped > index {
                 dumpPara()
                 md.append(contentsOf: lines[index..<skipped])
                 mode = .none
-                prevBlank = false
                 index = skipped
                 continue
             }
@@ -192,31 +212,28 @@ enum MarkdownSetext {
                 } else {
                     md.append(line)
                 }
-                prevBlank = false
                 index += 1
                 continue
             }
             if fitsContainer(line, mode) {
                 dumpPara()
                 md.append(line)
-                prevBlank = false
                 index += 1
                 continue
             }
-            if let raw = setextUnderline(line), !isNone(mode), isThematic(line) {
-                _ = raw
+            // v1.80: `---` closes an open paragraph above. With no paragraph
+            // it is a thematic break, not the first line of a later heading.
+            if isThematic(line) {
                 dumpPara()
                 mode = .none
                 md.append(line)
-                prevBlank = false
                 index += 1
                 continue
             }
-            if isAtx(line) || (isThematic(line) && setextUnderline(line) == nil) {
+            if isAtx(line) {
                 dumpPara()
                 mode = .none
                 md.append(line)
-                prevBlank = false
                 index += 1
                 continue
             }
@@ -224,7 +241,6 @@ enum MarkdownSetext {
                 dumpPara()
                 mode = .quote
                 md.append(line)
-                prevBlank = false
                 index += 1
                 continue
             }
@@ -232,7 +248,6 @@ enum MarkdownSetext {
                 dumpPara()
                 mode = .list(contentCol: item.contentCol)
                 md.append(line)
-                prevBlank = false
                 index += 1
                 continue
             }
@@ -241,7 +256,6 @@ enum MarkdownSetext {
             } else {
                 md.append(line)
             }
-            prevBlank = false
             index += 1
         }
         dumpPara()
@@ -343,12 +357,20 @@ enum MarkdownSetext {
         return setextUnderline(String(chars[i...])) != nil
     }
 
-    private static func skipOpaque(_ lines: [String], _ index: Int, allowIndent: Bool) -> Int {
+    private static func skipOpaque(
+        _ lines: [String],
+        _ index: Int,
+        allowCode: Bool,
+        paragraphOpen: Bool
+    ) -> Int {
         let line = lines[index]
         if let fence = openingFence(line) { return skipFence(lines, index, fence) }
         if line.trimmingCharacters(in: .whitespaces) == "$$" { return skipMath(lines, index) }
-        if allowIndent && isIndentedCodeLine(line) { return skipIndented(lines, index) }
-        if allowIndent && isHtmlBlockStart(line) { return skipHtml(lines, index) }
+        if let html = MarkdownList.htmlBlockLineEnd(lines, index: index, paragraphOpen: paragraphOpen),
+           html > index {
+            return html
+        }
+        if allowCode && isIndentedCodeLine(line) { return skipIndented(lines, index) }
         return index
     }
 
@@ -382,12 +404,6 @@ enum MarkdownSetext {
         return i
     }
 
-    private static func skipHtml(_ lines: [String], _ index: Int) -> Int {
-        var i = index + 1
-        while i < lines.count, !isBlank(lines[i]) { i += 1 }
-        return i
-    }
-
     private static func openingFence(_ line: String) -> String? {
         guard let match = line.range(of: #"^( {0,3})(`{3,}|~{3,})(.*)$"#, options: .regularExpression) else {
             return nil
@@ -417,10 +433,6 @@ enum MarkdownSetext {
         if isBlank(line) { return false }
         if line.hasPrefix("\t") { return true }
         return line.range(of: #"^ {4,}"#, options: .regularExpression) != nil
-    }
-
-    private static func isHtmlBlockStart(_ line: String) -> Bool {
-        line.range(of: #"^ {0,3}<(?:!--|\?|!\[CDATA\[|/?[A-Za-z])"#, options: .regularExpression) != nil
     }
 
     private static func isAtx(_ line: String) -> Bool {

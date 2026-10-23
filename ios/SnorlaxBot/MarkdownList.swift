@@ -605,8 +605,14 @@ enum MarkdownList {
 
     /// Index just after an HTML block that starts at `index`, or nil.
     private static func htmlBlockEnd(_ lines: [String], index: Int, paragraphOpen: Bool) -> Int? {
+        guard index >= 0, index < lines.count else { return nil }
         guard let kind = htmlBlockKind(lines[index], paragraphOpen: paragraphOpen) else { return nil }
         return skipHtmlBlock(lines, start: index, kind: kind)
+    }
+
+    /// v1.80: setext scanning uses the same HTML block end.
+    static func htmlBlockLineEnd(_ lines: [String], index: Int, paragraphOpen: Bool) -> Int? {
+        htmlBlockEnd(lines, index: index, paragraphOpen: paragraphOpen)
     }
 
     /// End index of a type 1–5 HTML block. Those blocks keep their

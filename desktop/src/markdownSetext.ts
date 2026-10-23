@@ -20,6 +20,20 @@
  * headings. Underline-shaped lines inside a table cell stay
  * literal too.
  *
+ * v1.80: the underline rules match cmark-gfm at the edges v1.44
+ * still missed. A multi-line paragraph plus `===` or `---` is one
+ * heading. Up to three leading spaces and any trailing spaces or
+ * tabs are an underline; four or more columns are not. A solid
+ * `---` closes an open paragraph as an h2, and the same line with
+ * no paragraph above it stays a thematic break. A line of `=`
+ * with nothing above it stays text. Internal spaces (`= =`,
+ * `--- -`) are not an underline. A lazy list or quote continuation
+ * is not an underline. An HTML block uses the CommonMark end
+ * rule, so `<a title="a lot` then `---` is a heading, while
+ * `<div>`, `<script>`, and a comment keep the underline inside
+ * the block. Indented code may follow another block with no
+ * blank line, so that code is not heading text.
+ *
  * Streaming (`completed: false`) returns the text unchanged.
  * Copy controls keep markdown source — this module does not copy.
  * No animation. No new HTTP.
@@ -27,6 +41,7 @@
  */
 
 import { HARD_BREAK_TOKEN } from "./markdownHardBreak.ts";
+import { htmlBlockEnd } from "./markdownList.ts";
 
 export type SetextBlock =
   | { type: "markdown"; text: string }
@@ -64,24 +79,21 @@ export function protectLazySetext(text: string, completed = true): string {
   const out: string[] = [];
   let mode: Mode = { kind: "none" };
   let para = false;
-  let prevBlank = true;
   let i = 0;
   while (i < lines.length) {
     const line = lines[i] ?? "";
     if (isBlank(line)) {
       para = false;
       mode = { kind: "none" };
-      prevBlank = true;
       out.push(line);
       i += 1;
       continue;
     }
-    const skipped = skipOpaque(lines, i, prevBlank && !para);
+    const skipped = skipOpaque(lines, i, mode.kind === "none" && !para, para);
     if (skipped > i) {
       for (let j = i; j < skipped; j += 1) out.push(lines[j] ?? "");
       para = false;
       mode = { kind: "none" };
-      prevBlank = false;
       i = skipped;
       continue;
     }
@@ -91,7 +103,6 @@ export function protectLazySetext(text: string, completed = true): string {
       if (fits) {
         para = false;
         out.push(line);
-        prevBlank = false;
         i += 1;
         continue;
       }
@@ -99,13 +110,11 @@ export function protectLazySetext(text: string, completed = true): string {
         para = false;
         mode = { kind: "none" };
         out.push(line);
-        prevBlank = false;
         i += 1;
         continue;
       }
       if (raw) {
         out.push(protectUnderline(line, raw.index));
-        prevBlank = false;
         i += 1;
         continue;
       }
@@ -113,7 +122,14 @@ export function protectLazySetext(text: string, completed = true): string {
     if (raw && para && mode.kind === "none") {
       para = false;
       out.push(line);
-      prevBlank = false;
+      i += 1;
+      continue;
+    }
+    // v1.80: a break with no open paragraph is not paragraph text.
+    if (isThematic(line)) {
+      para = false;
+      mode = { kind: "none" };
+      out.push(line);
       i += 1;
       continue;
     }
@@ -121,7 +137,6 @@ export function protectLazySetext(text: string, completed = true): string {
       mode = { kind: "quote" };
       para = true;
       out.push(line);
-      prevBlank = false;
       i += 1;
       continue;
     }
@@ -130,14 +145,12 @@ export function protectLazySetext(text: string, completed = true): string {
       mode = { kind: "list", contentCol: item.contentCol };
       para = true;
       out.push(line);
-      prevBlank = false;
       i += 1;
       continue;
     }
     if (!para) mode = { kind: "none" };
     para = true;
     out.push(line);
-    prevBlank = false;
     i += 1;
   }
   const next = out.join("\n");
@@ -163,7 +176,6 @@ export function splitSetextHeadings(
   let md: string[] = [];
   let para: string[] = [];
   let mode: Mode = { kind: "none" };
-  let prevBlank = true;
   let i = 0;
 
   const flushMd = () => {
@@ -184,16 +196,20 @@ export function splitSetextHeadings(
       dumpPara();
       md.push(line);
       mode = { kind: "none" };
-      prevBlank = true;
       i += 1;
       continue;
     }
-    const skipped = skipOpaque(lines, i, prevBlank && para.length === 0);
+    const paragraphOpen = para.length > 0;
+    const skipped = skipOpaque(
+      lines,
+      i,
+      mode.kind === "none" && !paragraphOpen,
+      paragraphOpen,
+    );
     if (skipped > i) {
       dumpPara();
       for (let j = i; j < skipped; j += 1) md.push(lines[j] ?? "");
       mode = { kind: "none" };
-      prevBlank = false;
       i = skipped;
       continue;
     }
@@ -204,30 +220,28 @@ export function splitSetextHeadings(
       flushMd();
       if (body) blocks.push({ type: "heading", level: raw.level, text: body });
       else md.push(line);
-      prevBlank = false;
       i += 1;
       continue;
     }
     if (fitsContainer(line, mode)) {
       dumpPara();
       md.push(line);
-      prevBlank = false;
       i += 1;
       continue;
     }
-    if (raw && mode.kind !== "none" && isThematic(line)) {
+    // v1.80: `---` closes an open paragraph above. With no paragraph
+    // it is a thematic break, not the first line of a later heading.
+    if (isThematic(line)) {
       dumpPara();
       mode = { kind: "none" };
       md.push(line);
-      prevBlank = false;
       i += 1;
       continue;
     }
-    if (isAtx(line) || (isThematic(line) && !raw)) {
+    if (isAtx(line)) {
       dumpPara();
       mode = { kind: "none" };
       md.push(line);
-      prevBlank = false;
       i += 1;
       continue;
     }
@@ -235,7 +249,6 @@ export function splitSetextHeadings(
       dumpPara();
       mode = { kind: "quote" };
       md.push(line);
-      prevBlank = false;
       i += 1;
       continue;
     }
@@ -244,13 +257,11 @@ export function splitSetextHeadings(
       dumpPara();
       mode = { kind: "list", contentCol: item.contentCol };
       md.push(line);
-      prevBlank = false;
       i += 1;
       continue;
     }
     if (mode.kind === "none") para.push(line);
     else md.push(line);
-    prevBlank = false;
     i += 1;
   }
   dumpPara();
@@ -337,13 +348,19 @@ function quoteRemainderIsUnderline(line: string): boolean {
   return setextUnderline(line.slice(i)) != null;
 }
 
-function skipOpaque(lines: string[], index: number, allowIndent: boolean): number {
+function skipOpaque(
+  lines: string[],
+  index: number,
+  allowCode: boolean,
+  paragraphOpen: boolean,
+): number {
   const line = lines[index] ?? "";
   const fence = openingFence(line);
   if (fence) return skipFence(lines, index, fence);
   if (line.trim() === "$$") return skipMath(lines, index);
-  if (allowIndent && isIndentedCodeLine(line)) return skipIndented(lines, index);
-  if (allowIndent && isHtmlBlockStart(line)) return skipHtml(lines, index);
+  const html = htmlBlockEnd(lines, index, paragraphOpen);
+  if (html != null && html > index) return html;
+  if (allowCode && isIndentedCodeLine(line)) return skipIndented(lines, index);
   return index;
 }
 
@@ -377,12 +394,6 @@ function skipIndented(lines: string[], index: number): number {
   return i;
 }
 
-function skipHtml(lines: string[], index: number): number {
-  let i = index + 1;
-  while (i < lines.length && !isBlank(lines[i] ?? "")) i += 1;
-  return i;
-}
-
 function openingFence(line: string): string | null {
   const match = /^( {0,3})(`{3,}|~{3,})(.*)$/.exec(line);
   if (!match) return null;
@@ -404,10 +415,6 @@ function isIndentedCodeLine(line: string): boolean {
   if (isBlank(line)) return false;
   if (line.startsWith("\t")) return true;
   return /^ {4,}/.test(line);
-}
-
-function isHtmlBlockStart(line: string): boolean {
-  return /^ {0,3}<(?:!--|\?|!\[CDATA\[|\/?[A-Za-z])/.test(line);
 }
 
 function isAtx(line: string): boolean {
