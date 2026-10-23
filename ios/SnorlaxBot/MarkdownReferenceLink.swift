@@ -15,6 +15,10 @@ import Foundation
 /// Reference images rewrite to inline images. Streaming
 /// (`completed: false`) returns the text unchanged. Copy keeps
 /// markdown source. No animation. No new HTTP.
+/// v1.74: a pointy destination may contain spaces and tabs, including
+/// when a title follows in single quotes or parentheses. A backslash
+/// escapes ASCII punctuation only. `prepareSpacedDestinations`
+/// percent-encodes that destination for the markdown parser.
 /// Keep in lockstep with `desktop/src/markdownReferenceLink.ts`.
 enum MarkdownReferenceLink {
     private struct Target {
@@ -59,6 +63,96 @@ enum MarkdownReferenceLink {
         let stripped = removeRanges(chars, collected.cuts)
         let resolved = applyReferences(stripped, map: collected.map, blocked: protectedRanges(stripped))
         return String(resolved)
+    }
+
+    /// v1.74: percent-encode spaces and tabs inside pointy link and
+    /// image destinations. Code, fences, indented code, and math stay
+    /// literal. `completed: false` returns `text`.
+    static func prepareSpacedDestinations(_ text: String, completed: Bool) -> String {
+        if !completed || text.isEmpty || !text.contains("<") { return text }
+        let src = text
+            .replacingOccurrences(of: "\r\n", with: "\n")
+            .replacingOccurrences(of: "\r", with: "\n")
+        let chars = Array(src)
+        let blocked = prepareBlocked(chars)
+        var edits: [(start: Int, end: Int, text: String)] = []
+        func pushPointy(_ destAt: Int) {
+            if char(chars, destAt) != "<" || rangeAt(destAt, blocked) != nil { return }
+            guard let dest = readDestination(chars, destAt) else { return }
+            if !dest.dest.contains(" ") && !dest.dest.contains("\t") { return }
+            edits.append((destAt, dest.next, "<\(encodeDestination(dest.dest))>"))
+        }
+        var index = 0
+        while index < chars.count {
+            if let blockedAt = rangeAt(index, blocked) {
+                index = blockedAt.end
+                continue
+            }
+            let image = chars[index] == "!"
+                && index + 1 < chars.count
+                && chars[index + 1] == "["
+                && !isEscaped(chars, index)
+            if (chars[index] == "[" || image) && !isEscaped(chars, index) {
+                let openBracket = image ? index + 1 : index
+                if let bracket = readBracket(chars, openBracket, blocked) {
+                    if let paren = skipLinkSpace(chars, bracket.next, blocked), char(chars, paren) == "(" {
+                        if let destAt = skipLinkSpace(chars, paren + 1, blocked) {
+                            pushPointy(destAt)
+                        }
+                    }
+                    index = bracket.next
+                    continue
+                }
+            }
+            index += 1
+        }
+        for line in lineSpans(chars) {
+            if rangeAt(line.start, blocked) != nil { continue }
+            guard let parsed = parseDefinition(chars, lineStart: line.start, blocked: blocked) else { continue }
+            if !parsed.dest.contains(" ") && !parsed.dest.contains("\t") { continue }
+            let prefix = quotePrefixLength(line.text)
+            var labelAt = line.start + prefix
+            while char(chars, labelAt) == " " && labelAt < line.start + prefix + 4 { labelAt += 1 }
+            guard let label = readBracket(chars, labelAt, blocked) else { continue }
+            let colon = skipSpTab(chars, label.next)
+            if char(chars, colon) != ":" { continue }
+            guard let destAt = skipDestWs(chars, colon + 1, blocked) else { continue }
+            pushPointy(destAt)
+        }
+        if edits.isEmpty { return text == src ? text : src }
+        edits.sort { $0.start < $1.start }
+        var out = ""
+        var cursor = 0
+        for edit in edits {
+            if edit.start < cursor { continue }
+            out += slice(chars, cursor, edit.start)
+            out += edit.text
+            cursor = edit.end
+        }
+        out += slice(chars, cursor, chars.count)
+        return out
+    }
+
+    /// Spaces, tabs, backslash, and angle brackets become percent-escapes.
+    static func encodeDestination(_ dest: String) -> String {
+        var out = ""
+        for ch in dest {
+            switch ch {
+            case " ": out += "%20"
+            case "\t": out += "%09"
+            case "\\": out += "%5C"
+            case "<": out += "%3C"
+            case ">": out += "%3E"
+            default: out.append(ch)
+            }
+        }
+        return out
+    }
+
+    private static let asciiPunct = Set("!\"#$%&'()*+,-./:;<=>?@[\\]^_`{|}~")
+
+    private static func isAsciiPunct(_ ch: Character) -> Bool {
+        asciiPunct.contains(ch)
     }
 
     private static func collectDefinitions(
@@ -345,9 +439,9 @@ enum MarkdownReferenceLink {
             var out = ""
             while j < chars.count {
                 let ch = chars[j]
-                if ch == "\n" || ch == "<" || ch == " " || ch == "\t" { return nil }
-                if ch == "\\" {
-                    if j + 1 >= chars.count { return nil }
+                // v1.74: spaces and tabs stay. A backslash escapes punctuation only.
+                if ch == "\n" || ch == "<" { return nil }
+                if ch == "\\", j + 1 < chars.count, isAsciiPunct(chars[j + 1]) {
                     out.append(chars[j + 1])
                     j += 2
                     continue
@@ -425,6 +519,27 @@ enum MarkdownReferenceLink {
         let opener = char(chars, at)
         if opener != "\"" && opener != "'" && opener != "(" { return nil }
         return readTitle(chars, at)
+    }
+
+    /// Spaces, tabs, and at most one newline. CommonMark link spacing.
+    private static func skipLinkSpace(_ chars: [Character], _ start: Int, _ blocked: [Span]) -> Int? {
+        var index = start
+        var newline = false
+        while index < chars.count {
+            if rangeAt(index, blocked) != nil { return nil }
+            let ch = chars[index]
+            if ch == " " || ch == "\t" {
+                index += 1
+                continue
+            }
+            if ch == "\n" && !newline {
+                newline = true
+                index += 1
+                continue
+            }
+            break
+        }
+        return index
     }
 
     private static func skipDestWs(_ chars: [Character], _ i: Int, _ blocked: [Span]) -> Int? {
@@ -564,6 +679,61 @@ enum MarkdownReferenceLink {
             i -= 1
         }
         return slashes % 2 == 1
+    }
+
+    private static func prepareBlocked(_ chars: [Character]) -> [Span] {
+        let fences = fenceRanges(chars)
+        let codes = inlineCodeRanges(chars, fences)
+        let indented = indentedCodeRanges(chars, fences)
+        let skip = fences + codes + indented
+        return mergeRanges(skip + mathRanges(chars, skip))
+    }
+
+    private static func indentedCodeRanges(_ chars: [Character], _ fences: [Span]) -> [Span] {
+        var ranges: [Span] = []
+        var inCode = false
+        var codeStart = 0
+        var prevBlank = true
+        for line in lineSpans(chars) {
+            let inFence = fences.contains { line.start >= $0.start && line.start < $0.end }
+            if inFence {
+                if inCode {
+                    ranges.append(Span(start: codeStart, end: line.start))
+                    inCode = false
+                }
+                prevBlank = false
+                continue
+            }
+            let indent = contentIndent(line.text)
+            let blank = indent == nil
+            if inCode, let indent, indent < 4 {
+                ranges.append(Span(start: codeStart, end: line.start))
+                inCode = false
+            }
+            if !inCode, prevBlank, let indent, indent >= 4 {
+                inCode = true
+                codeStart = line.start
+            }
+            prevBlank = blank
+        }
+        if inCode { ranges.append(Span(start: codeStart, end: chars.count)) }
+        return ranges
+    }
+
+    private static func contentIndent(_ line: String) -> Int? {
+        var col = 0
+        for ch in line {
+            if ch == " " {
+                col += 1
+                continue
+            }
+            if ch == "\t" {
+                col += 4 - (col % 4)
+                continue
+            }
+            return col
+        }
+        return nil
     }
 
     private static func protectedRanges(_ chars: [Character]) -> [Span] {

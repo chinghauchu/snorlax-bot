@@ -68,7 +68,9 @@ enum MarkdownImage {
     private static let attachmentPrefixes = ["/v1/attachments/", "/v1/images/"]
 
     static func sourceKind(_ raw: String) -> Kind {
-        let url = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        let url = MarkdownReferenceLink.encodeDestination(
+            raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        )
         if url.isEmpty { return .literal }
         let lower = url.lowercased()
         if lower.hasPrefix("http://") || lower.hasPrefix("https://") {
@@ -163,7 +165,8 @@ enum MarkdownImage {
             if !rest.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                 return (kind: "mixed", start: link.start, end: link.end, href: link.href)
             }
-            let href = sourceKind(link.href) == .remote ? link.href : ""
+            let opened = MarkdownReferenceLink.encodeDestination(link.href)
+            let href = sourceKind(opened) == .remote ? opened : ""
             return (kind: "sole", start: link.start, end: link.end, href: href)
         }
         return nil
@@ -202,14 +205,16 @@ enum MarkdownImage {
             cursor = read.next
         }
         guard let close = skipLinkSpace(chars, cursor, blocked), chars[close] == ")" else { return nil }
-        let url = decodeInline(dest.value)
+        let decoded = decodeInline(dest.value)
+        let opened = MarkdownReferenceLink.encodeDestination(decoded)
+        let kind = sourceKind(opened)
         return Hit(
             start: bang,
             end: close + 1,
             alt: alt.raw,
-            url: url,
+            url: kind == .remote ? opened : decoded,
             title: title,
-            kind: sourceKind(url)
+            kind: kind
         )
     }
 
@@ -316,7 +321,8 @@ enum MarkdownImage {
                 if inRange(index, blocked) { return nil }
                 let ch = chars[index]
                 if ch == "\n" || ch == "<" { return nil }
-                if ch == "\\", index + 1 < chars.count {
+                // v1.74: spaces stay. A backslash escapes ASCII punctuation only.
+                if ch == "\\", index + 1 < chars.count, asciiPunct.contains(chars[index + 1]) {
                     value.append(chars[index + 1])
                     index += 2
                     continue

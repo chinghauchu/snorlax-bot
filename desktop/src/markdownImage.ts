@@ -25,6 +25,7 @@
  */
 
 import { ASCII_PUNCT } from "./markdownEscape.ts";
+import { encodeLinkDestination } from "./linkify.ts";
 import {
   fenceRanges,
   inRange,
@@ -64,7 +65,7 @@ const ATTACHMENT_PATH = /^\/v1\/(?:attachments|images)\/[A-Za-z0-9._~-]+$/;
  * stays literal text.
  */
 export function imageSourceKind(raw: string): ImageSourceKind {
-  const url = raw.trim();
+  const url = encodeLinkDestination(raw.trim());
   if (!url) return "literal";
   if (/^https?:\/\//i.test(url)) {
     try {
@@ -218,7 +219,8 @@ function imageLink(
     }
     // An unsafe destination is not a link. Drop the markers and
     // show the image, matching the existing safe-scheme rule.
-    const href = imageSourceKind(link.href) === "remote" ? link.href : "";
+    const opened = encodeLinkDestination(link.href);
+    const href = imageSourceKind(opened) === "remote" ? opened : "";
     return { kind: "sole", start: link.start, end: link.end, href };
   }
   return null;
@@ -337,14 +339,16 @@ function parseInlineImage(src: string, bang: number, blocked: Range[]): Markdown
   }
   const close = skipLinkSpace(src, k, blocked);
   if (close == null || src[close] !== ")") return null;
-  const url = decodeInline(dest.value);
+  const decoded = decodeInline(dest.value);
+  const opened = encodeLinkDestination(decoded);
+  const kind = imageSourceKind(opened);
   return {
     start: bang,
     end: close + 1,
     alt: alt.raw,
-    url,
+    url: kind === "remote" ? opened : decoded,
     title,
-    kind: imageSourceKind(url),
+    kind,
   };
 }
 
@@ -399,7 +403,8 @@ function readDestination(
       if (inRange(j, blocked)) return null;
       const ch = src[j] ?? "";
       if (ch === "\n" || ch === "<") return null;
-      if (ch === "\\" && j + 1 < src.length) {
+      // v1.74: spaces stay. A backslash escapes ASCII punctuation only.
+      if (ch === "\\" && j + 1 < src.length && ASCII_PUNCT.includes(src[j + 1] ?? "")) {
         value += src[j + 1];
         j += 2;
         continue;
