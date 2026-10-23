@@ -26,6 +26,13 @@ import SwiftUI
 /// Its lines, including a nested `- [ ]`, stay in the markdown so
 /// the ordered item can show its own checkbox. Margin `- [ ]` /
 /// `* [x]` still extract here.
+/// v1.73: a blockquote keeps cmark-gfm tab stops. The optional
+/// column after `>` can eat part of a tab. The leftover columns
+/// decide indented code, so `>\t\tfoo` is code whose text is two
+/// spaces then `foo`. A tab that crosses the code indent becomes
+/// the leftover spaces, and a later tab stays a tab. A line that
+/// continues an open paragraph is not code. A fence stays a fence.
+/// Streaming stays plain text.
 /// Keep in lockstep with `desktop/src/markdownQuoteTask.ts`.
 enum MarkdownQuoteTask {
     /// Empty ballot box. Not a control.
@@ -99,11 +106,13 @@ enum MarkdownQuoteTask {
                 let start = index
                 var inner: [String] = []
                 var open = false
+                var carry = QuoteCarry()
                 while index < lines.count {
                     let current = lines[index]
-                    if let stripped = stripQuoteMarker(current) {
-                        inner.append(stripped)
-                        open = paragraphOpenAfter(stripped, wasOpen: open)
+                    if let rendered = renderQuoteLine(current, carry: carry, paragraphOpen: open) {
+                        inner.append(rendered.text)
+                        carry = rendered.carry
+                        open = carry.fence == nil && paragraphOpenAfter(rendered.text, wasOpen: open)
                         index += 1
                         continue
                     }
@@ -156,7 +165,17 @@ enum MarkdownQuoteTask {
     }
 
     /// One CommonMark quote marker, or nil when the line is not a quote.
+    /// A tab keeps its stop: the optional column after `>` can consume
+    /// part of it, and indented code is stored as four spaces plus the
+    /// text cmark-gfm would keep.
     static func stripQuoteMarker(_ line: String) -> String? {
+        if !line.contains("\t") { return stripQuoteMarkerSpaces(line) }
+        guard let contentCol = quoteContentColumn(line) else { return nil }
+        return canonicalBody(line, contentCol: contentCol)
+    }
+
+    /// Space-only quote marker. Tabs use `stripQuoteMarker`.
+    private static func stripQuoteMarkerSpaces(_ line: String) -> String? {
         var i = line.startIndex
         var spaces = 0
         while i < line.endIndex, spaces < 3, line[i] == " " {
@@ -169,6 +188,439 @@ enum MarkdownQuoteTask {
             i = line.index(after: i)
         }
         return String(line[i...])
+    }
+
+    private struct QuoteFence {
+        var marker: String
+        var indent: Int
+    }
+
+    private struct QuoteList {
+        var absolute: Int
+        var relative: Int
+        /// The item already has text. An empty item ends on a blank line.
+        var filled: Bool
+    }
+
+    /// Fence, math, list, and nested-quote state. Treated as immutable
+    /// after `init`, so a nested link can be shared.
+    private final class QuoteCarry {
+        var fence: QuoteFence?
+        var math: Bool
+        var list: QuoteList?
+        var nested: QuoteCarry?
+        var paragraph: Bool
+
+        init(
+            fence: QuoteFence? = nil,
+            math: Bool = false,
+            list: QuoteList? = nil,
+            nested: QuoteCarry? = nil,
+            paragraph: Bool = false
+        ) {
+            self.fence = fence
+            self.math = math
+            self.list = list
+            self.nested = nested
+            self.paragraph = paragraph
+        }
+
+        func withParagraph(_ paragraph: Bool) -> QuoteCarry {
+            QuoteCarry(fence: fence, math: math, list: list, nested: nested, paragraph: paragraph)
+        }
+    }
+
+    private struct RenderedQuote {
+        var text: String
+        var carry: QuoteCarry
+    }
+
+    private struct QuoteMarker {
+        var text: String
+        var absolute: Int
+        var relative: Int
+        var interrupts: Bool
+        var filled: Bool
+    }
+
+    /// Quote line ready for a column-0 reparse, or nil when `line`
+    /// is not a quote. Fence, math, list, and nested-quote state cross
+    /// lines so a tab inside them is not rewritten as a top-level
+    /// indented code block.
+    private static func renderQuoteLine(
+        _ line: String,
+        carry: QuoteCarry,
+        paragraphOpen: Bool
+    ) -> RenderedQuote? {
+        guard let contentCol = quoteContentColumn(line) else { return nil }
+        return renderAt(line, contentCol: contentCol, carry: carry, paragraphOpen: paragraphOpen)
+    }
+
+    private static func renderAt(
+        _ line: String,
+        contentCol: Int,
+        carry: QuoteCarry,
+        paragraphOpen: Bool
+    ) -> RenderedQuote {
+        let plain = quotePlain(line, contentCol: contentCol)
+        if let fence = carry.fence {
+            let text = fenceBody(line, contentCol: contentCol, indent: fence.indent)
+            let closed = fenceCloses(line, contentCol: contentCol, marker: fence.marker)
+            return RenderedQuote(
+                text: text,
+                carry: QuoteCarry(fence: closed ? nil : fence)
+            )
+        }
+        if carry.math {
+            let text = materialize(line, contentCol: contentCol)
+            return RenderedQuote(
+                text: text,
+                carry: QuoteCarry(math: text.trimmingCharacters(in: .whitespaces) != "$$", list: carry.list)
+            )
+        }
+        if let opened = openingQuoteFence(line, contentCol: contentCol) {
+            let text = line.contains("\t")
+                ? fenceBody(line, contentCol: contentCol, indent: opened.indent)
+                : plain
+            return RenderedQuote(text: text, carry: QuoteCarry(fence: opened))
+        }
+        if let at = firstContent(line, contentCol: contentCol),
+           line[at.index] == ">",
+           at.col - contentCol <= 3
+        {
+            let innerCol = nestedContentColumn(line, index: at.index, col: at.col)
+            let nested = carry.nested ?? QuoteCarry()
+            let inner = renderAt(
+                line,
+                contentCol: innerCol,
+                carry: nested,
+                paragraphOpen: nested.paragraph
+            )
+            let paragraph = inner.carry.fence == nil
+                && paragraphOpenAfter(inner.text, wasOpen: nested.paragraph)
+            let indent = at.col - contentCol
+            let keepList = carry.list != nil && (paragraphOpen || indent >= (carry.list?.relative ?? 0))
+            let next = QuoteCarry(
+                list: keepList ? carry.list.map { QuoteList(absolute: $0.absolute, relative: $0.relative, filled: true) } : nil,
+                nested: inner.carry.withParagraph(paragraph)
+            )
+            // A line with no tab keeps the old one-level strip (`>> foo`, not
+            // `> > foo`). The nested state is still recorded for a later tab.
+            if !line.contains("\t") {
+                return RenderedQuote(text: plain, carry: next)
+            }
+            return RenderedQuote(text: spaces(indent) + "> " + inner.text, carry: next)
+        }
+        let marker = listMarkerInfo(line, contentCol: contentCol)
+        let starts = marker != nil && (!paragraphOpen || marker?.interrupts == true)
+        let openList = starts ? nil : carry.list
+        let at = firstContent(line, contentCol: contentCol)
+        var list: QuoteList?
+        var text: String
+        if starts, let marker {
+            text = line.contains("\t") ? marker.text : plain
+            list = QuoteList(absolute: marker.absolute, relative: marker.relative, filled: marker.filled)
+        } else if let openList, at == nil {
+            text = line.contains("\t") ? "" : plain
+            list = openList.filled ? openList : nil
+        } else if let openList,
+                  paragraphOpen || (at != nil && (at!.col - contentCol) >= openList.relative)
+        {
+            let code = !paragraphOpen && line.contains("\t")
+                ? MarkdownList.listItemIndentedCode(line, contentColumn: contentCol + openList.relative)
+                : nil
+            if !line.contains("\t") {
+                text = plain
+            } else if let code {
+                text = spaces(openList.relative) + "    " + code
+            } else {
+                text = materialize(line, contentCol: contentCol)
+            }
+            list = QuoteList(absolute: openList.absolute, relative: openList.relative, filled: true)
+        } else {
+            text = line.contains("\t") ? canonicalBody(line, contentCol: contentCol) : plain
+            list = nil
+        }
+        let math = text.trimmingCharacters(in: .whitespaces) == "$$"
+        return RenderedQuote(text: text, carry: QuoteCarry(math: math, list: list))
+    }
+
+    /// Quote content when the line has no tab. `contentCol` is the index.
+    private static func quotePlain(_ line: String, contentCol: Int) -> String {
+        let index = line.index(line.startIndex, offsetBy: contentCol, limitedBy: line.endIndex) ?? line.endIndex
+        return String(line[index...])
+    }
+
+    /// Column where quote content starts, or nil when `line` is not a quote.
+    private static func quoteContentColumn(_ line: String) -> Int? {
+        var col = 0
+        var index = line.startIndex
+        while index < line.endIndex, line[index] == " " {
+            col += 1
+            index = line.index(after: index)
+            if col > 3 { return nil }
+        }
+        if index == line.endIndex || line[index] != ">" || col > 3 { return nil }
+        index = line.index(after: index)
+        col += 1
+        if index == line.endIndex { return col }
+        let ch = line[index]
+        if ch == " " || ch == "\t" { return col + 1 }
+        return col
+    }
+
+    /// Quote content, parsed from column 0 the way cmark-gfm parses it
+    /// in place. Indented code is four spaces plus the kept text.
+    private static func canonicalBody(_ line: String, contentCol: Int) -> String {
+        if firstContent(line, contentCol: contentCol) == nil { return "" }
+        if let code = MarkdownList.listItemIndentedCode(line, contentColumn: contentCol) {
+            return "    " + code
+        }
+        if let at = firstContent(line, contentCol: contentCol),
+           line[at.index] == ">",
+           at.col - contentCol <= 3
+        {
+            let innerCol = nestedContentColumn(line, index: at.index, col: at.col)
+            let inner = canonicalBody(line, contentCol: innerCol)
+            return spaces(at.col - contentCol) + "> " + inner
+        }
+        if let list = listMarkerInfo(line, contentCol: contentCol) {
+            return list.text
+        }
+        return materialize(line, contentCol: contentCol)
+    }
+
+    private static func nestedContentColumn(_ line: String, index: String.Index, col: Int) -> Int {
+        let next = line.index(after: index)
+        if next >= line.endIndex { return col + 1 }
+        if line[next] == " " || line[next] == "\t" { return col + 2 }
+        return col + 1
+    }
+
+    /// First non-space at or after `contentCol`, in original columns.
+    private static func firstContent(
+        _ line: String,
+        contentCol: Int
+    ) -> (col: Int, index: String.Index)? {
+        var col = 0
+        var index = line.startIndex
+        while index < line.endIndex {
+            let ch = line[index]
+            if ch == " " {
+                col += 1
+                index = line.index(after: index)
+                continue
+            }
+            if ch == "\t" {
+                col += 4 - (col % 4)
+                index = line.index(after: index)
+                continue
+            }
+            if col < contentCol {
+                col += 1
+                index = line.index(after: index)
+                continue
+            }
+            return (col, index)
+        }
+        return nil
+    }
+
+    private static func isThematicContent(_ line: String, index: String.Index) -> Bool {
+        let mark = line[index]
+        if mark != "-" && mark != "*" && mark != "_" { return false }
+        var count = 0
+        var cursor = index
+        while cursor < line.endIndex {
+            let ch = line[cursor]
+            if ch == mark {
+                count += 1
+            } else if ch != " " && ch != "\t" {
+                return false
+            }
+            cursor = line.index(after: cursor)
+        }
+        return count >= 3
+    }
+
+    /// A list marker in the quote's first three columns, rewritten so
+    /// a column-0 parser keeps the same code text.
+    private static func listMarkerInfo(_ line: String, contentCol: Int) -> QuoteMarker? {
+        guard let at = firstContent(line, contentCol: contentCol) else { return nil }
+        let indent = at.col - contentCol
+        if indent > 3 { return nil }
+        if isThematicContent(line, index: at.index) { return nil }
+        var i = at.index
+        var token = ""
+        let bullet = line[i]
+        if bullet == "-" || bullet == "*" || bullet == "+" {
+            token = String(bullet)
+            i = line.index(after: i)
+        } else {
+            var digits = ""
+            var scan = i
+            while scan < line.endIndex, isAsciiDigit(line[scan]), digits.count < 9 {
+                digits.append(line[scan])
+                scan = line.index(after: scan)
+            }
+            if digits.isEmpty || scan == line.endIndex { return nil }
+            let delimiter = line[scan]
+            if delimiter != "." && delimiter != ")" { return nil }
+            scan = line.index(after: scan)
+            token = digits + String(delimiter)
+            i = scan
+        }
+        if i < line.endIndex, line[i] != " ", line[i] != "\t" { return nil }
+        let markerEnd = at.col + token.count
+        let padded = MarkdownList.listMarkerPadding(line, markerIndex: i, markerColumn: markerEnd)
+        let code = MarkdownList.listItemIndentedCode(line, contentColumn: padded.contentColumn)
+        let lead = spaces(indent)
+        let text: String
+        if let code {
+            text = lead + token + "     " + code
+        } else {
+            text = lead + token + spaces(max(0, padded.contentColumn - markerEnd)) + padded.text
+        }
+        let ordered = orderedMarkerDigits(token)
+        let filled = code != nil || !padded.text.isEmpty
+        let interrupts = filled && (ordered == nil || ordered == "1")
+        return QuoteMarker(
+            text: text,
+            absolute: padded.contentColumn,
+            relative: padded.contentColumn - contentCol,
+            interrupts: interrupts,
+            filled: filled
+        )
+    }
+
+    private static func orderedMarkerDigits(_ token: String) -> String? {
+        guard let last = token.last, last == "." || last == ")" else { return nil }
+        let digits = token.dropLast()
+        if digits.isEmpty || digits.contains(where: { !isAsciiDigit($0) }) { return nil }
+        return String(digits)
+    }
+
+    /// Leading tabs become spaces. A tab after the first glyph stays a tab.
+    private static func materialize(_ line: String, contentCol: Int) -> String {
+        var col = 0
+        var index = line.startIndex
+        while index < line.endIndex, col < contentCol {
+            let ch = line[index]
+            if ch == " " {
+                col += 1
+                index = line.index(after: index)
+                continue
+            }
+            if ch == "\t" {
+                let next = col + (4 - (col % 4))
+                if next > contentCol {
+                    let rest = String(line[line.index(after: index)...])
+                    return spaces(next - contentCol) + expandLeading(rest, col: next)
+                }
+                col = next
+                index = line.index(after: index)
+                continue
+            }
+            col += 1
+            index = line.index(after: index)
+        }
+        return expandLeading(String(line[index...]), col: col)
+    }
+
+    private static func expandLeading(_ text: String, col: Int) -> String {
+        var i = text.startIndex
+        var c = col
+        var lead = ""
+        while i < text.endIndex {
+            let ch = text[i]
+            if ch == " " {
+                lead.append(" ")
+                c += 1
+                i = text.index(after: i)
+                continue
+            }
+            if ch == "\t" {
+                let next = c + (4 - (c % 4))
+                lead += spaces(next - c)
+                c = next
+                i = text.index(after: i)
+                continue
+            }
+            break
+        }
+        return lead + String(text[i...])
+    }
+
+    private static func openingQuoteFence(_ line: String, contentCol: Int) -> QuoteFence? {
+        guard let at = firstContent(line, contentCol: contentCol) else { return nil }
+        let indent = at.col - contentCol
+        if indent > 3 { return nil }
+        let ch = line[at.index]
+        if ch != "`" && ch != "~" { return nil }
+        var n = 0
+        var i = at.index
+        while i < line.endIndex, line[i] == ch {
+            n += 1
+            i = line.index(after: i)
+        }
+        if n < 3 { return nil }
+        let info = String(line[i...])
+        if ch == "`", info.contains("`") { return nil }
+        return QuoteFence(marker: String(repeating: String(ch), count: n), indent: indent)
+    }
+
+    private static func fenceCloses(_ line: String, contentCol: Int, marker: String) -> Bool {
+        guard let at = firstContent(line, contentCol: contentCol) else { return false }
+        if at.col - contentCol > 3 { return false }
+        guard let ch = marker.first, line[at.index] == ch else { return false }
+        var n = 0
+        var i = at.index
+        while i < line.endIndex, line[i] == ch {
+            n += 1
+            i = line.index(after: i)
+        }
+        if n < marker.count { return false }
+        return String(line[i...]).trimmingCharacters(in: .whitespaces).isEmpty
+    }
+
+    /// Drop `columns` of quote-content indent. A crossing tab leaves spaces.
+    private static func dedentContent(_ line: String, contentCol: Int, columns: Int) -> String {
+        let limit = contentCol + columns
+        var col = 0
+        var index = line.startIndex
+        while index < line.endIndex, col < limit {
+            let ch = line[index]
+            if ch == " " {
+                col += 1
+                index = line.index(after: index)
+                continue
+            }
+            if ch == "\t" {
+                let next = col + (4 - (col % 4))
+                if next > limit {
+                    return spaces(next - limit) + String(line[line.index(after: index)...])
+                }
+                col = next
+                index = line.index(after: index)
+                continue
+            }
+            if col < contentCol {
+                col += 1
+                index = line.index(after: index)
+                continue
+            }
+            return String(line[index...])
+        }
+        return String(line[index...])
+    }
+
+    private static func fenceBody(_ line: String, contentCol: Int, indent: Int) -> String {
+        spaces(indent) + dedentContent(line, contentCol: contentCol, columns: indent)
+    }
+
+    private static func spaces(_ count: Int) -> String {
+        if count <= 0 { return "" }
+        return String(repeating: " ", count: count)
     }
 
     /// A GFM task item. `- [x]done` (no space after the marker) is nil.
