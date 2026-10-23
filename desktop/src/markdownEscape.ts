@@ -228,6 +228,14 @@ export function decodeNumericReference(code: number): string {
   return String.fromCodePoint(code);
 }
 
+/** Named or numeric character reference at `index`, or null. */
+export function readCharacterReference(
+  src: string,
+  index: number,
+): { value: string; next: number } | null {
+  return readReference(src, index);
+}
+
 function readReference(
   src: string,
   i: number,
