@@ -15,6 +15,11 @@
  * are unbalanced. A trailing entity-like `&hl;` stays outside. `<`
  * ends the link. A trailing `]`, `}`, or curly quote on http(s) still
  * stays outside, as v0.82 already did.
+ * v1.71: the http(s) scan keeps an interior apostrophe, quote,
+ * backtick, or greater-than, the same way `www.` and cmark-gfm already
+ * do. It stops at whitespace or `<`. A trailing `'` or `"` is still
+ * peeled by that delimiter. A `>` that closes `<https://...>` stays
+ * outside the link.
  * v1.45: GFM extended email autolinks on a completed assistant reply.
  * `foo@bar.baz` is a `mailto:` link whose text is the address. A
  * `mailto:` prefix stays in the text. `xmpp:` is not linked. Pass
@@ -150,23 +155,52 @@ export function splitWebUrls(
 
 function splitHttp(text: string, streaming: boolean): WebPiece[] {
   const blocked = codeRanges(text);
-  const pattern = /https?:\/\/[^\s<>"'`]+/gi;
+  // v1.71: stop at whitespace or `<` only. `'`, `"`, `` ` ``, and `>`
+  // stay in the path unless the v1.62 delimiter peels a trailing quote.
+  const pattern = /https?:\/\/[^\s<]+/gi;
   const pieces: WebPiece[] = [];
   let last = 0;
-  for (const match of text.matchAll(pattern)) {
-    const idx = match.index ?? 0;
-    const raw = match[0];
-    if (inRanges(blocked, idx)) continue;
+  let cursor = 0;
+  while (cursor < text.length) {
+    pattern.lastIndex = cursor;
+    const match = pattern.exec(text);
+    if (!match) break;
+    const idx = match.index;
+    const scanned = match[0];
+    if (inRanges(blocked, idx)) {
+      cursor = idx + 1;
+      continue;
+    }
+    const raw = clipAngleCloser(text, idx, scanned);
     if (streaming && idx + raw.length === text.length) break;
     const url = trimTrailingPunctuation(raw);
-    if (!isSafeWebUrl(url)) continue;
+    if (!isSafeWebUrl(url)) {
+      cursor = idx + schemeLength(scanned);
+      continue;
+    }
     if (idx > last) pieces.push({ type: "text", value: text.slice(last, idx) });
     pieces.push({ type: "link", value: url });
     last = idx + url.length;
+    cursor = last;
   }
   if (last < text.length) pieces.push({ type: "text", value: text.slice(last) });
   if (pieces.length === 0) pieces.push({ type: "text", value: text });
   return pieces;
+}
+
+function schemeLength(raw: string): number {
+  return raw.toLowerCase().startsWith("https://") ? "https://".length : "http://".length;
+}
+
+/**
+ * A `>` that closes `<https://...>` stays outside the link. A bare
+ * `https://example.com/a>b` keeps the `>`.
+ */
+function clipAngleCloser(text: string, index: number, raw: string): string {
+  if (index <= 0 || text[index - 1] !== "<") return raw;
+  const gt = raw.indexOf(">");
+  if (gt < 0) return raw;
+  return raw.slice(0, gt);
 }
 
 const WWW_TRAIL = new Set(["?", "!", ".", ",", ":", "*", "_", "~", "'", '"']);

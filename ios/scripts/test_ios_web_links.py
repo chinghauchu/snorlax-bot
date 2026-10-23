@@ -46,7 +46,7 @@ def test_schemes_punctuation_code_and_stream() -> None:
     for punct in (".", ",", ")", '"', "'"):
         assert punct in LINKS
         assert punct in DESKTOP
-    assert "streaming && range.upperBound == text.endIndex" in LINKS
+    assert "streaming && rawEnd == text.endIndex" in LINKS
     assert "streaming && idx + raw.length === text.length" in DESKTOP
     assert "func codeRanges" in LINKS
     assert "function codeRanges" in DESKTOP

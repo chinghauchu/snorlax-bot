@@ -15,6 +15,11 @@ import SwiftUI
 /// are unbalanced. A trailing entity-like `&hl;` stays outside. `<`
 /// ends the link. A trailing `]`, `}`, or curly quote on http(s) still
 /// stays outside, as v0.82 already did.
+/// v1.71: the http(s) scan keeps an interior apostrophe, quote,
+/// backtick, or greater-than, the same way `www.` and cmark-gfm already
+/// do. It stops at whitespace or `<`. A trailing `'` or `"` is still
+/// peeled by that delimiter. A `>` that closes `<https://...>` stays
+/// outside the link.
 /// v1.45: GFM extended email autolinks on a completed assistant reply.
 /// `foo@bar.baz` is a `mailto:` link whose text is the address. A
 /// `mailto:` prefix stays in the text. A scheme other than mailto
@@ -78,6 +83,11 @@ enum WebLinks {
             .replacingOccurrences(of: ")", with: "%29")
             .replacingOccurrences(of: "[", with: "%5B")
             .replacingOccurrences(of: "]", with: "%5D")
+            // v1.71: Foundation rejects some path characters cmark-gfm keeps.
+            .replacingOccurrences(of: "'", with: "%27")
+            .replacingOccurrences(of: "\"", with: "%22")
+            .replacingOccurrences(of: "`", with: "%60")
+            .replacingOccurrences(of: ">", with: "%3E")
         guard encoded != candidate, let parsed = URL(string: encoded), allows(parsed) else { return nil }
         return parsed
     }
@@ -115,32 +125,46 @@ enum WebLinks {
     }
 
     /// http(s) only. www autolinks are applied on the text pieces.
+    /// v1.71: stop at whitespace or `<` only. An interior apostrophe,
+    /// quote, backtick, or `>` stays in the path.
     private static func splitHttp(_ text: String, streaming: Bool) -> [Piece] {
         let blocked = codeRanges(in: text)
         guard let pattern = try? NSRegularExpression(
-            pattern: "https?://[^\\s<>\"'`]+",
+            pattern: "https?://[^\\s<]+",
             options: [.caseInsensitive]
         ) else {
             return [Piece(kind: .text, value: text)]
         }
         let ns = text as NSString
-        let matches = pattern.matches(in: text, range: NSRange(location: 0, length: ns.length))
         var pieces: [Piece] = []
         var last = text.startIndex
-        for match in matches {
-            guard let range = Range(match.range, in: text) else { continue }
-            if blocked.contains(where: { $0.contains(range.lowerBound) }) { continue }
-            if streaming && range.upperBound == text.endIndex { break }
-            let raw = String(text[range])
+        var searchLocation = 0
+        while searchLocation < ns.length {
+            let search = NSRange(location: searchLocation, length: ns.length - searchLocation)
+            guard let match = pattern.firstMatch(in: text, options: [], range: search),
+                  let range = Range(match.range, in: text) else { break }
+            if blocked.contains(where: { $0.contains(range.lowerBound) }) {
+                searchLocation = match.range.location + 1
+                continue
+            }
+            let scanned = String(text[range])
+            let raw = clipAngleCloser(text, range.lowerBound, scanned)
+            let rawEnd = text.index(range.lowerBound, offsetBy: raw.count)
+            if streaming && rawEnd == text.endIndex { break }
             let trimmed = trimTrailing(raw)
-            guard url(trimmed) != nil else { continue }
+            guard url(trimmed) != nil else {
+                let scheme = scanned.lowercased().hasPrefix("https://") ? 8 : 7
+                let advance = min(scheme, scanned.count)
+                let next = text.index(range.lowerBound, offsetBy: advance)
+                searchLocation = text.utf16.distance(from: text.startIndex, to: next)
+                continue
+            }
             if last < range.lowerBound {
                 pieces.append(Piece(kind: .text, value: String(text[last..<range.lowerBound])))
             }
             pieces.append(Piece(kind: .link, value: trimmed))
-            let room = text.distance(from: range.lowerBound, to: text.endIndex)
-            let step = min(trimmed.count, room)
-            last = text.index(range.lowerBound, offsetBy: step)
+            last = text.index(range.lowerBound, offsetBy: trimmed.count)
+            searchLocation = text.utf16.distance(from: text.startIndex, to: last)
         }
         if last < text.endIndex {
             pieces.append(Piece(kind: .text, value: String(text[last...])))
@@ -149,6 +173,15 @@ enum WebLinks {
             return [Piece(kind: .text, value: text)]
         }
         return pieces
+    }
+
+    /// A `>` that closes `<https://...>` stays outside the link. A bare
+    /// `https://example.com/a>b` keeps the `>`.
+    private static func clipAngleCloser(_ text: String, _ start: String.Index, _ raw: String) -> String {
+        guard start > text.startIndex else { return raw }
+        let prev = text[text.index(before: start)]
+        guard prev == "<", let gt = raw.firstIndex(of: ">") else { return raw }
+        return String(raw[..<gt])
     }
 
     static func attributed(_ text: String, streaming: Bool) -> AttributedString {
