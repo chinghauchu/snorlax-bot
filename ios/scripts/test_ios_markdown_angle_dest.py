@@ -66,8 +66,10 @@ def test_pointy_destinations_keep_spaces() -> None:
 
 
 def test_render_encodes_and_copy_stays_source() -> None:
-    assert "prepareSpacedDestinations(self.source, completed: completed)" in MARKDOWN
-    assert "prepareSpacedLinkDestinations(sourceText, completed)" in BODY
+    assert "MarkdownLinkDest.prepare(self.source, completed: completed)" in MARKDOWN
+    assert "prepareSpacedDestinations(" in MARKDOWN
+    assert "prepareLinkDestinations(sourceText, completed)" in BODY
+    assert "prepareSpacedLinkDestinations(" in BODY
     assert "resolveReferenceLinks(" in APP
     assert "prepareSpacedLinkDestinations" not in APP
     assert "copyText(reply.content)" in APP

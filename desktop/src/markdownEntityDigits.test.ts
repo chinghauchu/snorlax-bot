@@ -137,7 +137,7 @@ test("an over-long reference inside a tag or a link stays characters", () => {
   assert.doesNotMatch(html, /§§SBE/);
   assert.doesNotMatch(html, /\uFFFD/);
   const link = render("[a](/q?&#87654321;)");
-  assert.match(link, /href="\/q\?&#87654321;"/);
+  assert.match(link, /href="\/q\?&amp;#87654321;"/);
   assert.doesNotMatch(link, /§§SBE/);
 });
 

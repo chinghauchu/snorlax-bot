@@ -576,10 +576,15 @@ enum MarkdownReferenceLink {
         var depth = 0
         while j < chars.count {
             let ch = chars[j]
+            // v1.79: a backslash escapes ASCII punctuation only.
             if ch == "\\" {
-                if j + 1 >= chars.count { break }
-                out.append(chars[j + 1])
-                j += 2
+                if j + 1 < chars.count, isAsciiPunct(chars[j + 1]) {
+                    out.append(chars[j + 1])
+                    j += 2
+                    continue
+                }
+                out.append(ch)
+                j += 1
                 continue
             }
             if ch == " " || ch == "\t" || ch == "\n" || ch == "\r" { break }

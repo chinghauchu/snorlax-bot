@@ -374,9 +374,15 @@ enum MarkdownImage {
         while index < chars.count {
             if inRange(index, blocked) { return nil }
             let ch = chars[index]
-            if ch == "\\", index + 1 < chars.count {
+            // v1.79: a backslash escapes ASCII punctuation only.
+            if ch == "\\", index + 1 < chars.count, asciiPunct.contains(chars[index + 1]) {
                 value.append(chars[index + 1])
                 index += 2
+                continue
+            }
+            if ch == "\\" {
+                value.append(ch)
+                index += 1
                 continue
             }
             if ch == " " || ch == "\t" || ch == "\n" || ch == "<" { break }

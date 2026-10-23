@@ -80,7 +80,9 @@ def test_alt_flattening_matches_cmark() -> None:
 def test_render_path_and_copy() -> None:
     assert "MarkdownImage.prepareAlts(" in MARKDOWN
     assert "prepareSpacedDestinations" in MARKDOWN
-    assert "prepareImageAlts(prepareSpacedLinkDestinations" in BODY
+    assert "prepareImageAlts(" in BODY
+    assert "prepareSpacedLinkDestinations(" in BODY
+    assert "prepareLinkDestinations(sourceText, completed)" in BODY
     assert "copyText(reply.content)" in APP
     assert "UIPasteboard.general.string = reply.content" in CHAT
     assert "accessibilityLabel(label)" in IMAGE

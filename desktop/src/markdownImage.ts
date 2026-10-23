@@ -426,9 +426,15 @@ function readDestination(
   while (j < src.length) {
     if (inRange(j, blocked)) return null;
     const ch = src[j] ?? "";
-    if (ch === "\\" && j + 1 < src.length) {
+    // v1.79: a backslash escapes ASCII punctuation only.
+    if (ch === "\\" && j + 1 < src.length && ASCII_PUNCT.includes(src[j + 1] ?? "")) {
       value += src[j + 1];
       j += 2;
+      continue;
+    }
+    if (ch === "\\") {
+      value += ch;
+      j += 1;
       continue;
     }
     if (ch === " " || ch === "\t" || ch === "\n" || ch === "<") break;

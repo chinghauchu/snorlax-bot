@@ -183,7 +183,9 @@ test("escaped tildes are not strikethrough and escaped urls are not autolinks", 
     protectMarkdownEscapes("[AT&amp;T](https://example.com?a=1&amp;b=2)", true),
   );
   const href = /href="([^"]+)"/.exec(entityLink)?.[1] ?? "";
-  assert.equal(restoreMarkdownEscapes(href), "https://example.com?a=1&b=2");
+  // v1.79 leaves the destination for the parser, so the attribute is
+  // HTML-escaped. The URL is still a=1&b=2.
+  assert.equal(href, "https://example.com?a=1&amp;b=2");
   assert.equal(restoreMarkdownEscapes(entityLink.replace(/<[^>]+>/g, "")), "AT&T");
 });
 

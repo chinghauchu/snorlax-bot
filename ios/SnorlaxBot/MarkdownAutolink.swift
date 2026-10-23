@@ -157,7 +157,12 @@ enum MarkdownAutolink {
         let codes = inlineCodeRanges(chars, fences)
         let indented = indentedCodeRanges(chars, fences)
         let skip = fences + codes + indented
-        return merge(skip + mathRanges(chars, skip))
+        let math = mathRanges(chars, skip)
+        var spans = skip + math
+        for dest in MarkdownLinkDest.spans(chars) {
+            spans.append(Span(start: dest.start, end: dest.end))
+        }
+        return merge(spans)
     }
 
     private static func fenceRanges(_ chars: [Character]) -> [Span] {

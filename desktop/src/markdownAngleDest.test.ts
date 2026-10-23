@@ -138,7 +138,10 @@ test("docs, CI, and OpenAPI record v1.74 without a new route", () => {
   assert.match(src, /export function prepareSpacedLinkDestinations/);
   assert.match(src, /ASCII_PUNCT\.includes/);
   assert.doesNotMatch(src, /ch === "\\n" \|\| ch === "<" \|\| ch === " " \|\| ch === "\\t"/);
-  assert.match(body, /prepareSpacedLinkDestinations\(sourceText, completed\)/);
+  assert.match(
+    body,
+    /prepareSpacedLinkDestinations\(\s*prepareLinkDestinations\(sourceText, completed\),/,
+  );
   assert.match(image, /encodeLinkDestination/);
   assert.match(app, /resolveReferenceLinks\(/);
   assert.match(app, /copyText\(reply\.content\)/);
@@ -151,7 +154,10 @@ test("docs, CI, and OpenAPI record v1.74 without a new route", () => {
   assert.match(imageSwift, /v1\.74/);
   assert.match(imageSwift, /MarkdownReferenceLink\.encodeDestination/);
   assert.match(titleSwift, /v1\.74/);
-  assert.match(markdown, /prepareSpacedDestinations\(self\.source, completed: completed\)/);
+  assert.match(
+    markdown,
+    /prepareSpacedDestinations\(\s*MarkdownLinkDest\.prepare\(self\.source, completed: completed\),/,
+  );
   assert.doesNotMatch(swift, /UIPasteboard/);
   assert.doesNotMatch(swift, /withAnimation/);
   assert.doesNotMatch(swift, /\/v1\//);

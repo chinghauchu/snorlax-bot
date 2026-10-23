@@ -37,9 +37,13 @@
  * `&#x0001F600;` into an emoji. micromark already left them
  * literal. In-range references still decode.
  * No animation. No new HTTP.
+ * v1.79: a link or image destination is left for the destination
+ * pass. `&#38;` and `&#x27;` there must reach the markdown parser
+ * so the href matches cmark-gfm. Ordinary text still decodes here.
  * Keep in lockstep with `ios/SnorlaxBot/MarkdownEscape.swift`.
  */
 
+import { linkDestinationSpans } from "./markdownLinkDest.ts";
 import { protectSymbolFlanks } from "./markdownSymbol.ts";
 import { protectIntrawordUnderscores } from "./markdownUnderscore.ts";
 import { fenceRanges, inlineCodeRanges, type Range } from "./math.ts";
@@ -289,12 +293,16 @@ function isRefDigit(ch: string, hex: boolean): boolean {
   return (ch >= "a" && ch <= "f") || (ch >= "A" && ch <= "F");
 }
 
-/** Fences, inline code, and indented code blocks stay literal. */
+/**
+ * Fences, inline code, and indented code blocks stay literal.
+ * v1.79: link and image destinations stay literal too, so a
+ * character reference in the href is not decoded before the parser.
+ */
 function blockedRanges(src: string): Range[] {
   const fences = fenceRanges(src);
   const codes = inlineCodeRanges(src, fences);
   const indented = indentedCodeRanges(src, fences);
-  return mergeRanges([...fences, ...codes, ...indented]);
+  return mergeRanges([...fences, ...codes, ...indented, ...linkDestinationSpans(src)]);
 }
 
 /**

@@ -25,6 +25,7 @@
 
 import { extendedMailtoAddress, isSafeWebUrl } from "./linkify.ts";
 import { stashMarkdownText } from "./markdownEscape.ts";
+import { linkDestinationSpans } from "./markdownLinkDest.ts";
 import { fenceRanges, inRange, inlineCodeRanges, type Range } from "./math.ts";
 
 /**
@@ -147,7 +148,8 @@ function blockedRanges(src: string): Range[] {
   const indented = indentedCodeRanges(src, fences);
   const skip = [...fences, ...codes, ...indented];
   const math = mathRanges(src, skip);
-  return mergeRanges([...skip, ...math]);
+  // v1.79: an angle destination is not an autolink.
+  return mergeRanges([...skip, ...math, ...linkDestinationSpans(src)]);
 }
 
 function indentedCodeRanges(src: string, fences: Range[]): Range[] {
