@@ -349,10 +349,11 @@ function applyEmphasis(tokens: Tok[]): void {
       });
     }
     if (closer.num === 0) {
-      const next = closer.next;
-      unlink(closer, (after) => {
-        if (head === closer) head = after;
-        if (tail === closer) tail = closer.prev;
+      const removed = closer;
+      const next = removed.next;
+      unlink(removed, (after) => {
+        if (head === removed) head = after;
+        if (tail === removed) tail = removed.prev;
       });
       closer = next;
     }
