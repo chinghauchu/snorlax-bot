@@ -29,10 +29,23 @@
  * Its lines, including a nested `- [ ]`, stay in the markdown so
  * the ordered item can show its own checkbox. `- [ ]` / `* [x]`
  * at the margin still extract here.
+ * v1.73: a blockquote keeps cmark-gfm tab stops. The optional
+ * column after `>` can eat part of a tab. The leftover columns
+ * decide indented code, so `>\t\tfoo` is code whose text is two
+ * spaces then `foo`. A tab that crosses the code indent becomes
+ * the leftover spaces, and a later tab stays a tab. A line that
+ * continues an open paragraph is not code. A fence stays a fence.
+ * Streaming stays plain text.
  * Keep in lockstep with `ios/SnorlaxBot/MarkdownQuoteTask.swift`.
  */
 
-import { htmlBlockInterrupts, htmlLazyTag, orderedListEnd } from "./markdownList.ts";
+import {
+  htmlBlockInterrupts,
+  htmlLazyTag,
+  listItemIndentedCode,
+  listMarkerPadding,
+  orderedListEnd,
+} from "./markdownList.ts";
 import { listIsLoose } from "./markdownLooseList.ts";
 
 /** Empty ballot box. Not a control. */
@@ -109,12 +122,14 @@ export function splitQuoteAndTasks(
       const start = i;
       const inner: string[] = [];
       let open = false;
+      let carry: QuoteCarry = emptyCarry();
       while (i < lines.length) {
         const current = lines[i] ?? "";
-        const stripped = stripQuoteMarker(current);
-        if (stripped != null) {
-          inner.push(stripped);
-          open = paragraphOpenAfter(stripped, open);
+        const rendered = renderQuoteLine(current, carry, open);
+        if (rendered != null) {
+          inner.push(rendered.text);
+          carry = rendered.carry;
+          open = carry.fence ? false : paragraphOpenAfter(rendered.text, open);
           i += 1;
           continue;
         }
@@ -172,14 +187,431 @@ export function splitQuoteAndTasks(
   return blocks;
 }
 
-/** One CommonMark quote marker, or null when the line is not a quote. */
+/**
+ * One CommonMark quote marker, or null when the line is not a quote.
+ * A tab keeps its stop: the optional column after `>` can consume
+ * part of it, and indented code is stored as four spaces plus the
+ * text cmark-gfm would keep.
+ */
 export function stripQuoteMarker(line: string): string | null {
+  if (!line.includes("\t")) return stripQuoteMarkerSpaces(line);
+  const contentCol = quoteContentColumn(line);
+  if (contentCol == null) return null;
+  return canonicalBody(line, contentCol);
+}
+
+/** Space-only quote marker. Tabs use `stripQuoteMarker`. */
+function stripQuoteMarkerSpaces(line: string): string | null {
   let i = 0;
   while (i < line.length && i < 3 && line[i] === " ") i += 1;
   if (line[i] !== ">") return null;
   i += 1;
   if (line[i] === " ") i += 1;
   return line.slice(i);
+}
+
+type QuoteFence = { marker: string; indent: number };
+
+type QuoteList = {
+  absolute: number;
+  relative: number;
+  /** The item already has text. An empty item ends on a blank line. */
+  filled: boolean;
+};
+
+type QuoteCarry = {
+  fence: QuoteFence | null;
+  math: boolean;
+  list: QuoteList | null;
+  /** State of a quote nested inside this one. One level per link. */
+  nested: QuoteCarry | null;
+  /** Whether the paragraph before this line is still open. */
+  paragraph: boolean;
+};
+
+function emptyCarry(): QuoteCarry {
+  return { fence: null, math: false, list: null, nested: null, paragraph: false };
+}
+
+/**
+ * Quote line ready for a column-0 reparse, or null when `line`
+ * is not a quote. Fence, math, list, and nested-quote state cross
+ * lines so a tab inside them is not rewritten as a top-level
+ * indented code block.
+ */
+function renderQuoteLine(
+  line: string,
+  carry: QuoteCarry,
+  paragraphOpen: boolean,
+): { text: string; carry: QuoteCarry } | null {
+  const contentCol = quoteContentColumn(line);
+  if (contentCol == null) return null;
+  return renderAt(line, contentCol, carry, paragraphOpen);
+}
+
+function renderAt(
+  line: string,
+  contentCol: number,
+  carry: QuoteCarry,
+  paragraphOpen: boolean,
+): { text: string; carry: QuoteCarry } {
+  const plain = quotePlain(line, contentCol);
+  if (carry.fence) {
+    const text = fenceBody(line, contentCol, carry.fence.indent);
+    const closed = fenceCloses(line, contentCol, carry.fence.marker);
+    return {
+      text,
+      carry: { ...emptyCarry(), fence: closed ? null : carry.fence },
+    };
+  }
+  if (carry.math) {
+    const text = materialize(line, contentCol);
+    return {
+      text,
+      carry: { ...emptyCarry(), math: text.trim() !== "$$", list: carry.list },
+    };
+  }
+  const opened = openingQuoteFence(line, contentCol);
+  if (opened) {
+    const text = line.includes("\t")
+      ? fenceBody(line, contentCol, opened.indent)
+      : plain;
+    return { text, carry: { ...emptyCarry(), fence: opened } };
+  }
+  const at = firstContent(line, contentCol);
+  if (at && line[at.index] === ">" && at.col - contentCol <= 3) {
+    const innerCol = nestedContentColumn(line, at.index, at.col);
+    const nested = carry.nested ?? emptyCarry();
+    const inner = renderAt(line, innerCol, nested, nested.paragraph);
+    const paragraph = inner.carry.fence
+      ? false
+      : paragraphOpenAfter(inner.text, nested.paragraph);
+    const indent = at.col - contentCol;
+    const keepList =
+      carry.list != null && (paragraphOpen || indent >= carry.list.relative);
+    const next: QuoteCarry = {
+      ...emptyCarry(),
+      list: keepList && carry.list ? { ...carry.list, filled: true } : null,
+      nested: { ...inner.carry, paragraph },
+    };
+    // A line with no tab keeps the old one-level strip (`>> foo`, not
+    // `> > foo`). The nested state is still recorded for a later tab.
+    if (!line.includes("\t")) return { text: plain, carry: next };
+    return { text: `${" ".repeat(indent)}> ${inner.text}`, carry: next };
+  }
+  const marker = listMarkerInfo(line, contentCol);
+  const starts = marker != null && (!paragraphOpen || marker.interrupts);
+  const openList = !starts ? carry.list : null;
+  let list: QuoteList | null = null;
+  let text: string;
+  if (starts && marker) {
+    text = line.includes("\t") ? marker.text : plain;
+    list = {
+      absolute: marker.absolute,
+      relative: marker.relative,
+      filled: marker.filled,
+    };
+  } else if (openList && at == null) {
+    // Blank lines stay in a filled item. An empty item ends, so the
+    // next line belongs to the quote rather than the item.
+    text = line.includes("\t") ? "" : plain;
+    list = openList.filled ? openList : null;
+  } else if (
+    openList &&
+    (paragraphOpen || (at != null && at.col - contentCol >= openList.relative))
+  ) {
+    const code = !paragraphOpen && line.includes("\t")
+      ? listItemIndentedCode(line, contentCol + openList.relative)
+      : null;
+    if (!line.includes("\t")) {
+      text = plain;
+    } else if (code != null) {
+      // Spaces, not a shifted tab: the code text already has cmark's tabs.
+      text = `${" ".repeat(openList.relative)}    ${code}`;
+    } else {
+      text = materialize(line, contentCol);
+    }
+    list = { ...openList, filled: true };
+  } else {
+    text = line.includes("\t") ? canonicalBody(line, contentCol) : plain;
+    list = null;
+  }
+  return {
+    text,
+    carry: { ...emptyCarry(), math: text.trim() === "$$", list },
+  };
+}
+
+/** Quote content when the line has no tab. `contentCol` is the index. */
+function quotePlain(line: string, contentCol: number): string {
+  return line.slice(contentCol);
+}
+
+/** Column where quote content starts, or null when `line` is not a quote. */
+function quoteContentColumn(line: string): number | null {
+  let col = 0;
+  let index = 0;
+  while (index < line.length && line[index] === " ") {
+    col += 1;
+    index += 1;
+    if (col > 3) return null;
+  }
+  if (index >= line.length || line[index] !== ">" || col > 3) return null;
+  index += 1;
+  col += 1;
+  if (index >= line.length) return col;
+  const ch = line[index];
+  if (ch === " " || ch === "\t") return col + 1;
+  return col;
+}
+
+/**
+ * Quote content, parsed from column 0 the way cmark-gfm parses
+ * it in place. Indented code is four spaces plus the kept text.
+ * A nested marker stays a quote. A list marker keeps its column.
+ */
+function canonicalBody(line: string, contentCol: number): string {
+  if (firstContent(line, contentCol) == null) return "";
+  const code = listItemIndentedCode(line, contentCol);
+  if (code != null) return `    ${code}`;
+  const at = firstContent(line, contentCol);
+  if (at && line[at.index] === ">" && at.col - contentCol <= 3) {
+    const innerCol = nestedContentColumn(line, at.index, at.col);
+    const inner = canonicalBody(line, innerCol);
+    return `${" ".repeat(at.col - contentCol)}> ${inner}`;
+  }
+  const list = canonicalList(line, contentCol);
+  if (list != null) return list;
+  return materialize(line, contentCol);
+}
+
+function nestedContentColumn(line: string, index: number, col: number): number {
+  let i = index + 1;
+  let c = col + 1;
+  if (i >= line.length) return c;
+  if (line[i] === " " || line[i] === "\t") return c + 1;
+  return c;
+}
+
+/** First non-space at or after `contentCol`, in original columns. */
+function firstContent(
+  line: string,
+  contentCol: number,
+): { col: number; index: number } | null {
+  let col = 0;
+  let index = 0;
+  while (index < line.length) {
+    const ch = line[index] ?? "";
+    if (ch === " ") {
+      col += 1;
+      index += 1;
+      continue;
+    }
+    if (ch === "\t") {
+      col += 4 - (col % 4);
+      index += 1;
+      continue;
+    }
+    if (col < contentCol) {
+      col += 1;
+      index += 1;
+      continue;
+    }
+    return { col, index };
+  }
+  return null;
+}
+
+function isThematicContent(line: string, index: number): boolean {
+  const mark = line[index];
+  if (mark !== "-" && mark !== "*" && mark !== "_") return false;
+  let count = 0;
+  for (let i = index; i < line.length; i += 1) {
+    const ch = line[i];
+    if (ch === mark) {
+      count += 1;
+      continue;
+    }
+    if (ch === " " || ch === "\t") continue;
+    return false;
+  }
+  return count >= 3;
+}
+
+type QuoteMarker = {
+  text: string;
+  absolute: number;
+  relative: number;
+  interrupts: boolean;
+  filled: boolean;
+};
+
+/**
+ * A list marker in the quote's first three columns, rewritten so
+ * a column-0 parser keeps the same code text. Null when the line
+ * is not a list marker.
+ */
+function listMarkerInfo(line: string, contentCol: number): QuoteMarker | null {
+  const at = firstContent(line, contentCol);
+  if (!at) return null;
+  const indent = at.col - contentCol;
+  if (indent > 3) return null;
+  if (isThematicContent(line, at.index)) return null;
+  let i = at.index;
+  let token = "";
+  const bullet = line[i] ?? "";
+  if (bullet === "-" || bullet === "*" || bullet === "+") {
+    token = bullet;
+    i += 1;
+  } else {
+    const match = /^(\d{1,9})([.)])/.exec(line.slice(i));
+    if (!match) return null;
+    token = match[0] ?? "";
+    i += token.length;
+  }
+  if (i < line.length && line[i] !== " " && line[i] !== "\t") return null;
+  const markerEnd = at.col + token.length;
+  const padded = listMarkerPadding(line, i, markerEnd);
+  const code = listItemIndentedCode(line, padded.contentColumn);
+  const lead = " ".repeat(indent);
+  const text = code != null
+    ? `${lead}${token}     ${code}`
+    : `${lead}${token}${" ".repeat(Math.max(0, padded.contentColumn - markerEnd))}${padded.text}`;
+  const ordered = /^(\d+)[.)]$/.exec(token);
+  const filled = code != null || padded.text !== "";
+  const interrupts = filled && (!ordered || ordered[1] === "1");
+  return {
+    text,
+    absolute: padded.contentColumn,
+    relative: padded.contentColumn - contentCol,
+    interrupts,
+    filled,
+  };
+}
+
+function canonicalList(line: string, contentCol: number): string | null {
+  return listMarkerInfo(line, contentCol)?.text ?? null;
+}
+
+/** Leading tabs become spaces. A tab after the first glyph stays a tab. */
+function materialize(line: string, contentCol: number): string {
+  let col = 0;
+  let index = 0;
+  while (index < line.length && col < contentCol) {
+    const ch = line[index] ?? "";
+    if (ch === " ") {
+      col += 1;
+      index += 1;
+      continue;
+    }
+    if (ch === "\t") {
+      const next = col + (4 - (col % 4));
+      if (next > contentCol) {
+        return `${" ".repeat(next - contentCol)}${expandLeading(line.slice(index + 1), next)}`;
+      }
+      col = next;
+      index += 1;
+      continue;
+    }
+    col += 1;
+    index += 1;
+  }
+  return expandLeading(line.slice(index), col);
+}
+
+function expandLeading(text: string, col: number): string {
+  let i = 0;
+  let c = col;
+  let lead = "";
+  while (i < text.length) {
+    const ch = text[i] ?? "";
+    if (ch === " ") {
+      lead += " ";
+      c += 1;
+      i += 1;
+      continue;
+    }
+    if (ch === "\t") {
+      const next = c + (4 - (c % 4));
+      lead += " ".repeat(next - c);
+      c = next;
+      i += 1;
+      continue;
+    }
+    break;
+  }
+  return lead + text.slice(i);
+}
+
+function openingQuoteFence(
+  line: string,
+  contentCol: number,
+): QuoteFence | null {
+  const at = firstContent(line, contentCol);
+  if (!at) return null;
+  const indent = at.col - contentCol;
+  if (indent > 3) return null;
+  const ch = line[at.index] ?? "";
+  if (ch !== "`" && ch !== "~") return null;
+  let n = 0;
+  let i = at.index;
+  while (i < line.length && line[i] === ch) {
+    n += 1;
+    i += 1;
+  }
+  if (n < 3) return null;
+  const info = line.slice(i);
+  if (ch === "`" && info.includes("`")) return null;
+  return { marker: ch.repeat(n), indent };
+}
+
+function fenceCloses(line: string, contentCol: number, marker: string): boolean {
+  const at = firstContent(line, contentCol);
+  if (!at) return false;
+  if (at.col - contentCol > 3) return false;
+  const ch = marker[0] ?? "";
+  if (line[at.index] !== ch) return false;
+  let n = 0;
+  let i = at.index;
+  while (i < line.length && line[i] === ch) {
+    n += 1;
+    i += 1;
+  }
+  if (n < marker.length) return false;
+  return line.slice(i).trim() === "";
+}
+
+/** Drop `columns` of quote-content indent. A crossing tab leaves spaces. */
+function dedentContent(line: string, contentCol: number, columns: number): string {
+  const limit = contentCol + columns;
+  let col = 0;
+  let index = 0;
+  while (index < line.length && col < limit) {
+    const ch = line[index] ?? "";
+    if (ch === " ") {
+      col += 1;
+      index += 1;
+      continue;
+    }
+    if (ch === "\t") {
+      const next = col + (4 - (col % 4));
+      if (next > limit) return `${" ".repeat(next - limit)}${line.slice(index + 1)}`;
+      col = next;
+      index += 1;
+      continue;
+    }
+    if (col < contentCol) {
+      col += 1;
+      index += 1;
+      continue;
+    }
+    return line.slice(index);
+  }
+  return line.slice(index);
+}
+
+function fenceBody(line: string, contentCol: number, indent: number): string {
+  return `${" ".repeat(indent)}${dedentContent(line, contentCol, indent)}`;
 }
 
 /**
