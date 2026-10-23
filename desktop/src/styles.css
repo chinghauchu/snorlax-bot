@@ -1771,6 +1771,28 @@ mark.find-hit.active {
   border-radius: 4px;
 }
 
+.assistant-md kbd.md-kbd {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas,
+    "Liberation Mono", monospace;
+  font-size: 0.85em;
+  padding: 0.05em 0.35em;
+  border: 1px solid var(--border);
+  border-bottom-width: 2px;
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--text) 10%, transparent);
+  line-height: 1.2;
+  animation: none;
+  transition: none;
+}
+
+.assistant-md sub.md-sub,
+.assistant-md sup.md-sup {
+  font-size: 0.75em;
+  line-height: 0;
+  animation: none;
+  transition: none;
+}
+
 .md-fence {
   width: 100%;
   position: relative;

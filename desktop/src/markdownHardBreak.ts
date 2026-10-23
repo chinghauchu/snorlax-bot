@@ -27,6 +27,7 @@
  * Keep in lockstep with `ios/SnorlaxBot/MarkdownHardBreak.swift`.
  */
 
+import { applySafeInlineHtml } from "./markdownHtmlLiteral.ts";
 import { fenceInfoAllowsOpen, fenceRanges, inRange, inlineCodeRanges, type Range } from "./math.ts";
 
 /** Placeholder swapped for a `<br>` / newline after the markdown parse. */
@@ -90,6 +91,9 @@ type MdastNode = {
 export function remarkHardBreaks(): (tree: MdastNode) => void {
   return (tree) => {
     rewriteHardNodes(tree);
+    // v1.75: paired kbd / sub / sup tokens become elements after
+    // a bare <br> has already been split into a break node.
+    applySafeInlineHtml(tree);
   };
 }
 
