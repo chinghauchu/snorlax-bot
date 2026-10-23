@@ -7,8 +7,10 @@
  * `![alt](url)` and `![alt](url "title")` render as an image when
  * the URL is http(s) or an existing local attachment path
  * (`/v1/attachments/{id}`, `/v1/images/{id}`). Reference images
- * are already rewritten to that inline form by v1.39. The alt
- * text is the accessibility label. The title is the tooltip.
+ * are already rewritten to that inline form by v1.39.
+ * v1.77: the alt is the cmark-gfm plain-text flattening of the
+ * description (`prepareImageAlts`). The accessibility label and
+ * the failure fallback use that string. The title is the tooltip.
  * While the bytes load, the bubble shows a muted placeholder.
  * If they fail, the alt text (or the URL when the alt is empty)
  * shows as muted link-like text. A click or tap opens the v0.79

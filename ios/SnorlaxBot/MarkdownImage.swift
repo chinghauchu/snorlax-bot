@@ -8,8 +8,11 @@ import UIKit
 /// `![alt](url)` and `![alt](url "title")` render as an image when
 /// the URL is http(s) or an existing local attachment path
 /// (`/v1/attachments/{id}`, `/v1/images/{id}`). Reference images
-/// are already rewritten to that inline form by v1.39. The alt
-/// text is the accessibility label. The title is the tooltip.
+/// are already rewritten to that inline form by v1.39.
+/// v1.77: the alt is the cmark-gfm plain-text flattening of the
+/// description. `prepareAlts` stashes that string so a later pass
+/// cannot treat it as syntax. The accessibility label and the
+/// failure fallback use it. The title is the tooltip.
 /// While the bytes load, the bubble shows a muted placeholder.
 /// If they fail, the alt text (or the URL when the alt is empty)
 /// shows as muted link-like text. A tap opens the v0.79 lightbox,
@@ -89,6 +92,33 @@ enum MarkdownImage {
     static func fallback(alt: String, url: String) -> String {
         let label = alt.trimmingCharacters(in: .whitespacesAndNewlines)
         return label.isEmpty ? url : label
+    }
+
+    /// Rewrite loadable images so the alt is one stash token of the
+    /// flattened description. Literal schemes stay the original
+    /// characters. `completed: false` returns `text` unchanged.
+    static func prepareAlts(_ text: String, completed: Bool = true) -> String {
+        if !completed || text.isEmpty || !text.contains("![") { return text }
+        let chars = Array(text)
+        let hits = findInlineImages(chars)
+        if hits.isEmpty { return text }
+        var out = ""
+        var cursor = 0
+        for hit in hits {
+            let altStart = hit.start + 2
+            let altEnd = altStart + hit.alt.count
+            if altStart < cursor || altEnd > chars.count { continue }
+            out += string(chars, cursor, altStart)
+            if hit.kind == .literal {
+                out += string(chars, altStart, altEnd)
+            } else {
+                let flat = MarkdownImageAlt.flatten(hit.alt)
+                out += flat.isEmpty ? "" : MarkdownEscape.stash(flat)
+            }
+            cursor = altEnd
+        }
+        out += string(chars, cursor, chars.count)
+        return out
     }
 
     /// `completed: false` returns the text unchanged.

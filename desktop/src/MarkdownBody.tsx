@@ -70,6 +70,7 @@ import {
   splitSetextHeadings,
 } from "./markdownSetext";
 import { neutralizeUnsafeImages } from "./markdownImage";
+import { prepareImageAlts } from "./markdownImageAlt";
 import {
   InMarkdownLink,
   markdownImageNode,
@@ -401,7 +402,7 @@ function HeadingInline({
   knownNames: string[];
   completed: boolean;
 }) {
-  const text = prepareSpacedLinkDestinations(sourceText, completed);
+  const text = prepareImageAlts(prepareSpacedLinkDestinations(sourceText, completed), completed);
   const findQuery = useFindQuery();
   const extracted = extractMath(text);
   const mathText = prepareAngleAutolinks(
@@ -560,7 +561,7 @@ function MarkdownParsed({
   order: FenceOrder;
   findQuery: string;
 }) {
-  const text = prepareSpacedLinkDestinations(sourceText, completed);
+  const text = prepareImageAlts(prepareSpacedLinkDestinations(sourceText, completed), completed);
   const extracted = extractMath(text);
   const mathText = prepareAngleAutolinks(
     neutralizeUnsafeImages(extracted.text, completed),
@@ -764,7 +765,7 @@ function TableCellText({
   knownNames: string[];
   completed: boolean;
 }) {
-  const text = prepareSpacedLinkDestinations(sourceText, completed);
+  const text = prepareImageAlts(prepareSpacedLinkDestinations(sourceText, completed), completed);
   const findQuery = useFindQuery();
   // v1.64: block starts stay characters. Inline formatting still parses.
   const extracted = extractMath(

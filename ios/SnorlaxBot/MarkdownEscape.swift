@@ -236,6 +236,19 @@ enum MarkdownEscape {
         return String(Character(scalar))
     }
 
+    /// Named or numeric character reference at `index`, or nil.
+    static func characterReference(
+        _ chars: [Character],
+        _ index: Int
+    ) -> (value: String, next: Int)? {
+        readReference(chars, index)
+    }
+
+    /// Hide a literal from the markdown parser. `restoreString` paints it.
+    static func stash(_ value: String) -> String {
+        token(value)
+    }
+
     private static func readReference(
         _ chars: [Character],
         _ index: Int
