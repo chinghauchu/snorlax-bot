@@ -106,7 +106,7 @@ export function MarkdownInlineImage({
   }
 
   const label = alt.trim() || IMAGE_LIGHTBOX_LABEL;
-  const tip = title.trim();
+  const tip = title.replace(/\s+/g, " ").trim();
   const picture = (
     <span className="md-image">
       {phase === "loading" ? <span className="md-image-pending" aria-hidden="true" /> : null}

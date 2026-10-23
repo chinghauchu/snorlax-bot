@@ -27,6 +27,7 @@
  */
 
 import { ASCII_PUNCT } from "./markdownEscape.ts";
+import { commonMarkTitleHint, readCommonMarkTitle } from "./markdownLinkTitleForm.ts";
 import { encodeLinkDestination } from "./linkify.ts";
 import {
   fenceRanges,
@@ -173,7 +174,7 @@ export function splitMarkdownImages(text: string, completed = true): MarkdownIma
       type: "image",
       alt: decodeInline(hit.alt),
       url: hit.url,
-      title: hit.title == null ? null : decodeInline(hit.title),
+      title: hit.title == null ? null : titleHint(hit.title),
       link: wrap?.href ? wrap.href : null,
     });
     cursor = to;
@@ -272,9 +273,10 @@ function findLinks(src: string, blocked: Range[]): LinkSpan[] {
     const titleAt = skipLinkSpace(src, k, blocked);
     if (
       titleAt != null &&
+      titleAt !== k &&
       (src[titleAt] === '"' || src[titleAt] === "'" || src[titleAt] === "(")
     ) {
-      const title = readTitle(src, titleAt, blocked);
+      const title = readTitle(src, titleAt);
       if (!title) {
         i += 1;
         continue;
@@ -332,9 +334,10 @@ function parseInlineImage(src: string, bang: number, blocked: Range[]): Markdown
   const titleAt = skipLinkSpace(src, k, blocked);
   if (
     titleAt != null &&
+    titleAt !== k &&
     (src[titleAt] === '"' || src[titleAt] === "'" || src[titleAt] === "(")
   ) {
-    const read = readTitle(src, titleAt, blocked);
+    const read = readTitle(src, titleAt);
     if (!read) return null;
     title = read.value;
     k = read.next;
@@ -449,29 +452,16 @@ function readDestination(
   return { value, next: j };
 }
 
-function readTitle(
-  src: string,
-  i: number,
-  blocked: Range[],
-): { value: string; next: number } | null {
-  const open = src[i];
-  const close = open === "(" ? ")" : open;
-  if (open !== '"' && open !== "'" && open !== "(") return null;
-  let j = i + 1;
-  let value = "";
-  while (j < src.length) {
-    if (inRange(j, blocked)) return null;
-    const ch = src[j] ?? "";
-    if (ch === "\\" && j + 1 < src.length) {
-      value += src[j + 1];
-      j += 2;
-      continue;
-    }
-    if (ch === close) return { value, next: j + 1 };
-    value += ch;
-    j += 1;
-  }
-  return null;
+function titleHint(raw: string): string | null {
+  const hint = commonMarkTitleHint(raw);
+  return hint.length > 0 ? hint : null;
+}
+
+function readTitle(src: string, i: number): { value: string; next: number } | null {
+  // A title is a string. `\(` is an escaped parenthesis, not math.
+  const read = readCommonMarkTitle(src, i);
+  if (!read) return null;
+  return { value: read.raw, next: read.next };
 }
 
 /** Spaces, tabs, and at most one newline. CommonMark link spacing. */

@@ -456,7 +456,7 @@ enum MarkdownReferenceLink {
            let mark = char(chars, titleAt),
            mark == "\"" || mark == "'" || mark == "("
         {
-            guard let title = readTitle(chars, titleAt) else { return nil }
+            guard let title = MarkdownLinkTitleForm.read(chars, titleAt) else { return nil }
             cursor = title.next
         } else if let titleAt = skipLinkSpace(chars, cursor, blocked) {
             cursor = titleAt
@@ -604,28 +604,6 @@ enum MarkdownReferenceLink {
         return (out, j)
     }
 
-    private static func readTitle(_ chars: [Character], _ i: Int) -> (title: String, next: Int)? {
-        guard let opener = char(chars, i) else { return nil }
-        let closer: Character = opener == "(" ? ")" : opener
-        if opener != "\"" && opener != "'" && opener != "(" { return nil }
-        var j = i + 1
-        var out = ""
-        while j < chars.count {
-            let ch = chars[j]
-            if ch == "\n" { return nil }
-            if ch == "\\" {
-                if j + 1 >= chars.count { return nil }
-                out.append(chars[j + 1])
-                j += 2
-                continue
-            }
-            if ch == closer { return (out, j + 1) }
-            out.append(ch)
-            j += 1
-        }
-        return nil
-    }
-
     private static func tryTitle(
         _ chars: [Character],
         _ i: Int,
@@ -634,7 +612,28 @@ enum MarkdownReferenceLink {
         guard let at = skipDestWs(chars, i, blocked), at != i else { return nil }
         let opener = char(chars, at)
         if opener != "\"" && opener != "'" && opener != "(" { return nil }
-        return readTitle(chars, at)
+        guard let read = MarkdownLinkTitleForm.read(chars, at) else { return nil }
+        return (MarkdownLinkTitleForm.hint(read.raw), read.next)
+    }
+
+    private static func emitLink(_ text: String, _ target: Target, _ image: Bool) -> String {
+        let dest = formatDest(target.dest)
+        let body: String
+        if let title = target.title {
+            body = "[\(text)](\(dest) \"\(MarkdownLinkTitleForm.format(title))\")"
+        } else {
+            body = "[\(text)](\(dest))"
+        }
+        return image ? "!" + body : body
+    }
+
+    private static func formatDest(_ dest: String) -> String {
+        let needs = dest.contains { ch in
+            ch == " " || ch == "\t" || ch == "\n" || ch == "\r" || ch == "<" || ch == ">" || ch == "(" || ch == ")"
+        }
+        if !needs { return dest }
+        let safe = dest.replacingOccurrences(of: "<", with: "%3C").replacingOccurrences(of: ">", with: "%3E")
+        return "<" + safe + ">"
     }
 
     /// Spaces, tabs, and at most one newline. CommonMark link spacing.
@@ -666,12 +665,8 @@ enum MarkdownReferenceLink {
         if nextLine >= chars.count || char(chars, nextLine) == "\n" { return nil }
         if rangeAt(nextLine, blocked) != nil { return nil }
         var k = nextLine
-        var spaces = 0
-        while char(chars, k) == " " && spaces < 3 {
-            k += 1
-            spaces += 1
-        }
-        if char(chars, k) == " " || char(chars, k) == "\t" { return nil }
+        while char(chars, k) == " " || char(chars, k) == "\t" { k += 1 }
+        if k >= chars.count || char(chars, k) == "\n" { return nil }
         return k
     }
 

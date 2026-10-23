@@ -33,6 +33,11 @@
  */
 
 import { ASCII_PUNCT } from "./markdownEscape.ts";
+import {
+  commonMarkTitleHint,
+  formatCommonMarkTitle,
+  readCommonMarkTitle,
+} from "./markdownLinkTitleForm.ts";
 import { htmlTagEnd } from "./markdownHtmlLiteral.ts";
 import { encodeLinkDestination } from "./linkify.ts";
 import { markdownTableEnd } from "./markdownTable.ts";
@@ -497,7 +502,7 @@ function matchInline(src: string, openParen: number, blocked: Range[]): number |
     titleAt !== j &&
     (src[titleAt] === '"' || src[titleAt] === "'" || src[titleAt] === "(")
   ) {
-    const title = readTitle(src, titleAt);
+    const title = readCommonMarkTitle(src, titleAt);
     if (!title) return null;
     j = title.next;
   } else if (titleAt != null) {
@@ -584,7 +589,7 @@ function formatDest(dest: string): string {
 }
 
 function formatTitle(title: string): string {
-  return title.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
+  return formatCommonMarkTitle(title);
 }
 
 function readBracket(src: string, open: number, blocked: Range[]): Bracket | null {
@@ -678,28 +683,6 @@ function readDestination(src: string, i: number): { dest: string; next: number }
   return { dest: out, next: j };
 }
 
-function readTitle(src: string, i: number): { title: string; next: number } | null {
-  const opener = src[i];
-  const closer = opener === "(" ? ")" : opener;
-  if (opener !== '"' && opener !== "'" && opener !== "(") return null;
-  let j = i + 1;
-  let out = "";
-  while (j < src.length) {
-    const ch = src[j] ?? "";
-    if (ch === "\n") return null;
-    if (ch === "\\") {
-      if (j + 1 >= src.length) return null;
-      out += src[j + 1];
-      j += 2;
-      continue;
-    }
-    if (ch === closer) return { title: out, next: j + 1 };
-    out += ch;
-    j += 1;
-  }
-  return null;
-}
-
 function tryTitle(
   src: string,
   i: number,
@@ -709,7 +692,9 @@ function tryTitle(
   if (at == null || at === i) return null;
   const opener = src[at];
   if (opener !== '"' && opener !== "'" && opener !== "(") return null;
-  return readTitle(src, at);
+  const read = readCommonMarkTitle(src, at);
+  if (!read) return null;
+  return { title: commonMarkTitleHint(read.raw), next: read.next };
 }
 
 /** Spaces, tabs, and at most one newline. CommonMark link spacing. */
@@ -741,12 +726,9 @@ function skipDestWs(src: string, i: number, blocked: Range[]): number | null {
   if (nextLine >= src.length || src[nextLine] === "\n") return null;
   if (inRange(nextLine, blocked)) return null;
   let k = nextLine;
-  let spaces = 0;
-  while (src[k] === " " && spaces < 3) {
-    k += 1;
-    spaces += 1;
-  }
-  if (src[k] === " " || src[k] === "\t") return null;
+  while (src[k] === " " || src[k] === "\t") k += 1;
+  // A whitespace-only continuation is a blank line, not a destination or title.
+  if (k >= src.length || src[k] === "\n") return null;
   return k;
 }
 

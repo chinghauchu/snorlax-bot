@@ -1017,8 +1017,11 @@ private struct MarkdownRun: View {
     /// Inline math stays a flow. Completed images join that flow.
     /// Streaming text is not split, so a growing bubble stays plain.
     private var flowPieces: [MarkdownFlowPiece] {
-        let source = MarkdownImage.prepareAlts(
-            MarkdownReferenceLink.prepareSpacedDestinations(self.source, completed: completed),
+        let source = MarkdownLinkTitle.prepare(
+            MarkdownImage.prepareAlts(
+                MarkdownReferenceLink.prepareSpacedDestinations(self.source, completed: completed),
+                completed: completed
+            ),
             completed: completed
         )
         var out: [MarkdownFlowPiece] = []

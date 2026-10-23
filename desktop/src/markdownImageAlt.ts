@@ -30,6 +30,7 @@
  */
 
 import { ASCII_PUNCT, readCharacterReference, stashMarkdownText } from "./markdownEscape.ts";
+import { readCommonMarkTitle } from "./markdownLinkTitleForm.ts";
 import { htmlTagEnd } from "./markdownHtmlLiteral.ts";
 import { findInlineImages } from "./markdownImage.ts";
 
@@ -427,10 +428,14 @@ function matchInlineEnd(src: string, close: number): number | null {
   if (!dest) return null;
   let k = dest.next;
   const titleAt = skipLinkSpace(src, k);
-  if (titleAt != null && (src[titleAt] === '"' || src[titleAt] === "'" || src[titleAt] === "(")) {
+  if (
+    titleAt != null &&
+    titleAt !== k &&
+    (src[titleAt] === '"' || src[titleAt] === "'" || src[titleAt] === "(")
+  ) {
     const title = readTitle(src, titleAt);
     if (!title) return null;
-    k = title.next;
+    k = title;
   }
   const end = skipLinkSpace(src, k);
   if (end == null || src[end] !== ")") return null;
@@ -486,21 +491,8 @@ function readDestination(src: string, i: number): { next: number } | null {
   return { next: j };
 }
 
-function readTitle(src: string, i: number): { next: number } | null {
-  const open = src[i];
-  const close = open === "(" ? ")" : open;
-  if (open !== '"' && open !== "'" && open !== "(") return null;
-  let j = i + 1;
-  while (j < src.length) {
-    const ch = src[j] ?? "";
-    if (ch === "\\" && j + 1 < src.length) {
-      j += 2;
-      continue;
-    }
-    if (ch === close) return { next: j + 1 };
-    j += 1;
-  }
-  return null;
+function readTitle(src: string, i: number): number | null {
+  return readCommonMarkTitle(src, i)?.next ?? null;
 }
 
 function skipLinkSpace(src: string, i: number): number | null {

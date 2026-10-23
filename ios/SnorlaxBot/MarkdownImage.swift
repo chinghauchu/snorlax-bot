@@ -143,7 +143,10 @@ enum MarkdownImage {
             pieces.append(.image(Inline(
                 alt: decodeInline(hit.alt),
                 url: hit.url,
-                title: hit.title.map(decodeInline),
+                title: hit.title.flatMap { raw in
+                    let tip = MarkdownLinkTitleForm.hint(raw)
+                    return tip.isEmpty ? nil : tip
+                },
                 link: (wrap?.href.isEmpty == false) ? wrap?.href : nil
             )))
             cursor = to
@@ -229,8 +232,9 @@ enum MarkdownImage {
         var cursor = dest.next
         var title: String?
         if let titleAt = skipLinkSpace(chars, cursor, blocked),
+           titleAt != cursor,
            chars[titleAt] == "\"" || chars[titleAt] == "'" || chars[titleAt] == "(" {
-            guard let read = readTitle(chars, titleAt, blocked) else { return nil }
+            guard let read = readTitle(chars, titleAt) else { return nil }
             title = read.value
             cursor = read.next
         }
@@ -275,8 +279,9 @@ enum MarkdownImage {
             }
             var cursor = dest.next
             if let titleAt = skipLinkSpace(chars, cursor, blocked),
+               titleAt != cursor,
                chars[titleAt] == "\"" || chars[titleAt] == "'" || chars[titleAt] == "(" {
-                guard let title = readTitle(chars, titleAt, blocked) else {
+                guard let title = readTitle(chars, titleAt) else {
                     index += 1
                     continue
                 }
@@ -397,28 +402,11 @@ enum MarkdownImage {
 
     private static func readTitle(
         _ chars: [Character],
-        _ start: Int,
-        _ blocked: [Span]
+        _ start: Int
     ) -> (value: String, next: Int)? {
-        guard start < chars.count else { return nil }
-        let open = chars[start]
-        let close: Character = open == "(" ? ")" : open
-        guard open == "\"" || open == "'" || open == "(" else { return nil }
-        var index = start + 1
-        var value = ""
-        while index < chars.count {
-            if inRange(index, blocked) { return nil }
-            let ch = chars[index]
-            if ch == "\\", index + 1 < chars.count {
-                value.append(chars[index + 1])
-                index += 2
-                continue
-            }
-            if ch == close { return (value, index + 1) }
-            value.append(ch)
-            index += 1
-        }
-        return nil
+        // A title is a string. `\(` is an escaped parenthesis, not math.
+        guard let read = MarkdownLinkTitleForm.read(chars, start) else { return nil }
+        return (read.raw, read.next)
     }
 
     private static func skipLinkSpace(_ chars: [Character], _ start: Int, _ blocked: [Span]) -> Int? {
@@ -850,8 +838,9 @@ struct MarkdownInlineImage: View {
 private extension View {
     @ViewBuilder
     func markdownImageTitle(_ title: String?) -> some View {
-        if let title, !title.isEmpty {
-            self.help(title)
+        let tip = title?.split(whereSeparator: { $0.isWhitespace }).joined(separator: " ") ?? ""
+        if !tip.isEmpty {
+            self.help(tip)
         } else {
             self
         }
