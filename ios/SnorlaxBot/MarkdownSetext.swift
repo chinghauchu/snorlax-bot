@@ -8,8 +8,9 @@ import SwiftUI
 /// A paragraph followed by a line of `=` is an H1. A line of `-`
 /// is an H2. The heading uses the same 16pt / 14pt semibold font
 /// as an ATX heading. Several lines with no blank line between
-/// them are one heading; a break between those lines stays inside
-/// that heading.
+/// them are one heading. A plain newline inside it is a soft break.
+/// Two trailing spaces, or a backslash before the newline, is a
+/// hard break and stays inside.
 ///
 /// A `---` after a blank line stays a thematic break. A `---` that
 /// is not indented into a list item stays a break after the list.
@@ -35,6 +36,16 @@ import SwiftUI
 /// the block. Indented code may follow another block with no
 /// blank line, so that code is not heading text.
 ///
+/// v1.83: hard breaks inside the heading match cmark-gfm. A plain
+/// newline is a soft break. Two or more trailing spaces, or one
+/// backslash before the newline, is a hard break, and those
+/// markers are not shown. The line before the underline is the
+/// end of the block, so its trailing spaces disappear and a
+/// backslash there stays visible. A marker inside a code span
+/// stays in the code. Leading spaces and tabs on a heading line
+/// are not part of the text. `headingInlineSource` runs the same
+/// hard-break pass paragraphs already use.
+///
 /// Streaming (`completed: false`) returns the text unchanged.
 /// Copy controls keep markdown source — this type does not write
 /// the pasteboard. No animation. No new HTTP.
@@ -57,9 +68,12 @@ enum MarkdownSetext {
         return nil
     }
 
-    /// Heading body with line breaks marked for the inline renderer.
+    /// Heading body for the inline renderer. A plain newline stays a
+    /// soft break. Two trailing spaces, or a backslash before the
+    /// newline, becomes the hard-break token. A marker inside a code
+    /// span stays literal. The underline is not included.
     static func headingInlineSource(_ text: String) -> String {
-        text.replacingOccurrences(of: "\n", with: MarkdownHardBreak.token)
+        MarkdownHardBreak.apply(text, completed: true)
     }
 
     /// `completed: false` returns `text` unchanged.
@@ -290,10 +304,37 @@ enum MarkdownSetext {
     }
 
     private static func headingText(_ lines: [String]) -> String {
-        var cleaned = lines.map { $0.replacingOccurrences(of: "[ \\t]+$", with: "", options: .regularExpression) }
-        if cleaned.isEmpty { return "" }
-        cleaned[0] = cleaned[0].replacingOccurrences(of: "^ {1,3}", with: "", options: .regularExpression)
-        return cleaned.joined(separator: "\n").trimmingCharacters(in: .whitespacesAndNewlines)
+        if lines.isEmpty { return "" }
+        // A trailing run of spaces and tabs is not heading text. When
+        // that run ends in two or more spaces, keep the spaces so the
+        // hard-break pass can see them and drop the tabs in the run.
+        // A run that ends in a tab or a single space is dropped. A tab
+        // between words stays. Leading spaces and tabs are the heading's
+        // indent, including on a code-span continuation.
+        return lines.map(normalizeHeadingLine).joined(separator: "\n")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private static func normalizeHeadingLine(_ line: String) -> String {
+        var body = line
+        while let first = body.first, first == " " || first == "\t" {
+            body.removeFirst()
+        }
+        var spaces = 0
+        while body.last == " " {
+            spaces += 1
+            body.removeLast()
+        }
+        while body.last == "\t" {
+            body.removeLast()
+        }
+        if spaces >= 2 {
+            return body + String(repeating: " ", count: spaces)
+        }
+        while let last = body.last, last == " " || last == "\t" {
+            body.removeLast()
+        }
+        return body
     }
 
     private static func protectUnderline(_ line: String, _ index: Int) -> String {
