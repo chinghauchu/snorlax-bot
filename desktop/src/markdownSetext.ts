@@ -7,8 +7,9 @@
  * A paragraph followed by a line of `=` is an H1. A line of `-`
  * is an H2. The heading uses the same elements as an ATX heading,
  * so it picks up the same 16px / 14px semibold styles. Several
- * lines with no blank line between them are one heading; a break
- * between those lines stays inside that heading.
+ * lines with no blank line between them are one heading. A plain
+ * newline inside it is a soft break. Two trailing spaces, or a
+ * backslash before the newline, is a hard break and stays inside.
  *
  * A `---` after a blank line stays a thematic break. A `---` that
  * is not indented into a list item stays a break after the list.
@@ -34,13 +35,28 @@
  * the block. Indented code may follow another block with no
  * blank line, so that code is not heading text.
  *
+ * v1.83: hard breaks inside the heading match cmark-gfm. Checked
+ * the CommonMark emphasis examples on main first. Delimiter
+ * flanking, intraword `_` versus `*`, the rule of 3, nested runs,
+ * unmatched delimiters, `***strong emph***`, and emphasis inside
+ * code spans and links already match on both clients. v1.67 and
+ * v1.68 stand. The unshipped gap was this heading. A plain newline
+ * is a soft break, not a line-break element. Two or more trailing
+ * spaces, or one backslash before the newline, is a hard break,
+ * and those markers are not shown. The line before the underline
+ * is the end of the block, so its trailing spaces disappear and a
+ * backslash there stays visible. A marker inside a code span stays
+ * in the code. Leading spaces and tabs on a heading line are not
+ * part of the text. `headingInlineSource` runs the same hard-break
+ * pass paragraphs already use.
+ *
  * Streaming (`completed: false`) returns the text unchanged.
  * Copy controls keep markdown source — this module does not copy.
  * No animation. No new HTTP.
  * Keep in lockstep with `ios/SnorlaxBot/MarkdownSetext.swift`.
  */
 
-import { HARD_BREAK_TOKEN } from "./markdownHardBreak.ts";
+import { applyHardLineBreaks } from "./markdownHardBreak.ts";
 import { htmlBlockEnd } from "./markdownList.ts";
 
 export type SetextBlock =
@@ -59,11 +75,13 @@ export function setextAnimates(reduceMotion: boolean): boolean {
 }
 
 /**
- * Heading body with line breaks marked for the inline renderer.
- * Emphasis can still span those lines. The underline is not included.
+ * Heading body for the inline renderer. A plain newline stays a
+ * soft break. Two trailing spaces, or a backslash before the
+ * newline, becomes the hard-break token. A marker inside a code
+ * span stays literal. The underline is not included.
  */
 export function headingInlineSource(text: string): string {
-  return text.split("\n").join(HARD_BREAK_TOKEN);
+  return applyHardLineBreaks(text, true);
 }
 
 /**
@@ -290,10 +308,26 @@ export function literalizeSetextLines(text: string): string {
 }
 
 function headingText(lines: string[]): string {
-  const cleaned = lines.map((line) => line.replace(/[ \t]+$/, ""));
-  if (cleaned.length === 0) return "";
-  cleaned[0] = (cleaned[0] ?? "").replace(/^ {1,3}/, "");
-  return cleaned.join("\n").trim();
+  if (lines.length === 0) return "";
+  // A trailing run of spaces and tabs is not heading text. When
+  // that run ends in two or more spaces, keep the spaces so the
+  // hard-break pass can see them and drop the tabs in the run.
+  // A run that ends in a tab or a single space is dropped. A tab
+  // between words stays. Leading spaces and tabs are the heading's
+  // indent, including on a code-span continuation.
+  return lines.map(normalizeHeadingLine).join("\n").trim();
+}
+
+function normalizeHeadingLine(line: string): string {
+  let body = line.replace(/^[ \t]+/, "");
+  let spaces = 0;
+  while (body.endsWith(" ")) {
+    spaces += 1;
+    body = body.slice(0, -1);
+  }
+  body = body.replace(/\t+$/, "");
+  if (spaces >= 2) return `${body}${" ".repeat(spaces)}`;
+  return body.replace(/[ \t]+$/, "");
 }
 
 function protectUnderline(line: string, index: number): string {

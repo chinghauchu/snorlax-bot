@@ -109,7 +109,8 @@ test("a multi-line paragraph followed by === is one heading", () => {
     assert.equal(blocks[0].text, "Foo *bar\nbaz*");
     const html = headingHtml(1, blocks[0].text);
     assert.match(html, /<h1>Foo <em>bar/);
-    assert.match(html, /<em>bar<br\s*\/?>\s*baz<\/em>/);
+    assert.match(html, /<em>bar\nbaz<\/em>/);
+    assert.doesNotMatch(html, /<br/);
     assert.doesNotMatch(html, /====/);
   }
   const plain = splitSetextHeadings("Foo\nBar\n---\nbaz\n", true);

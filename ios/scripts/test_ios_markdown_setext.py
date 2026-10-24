@@ -45,7 +45,7 @@ def test_parser() -> None:
     assert "static func split(_ text: String, completed: Bool) -> [Block]" in SWIFT
     assert "static func literalize(_ text: String) -> String" in SWIFT
     assert "static func headingInlineSource(_ text: String) -> String" in SWIFT
-    assert "MarkdownHardBreak.token" in SWIFT
+    assert "MarkdownHardBreak.apply" in SWIFT
     assert "return nil" in SWIFT
     assert "withAnimation" not in SWIFT
     assert "UIPasteboard" not in SWIFT
@@ -56,7 +56,7 @@ def test_parser() -> None:
     assert "export function literalizeSetextLines" in DESKTOP
     assert "export function headingInlineSource" in DESKTOP
     assert "export function setextAnimates" in DESKTOP
-    assert "HARD_BREAK_TOKEN" in DESKTOP
+    assert "applyHardLineBreaks" in DESKTOP
     assert "/v1/" not in DESKTOP
     assert "copyText" not in DESKTOP
     assert "clipboard" not in DESKTOP

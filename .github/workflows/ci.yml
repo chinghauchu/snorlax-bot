@@ -165,6 +165,7 @@ jobs:
           python3 ios/scripts/test_ios_markdown_angle_autolink.py
           python3 ios/scripts/test_ios_markdown_setext.py
           python3 ios/scripts/test_ios_markdown_setext_edge.py
+          python3 ios/scripts/test_ios_markdown_setext_break.py
           python3 ios/scripts/test_ios_markdown_email.py
           python3 ios/scripts/test_ios_markdown_link_title.py
           python3 ios/scripts/test_ios_markdown_lazy_quote.py
