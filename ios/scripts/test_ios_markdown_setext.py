@@ -70,8 +70,8 @@ def test_wired_without_new_http() -> None:
     assert "headingLevel: level" in MARKDOWN
     assert "accessibilityAddTraits(.isHeader)" in MARKDOWN
     assert "level <= 1 ? metrics.heading : metrics.body" in MARKDOWN
-    assert "insideList" in BREAK
-    assert "listContentCol" in BREAK
+    assert "MarkdownList.listEnd" in BREAK
+    assert "htmlBlockLineEnd" in BREAK
     assert "MarkdownSetext" not in PLAIN
     assert "protectLazySetext(text, completed)" in BODY
     assert "splitSetextHeadings(text, completed)" in BODY

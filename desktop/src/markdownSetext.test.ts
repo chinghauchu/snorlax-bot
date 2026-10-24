@@ -238,8 +238,8 @@ test("streaming stays plain and copy still uses markdown source", () => {
   assert.match(markdown, /headingLevel: level/);
   assert.match(markdown, /accessibilityAddTraits\(\.isHeader\)/);
   assert.match(markdown, /level <= 1 \? metrics\.heading : metrics\.body/);
-  assert.match(brk, /insideList/);
-  assert.match(brk, /listContentCol/);
+  assert.match(brk, /MarkdownList\.listEnd/);
+  assert.match(brk, /htmlBlockLineEnd/);
 });
 
 test("docs, CI, and OpenAPI stay put", () => {

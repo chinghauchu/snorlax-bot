@@ -13,7 +13,13 @@
  * Own-line `---`, `***`, and `___` (spaces allowed between the
  * marks) become a rule. A solid dash underline that continues a
  * setext heading stays in the markdown so that heading still
- * renders. Fences and `$$` stay intact. Streaming
+ * renders. Fences and `$$` stay intact.
+ *
+ * v1.82: a break indented into an open list item stays in that
+ * item (the list renderer paints the rule there). A line that
+ * only looks like a break inside an HTML block stays in the
+ * block. A break at the list's margin still ends the list.
+ * `* * *` is a break, not a list item. Streaming
  * (`completed: false`) returns the text unchanged.
  * Copy controls keep markdown source — this module does not copy.
  * No animation. No new HTTP.
@@ -21,6 +27,7 @@
  */
 
 import { splitWebUrls } from "./linkify.ts";
+import { htmlBlockEnd, markdownListEnd } from "./markdownList.ts";
 
 export type BreakBlock =
   | { type: "markdown"; text: string }
@@ -60,8 +67,7 @@ export function splitThematicBreaks(
   let fence: string | null = null;
   let inMath = false;
   let setextOpen = false;
-  let inList = false;
-  let listContentCol = 0;
+  let paragraph = false;
 
   const pushMarkdown = (end: number) => {
     if (end <= mdStart) return;
@@ -69,57 +75,66 @@ export function splitThematicBreaks(
     if (chunk.trim()) blocks.push({ type: "markdown", text: chunk });
   };
 
-  for (let i = 0; i < lines.length; i += 1) {
+  let i = 0;
+  while (i < lines.length) {
     const line = lines[i] ?? "";
     const gate = blockGate(line, fence, inMath);
     fence = gate.fence;
     inMath = gate.inMath;
     if (gate.blocked) {
       setextOpen = false;
-      inList = false;
-      listContentCol = 0;
+      paragraph = false;
+      i += 1;
+      continue;
+    }
+    // v1.82: an HTML block owns every line until it ends. A
+    // `***` inside `<script>` or `<div>` is not a rule.
+    const htmlEnd = htmlBlockEnd(lines, i, paragraph);
+    if (htmlEnd != null && htmlEnd > i) {
+      setextOpen = false;
+      paragraph = false;
+      i = htmlEnd;
+      continue;
+    }
+    // A list span includes a break indented to the item. The
+    // margin break that ends the list is left for the rule below.
+    const listEnd = markdownListEnd(lines, i);
+    if (listEnd != null && listEnd > i) {
+      setextOpen = false;
+      paragraph = false;
+      i = listEnd;
       continue;
     }
     const marker = thematicBreakMarker(line);
     if (marker) {
-      const indent = leadingSpaceColumns(line);
-      // A solid dash underline indented into the open list item is a
-      // setext heading inside that item, not a rule beside the list.
-      const insideList =
-        inList &&
-        marker === "-" &&
-        isSolidRun(line, "-") &&
-        listContentCol > 0 &&
-        indent >= listContentCol;
-      const setext =
-        marker === "-" && isSolidRun(line, "-") && setextOpen && !inList;
-      if (!setext && !insideList) {
+      // `---` under an open paragraph is a setext underline.
+      const setext = marker === "-" && isSolidRun(line, "-") && setextOpen;
+      if (!setext) {
         pushMarkdown(i);
         blocks.push({ type: "rule" });
         mdStart = i + 1;
         setextOpen = false;
-        inList = false;
-        listContentCol = 0;
+        paragraph = false;
+        i += 1;
         continue;
       }
     }
     if (!line.trim()) {
       setextOpen = false;
-      inList = false;
-      listContentCol = 0;
+      paragraph = false;
+      i += 1;
       continue;
     }
-    if (isListItemLine(line)) {
-      inList = true;
-      listContentCol = listItemContentColumn(line);
+    // Four-space indent continues an open paragraph. It is not
+    // a break and it does not close the paragraph.
+    if (paragraph && isIndentedCode(line)) {
       setextOpen = false;
-      continue;
-    }
-    if (inList) {
-      setextOpen = false;
+      i += 1;
       continue;
     }
     setextOpen = isSetextContentLine(line);
+    paragraph = setextOpen;
+    i += 1;
   }
   pushMarkdown(lines.length);
   if (blocks.length === 0) return [{ type: "markdown", text: src }];
@@ -426,17 +441,6 @@ function listItemContentColumn(line: string): number {
   if (sep === " ") columns += 1;
   else if (sep === "\t") columns += 4 - (columns % 4);
   else columns += 1;
-  return columns;
-}
-
-function leadingSpaceColumns(line: string): number {
-  let columns = 0;
-  for (let i = 0; i < line.length; i += 1) {
-    const ch = line[i];
-    if (ch === " ") columns += 1;
-    else if (ch === "\t") columns += 4 - (columns % 4);
-    else break;
-  }
   return columns;
 }
 

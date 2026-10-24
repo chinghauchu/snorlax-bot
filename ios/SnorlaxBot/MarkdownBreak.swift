@@ -5,8 +5,13 @@ import SwiftUI
 /// Own-line `---`, `***`, and `___` (spaces allowed between the marks)
 /// become a thin muted rule. A solid dash underline that continues a
 /// setext heading stays in the markdown so that heading still renders.
-/// Fences and `$$` stay intact. Streaming (`completed: false`) returns
-/// the text unchanged. Copy controls keep markdown source — this type
+/// Fences and `$$` stay intact.
+///
+/// v1.82: a break indented into an open list item stays in that item.
+/// A line that only looks like a break inside an HTML block stays in
+/// the block. A break at the list's margin still ends the list.
+/// `* * *` is a break, not a list item. Streaming (`completed: false`)
+/// returns the text unchanged. Copy controls keep markdown source — this type
 /// only splits text for display and does not write the pasteboard.
 /// No animation. No new HTTP.
 /// Keep in lockstep with `desktop/src/markdownBreak.ts`.
@@ -36,8 +41,7 @@ enum MarkdownBreak {
         var fence: String?
         var inMath = false
         var setextOpen = false
-        var inList = false
-        var listContentCol = 0
+        var paragraph = false
 
         func pushMarkdown(_ end: Int) {
             guard end > mdStart else { return }
@@ -55,52 +59,53 @@ enum MarkdownBreak {
             inMath = gate.inMath
             if gate.blocked {
                 setextOpen = false
-                inList = false
-                listContentCol = 0
+                paragraph = false
                 index += 1
                 continue
             }
+            // v1.82: an HTML block owns every line until it ends.
+            if let htmlEnd = MarkdownList.htmlBlockLineEnd(lines, index: index, paragraphOpen: paragraph),
+               htmlEnd > index
+            {
+                setextOpen = false
+                paragraph = false
+                index = htmlEnd
+                continue
+            }
+            // A list span includes a break indented to the item.
+            if let listEnd = MarkdownList.listEnd(lines, start: index), listEnd > index {
+                setextOpen = false
+                paragraph = false
+                index = listEnd
+                continue
+            }
             if let marker = thematicBreakMarker(line) {
-                let indent = leadingSpaceColumns(line)
-                // A solid dash underline indented into the open list item
-                // is a setext heading inside that item, not a rule.
-                let insideList = inList
-                    && marker == "-"
-                    && isSolidRun(line, marker: "-")
-                    && listContentCol > 0
-                    && indent >= listContentCol
-                let setext = marker == "-" && isSolidRun(line, marker: "-") && setextOpen && !inList
-                if !setext && !insideList {
+                // `---` under an open paragraph is a setext underline.
+                let setext = marker == "-" && isSolidRun(line, marker: "-") && setextOpen
+                if !setext {
                     pushMarkdown(index)
                     blocks.append(.rule)
                     mdStart = index + 1
                     setextOpen = false
-                    inList = false
-                    listContentCol = 0
+                    paragraph = false
                     index += 1
                     continue
                 }
             }
             if line.trimmingCharacters(in: .whitespaces).isEmpty {
                 setextOpen = false
-                inList = false
-                listContentCol = 0
+                paragraph = false
                 index += 1
                 continue
             }
-            if isListItemLine(line) {
-                inList = true
-                listContentCol = listItemContentColumn(line)
-                setextOpen = false
-                index += 1
-                continue
-            }
-            if inList {
+            // Four-space indent continues an open paragraph.
+            if paragraph && isIndentedCode(line) {
                 setextOpen = false
                 index += 1
                 continue
             }
             setextOpen = isSetextContentLine(line)
+            paragraph = setextOpen
             index += 1
         }
         pushMarkdown(lines.count)
@@ -183,20 +188,6 @@ enum MarkdownBreak {
             }
         } else {
             columns += 1
-        }
-        return columns
-    }
-
-    private static func leadingSpaceColumns(_ line: String) -> Int {
-        var columns = 0
-        for ch in line {
-            if ch == " " {
-                columns += 1
-            } else if ch == "\t" {
-                columns += 4 - (columns % 4)
-            } else {
-                break
-            }
         }
         return columns
     }
