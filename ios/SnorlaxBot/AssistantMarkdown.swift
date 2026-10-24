@@ -1139,8 +1139,8 @@ private struct MarkdownRun: View {
             MarkdownEscape.protect(src, completed: completed),
             completed: completed
         )
-        // ~text~ becomes ~~text~~ so the parser's strikethrough matches
-        // the single-tilde form the same way it already matches ~~text~~.
+        // v1.84: the text is not rewritten. AttributedString full
+        // markdown already strikes one or two flanking tildes.
         let source = MarkdownSingleStrike.promote(
             MarkdownHardBreak.apply(escaped, completed: completed),
             completed: completed

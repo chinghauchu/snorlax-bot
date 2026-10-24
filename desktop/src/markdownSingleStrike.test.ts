@@ -46,8 +46,6 @@ const runtimeOpenapi = readFileSync(
 
 const PHRASE = "v1.50 GFM single-tilde strikethrough in completed assistant replies";
 
-const STRAY = "§§SBE00007E§§";
-
 function render(text: string, completed = true): string {
   const source = completed ? promoteSingleTilde(text, true) : text;
   return restoreMarkdownEscapes(
@@ -61,7 +59,7 @@ function render(text: string, completed = true): string {
 }
 
 test("~text~ strikes and ~~text~~ still strikes", () => {
-  assert.equal(promoteSingleTilde("say ~gone~ please", true), "say ~~gone~~ please");
+  assert.equal(promoteSingleTilde("say ~gone~ please", true), "say ~gone~ please");
   assert.match(render("say ~gone~ please"), /<del class="md-strike">gone<\/del>/);
   assert.doesNotMatch(render("say ~gone~ please"), /~/);
   assert.equal(promoteSingleTilde("~~gone~~", true), "~~gone~~");
@@ -69,45 +67,42 @@ test("~text~ strikes and ~~text~~ still strikes", () => {
   assert.match(render("~**bold**~"), /<del class="md-strike"><strong>bold<\/strong><\/del>/);
   assert.match(render("*~x~*"), /<em><del class="md-strike">x<\/del><\/em>/);
   assert.match(render("**~x~**"), /<strong><del class="md-strike">x<\/del><\/strong>/);
-  assert.equal(
-    promoteSingleTilde("~a~ and ~~b~~ and ~c~", true),
-    "~~a~~ and ~~b~~ and ~~c~~",
-  );
+  assert.equal(promoteSingleTilde("~a~ and ~~b~~ and ~c~", true), "~a~ and ~~b~~ and ~c~");
   assert.match(render("~a~ and ~~b~~"), /<del class="md-strike">a<\/del>/);
   assert.match(render("~a~ and ~~b~~"), /<del class="md-strike">b<\/del>/);
 });
 
-test("unclosed, spaced, triple, and mixed tildes stay literal", () => {
-  assert.equal(restoreMarkdownEscapes(promoteSingleTilde("~gone", true)), "~gone");
-  assert.equal(promoteSingleTilde("~gone", true), `${STRAY}gone`);
-  assert.equal(promoteSingleTilde("~ foo ~", true), `${STRAY} foo ${STRAY}`);
-  assert.equal(promoteSingleTilde("~foo ~", true), `${STRAY}foo ${STRAY}`);
-  assert.equal(promoteSingleTilde("~foo\nbar~", true), `${STRAY}foo\nbar${STRAY}`);
+test("unclosed, spaced, and mismatched tildes stay literal", () => {
+  assert.equal(promoteSingleTilde("~gone", true), "~gone");
+  assert.equal(promoteSingleTilde("~ foo ~", true), "~ foo ~");
+  assert.equal(promoteSingleTilde("~foo ~", true), "~foo ~");
   assert.equal(promoteSingleTilde("~~~gone~~~", true), "~~~gone~~~");
-  assert.equal(promoteSingleTilde("~foo~~bar~", true), `${STRAY}foo~~bar${STRAY}`);
-  assert.equal(promoteSingleTilde("~gone~~", true), `${STRAY}gone~~`);
-  assert.equal(promoteSingleTilde("~~gone~", true), `~~gone${STRAY}`);
+  assert.equal(promoteSingleTilde("~gone~~", true), "~gone~~");
+  assert.equal(promoteSingleTilde("~~gone~", true), "~~gone~");
+  assert.doesNotMatch(render("~gone"), /<del/);
   assert.doesNotMatch(render("~ foo ~"), /<del/);
   assert.match(render("~ foo ~"), /~ foo ~/);
-  assert.doesNotMatch(render("~foo~~bar~"), /<del/);
-  assert.match(render("~foo~~bar~"), /~foo~~bar~/);
+  assert.doesNotMatch(render("~gone~~"), /<del/);
+  assert.doesNotMatch(render("~~gone~"), /<del/);
+  assert.match(render("~foo\nbar~"), /<del class="md-strike">foo[\s\S]*bar<\/del>/);
+  assert.match(render("~foo~~bar~"), /<del class="md-strike">foo~~bar<\/del>/);
   const broken = applyHardLineBreaks("~foo  \nbar~", true);
   assert.ok(broken.includes(HARD_BREAK_TOKEN));
-  assert.equal(restoreMarkdownEscapes(promoteSingleTilde(broken, true)), broken);
-  assert.match(promoteSingleTilde(broken, true), new RegExp(STRAY));
+  assert.equal(promoteSingleTilde(broken, true), broken);
+  assert.doesNotMatch(render(broken), /<del/);
   assert.doesNotMatch(render(broken), /~~/);
 });
 
 test("code, math, urls, link destinations, and escapes stay literal", () => {
-  assert.equal(promoteSingleTilde("see `~nope~` and ~yes~", true), "see `~nope~` and ~~yes~~");
+  assert.equal(promoteSingleTilde("see `~nope~` and ~yes~", true), "see `~nope~` and ~yes~");
   const fence = "```\n~nope~\n```\n~yes~";
-  assert.equal(promoteSingleTilde(fence, true), "```\n~nope~\n```\n~~yes~~");
+  assert.equal(promoteSingleTilde(fence, true), fence);
   const tildeFence = "~~~\n~nope~\n~~~\n";
   assert.equal(promoteSingleTilde(tildeFence, true), tildeFence);
   const indented = "para\n\n    ~nope~\n";
   assert.equal(promoteSingleTilde(indented, true), indented);
   assert.equal(promoteSingleTilde("\\( ~nope~ \\)", true), "\\( ~nope~ \\)");
-  assert.equal(promoteSingleTilde("$$\n~nope~\n$$\n~yes~", true), "$$\n~nope~\n$$\n~~yes~~");
+  assert.equal(promoteSingleTilde("$$\n~nope~\n$$\n~yes~", true), "$$\n~nope~\n$$\n~yes~");
   const url = "see https://example.com/~user~ now";
   assert.equal(promoteSingleTilde(url, true), url);
   const www = "see www.example.com/~user~ now";
@@ -116,20 +111,15 @@ test("code, math, urls, link destinations, and escapes stay literal", () => {
   assert.equal(promoteSingleTilde(dest, true), dest);
   assert.equal(
     promoteSingleTilde("[~docs~](https://example.com)", true),
-    "[~~docs~~](https://example.com)",
+    "[~docs~](https://example.com)",
   );
   assert.match(render("[~docs~](https://example.com)"), /<del class="md-strike">docs<\/del>/);
   assert.match(render("[~docs~](https://example.com)"), /href="https:\/\/example.com"/);
   const escaped = protectMarkdownEscapes("\\~not~", true);
-  assert.equal(
-    restoreMarkdownEscapes(promoteSingleTilde(escaped, true)),
-    restoreMarkdownEscapes(escaped),
-  );
-  assert.match(promoteSingleTilde(escaped, true), new RegExp(`${STRAY}$`));
+  assert.equal(promoteSingleTilde(escaped, true), escaped);
   assert.doesNotMatch(render(escaped), /<del/);
   assert.match(restoreMarkdownEscapes(render(escaped)), /~not~/);
-  assert.equal(restoreMarkdownEscapes(promoteSingleTilde("\\~not~", true)), "\\~not~");
-  assert.match(promoteSingleTilde("\\~not~", true), /\\~not§§SBE00007E§§/);
+  assert.equal(promoteSingleTilde("\\~not~", true), "\\~not~");
   const codeHtml = render("say `~nope~` and ~yes~");
   assert.match(codeHtml, /<code>~nope~<\/code>/);
   assert.match(codeHtml, /<del class="md-strike">yes<\/del>/);
@@ -158,10 +148,10 @@ test("streaming stays plain and copy keeps markdown source", () => {
   assert.match(swift, /markdown source/);
   assert.doesNotMatch(swift, /UIPasteboard/);
   assert.doesNotMatch(swift, /\/v1\//);
-  assert.match(swift, /isSingleOpener/);
-  assert.match(swift, /findCloser/);
-  assert.match(swift, /tildeInUrl/);
-  assert.match(swift, /inLinkDestination/);
+  assert.match(swift, /v1\.84 retires/);
+  assert.match(src, /v1\.84 retires/);
+  assert.doesNotMatch(swift, /shieldStrayTildes/);
+  assert.doesNotMatch(src, /shieldStrayTildes/);
   assert.ok(roadmap.includes(PHRASE));
   assert.match(roadmap, /\/ v1\.50 /);
   assert.match(spec, /## 150\. v1\.50/);
