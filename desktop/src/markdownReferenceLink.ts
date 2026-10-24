@@ -29,10 +29,24 @@
  * not fall back to a shortcut. Code spans, autolinks, and raw HTML
  * bind tighter than brackets. Streaming stays plain. Copy keeps
  * markdown source.
+ * v1.81: definition edges that v1.39 still missed. A multi-line
+ * label, collapsed whitespace, and first-definition-wins already
+ * matched cmark-gfm. A definition still cannot interrupt an open
+ * paragraph, including a lazy quote or list continuation
+ * (`Foo` then `[bar]: /url`, `> foo` then `[bar]: /url`). A
+ * setext underline, heading, rule, fence, or blank line closes
+ * that paragraph first. Labels use the Unicode case fold, so
+ * `ẞ` / `ß` / `SS` match and `ς` matches `Σ`. A label may be
+ * 1000 characters, which is what cmark-gfm accepts. Streaming
+ * stays plain. Copy keeps markdown source.
  * Keep in lockstep with `ios/SnorlaxBot/MarkdownReferenceLink.swift`.
  */
 
+import { unicodeCaseFold } from "./markdownCaseFold.ts";
 import { ASCII_PUNCT } from "./markdownEscape.ts";
+import { isAtxHeadingLine, isThematicBreakLine } from "./markdownIndentedCode.ts";
+import { htmlBlockEnd } from "./markdownList.ts";
+import { setextUnderline } from "./markdownSetext.ts";
 import {
   commonMarkTitleHint,
   formatCommonMarkTitle,
@@ -222,42 +236,160 @@ function collectDefinitions(
   blocked: Range[],
 ): { map: Map<string, Target>; cuts: Range[] } {
   const lines = lineSpans(src);
+  const texts = lines.map((line) => line.text);
   const tables = tableLineSet(lines);
   const map = new Map<string, Target>();
   const cuts: Range[] = [];
+  let paragraph = false;
+  let inQuote = false;
+  let fence: string | null = null;
+  let inMath = false;
   let i = 0;
   while (i < lines.length) {
-    if (tables.has(i) || lineIsFootnoteOwned(lines, i)) {
-      i += 1;
-      continue;
-    }
     const line = lines[i]!;
+    const gate = blockGate(line.text, fence, inMath);
+    fence = gate.fence;
+    inMath = gate.inMath;
+    if (gate.blocked) {
+      paragraph = false;
+      inQuote = false;
+      i += 1;
+      continue;
+    }
+    if (tables.has(i) || lineIsFootnoteOwned(lines, i)) {
+      paragraph = false;
+      inQuote = false;
+      i += 1;
+      continue;
+    }
     if (inRange(line.start, blocked)) {
+      paragraph = true;
       i += 1;
       continue;
     }
+    const htmlEnd = htmlBlockEnd(texts, i, paragraph);
+    if (htmlEnd != null && htmlEnd > i) {
+      paragraph = false;
+      inQuote = false;
+      i = htmlEnd;
+      continue;
+    }
+    if (isEffectivelyBlank(line.text)) {
+      paragraph = false;
+      inQuote = false;
+      i += 1;
+      continue;
+    }
+    // An open paragraph keeps a would-be definition as text. A
+    // heading, rule, setext underline, new quote, or interrupting
+    // list closes it first, so the definition on the next line
+    // can still match.
+    if (paragraph && !closesOpenParagraph(line.text, inQuote)) {
+      if (isQuoteLine(line.text)) inQuote = true;
+      i += 1;
+      continue;
+    }
+    const wasParagraph = paragraph;
+    paragraph = false;
+    const quoteLine = isQuoteLine(line.text);
     const parsed = parseDefinition(src, line.start, blocked);
-    if (!parsed) {
-      i += 1;
-      continue;
+    if (parsed) {
+      let endLine = i;
+      while (endLine < lines.length && lines[endLine]!.start < parsed.end) endLine += 1;
+      let bad = false;
+      for (let k = i; k < endLine; k += 1) {
+        if (tables.has(k)) bad = true;
+      }
+      if (!bad && !overlaps(parsed.start, parsed.end, blocked)) {
+        if (!map.has(parsed.label)) {
+          map.set(parsed.label, { dest: parsed.dest, title: parsed.title });
+        }
+        cuts.push({ start: parsed.start, end: parsed.end });
+        inQuote = quoteLine;
+        i = Math.max(endLine, i + 1);
+        continue;
+      }
     }
-    let endLine = i;
-    while (endLine < lines.length && lines[endLine]!.start < parsed.end) endLine += 1;
-    let bad = false;
-    for (let k = i; k < endLine; k += 1) {
-      if (tables.has(k)) bad = true;
-    }
-    if (bad || overlaps(parsed.start, parsed.end, blocked)) {
-      i += 1;
-      continue;
-    }
-    if (!map.has(parsed.label)) {
-      map.set(parsed.label, { dest: parsed.dest, title: parsed.title });
-    }
-    cuts.push({ start: parsed.start, end: parsed.end });
-    i = Math.max(endLine, i + 1);
+    inQuote = quoteLine;
+    paragraph = opensParagraph(line.text, wasParagraph);
+    i += 1;
   }
   return { map, cuts };
+}
+
+/**
+ * True when this line ends an open paragraph, so a link reference
+ * definition is allowed to start here or on the next line.
+ * Continuation of a quote that is already open is not an interrupt.
+ */
+function closesOpenParagraph(line: string, inQuote: boolean): boolean {
+  const body = inQuote && isQuoteLine(line) ? line.slice(quotePrefixLength(line)) : line;
+  if (setextUnderline(body)) return true;
+  if (isAtxHeadingLine(body) || isThematicBreakLine(body)) return true;
+  if (isQuoteLine(line) && !inQuote) return true;
+  return listInterrupts(body);
+}
+
+/** A non-empty remainder starts a paragraph. A heading or rule does not. */
+function opensParagraph(line: string, closedParagraph: boolean): boolean {
+  if (closedParagraph && setextUnderline(line)) return false;
+  if (isAtxHeadingLine(line) || isThematicBreakLine(line)) return false;
+  const columns = leadingIndent(line);
+  if (columns >= 4) return false;
+  if (isQuoteLine(line)) {
+    const rest = line.slice(quotePrefixLength(line));
+    if (rest.trim() === "") return false;
+    return opensParagraph(rest, false);
+  }
+  // A footnote definition is its own block. The next unindented
+  // line is a sibling, so `[ref]:` after `[^1]: note` still matches.
+  if (isFootnoteDefinitionLine(line)) return false;
+  return true;
+}
+
+function isEffectivelyBlank(line: string): boolean {
+  if (isBlankLine(line)) return true;
+  if (!isQuoteLine(line)) return false;
+  return line.slice(quotePrefixLength(line)).trim() === "";
+}
+
+function isBlankLine(line: string): boolean {
+  for (const ch of line) {
+    if (ch !== " " && ch !== "\t") return false;
+  }
+  return true;
+}
+
+function isQuoteLine(line: string): boolean {
+  let i = 0;
+  while (i < line.length && i < 3 && line[i] === " ") i += 1;
+  return line[i] === ">";
+}
+
+/**
+ * A bullet with text, or an ordered marker whose digits are `1`
+ * with text, interrupts a paragraph. An empty marker does not.
+ */
+function listInterrupts(line: string): boolean {
+  let i = 0;
+  while (i < line.length && line[i] === " " && i < 3) i += 1;
+  if (i < line.length && line[i] === "\t") return false;
+  const rest = line.slice(i);
+  if (/^[-+*][ \t]+\S/.test(rest)) return true;
+  return /^1[.)][ \t]+\S/.test(rest);
+}
+
+function leadingIndent(line: string): number {
+  let columns = 0;
+  for (const ch of line) {
+    if (ch === " ") {
+      columns += 1;
+      continue;
+    }
+    if (ch === "\t") return columns + 4 - (columns % 4);
+    return columns;
+  }
+  return columns;
 }
 
 function parseDefinition(
@@ -515,7 +647,8 @@ function matchInline(src: string, openParen: number, blocked: Range[]): number |
 
 /**
  * A link label: `[` ... `]` with no unescaped brackets inside.
- * An empty label is the collapsed form. Longer than 999 fails.
+ * An empty label is the collapsed form. Longer than 1000 fails.
+ * cmark-gfm accepts 1000 characters inside the brackets.
  */
 function linkLabel(src: string, open: number): { raw: string; next: number } | null {
   if (src[open] !== "[") return null;
@@ -531,7 +664,7 @@ function linkLabel(src: string, open: number): { raw: string; next: number } | n
       raw += ch;
       i += 1;
     }
-    if (raw.length > 999) return null;
+    if (raw.length > 1000) return null;
   }
   if (src[i] !== "]") return null;
   return { raw, next: i + 1 };
@@ -745,7 +878,7 @@ function skipSpTab(src: string, i: number): number {
 }
 
 function validLabel(raw: string): boolean {
-  if (raw.length < 1 || raw.length > 999) return false;
+  if (raw.length < 1 || raw.length > 1000) return false;
   let has = false;
   for (let i = 0; i < raw.length; i += 1) {
     const ch = raw[i];
@@ -758,6 +891,10 @@ function validLabel(raw: string): boolean {
     if (ch !== " " && ch !== "\t" && ch !== "\n" && ch !== "\r") has = true;
   }
   return has;
+}
+
+function isFootnoteDefinitionLine(line: string): boolean {
+  return /^ {0,3}\[\^[A-Za-z0-9_-]+\]:/.test(line);
 }
 
 function isFootnoteLabel(raw: string): boolean {
@@ -788,7 +925,7 @@ function normalizeLabel(raw: string): string {
     }
     out += ch;
   }
-  return out.trim().replace(/\s+/g, " ").toLowerCase();
+  return unicodeCaseFold(out).trim().replace(/\s+/g, " ");
 }
 
 function isTaskMarker(src: string, open: number): boolean {
