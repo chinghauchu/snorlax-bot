@@ -26,6 +26,16 @@ import Foundation
 /// Code spans, autolinks, and raw HTML bind tighter than brackets.
 /// `noLinkOpeners` and `bracketAfter` match cmark. Streaming stays
 /// plain. Copy keeps markdown source.
+/// v1.81: definition edges that v1.39 still missed. A multi-line
+/// label, collapsed whitespace, and first-definition-wins already
+/// matched cmark-gfm. A definition still cannot interrupt an open
+/// paragraph, including a lazy quote or list continuation
+/// (`Foo` then `[bar]: /url`, `> foo` then `[bar]: /url`). A
+/// setext underline, heading, rule, fence, or blank line closes
+/// that paragraph first. Labels use the Unicode case fold, so
+/// `ẞ` / `ß` / `SS` match and `ς` matches `Σ`. A label may be
+/// 1000 characters, which is what cmark-gfm accepts. Streaming
+/// stays plain. Copy keeps markdown source.
 /// Keep in lockstep with `desktop/src/markdownReferenceLink.ts`.
 enum MarkdownReferenceLink {
     private struct Target {
@@ -167,41 +177,182 @@ enum MarkdownReferenceLink {
         blocked: [Span]
     ) -> (map: [String: Target], cuts: [Span]) {
         let lines = lineSpans(chars)
+        let texts = lines.map(\.text)
         let tables = tableLineSet(lines)
         var map: [String: Target] = [:]
         var cuts: [Span] = []
+        var paragraph = false
+        var inQuote = false
+        var fence: String?
+        var inMath = false
         var i = 0
         while i < lines.count {
-            if tables.contains(i) || lineIsFootnoteOwned(lines, i) {
-                i += 1
-                continue
-            }
             let line = lines[i]
+            let gate = blockGate(line.text, fence, inMath)
+            fence = gate.fence
+            inMath = gate.inMath
+            if gate.blocked {
+                paragraph = false
+                inQuote = false
+                i += 1
+                continue
+            }
+            if tables.contains(i) || lineIsFootnoteOwned(lines, i) {
+                paragraph = false
+                inQuote = false
+                i += 1
+                continue
+            }
             if rangeAt(line.start, blocked) != nil {
+                paragraph = true
                 i += 1
                 continue
             }
-            guard let parsed = parseDefinition(chars, lineStart: line.start, blocked: blocked) else {
+            if let htmlEnd = MarkdownList.htmlBlockLineEnd(texts, index: i, paragraphOpen: paragraph),
+               htmlEnd > i {
+                paragraph = false
+                inQuote = false
+                i = htmlEnd
+                continue
+            }
+            if isEffectivelyBlank(line.text) {
+                paragraph = false
+                inQuote = false
                 i += 1
                 continue
             }
-            var endLine = i
-            while endLine < lines.count && lines[endLine].start < parsed.end { endLine += 1 }
-            var bad = false
-            if i < endLine {
-                for k in i..<endLine where tables.contains(k) { bad = true }
-            }
-            if bad || overlaps(parsed.start, parsed.end, blocked) {
+            // An open paragraph keeps a would-be definition as text.
+            if paragraph && !closesOpenParagraph(line.text, inQuote: inQuote) {
+                if isQuoteLine(line.text) { inQuote = true }
                 i += 1
                 continue
             }
-            if map[parsed.label] == nil {
-                map[parsed.label] = Target(dest: parsed.dest, title: parsed.title)
+            let wasParagraph = paragraph
+            paragraph = false
+            let quoteLine = isQuoteLine(line.text)
+            if let parsed = parseDefinition(chars, lineStart: line.start, blocked: blocked) {
+                var endLine = i
+                while endLine < lines.count && lines[endLine].start < parsed.end { endLine += 1 }
+                var bad = false
+                if i < endLine {
+                    for k in i..<endLine where tables.contains(k) { bad = true }
+                }
+                if !bad && !overlaps(parsed.start, parsed.end, blocked) {
+                    if map[parsed.label] == nil {
+                        map[parsed.label] = Target(dest: parsed.dest, title: parsed.title)
+                    }
+                    cuts.append(Span(start: parsed.start, end: parsed.end))
+                    inQuote = quoteLine
+                    i = max(endLine, i + 1)
+                    continue
+                }
             }
-            cuts.append(Span(start: parsed.start, end: parsed.end))
-            i = max(endLine, i + 1)
+            inQuote = quoteLine
+            paragraph = opensParagraph(line.text, closedParagraph: wasParagraph)
+            i += 1
         }
         return (map, cuts)
+    }
+
+    /// True when this line ends an open paragraph. Continuation of a
+    /// quote that is already open is not an interrupt.
+    private static func closesOpenParagraph(_ line: String, inQuote: Bool) -> Bool {
+        let body = inQuote && isQuoteLine(line) ? quoteBody(line) : line
+        if isSetextUnderline(body) { return true }
+        if MarkdownIndentedCode.isAtxHeadingLine(body) || MarkdownIndentedCode.isThematicBreakLine(body) {
+            return true
+        }
+        if isQuoteLine(line) && !inQuote { return true }
+        return listInterrupts(body)
+    }
+
+    /// A non-empty remainder starts a paragraph. A heading or rule does not.
+    private static func opensParagraph(_ line: String, closedParagraph: Bool) -> Bool {
+        if closedParagraph && isSetextUnderline(line) { return false }
+        if MarkdownIndentedCode.isAtxHeadingLine(line) || MarkdownIndentedCode.isThematicBreakLine(line) {
+            return false
+        }
+        if leadingIndent(line) >= 4 { return false }
+        if isQuoteLine(line) {
+            let rest = quoteBody(line)
+            if rest.trimmingCharacters(in: .whitespaces).isEmpty { return false }
+            return opensParagraph(rest, closedParagraph: false)
+        }
+        // A footnote definition is its own block. The next unindented
+        // line is a sibling, so `[ref]:` after `[^1]: note` still matches.
+        if isFootnoteDefinitionLine(line) { return false }
+        return true
+    }
+
+    private static func isEffectivelyBlank(_ line: String) -> Bool {
+        if isBlankLine(line) { return true }
+        if !isQuoteLine(line) { return false }
+        return quoteBody(line).trimmingCharacters(in: .whitespaces).isEmpty
+    }
+
+    private static func isBlankLine(_ line: String) -> Bool {
+        for ch in line where ch != " " && ch != "\t" { return false }
+        return true
+    }
+
+    private static func isQuoteLine(_ line: String) -> Bool {
+        let chars = Array(line)
+        var i = 0
+        while i < chars.count, i < 3, chars[i] == " " { i += 1 }
+        return i < chars.count && chars[i] == ">"
+    }
+
+    private static func quoteBody(_ line: String) -> String {
+        let chars = Array(line)
+        let prefix = quotePrefixLength(line)
+        if prefix >= chars.count { return "" }
+        return String(chars[prefix...])
+    }
+
+    /// A bullet with text, or an ordered marker whose digits are `1`
+    /// with text, interrupts a paragraph. An empty marker does not.
+    private static func listInterrupts(_ line: String) -> Bool {
+        let chars = Array(line)
+        var i = 0
+        while i < chars.count, chars[i] == " ", i < 3 { i += 1 }
+        if i < chars.count && chars[i] == "\t" { return false }
+        let rest = String(chars[i...])
+        if rest.range(of: #"^[-+*][ \t]+\S"#, options: .regularExpression) != nil { return true }
+        return rest.range(of: #"^1[.)][ \t]+\S"#, options: .regularExpression) != nil
+    }
+
+    private static func leadingIndent(_ line: String) -> Int {
+        var columns = 0
+        for ch in line {
+            if ch == " " {
+                columns += 1
+                continue
+            }
+            if ch == "\t" { return columns + 4 - (columns % 4) }
+            return columns
+        }
+        return columns
+    }
+
+    /// `=` or `-` underline. A lone `-` is a list item, not an underline.
+    private static func isSetextUnderline(_ line: String) -> Bool {
+        let chars = Array(line)
+        var i = 0
+        while i < chars.count, i < 3, chars[i] == " " { i += 1 }
+        guard i < chars.count else { return false }
+        let ch = chars[i]
+        guard ch == "=" || ch == "-" else { return false }
+        let start = i
+        while i < chars.count, chars[i] == ch { i += 1 }
+        let count = i - start
+        if ch == "-" && count < 2 { return false }
+        var j = i
+        while j < chars.count {
+            let c = chars[j]
+            if c != " " && c != "\t" { return false }
+            j += 1
+        }
+        return true
     }
 
     private static func parseDefinition(
@@ -465,7 +616,8 @@ enum MarkdownReferenceLink {
         return close + 1
     }
 
-    /// A link label. `[]` is collapsed. Longer than 999 fails.
+    /// A link label. `[]` is collapsed. Longer than 1000 fails.
+    /// cmark-gfm accepts 1000 characters inside the brackets.
     private static func linkLabel(_ chars: [Character], _ open: Int) -> (raw: String, next: Int)? {
         guard char(chars, open) == "[" else { return nil }
         var i = open + 1
@@ -481,7 +633,7 @@ enum MarkdownReferenceLink {
                 raw.append(ch)
                 i += 1
             }
-            if raw.count > 999 { return nil }
+            if raw.count > 1000 { return nil }
         }
         guard i < chars.count, chars[i] == "]" else { return nil }
         return (raw, i + 1)
@@ -683,7 +835,7 @@ enum MarkdownReferenceLink {
 
     private static func validLabel(_ raw: String) -> Bool {
         let chars = Array(raw)
-        if chars.isEmpty || chars.count > 999 { return false }
+        if chars.isEmpty || chars.count > 1000 { return false }
         var has = false
         var i = 0
         while i < chars.count {
@@ -698,6 +850,10 @@ enum MarkdownReferenceLink {
             i += 1
         }
         return has
+    }
+
+    private static func isFootnoteDefinitionLine(_ line: String) -> Bool {
+        line.range(of: #"^ {0,3}\[\^[A-Za-z0-9_-]+\]:"#, options: .regularExpression) != nil
     }
 
     private static func isFootnoteLabel(_ raw: String) -> Bool {
@@ -738,8 +894,9 @@ enum MarkdownReferenceLink {
             out.append(ch)
             i += 1
         }
-        let parts = out.split { $0.isWhitespace }.map(String.init)
-        return parts.joined(separator: " ").lowercased()
+        let folded = MarkdownCaseFold.fold(out)
+        let parts = folded.split { $0.isWhitespace }.map(String.init)
+        return parts.joined(separator: " ")
     }
 
     private static func isTaskMarker(_ chars: [Character], _ open: Int) -> Bool {
