@@ -41,6 +41,17 @@ import Foundation
 /// match `[foo!]` and `[foo\bar]` does not match `[foobar]`.
 /// `[foo\!]` still matches `[foo\!]`, and the link text parses
 /// the escape, so the visible word is `foo!`.
+/// v1.92: the edges v1.81 and v1.91 still missed. A pointy
+/// destination may be empty (`[foo]: <>`). A title that parses
+/// on a later line but is followed by other text ends the
+/// definition at the destination, and the link still keeps that
+/// title. A definition that is the body of a list item or a
+/// blockquote, including a destination or title on the next
+/// line, applies to the whole message. A later line in that
+/// item or quote that is itself a definition is taken too,
+/// including a lazy continuation. The marker stays so an
+/// empty item or quote does not disappear. Streaming stays
+/// plain. Copy keeps markdown source.
 /// Keep in lockstep with `desktop/src/markdownReferenceLink.ts`.
 enum MarkdownReferenceLink {
     private struct Target {
@@ -53,12 +64,27 @@ enum MarkdownReferenceLink {
         var end: Int
     }
 
+    private struct StoredDef {
+        var label: String
+        var dest: String
+        var title: String?
+    }
+
     private struct ParsedDef {
         var label: String
         var dest: String
         var title: String?
         var start: Int
         var end: Int
+        var replacement: String = ""
+        /// Later definitions in the same container paragraph. First label wins.
+        var also: [StoredDef] = []
+    }
+
+    private struct Cut {
+        var start: Int
+        var end: Int
+        var text: String
     }
 
     private struct Bracket {
@@ -180,12 +206,12 @@ enum MarkdownReferenceLink {
     private static func collectDefinitions(
         _ chars: [Character],
         blocked: [Span]
-    ) -> (map: [String: Target], cuts: [Span]) {
+    ) -> (map: [String: Target], cuts: [Cut]) {
         let lines = lineSpans(chars)
         let texts = lines.map(\.text)
         let tables = tableLineSet(lines)
         var map: [String: Target] = [:]
-        var cuts: [Span] = []
+        var cuts: [Cut] = []
         var paragraph = false
         var inQuote = false
         var fence: String?
@@ -235,7 +261,9 @@ enum MarkdownReferenceLink {
             let wasParagraph = paragraph
             paragraph = false
             let quoteLine = isQuoteLine(line.text)
-            if let parsed = parseDefinition(chars, lineStart: line.start, blocked: blocked) {
+            let parsed = parseContainerDefinition(chars, lines, i, blocked)
+                ?? parseDefinition(chars, lineStart: line.start, blocked: blocked)
+            if let parsed {
                 var endLine = i
                 while endLine < lines.count && lines[endLine].start < parsed.end { endLine += 1 }
                 var bad = false
@@ -246,7 +274,10 @@ enum MarkdownReferenceLink {
                     if map[parsed.label] == nil {
                         map[parsed.label] = Target(dest: parsed.dest, title: parsed.title)
                     }
-                    cuts.append(Span(start: parsed.start, end: parsed.end))
+                    for extra in parsed.also where map[extra.label] == nil {
+                        map[extra.label] = Target(dest: extra.dest, title: extra.title)
+                    }
+                    cuts.append(Cut(start: parsed.start, end: parsed.end, text: parsed.replacement))
                     inQuote = quoteLine
                     i = max(endLine, i + 1)
                     continue
@@ -360,6 +391,425 @@ enum MarkdownReferenceLink {
         return true
     }
 
+    private struct Container {
+        var quoteDepth: Int
+        var listColumn: Int?
+        var keep: String
+        var content: String
+    }
+
+    private struct ParaLine {
+        var start: Int
+        var end: Int
+        var content: String
+        var isLazy: Bool
+    }
+
+    /// v1.92: a definition that is the body of a blockquote or list item.
+    /// Container markers are stripped the way cmark strips them before
+    /// the reference scan, then the same definition scan runs. The marker
+    /// is put back so an empty item or quote still renders.
+    private static func parseContainerDefinition(
+        _ chars: [Character],
+        _ spans: [LineSpan],
+        _ index: Int,
+        _ blocked: [Span]
+    ) -> ParsedDef? {
+        guard index < spans.count else { return nil }
+        let span = spans[index]
+        if rangeAt(span.start, blocked) != nil { return nil }
+        guard let peeled = peelContainers(span.text),
+              peeled.content.range(of: #"^ {0,3}\["#, options: .regularExpression) != nil
+        else { return nil }
+        let openingEnd = spanEnd(span, chars.count)
+        if overlaps(span.start, openingEnd, blocked) { return nil }
+        var para: [ParaLine] = [
+            ParaLine(start: span.start, end: openingEnd, content: peeled.content, isLazy: false)
+        ]
+        var k = index + 1
+        while k < spans.count && para.count < 64 {
+            let next = spans[k]
+            if rangeAt(next.start, blocked) != nil { break }
+            guard let cont = continuationOf(next.text, peeled) else { break }
+            para.append(ParaLine(start: next.start, end: spanEnd(next, chars.count), content: cont.content, isLazy: cont.isLazy))
+            k += 1
+        }
+        var norm = ""
+        for n in para.indices {
+            norm += para[n].content
+            let line = para[n]
+            let hasNl = line.end > line.start && char(chars, line.end - 1) == "\n"
+            if hasNl || n < para.count - 1 { norm += "\n" }
+        }
+        // A container paragraph can open with several definitions.
+        // cmark takes each of them, including a lazy continuation
+        // that is itself a definition, and leaves only the text after
+        // the last one.
+        var found: [StoredDef] = []
+        var pos = 0
+        let normChars = Array(norm)
+        while pos < normChars.count {
+            guard let scanned = parseDefinition(Array(normChars[pos...]), lineStart: 0, blocked: []) else { break }
+            if scanned.end <= 0 { break }
+            found.append(StoredDef(label: scanned.label, dest: scanned.dest, title: scanned.title))
+            pos += scanned.end
+        }
+        if found.isEmpty { return nil }
+        let count = consumedLineCount(norm, pos)
+        if count < 1 || count > para.count { return nil }
+        for n in 0..<count where overlaps(para[n].start, para[n].end, blocked) { return nil }
+        let edit = containerEdit(
+            chars,
+            spans,
+            index,
+            peeled,
+            Array(para.prefix(count)),
+            Array(para.dropFirst(count))
+        )
+        let first = found[0]
+        return ParsedDef(
+            label: first.label,
+            dest: first.dest,
+            title: first.title,
+            start: span.start,
+            end: edit.end,
+            replacement: edit.replacement,
+            also: Array(found.dropFirst())
+        )
+    }
+
+    private static func containerEdit(
+        _ chars: [Character],
+        _ spans: [LineSpan],
+        _ index: Int,
+        _ peeled: Container,
+        _ consumed: [ParaLine],
+        _ rest: [ParaLine]
+    ) -> (end: Int, replacement: String) {
+        func finish(_ end: Int, _ body: String) -> (end: Int, replacement: String) {
+            if body.isEmpty { return (end, "") }
+            let nl = end > 0 && char(chars, end - 1) == "\n"
+            if !nl || body.hasSuffix("\n") { return (end, body) }
+            return (end, body + "\n")
+        }
+        guard let last = consumed.last else { return (spans[index].start, "") }
+        var end = last.end
+        let hasList = peeled.listColumn != nil
+        if !rest.isEmpty && rest.allSatisfy(\.isLazy) {
+            let body = rest.map(\.content).joined(separator: "\n")
+            return finish(rest[rest.count - 1].end, peeled.keep + body)
+        }
+        if !rest.isEmpty {
+            return finish(end, hasList ? peeled.keep : "")
+        }
+        if hasList, let listColumn = peeled.listColumn {
+            let blankIndex = index + consumed.count
+            let afterIndex = blankIndex + 1
+            if blankIndex < spans.count, afterIndex < spans.count,
+               isBlankLine(spans[blankIndex].text),
+               leadingIndent(spans[afterIndex].text) >= listColumn,
+               !siblingEndsItem(spans[afterIndex].text, listColumn) {
+                end = spanEnd(spans[blankIndex], chars.count)
+            }
+            return finish(end, peeled.keep)
+        }
+        if peeled.quoteDepth > 0 && !quoteHasOther(spans, index, consumed.count, peeled.quoteDepth) {
+            return finish(end, peeled.keep)
+        }
+        return finish(end, "")
+    }
+
+    private static func quoteHasOther(
+        _ spans: [LineSpan],
+        _ index: Int,
+        _ consumed: Int,
+        _ depth: Int
+    ) -> Bool {
+        if index > 0 {
+            for j in stride(from: index - 1, through: 0, by: -1) {
+                let text = spans[j].text
+                if isBlankLine(text) { break }
+                let quote = quoteDepthAndEnd(text)
+                if quote.depth < depth { break }
+                if !textDrop(text, quote.index).trimmingCharacters(in: .whitespaces).isEmpty { return true }
+            }
+        }
+        var j = index + consumed
+        while j < spans.count {
+            let text = spans[j]
+            if isBlankLine(text.text) { break }
+            let quote = quoteDepthAndEnd(text.text)
+            if quote.depth < depth {
+                if !text.text.trimmingCharacters(in: .whitespaces).isEmpty { return true }
+                break
+            }
+            if !textDrop(text.text, quote.index).trimmingCharacters(in: .whitespaces).isEmpty { return true }
+            j += 1
+        }
+        return false
+    }
+
+    private static func textDrop(_ text: String, _ index: Int) -> String {
+        let chars = Array(text)
+        if index >= chars.count { return "" }
+        return String(chars[index...])
+    }
+
+    private static func peelContainers(_ line: String) -> Container? {
+        let quote = quoteDepthAndEnd(line)
+        var i = quote.index
+        var col = quote.column
+        var listColumn: Int?
+        var content = textDrop(line, i)
+        let baseColumn = quote.column
+        var guardCount = 0
+        while guardCount < 6 {
+            guardCount += 1
+            var markerAt = i
+            var markerCol = col
+            if listColumn == nil, let skipped = markerIndent(line, i, col) {
+                markerAt = skipped.i
+                markerCol = skipped.col
+            }
+            guard let marker = listMarkerAt(line, markerAt, markerCol) else { break }
+            if listColumn == nil && marker.markerColumn - baseColumn > 3 { break }
+            if let listColumn, marker.markerColumn < listColumn { break }
+            listColumn = marker.contentColumn
+            i = marker.contentIndex
+            col = marker.contentColumn
+            content = marker.text
+        }
+        if quote.depth == 0 && listColumn == nil { return nil }
+        let keep = line.hasSuffix(content) ? String(line.dropLast(content.count)) : textTake(line, i)
+        return Container(quoteDepth: quote.depth, listColumn: listColumn, keep: keep, content: content)
+    }
+
+    private static func textTake(_ text: String, _ count: Int) -> String {
+        let chars = Array(text)
+        if count <= 0 { return "" }
+        return String(chars.prefix(count))
+    }
+
+    /// Up to three spaces before a list marker. Four spaces stay text.
+    private static func markerIndent(_ line: String, _ index: Int, _ column: Int) -> (i: Int, col: Int)? {
+        let chars = Array(line)
+        var j = index
+        var c = column
+        var spaces = 0
+        while j < chars.count && chars[j] == " " && spaces < 3 {
+            j += 1
+            c += 1
+            spaces += 1
+        }
+        if j == index || j >= chars.count { return nil }
+        let ch = chars[j]
+        if ch == "-" || ch == "+" || ch == "*" || (ch >= "0" && ch <= "9") { return (j, c) }
+        return nil
+    }
+
+    private static func continuationOf(
+        _ line: String,
+        _ container: Container
+    ) -> (content: String, isLazy: Bool)? {
+        if isBlankLine(line) { return nil }
+        let quote = quoteDepthAndEnd(line)
+        if quote.depth < container.quoteDepth {
+            if quote.depth == 0 && !interruptsParagraph(line) { return (line, true) }
+            return nil
+        }
+        if quote.depth > container.quoteDepth { return nil }
+        var i = quote.index
+        var col = quote.column
+        if container.listColumn == nil {
+            let rest = textDrop(line, i)
+            if rest.trimmingCharacters(in: .whitespaces).isEmpty || interruptsParagraph(rest) { return nil }
+            return (rest, false)
+        }
+        let listColumn = container.listColumn ?? 0
+        if col >= listColumn {
+            let rest = textDrop(line, i)
+            if col == listColumn && (rest.trimmingCharacters(in: .whitespaces).isEmpty || interruptsParagraph(rest)) {
+                return nil
+            }
+            if col > listColumn && interruptsParagraph(rest) { return nil }
+            if col == listColumn { return (rest, false) }
+            return (rest, false)
+        }
+        let chars = Array(line)
+        while col < listColumn && i < chars.count {
+            let ch = chars[i]
+            if ch == " " {
+                i += 1
+                col += 1
+                continue
+            }
+            if ch == "\t" {
+                let width = 4 - (col % 4)
+                if col + width > listColumn {
+                    let content = String(repeating: " ", count: col + width - listColumn) + textDrop(line, i + 1)
+                    if interruptsParagraph(content) { return nil }
+                    return (content, false)
+                }
+                col += width
+                i += 1
+                continue
+            }
+            break
+        }
+        if col < listColumn {
+            let rest = textDrop(line, i)
+            if interruptsParagraph(rest) || listMarkerAt(line, i, col) != nil { return nil }
+            return (rest, true)
+        }
+        let content = textDrop(line, i)
+        if content.trimmingCharacters(in: .whitespaces).isEmpty || interruptsParagraph(content) { return nil }
+        return (content, false)
+    }
+
+    private static func interruptsParagraph(_ line: String) -> Bool {
+        if isBlankLine(line) { return false }
+        let lead = leadingIndent(line)
+        if lead >= 4 { return false }
+        let chars = Array(line)
+        var i = 0
+        var col = 0
+        while i < chars.count && col < lead {
+            let ch = chars[i]
+            if ch == " " {
+                i += 1
+                col += 1
+                continue
+            }
+            if ch == "\t" {
+                col += 4 - (col % 4)
+                i += 1
+                continue
+            }
+            break
+        }
+        let rest = textDrop(line, i)
+        if MarkdownIndentedCode.isAtxHeadingLine(rest) || MarkdownIndentedCode.isThematicBreakLine(rest) || isSetextUnderline(rest) {
+            return true
+        }
+        if rest.range(of: #"^(`{3,}|~{3,})"#, options: .regularExpression) != nil {
+            if rest.hasPrefix("`") {
+                let marker = rest.prefix { $0 == "`" }
+                let info = rest.dropFirst(marker.count)
+                if info.contains("`") { return false }
+            }
+            return true
+        }
+        if MarkdownList.htmlBlockLineEnd([rest], index: 0, paragraphOpen: true) != nil { return true }
+        return listMarkerAt(line, i, col) != nil
+    }
+
+    private static func siblingEndsItem(_ line: String, _ listColumn: Int) -> Bool {
+        let lead = leadingIndent(line)
+        if lead > 3 { return false }
+        let chars = Array(line)
+        var i = 0
+        var col = 0
+        while i < chars.count && col < lead {
+            let ch = chars[i]
+            if ch == " " {
+                i += 1
+                col += 1
+                continue
+            }
+            if ch == "\t" {
+                col += 4 - (col % 4)
+                i += 1
+                continue
+            }
+            break
+        }
+        guard let marker = listMarkerAt(line, i, col) else { return false }
+        return marker.markerColumn < listColumn
+    }
+
+    private static func listMarkerAt(
+        _ line: String,
+        _ index: Int,
+        _ column: Int
+    ) -> (markerColumn: Int, contentColumn: Int, contentIndex: Int, text: String)? {
+        let chars = Array(line)
+        if index > chars.count { return nil }
+        let rest = textDrop(line, index)
+        if MarkdownIndentedCode.isThematicBreakLine(column == 0 ? line : rest) { return nil }
+        let restChars = Array(rest)
+        var token = ""
+        if let first = restChars.first, first == "-" || first == "+" || first == "*" {
+            token = String(first)
+        } else {
+            var n = 0
+            while n < restChars.count && n < 9 && restChars[n] >= "0" && restChars[n] <= "9" { n += 1 }
+            if n == 0 || n >= restChars.count { return nil }
+            let delim = restChars[n]
+            if delim != "." && delim != ")" { return nil }
+            token = String(restChars[0...n])
+        }
+        if token.isEmpty { return nil }
+        let after = index + token.count
+        if after < chars.count && chars[after] != " " && chars[after] != "\t" { return nil }
+        guard let markerIndex = line.index(line.startIndex, offsetBy: after, limitedBy: line.endIndex) else { return nil }
+        let padded = MarkdownList.listMarkerPadding(line, markerIndex: markerIndex, markerColumn: column + token.count)
+        var contentIndex = chars.count
+        if !padded.text.isEmpty {
+            if line.hasSuffix(padded.text) {
+                contentIndex = chars.count - Array(padded.text).count
+            } else {
+                let trimmed = padded.text.drop { $0 == " " }
+                if !trimmed.isEmpty && line.hasSuffix(trimmed) {
+                    contentIndex = chars.count - Array(trimmed).count
+                }
+            }
+        }
+        return (column, padded.contentColumn, contentIndex, padded.text)
+    }
+
+    private static func quoteDepthAndEnd(_ line: String) -> (depth: Int, index: Int, column: Int) {
+        let chars = Array(line)
+        var i = 0
+        var col = 0
+        var depth = 0
+        while i < chars.count {
+            var spaces = 0
+            var j = i
+            var c = col
+            while j < chars.count && chars[j] == " " && spaces < 3 {
+                j += 1
+                c += 1
+                spaces += 1
+            }
+            if j >= chars.count || chars[j] != ">" { break }
+            depth += 1
+            j += 1
+            c += 1
+            if j < chars.count && chars[j] == " " {
+                j += 1
+                c += 1
+            }
+            i = j
+            col = c
+        }
+        return (depth, i, col)
+    }
+
+    private static func consumedLineCount(_ norm: String, _ end: Int) -> Int {
+        let chars = Array(norm)
+        var newlines = 0
+        let stop = min(end, chars.count)
+        if stop > 0 {
+            for i in 0..<stop where chars[i] == "\n" { newlines += 1 }
+        }
+        if end >= chars.count && (chars.isEmpty || chars[chars.count - 1] != "\n") { return newlines + 1 }
+        return newlines
+    }
+
+    private static func spanEnd(_ span: LineSpan, _ srcLen: Int) -> Int {
+        span.end < srcLen ? span.end + 1 : span.end
+    }
+
     private static func parseDefinition(
         _ chars: [Character],
         lineStart: Int,
@@ -388,14 +838,25 @@ enum MarkdownReferenceLink {
               let dest = readDestination(chars, destAt)
         else { return nil }
         j = dest.next
+        let beforeTitle = j
         var title: String?
-        if let titled = tryTitle(chars, j, blocked) {
+        let titled = tryTitle(chars, j, blocked)
+        if let titled {
             title = titled.title
             j = titled.next
         }
-        j = skipSpTab(chars, j)
-        if j < chars.count && char(chars, j) != "\n" { return nil }
-        let end = j < chars.count ? j + 1 : j
+        var endAt = skipSpTab(chars, j)
+        let atLineEnd = endAt >= chars.count || char(chars, endAt) == "\n"
+        if !atLineEnd {
+            // A title on the same line that does not end the line rejects
+            // the whole definition. A title on a later line is kept, and
+            // the definition ends at the destination.
+            guard titled != nil, let opener = skipDestWs(chars, beforeTitle, blocked) else { return nil }
+            if !slice(chars, beforeTitle, opener).contains("\n") { return nil }
+            endAt = skipSpTab(chars, beforeTitle)
+            if endAt < chars.count && char(chars, endAt) != "\n" { return nil }
+        }
+        let end = endAt < chars.count ? endAt + 1 : endAt
         let lineLimit = eol < chars.count ? eol + 1 : eol
         if prefix > 0 && end > lineLimit { return nil }
         return ParsedDef(
@@ -720,7 +1181,7 @@ enum MarkdownReferenceLink {
                     continue
                 }
                 if ch == ">" {
-                    if out.isEmpty { return nil }
+                    // v1.92: `<>` is an empty destination. A non-empty one is unchanged.
                     return (out, j + 1)
                 }
                 out.append(ch)
@@ -780,11 +1241,14 @@ enum MarkdownReferenceLink {
 
     private static func emitLink(_ text: String, _ target: Target, _ image: Bool) -> String {
         let dest = formatDest(target.dest)
+        // An empty destination with a title needs `<>`, or the title
+        // quote is read as the destination.
+        let href = target.dest.isEmpty && target.title != nil ? "<>" : dest
         let body: String
         if let title = target.title {
-            body = "[\(text)](\(dest) \"\(MarkdownLinkTitleForm.format(title))\")"
+            body = "[\(text)](\(href) \"\(MarkdownLinkTitleForm.format(title))\")"
         } else {
-            body = "[\(text)](\(dest))"
+            body = "[\(text)](\(href))"
         }
         return image ? "!" + body : body
     }
@@ -1253,13 +1717,16 @@ enum MarkdownReferenceLink {
         return out
     }
 
-    private static func removeRanges(_ chars: [Character], _ cuts: [Span]) -> [Character] {
-        let sorted = cuts.sorted { $0.start < $1.start }
+    private static func removeRanges(_ chars: [Character], _ cuts: [Cut]) -> [Character] {
+        let sorted = cuts.sorted { lhs, rhs in
+            lhs.start < rhs.start || (lhs.start == rhs.start && lhs.end < rhs.end)
+        }
         var out: [Character] = []
         var cursor = 0
         for cut in sorted {
             if cut.start < cursor { continue }
             if cut.start > cursor { out.append(contentsOf: chars[cursor..<cut.start]) }
+            out.append(contentsOf: Array(cut.text))
             cursor = max(cursor, cut.end)
         }
         if cursor < chars.count { out.append(contentsOf: chars[cursor...]) }

@@ -44,13 +44,24 @@
  * match `[foo!]` and `[foo\bar]` does not match `[foobar]`.
  * `[foo\!]` still matches `[foo\!]`, and the link text parses
  * the escape, so the visible word is `foo!`.
+ * v1.92: the edges v1.81 and v1.91 still missed. A pointy
+ * destination may be empty (`[foo]: <>`). A title that parses
+ * on a later line but is followed by other text ends the
+ * definition at the destination, and the link still keeps that
+ * title. A definition that is the body of a list item or a
+ * blockquote, including a destination or title on the next
+ * line, applies to the whole message. A later line in that
+ * item or quote that is itself a definition is taken too,
+ * including a lazy continuation. The marker stays so an
+ * empty item or quote does not disappear. Streaming stays
+ * plain. Copy keeps markdown source.
  * Keep in lockstep with `ios/SnorlaxBot/MarkdownReferenceLink.swift`.
  */
 
 import { unicodeCaseFold } from "./markdownCaseFold.ts";
 import { ASCII_PUNCT } from "./markdownEscape.ts";
 import { isAtxHeadingLine, isThematicBreakLine } from "./markdownIndentedCode.ts";
-import { htmlBlockEnd } from "./markdownList.ts";
+import { htmlBlockEnd, listMarkerPadding } from "./markdownList.ts";
 import { setextUnderline } from "./markdownSetext.ts";
 import {
   commonMarkTitleHint,
@@ -69,13 +80,21 @@ import {
 
 type Target = { dest: string; title: string | null };
 
+type StoredDef = Target & { label: string };
+
 type ParsedDef = {
   label: string;
   dest: string;
   title: string | null;
   start: number;
   end: number;
+  /** Kept in place of the cut. Empty deletes the range. */
+  replacement?: string;
+  /** Later definitions in the same container paragraph. First label wins. */
+  also?: StoredDef[];
 };
+
+type Cut = { start: number; end: number; text: string };
 
 type Bracket = { raw: string; next: number };
 
@@ -239,12 +258,12 @@ function contentIndent(line: string): number | null {
 function collectDefinitions(
   src: string,
   blocked: Range[],
-): { map: Map<string, Target>; cuts: Range[] } {
+): { map: Map<string, Target>; cuts: Cut[] } {
   const lines = lineSpans(src);
   const texts = lines.map((line) => line.text);
   const tables = tableLineSet(lines);
   const map = new Map<string, Target>();
-  const cuts: Range[] = [];
+  const cuts: Cut[] = [];
   let paragraph = false;
   let inQuote = false;
   let fence: string | null = null;
@@ -297,7 +316,9 @@ function collectDefinitions(
     const wasParagraph = paragraph;
     paragraph = false;
     const quoteLine = isQuoteLine(line.text);
-    const parsed = parseDefinition(src, line.start, blocked);
+    const parsed =
+      parseContainerDefinition(src, lines, i, blocked) ??
+      parseDefinition(src, line.start, blocked);
     if (parsed) {
       let endLine = i;
       while (endLine < lines.length && lines[endLine]!.start < parsed.end) endLine += 1;
@@ -309,7 +330,16 @@ function collectDefinitions(
         if (!map.has(parsed.label)) {
           map.set(parsed.label, { dest: parsed.dest, title: parsed.title });
         }
-        cuts.push({ start: parsed.start, end: parsed.end });
+        for (const extra of parsed.also ?? []) {
+          if (!map.has(extra.label)) {
+            map.set(extra.label, { dest: extra.dest, title: extra.title });
+          }
+        }
+        cuts.push({
+          start: parsed.start,
+          end: parsed.end,
+          text: parsed.replacement ?? "",
+        });
         inQuote = quoteLine;
         i = Math.max(endLine, i + 1);
         continue;
@@ -397,6 +427,400 @@ function leadingIndent(line: string): number {
   return columns;
 }
 
+type Container = {
+  quoteDepth: number;
+  listColumn: number | null;
+  keep: string;
+  content: string;
+};
+
+type ParaLine = {
+  start: number;
+  end: number;
+  content: string;
+  lazy: boolean;
+};
+
+/**
+ * v1.92: a definition that is the body of a blockquote or list item.
+ * Container markers are stripped the way cmark strips them before
+ * `cmark_parse_reference_inline`, then the same definition scan runs.
+ * The marker is put back so an empty item or quote still renders.
+ */
+function parseContainerDefinition(
+  src: string,
+  spans: LineSpan[],
+  index: number,
+  blocked: Range[],
+): ParsedDef | null {
+  const span = spans[index];
+  if (!span || inRange(span.start, blocked)) return null;
+  const peeled = peelContainers(span.text);
+  if (!peeled || !/^ {0,3}\[/.test(peeled.content)) return null;
+  const openingEnd = spanEnd(span, src.length);
+  if (overlaps(span.start, openingEnd, blocked)) return null;
+
+  const para: ParaLine[] = [
+    { start: span.start, end: openingEnd, content: peeled.content, lazy: false },
+  ];
+  for (let k = index + 1; k < spans.length && para.length < 64; k += 1) {
+    const next = spans[k]!;
+    if (inRange(next.start, blocked)) break;
+    const cont = continuationOf(next.text, peeled);
+    if (cont === "stop") break;
+    para.push({
+      start: next.start,
+      end: spanEnd(next, src.length),
+      content: cont.content,
+      lazy: cont.lazy,
+    });
+  }
+
+  let norm = "";
+  for (let n = 0; n < para.length; n += 1) {
+    const line = para[n]!;
+    norm += line.content;
+    const hasNl = line.end > line.start && src[line.end - 1] === "\n";
+    if (hasNl || n < para.length - 1) norm += "\n";
+  }
+  // A container paragraph can open with several definitions.
+  // cmark takes each of them, including a lazy continuation
+  // that is itself a definition, and leaves only the text after
+  // the last one.
+  const found: StoredDef[] = [];
+  let pos = 0;
+  while (pos < norm.length) {
+    const scanned = parseDefinition(norm.slice(pos), 0, []);
+    if (!scanned || scanned.end <= 0) break;
+    found.push({
+      label: scanned.label,
+      dest: scanned.dest,
+      title: scanned.title,
+    });
+    pos += scanned.end;
+  }
+  if (found.length === 0) return null;
+  const count = consumedLineCount(norm, pos);
+  if (count < 1 || count > para.length) return null;
+  for (let n = 0; n < count; n += 1) {
+    const line = para[n]!;
+    if (overlaps(line.start, line.end, blocked)) return null;
+  }
+
+  const edit = containerEdit(src, spans, index, peeled, para.slice(0, count), para.slice(count));
+  const first = found[0]!;
+  return {
+    label: first.label,
+    dest: first.dest,
+    title: first.title,
+    start: span.start,
+    end: edit.end,
+    replacement: edit.replacement,
+    also: found.slice(1),
+  };
+}
+
+function containerEdit(
+  src: string,
+  spans: LineSpan[],
+  index: number,
+  peeled: Container,
+  consumed: ParaLine[],
+  rest: ParaLine[],
+): { end: number; replacement: string } {
+  const finish = (end: number, body: string) => {
+    if (!body) return { end, replacement: "" };
+    const nl = end > 0 && src[end - 1] === "\n";
+    if (!nl || body.endsWith("\n")) return { end, replacement: body };
+    return { end, replacement: `${body}\n` };
+  };
+  let end = consumed[consumed.length - 1]!.end;
+  const hasList = peeled.listColumn != null;
+  if (rest.length > 0 && rest.every((line) => line.lazy)) {
+    const body = rest.map((line) => line.content).join("\n");
+    return finish(rest[rest.length - 1]!.end, `${peeled.keep}${body}`);
+  }
+  if (rest.length > 0) {
+    return finish(end, hasList ? peeled.keep : "");
+  }
+  if (hasList) {
+    const blank = spans[index + consumed.length];
+    const after = spans[index + consumed.length + 1];
+    if (
+      blank &&
+      isBlankLine(blank.text) &&
+      after &&
+      leadingIndent(after.text) >= (peeled.listColumn ?? 0) &&
+      !siblingEndsItem(after.text, peeled.listColumn ?? 0)
+    ) {
+      end = spanEnd(blank, src.length);
+    }
+    return finish(end, peeled.keep);
+  }
+  if (peeled.quoteDepth > 0 && !quoteHasOther(spans, index, consumed.length, peeled.quoteDepth)) {
+    return finish(end, peeled.keep);
+  }
+  return finish(end, "");
+}
+
+function quoteHasOther(
+  spans: LineSpan[],
+  index: number,
+  consumed: number,
+  depth: number,
+): boolean {
+  for (let j = index - 1; j >= 0; j -= 1) {
+    const text = spans[j]!.text;
+    if (isBlankLine(text)) break;
+    const quote = quoteDepthAndEnd(text);
+    if (quote.depth < depth) break;
+    if (text.slice(quote.index).trim() !== "") return true;
+  }
+  for (let j = index + consumed; j < spans.length; j += 1) {
+    const text = spans[j]!.text;
+    if (isBlankLine(text)) break;
+    const quote = quoteDepthAndEnd(text);
+    if (quote.depth < depth) {
+      if (text.trim() !== "") return true;
+      break;
+    }
+    if (text.slice(quote.index).trim() !== "") return true;
+  }
+  return false;
+}
+
+function peelContainers(line: string): Container | null {
+  const quote = quoteDepthAndEnd(line);
+  let i = quote.index;
+  let col = quote.column;
+  let listColumn: number | null = null;
+  let content = line.slice(i);
+  const baseColumn = quote.column;
+  for (let guard = 0; guard < 6; guard += 1) {
+    let markerAt = i;
+    let markerCol = col;
+    if (listColumn == null) {
+      const skipped = markerIndent(line, i, col);
+      if (skipped) {
+        markerAt = skipped.i;
+        markerCol = skipped.col;
+      }
+    }
+    const marker = listMarkerAt(line, markerAt, markerCol);
+    if (!marker) break;
+    if (listColumn == null && marker.markerColumn - baseColumn > 3) break;
+    if (listColumn != null && marker.markerColumn < listColumn) break;
+    listColumn = marker.contentColumn;
+    i = marker.contentIndex;
+    col = marker.contentColumn;
+    content = marker.text;
+  }
+  if (quote.depth === 0 && listColumn == null) return null;
+  const keep = line.endsWith(content) ? line.slice(0, line.length - content.length) : line.slice(0, i);
+  return { quoteDepth: quote.depth, listColumn, keep, content };
+}
+
+/** Up to three spaces before a list marker. Four spaces stay text. */
+function markerIndent(
+  line: string,
+  index: number,
+  column: number,
+): { i: number; col: number } | null {
+  let j = index;
+  let c = column;
+  let spaces = 0;
+  while (j < line.length && line[j] === " " && spaces < 3) {
+    j += 1;
+    c += 1;
+    spaces += 1;
+  }
+  if (j === index) return null;
+  const ch = line[j] ?? "";
+  if (ch === "-" || ch === "+" || ch === "*" || (ch >= "0" && ch <= "9")) return { i: j, col: c };
+  return null;
+}
+
+function continuationOf(
+  line: string,
+  container: Container,
+): { content: string; lazy: boolean } | "stop" {
+  if (isBlankLine(line)) return "stop";
+  const quote = quoteDepthAndEnd(line);
+  if (quote.depth < container.quoteDepth) {
+    if (quote.depth === 0 && !interruptsParagraph(line)) return { content: line, lazy: true };
+    return "stop";
+  }
+  if (quote.depth > container.quoteDepth) return "stop";
+  let i = quote.index;
+  let col = quote.column;
+  if (container.listColumn == null) {
+    const rest = line.slice(i);
+    if (rest.trim() === "" || interruptsParagraph(rest)) return "stop";
+    return { content: rest, lazy: false };
+  }
+  const listColumn = container.listColumn;
+  if (col > listColumn) {
+    const rest = line.slice(i);
+    if (interruptsParagraph(rest)) return "stop";
+    return { content: rest, lazy: false };
+  }
+  if (col === listColumn) {
+    const rest = line.slice(i);
+    if (rest.trim() === "" || interruptsParagraph(rest)) return "stop";
+    return { content: rest, lazy: false };
+  }
+  while (col < listColumn && i < line.length) {
+    const ch = line[i] ?? "";
+    if (ch === " ") {
+      i += 1;
+      col += 1;
+      continue;
+    }
+    if (ch === "\t") {
+      const width = 4 - (col % 4);
+      if (col + width > listColumn) {
+        const content = `${" ".repeat(col + width - listColumn)}${line.slice(i + 1)}`;
+        if (interruptsParagraph(content)) return "stop";
+        return { content, lazy: false };
+      }
+      col += width;
+      i += 1;
+      continue;
+    }
+    break;
+  }
+  if (col < listColumn) {
+    const rest = line.slice(i);
+    if (interruptsParagraph(rest) || listMarkerAt(line, i, col)) return "stop";
+    return { content: rest, lazy: true };
+  }
+  const content = line.slice(i);
+  if (content.trim() === "" || interruptsParagraph(content)) return "stop";
+  return { content, lazy: false };
+}
+
+function interruptsParagraph(line: string): boolean {
+  if (isBlankLine(line)) return false;
+  const lead = leadingIndent(line);
+  if (lead >= 4) return false;
+  let i = 0;
+  let col = 0;
+  while (i < line.length && col < lead) {
+    const ch = line[i] ?? "";
+    if (ch === " ") {
+      i += 1;
+      col += 1;
+      continue;
+    }
+    if (ch === "\t") {
+      col += 4 - (col % 4);
+      i += 1;
+      continue;
+    }
+    break;
+  }
+  const rest = line.slice(i);
+  if (isAtxHeadingLine(rest) || isThematicBreakLine(rest) || setextUnderline(rest)) return true;
+  if (/^(`{3,}|~{3,})/.test(rest)) {
+    const info = rest.slice(rest.match(/^(`{3,}|~{3,})/)?.[0].length ?? 0);
+    if (rest.startsWith("`") && info.includes("`")) return false;
+    return true;
+  }
+  if (htmlBlockEnd([rest], 0, true) != null) return true;
+  return listMarkerAt(line, i, col) != null;
+}
+
+function siblingEndsItem(line: string, listColumn: number): boolean {
+  const lead = leadingIndent(line);
+  if (lead > 3) return false;
+  let i = 0;
+  let col = 0;
+  while (i < line.length && col < lead) {
+    const ch = line[i] ?? "";
+    if (ch === " ") {
+      i += 1;
+      col += 1;
+      continue;
+    }
+    if (ch === "\t") {
+      col += 4 - (col % 4);
+      i += 1;
+      continue;
+    }
+    break;
+  }
+  const marker = listMarkerAt(line, i, col);
+  return marker != null && marker.markerColumn < listColumn;
+}
+
+function listMarkerAt(
+  line: string,
+  index: number,
+  column: number,
+): { markerColumn: number; contentColumn: number; contentIndex: number; text: string } | null {
+  if (index > line.length) return null;
+  const rest = line.slice(index);
+  if (isThematicBreakLine(column === 0 ? line : rest)) return null;
+  const bullet = /^([-+*])/.exec(rest);
+  const ordered = /^(\d{1,9})([.)])/.exec(rest);
+  if (!bullet && !ordered) return null;
+  const token = bullet ? (bullet[1] ?? "") : `${ordered?.[1] ?? ""}${ordered?.[2] ?? ""}`;
+  if (!token) return null;
+  const after = index + token.length;
+  if (after < line.length && line[after] !== " " && line[after] !== "\t") return null;
+  const padded = listMarkerPadding(line, after, column + token.length);
+  let contentIndex = line.length;
+  if (padded.text !== "") {
+    if (line.endsWith(padded.text)) contentIndex = line.length - padded.text.length;
+    else {
+      const trimmed = padded.text.trimStart();
+      if (trimmed && line.endsWith(trimmed)) contentIndex = line.length - trimmed.length;
+    }
+  }
+  return { markerColumn: column, contentColumn: padded.contentColumn, contentIndex, text: padded.text };
+}
+
+function quoteDepthAndEnd(line: string): { depth: number; index: number; column: number } {
+  let i = 0;
+  let col = 0;
+  let depth = 0;
+  while (i < line.length) {
+    let spaces = 0;
+    let j = i;
+    let c = col;
+    while (j < line.length && line[j] === " " && spaces < 3) {
+      j += 1;
+      c += 1;
+      spaces += 1;
+    }
+    if (line[j] !== ">") break;
+    depth += 1;
+    j += 1;
+    c += 1;
+    if (line[j] === " ") {
+      j += 1;
+      c += 1;
+    }
+    i = j;
+    col = c;
+  }
+  return { depth, index: i, column: col };
+}
+
+function consumedLineCount(norm: string, end: number): number {
+  let newlines = 0;
+  const stop = Math.min(end, norm.length);
+  for (let i = 0; i < stop; i += 1) {
+    if (norm[i] === "\n") newlines += 1;
+  }
+  if (end >= norm.length && (norm.length === 0 || norm[norm.length - 1] !== "\n")) return newlines + 1;
+  return newlines;
+}
+
+function spanEnd(span: LineSpan, srcLen: number): number {
+  return span.end < srcLen ? span.end + 1 : span.end;
+}
+
 function parseDefinition(
   src: string,
   lineStart: number,
@@ -424,15 +848,27 @@ function parseDefinition(
   const dest = readDestination(src, destAt);
   if (!dest) return null;
   j = dest.next;
+  const beforeTitle = j;
   let title: string | null = null;
   const titled = tryTitle(src, j, blocked);
   if (titled) {
     title = titled.title;
     j = titled.next;
   }
-  j = skipSpTab(src, j);
-  if (j < src.length && src[j] !== "\n") return null;
-  const end = j < src.length ? j + 1 : j;
+  let endAt = skipSpTab(src, j);
+  const atLineEnd = endAt >= src.length || src[endAt] === "\n";
+  if (!atLineEnd) {
+    // A title on the same line that does not end the line rejects
+    // the whole definition. A title on a later line is kept, and
+    // the definition ends at the destination (cmark-gfm rewinds).
+    if (!titled) return null;
+    const opener = skipDestWs(src, beforeTitle, blocked);
+    const crossed = opener != null && src.slice(beforeTitle, opener).includes("\n");
+    if (!crossed) return null;
+    endAt = skipSpTab(src, beforeTitle);
+    if (endAt < src.length && src[endAt] !== "\n") return null;
+  }
+  const end = endAt < src.length ? endAt + 1 : endAt;
   const lineLimit = eol < src.length ? eol + 1 : eol;
   if (prefix > 0 && end > lineLimit) return null;
   return {
@@ -711,10 +1147,13 @@ function lookupLabel(map: Map<string, Target>, raw: string): Target | null {
 
 function emitLink(text: string, target: Target, image: boolean): string {
   const dest = formatDest(target.dest);
+  // An empty destination with a title needs `<>`, or the title
+  // quote is read as the destination.
+  const href = target.dest === "" && target.title != null ? "<>" : dest;
   const body =
     target.title == null
-      ? `[${text}](${dest})`
-      : `[${text}](${dest} "${formatTitle(target.title)}")`;
+      ? `[${text}](${href})`
+      : `[${text}](${href} "${formatTitle(target.title)}")`;
   return image ? `!${body}` : body;
 }
 
@@ -780,7 +1219,7 @@ function readDestination(src: string, i: number): { dest: string; next: number }
         continue;
       }
       if (ch === ">") {
-        if (!out) return null;
+        // v1.92: `<>` is an empty destination. A non-empty one is unchanged.
         return { dest: out, next: j + 1 };
       }
       out += ch;
@@ -1138,13 +1577,14 @@ function mergeRanges(ranges: Range[]): Range[] {
   return out;
 }
 
-function removeRanges(src: string, cuts: Range[]): string {
-  const sorted = [...cuts].sort((a, b) => a.start - b.start);
+function removeRanges(src: string, cuts: Cut[]): string {
+  const sorted = [...cuts].sort((a, b) => a.start - b.start || a.end - b.end);
   let out = "";
   let cursor = 0;
   for (const cut of sorted) {
     if (cut.start < cursor) continue;
     out += src.slice(cursor, cut.start);
+    out += cut.text;
     cursor = Math.max(cursor, cut.end);
   }
   out += src.slice(cursor);
