@@ -7,11 +7,14 @@ import UIKit
 ///
 /// A backslash before ASCII punctuation becomes that character and
 /// must not start emphasis, a link, a list, or any other construct.
-/// Named references (the common HTML5 set) and decimal / hex numeric
-/// references decode to their characters. Unknown names and broken
-/// references stay literal. A numeric reference that is zero, a
+/// Named references (the HTML5 set cmark-gfm uses) and decimal / hex
+/// numeric references decode to their characters. Unknown names and
+/// broken references stay literal. A numeric reference that is zero, a
 /// surrogate, a noncharacter, a disallowed control, or past
 /// U+10FFFF becomes U+FFFD, matching CommonMark.
+/// v1.90: titles and image alts share this lookup, so `&ouml;` and
+/// `&ngE;` decode there too. `decodedText` paints a fence info
+/// string. The code body is not passed through it.
 ///
 /// Code spans, fenced code, and indented code blocks stay literal.
 /// Call this after math is split out: `\(` / `\)` and `$$` are
@@ -37,53 +40,6 @@ enum MarkdownEscape {
 
     /// CommonMark ASCII punctuation.
     private static let asciiPunct = Set("!\"#$%&'()*+,-./:;<=>?@[\\]^_`{|}~")
-
-    /// Common HTML5 names, the uppercase aliases HTML5 defines, and
-    /// the check marks. Names are case-sensitive.
-    private static let named: [String: String] = [
-        "amp": "\u{0026}",
-        "AMP": "\u{0026}",
-        "lt": "\u{003C}",
-        "LT": "\u{003C}",
-        "gt": "\u{003E}",
-        "GT": "\u{003E}",
-        "quot": "\u{0022}",
-        "QUOT": "\u{0022}",
-        "apos": "\u{0027}",
-        "nbsp": "\u{00A0}",
-        "copy": "\u{00A9}",
-        "COPY": "\u{00A9}",
-        "reg": "\u{00AE}",
-        "REG": "\u{00AE}",
-        "trade": "\u{2122}",
-        "TRADE": "\u{2122}",
-        "hellip": "\u{2026}",
-        "mdash": "\u{2014}",
-        "ndash": "\u{2013}",
-        "lsquo": "\u{2018}",
-        "rsquo": "\u{2019}",
-        "ldquo": "\u{201C}",
-        "rdquo": "\u{201D}",
-        "times": "\u{00D7}",
-        "divide": "\u{00F7}",
-        "deg": "\u{00B0}",
-        "plusmn": "\u{00B1}",
-        "middot": "\u{00B7}",
-        "bull": "\u{2022}",
-        "euro": "\u{20AC}",
-        "pound": "\u{00A3}",
-        "yen": "\u{00A5}",
-        "cent": "\u{00A2}",
-        "sect": "\u{00A7}",
-        "para": "\u{00B6}",
-        "larr": "\u{2190}",
-        "rarr": "\u{2192}",
-        "uarr": "\u{2191}",
-        "darr": "\u{2193}",
-        "check": "\u{2713}",
-        "checkmark": "\u{2713}",
-        "cross": "\u{2717}",
-    ]
 
     /// Fences, inline code, and indented code, as character offsets.
     /// The raw-HTML pass skips these spans.
@@ -257,6 +213,49 @@ enum MarkdownEscape {
         token(value)
     }
 
+    /// v1.90: cmark's fence info string. Entities decode first, then
+    /// a backslash before ASCII punctuation is dropped. The code
+    /// body is not passed here, so `&amp;` inside the fence stays
+    /// the source characters. An unknown name, a missing semicolon,
+    /// and an over-long numeric reference stay literal. A zero or
+    /// out-of-range code point is U+FFFD.
+    static func decodedText(_ text: String) -> String {
+        let decoded = decodeEntities(text)
+        if !decoded.contains("\\") { return decoded }
+        let chars = Array(decoded)
+        var out = ""
+        out.reserveCapacity(chars.count)
+        var index = 0
+        while index < chars.count {
+            if chars[index] == "\\", index + 1 < chars.count, asciiPunct.contains(chars[index + 1]) {
+                out.append(chars[index + 1])
+                index += 2
+                continue
+            }
+            out.append(chars[index])
+            index += 1
+        }
+        return out
+    }
+
+    private static func decodeEntities(_ text: String) -> String {
+        if !text.contains("&") { return text }
+        let chars = Array(text)
+        var out = ""
+        out.reserveCapacity(chars.count)
+        var index = 0
+        while index < chars.count {
+            if chars[index] == "&", let ref = readReference(chars, index) {
+                out += ref.value
+                index = ref.next
+                continue
+            }
+            out.append(chars[index])
+            index += 1
+        }
+        return out
+    }
+
     private static func readReference(
         _ chars: [Character],
         _ index: Int
@@ -271,7 +270,8 @@ enum MarkdownEscape {
             name.append(chars[cursor])
             cursor += 1
         }
-        guard !name.isEmpty, cursor < chars.count, chars[cursor] == ";", let value = named[name] else {
+        guard !name.isEmpty, cursor < chars.count, chars[cursor] == ";",
+              let value = MarkdownCmarkEntities.named[name] else {
             return nil
         }
         return (value, cursor + 1)

@@ -259,6 +259,13 @@ test("real markdown still renders and copy stays on the raw message", () => {
   assert.match(swift, /static func protect\(_ text: String, completed: Bool/);
   assert.match(swift, /if !completed \|\| text.isEmpty \{ return text \}/);
   assert.match(swift, /\\u\{FFFD\}/);
+  const entities = readFileSync(join(here, "markdownCmarkEntities.ts"), "utf8");
+  const swiftEntities = readFileSync(
+    join(here, "..", "..", "ios", "SnorlaxBot", "MarkdownCmarkEntities.swift"),
+    "utf8",
+  );
+  assert.match(src, /CMARK_NAMED_ENTITIES/);
+  assert.match(swift, /MarkdownCmarkEntities\.named/);
   for (const name of [
     "amp",
     "lt",
@@ -295,8 +302,8 @@ test("real markdown still renders and copy stays on the raw message", () => {
     "check",
     "checkmark",
   ]) {
-    assert.match(src, new RegExp(`"${name}":`));
-    assert.match(swift, new RegExp(`"${name}":`));
+    assert.match(entities, new RegExp(`"${name}":`));
+    assert.match(swiftEntities, new RegExp(`"${name}":`));
   }
   assert.match(roadmap, new RegExp(PHRASE.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
   assert.match(roadmap, /\/ v1\.40 /);

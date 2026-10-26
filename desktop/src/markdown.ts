@@ -34,7 +34,10 @@ export {
 } from "./markdownFenceIndent.ts";
 
 export function fenceLanguage(className?: string | null): string {
-  const match = /(?:^|\s)language-([A-Za-z0-9_+-]+)/.exec(className || "");
+  // v1.90: the info string is already decoded (`f&ouml;&ouml;` is
+  // `föö`). The word may contain those characters. An over-long
+  // numeric reference stays in the word. ASCII names are unchanged.
+  const match = /(?:^|\s)language-(\S+)/.exec(className || "");
   return match?.[1] ?? "";
 }
 

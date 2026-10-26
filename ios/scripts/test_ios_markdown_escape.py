@@ -21,6 +21,10 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 IOS = ROOT / "ios" / "SnorlaxBot"
 SWIFT = (IOS / "MarkdownEscape.swift").read_text(encoding="utf-8")
+ENTITIES = (IOS / "MarkdownCmarkEntities.swift").read_text(encoding="utf-8")
+DESKTOP_ENTITIES = (ROOT / "desktop" / "src" / "markdownCmarkEntities.ts").read_text(
+    encoding="utf-8"
+)
 MARKDOWN = (IOS / "AssistantMarkdown.swift").read_text(encoding="utf-8")
 DESKTOP = (ROOT / "desktop" / "src" / "markdownEscape.ts").read_text(encoding="utf-8")
 BODY = (ROOT / "desktop" / "src" / "MarkdownBody.tsx").read_text(encoding="utf-8")
@@ -98,9 +102,11 @@ def test_protect_skips_streaming_code_and_keeps_source() -> None:
     assert "copyText" not in DESKTOP
     assert "clipboard" not in DESKTOP
     assert "/v1/" not in DESKTOP
+    assert "MarkdownCmarkEntities.named" in SWIFT
+    assert "CMARK_NAMED_ENTITIES" in DESKTOP
     for name in NAMES:
-        assert f'"{name}":' in SWIFT
-        assert f'"{name}":' in DESKTOP
+        assert f'"{name}":' in ENTITIES
+        assert f'"{name}":' in DESKTOP_ENTITIES
 
 
 def test_math_before_escape_and_text_not_html() -> None:

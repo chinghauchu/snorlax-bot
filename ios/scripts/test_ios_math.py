@@ -99,7 +99,7 @@ def test_tool_widget_user_right_unchanged() -> None:
 def test_mermaid_still_works() -> None:
     assert "isMermaidLanguage" in MARKDOWN
     assert "MermaidFence" in MARKDOWN
-    assert "completed && MarkdownSplit.isMermaidLanguage(language)" in MARKDOWN
+    assert "completed && MarkdownSplit.isMermaidLanguage(shown)" in MARKDOWN
     assert "WKWebView" in MERMAID
     assert "mermaid.min.js" in MERMAID
     assert 'import("mermaid")' in DESKTOP_MERMAID
