@@ -32,7 +32,9 @@ import SwiftUI
 /// spaces then `foo`. A tab that crosses the code indent becomes
 /// the leftover spaces, and a later tab stays a tab. A line that
 /// continues an open paragraph is not code. A fence stays a fence.
-/// Streaming stays plain text.
+/// v1.89: a tab partly consumed by `>` is one byte of fence indent.
+/// The leftover columns stay spaces in the code. A space-only
+/// fence is unchanged. Streaming stays plain text.
 /// Keep in lockstep with `desktop/src/markdownQuoteTask.ts`.
 enum MarkdownQuoteTask {
     /// Empty ballot box. Not a control.
@@ -205,6 +207,9 @@ enum MarkdownQuoteTask {
     private struct QuoteFence {
         var marker: String
         var indent: Int
+        /// v1.89: body lines are already the cmark-gfm code text.
+        var literal: Bool = false
+        var offset: Int = 0
     }
 
     private struct QuoteList {
@@ -276,6 +281,26 @@ enum MarkdownQuoteTask {
     ) -> RenderedQuote {
         let plain = quotePlain(line, contentCol: contentCol)
         if let fence = carry.fence {
+            if fence.literal {
+                let closed = MarkdownFenceIndent.tabFenceCloses(
+                    line,
+                    contentColumn: contentCol,
+                    marker: fence.marker,
+                    markers: true
+                )
+                let text = closed
+                    ? fence.marker
+                    : MarkdownFenceIndent.tabFenceCodeLine(
+                        line,
+                        contentColumn: contentCol,
+                        fenceOffset: fence.offset,
+                        markers: true
+                    )
+                return RenderedQuote(
+                    text: text,
+                    carry: QuoteCarry(fence: closed ? nil : fence)
+                )
+            }
             let text = fenceBody(line, contentCol: contentCol, indent: fence.indent)
             let closed = fenceCloses(line, contentCol: contentCol, marker: fence.marker)
             return RenderedQuote(
@@ -288,6 +313,19 @@ enum MarkdownQuoteTask {
             return RenderedQuote(
                 text: text,
                 carry: QuoteCarry(math: text.trimmingCharacters(in: .whitespaces) != "$$", list: carry.list)
+            )
+        }
+        // A list item owns a later tabbed fence. Measured from the quote
+        // column, the same tab is one byte too many and the code gains a
+        // space. The list pass measures it from the item's content column.
+        if carry.list == nil, line.contains("\t"),
+           let tabbed = MarkdownFenceIndent.tabFenceOpen(line, contentColumn: contentCol, markers: true)
+        {
+            return RenderedQuote(
+                text: tabbed.marker + tabbed.info,
+                carry: QuoteCarry(
+                    fence: QuoteFence(marker: tabbed.marker, indent: 0, literal: true, offset: tabbed.offset)
+                )
             )
         }
         if let opened = openingQuoteFence(line, contentCol: contentCol) {

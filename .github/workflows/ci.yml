@@ -205,3 +205,4 @@ jobs:
           python3 ios/scripts/test_ios_markdown_link_title_form.py
           python3 ios/scripts/test_ios_markdown_link_dest.py
           python3 ios/scripts/test_ios_markdown_list_edge.py
+          python3 ios/scripts/test_ios_markdown_tab.py

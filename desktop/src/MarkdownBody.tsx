@@ -108,6 +108,7 @@ import { listIsLoose } from "./markdownLooseList";
 import {
   listNeedsCmarkOrderedOne,
   listSplitByCmarkHtml,
+  listSplitByTabFence,
   markdownListLineRanges,
   splitMarkdownLists,
 } from "./markdownList";
@@ -590,7 +591,8 @@ function MarkdownParsed({
     completed &&
     (textHasTableInList(sourceText) ||
       listSplitByCmarkHtml(sourceText) ||
-      listNeedsCmarkOrderedOne(sourceText))
+      listNeedsCmarkOrderedOne(sourceText) ||
+      listSplitByTabFence(sourceText))
   ) {
     return (
       <MarkdownListsWithTables

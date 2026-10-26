@@ -67,7 +67,13 @@
  * an open paragraph is not code. A fence whose indent is
  * under four columns is unchanged. Streaming stays plain text.
  * Keep in lockstep with `ios/SnorlaxBot/MarkdownList.swift`.
+ *
+ * v1.89: a tab partly consumed by the list marker is one byte of
+ * fence indent, not its full column width. The leftover columns
+ * stay spaces in the code. Space-only fences are unchanged.
  */
+
+import { tabFenceCloses, tabFenceCodeLine, tabFenceOpen } from "./markdownFenceIndent.ts";
 
 /**
  * v1.86: a lazy continuation that contains `|` is marked so a later
@@ -82,6 +88,22 @@ export const LAZY_CONTINUATION_MARK = "§§SBTL§§";
  * installs the probe. Until then, lazy lines stay in the item.
  */
 let lazyLineEndsItem: (body: string[]) => boolean = () => false;
+
+/** Set while `splitMarkdownLists` rewrites a tab-indented fence. */
+let sawTabFence = false;
+
+/**
+ * v1.89: the list contains a fence whose indent is a partly
+ * consumed tab. react-markdown counts that tab as one column.
+ * The list splitter stores the code text cmark-gfm keeps.
+ */
+export function listSplitByTabFence(text: string): boolean {
+  if (!text.includes("\t")) return false;
+  if (!text.includes("`") && !text.includes("~")) return false;
+  sawTabFence = false;
+  splitMarkdownLists(text, true);
+  return sawTabFence;
+}
 
 export function setLazyLineEndsItem(probe: (body: string[]) => boolean): void {
   lazyLineEndsItem = probe;
@@ -529,6 +551,8 @@ function readItem(
   }
   let i = start + 1;
   let fence: string | null = null;
+  let fenceOffset = 0;
+  let fenceLiteral = false;
   let inMath = false;
   let sawBlank = false;
   let sawContent = marker.text !== "";
@@ -536,15 +560,31 @@ function readItem(
   while (i < lines.length) {
     const line = lines[i] ?? "";
     if (fence) {
-      body.push(dedent(line, marker.contentColumn));
-      const opened = fenceOnLine(line);
-      if (
-        opened &&
-        opened.marker[0] === fence[0] &&
-        opened.marker.length >= fence.length &&
-        opened.info.trim() === ""
-      ) {
-        fence = null;
+      if (fenceLiteral) {
+        if (tabFenceCloses(line, marker.contentColumn, fence)) {
+          body.push(fence);
+          fence = null;
+          fenceLiteral = false;
+        } else if (line.trim() !== "" && leadingColumns(line).columns < marker.contentColumn) {
+          // Not indented to the item, so the item and the open fence end.
+          // The line itself belongs to the parent.
+          fence = null;
+          fenceLiteral = false;
+          break;
+        } else {
+          body.push(tabFenceCodeLine(line, marker.contentColumn, fenceOffset));
+        }
+      } else {
+        body.push(dedent(line, marker.contentColumn));
+        const opened = fenceOnLine(line);
+        if (
+          opened &&
+          opened.marker[0] === fence[0] &&
+          opened.marker.length >= fence.length &&
+          opened.info.trim() === ""
+        ) {
+          fence = null;
+        }
       }
       i += 1;
       continue;
@@ -588,11 +628,26 @@ function readItem(
         continue;
       }
     }
+    if (leadingColumns(line).columns >= marker.contentColumn) {
+      const tabbed = tabFenceOpen(line, marker.contentColumn);
+      if (tabbed) {
+        fence = tabbed.marker;
+        fenceOffset = tabbed.offset;
+        fenceLiteral = true;
+        sawTabFence = true;
+        body.push(`${tabbed.marker}${tabbed.info}`);
+        sawContent = true;
+        paragraph = false;
+        i += 1;
+        continue;
+      }
+    }
     const opened = fenceOnLine(line);
     if (opened) {
       const cols = leadingColumns(line).columns;
       if (cols >= marker.contentColumn) {
         fence = opened.marker;
+        fenceLiteral = false;
         body.push(dedent(line, marker.contentColumn));
         sawContent = true;
         paragraph = false;

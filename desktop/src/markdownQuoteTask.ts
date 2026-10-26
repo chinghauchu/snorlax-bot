@@ -35,10 +35,14 @@
  * spaces then `foo`. A tab that crosses the code indent becomes
  * the leftover spaces, and a later tab stays a tab. A line that
  * continues an open paragraph is not code. A fence stays a fence.
+ * v1.89: a tab partly consumed by `>` is one byte of fence indent.
+ * The leftover columns stay spaces in the code. A space-only
+ * fence is unchanged.
  * Streaming stays plain text.
  * Keep in lockstep with `ios/SnorlaxBot/MarkdownQuoteTask.swift`.
  */
 
+import { tabFenceCloses, tabFenceCodeLine, tabFenceOpen } from "./markdownFenceIndent.ts";
 import {
   LAZY_CONTINUATION_MARK,
   htmlBlockStarts,
@@ -218,7 +222,13 @@ function stripQuoteMarkerSpaces(line: string): string | null {
   return line.slice(i);
 }
 
-type QuoteFence = { marker: string; indent: number };
+type QuoteFence = {
+  marker: string;
+  indent: number;
+  /** v1.89: body lines are already the cmark-gfm code text. */
+  literal?: boolean;
+  offset?: number;
+};
 
 type QuoteList = {
   absolute: number;
@@ -265,6 +275,16 @@ function renderAt(
 ): { text: string; carry: QuoteCarry } {
   const plain = quotePlain(line, contentCol);
   if (carry.fence) {
+    if (carry.fence.literal) {
+      const closed = tabFenceCloses(line, contentCol, carry.fence.marker, true);
+      const text = closed
+        ? carry.fence.marker
+        : tabFenceCodeLine(line, contentCol, carry.fence.offset ?? 0, true);
+      return {
+        text,
+        carry: { ...emptyCarry(), fence: closed ? null : carry.fence },
+      };
+    }
     const text = fenceBody(line, contentCol, carry.fence.indent);
     const closed = fenceCloses(line, contentCol, carry.fence.marker);
     return {
@@ -277,6 +297,20 @@ function renderAt(
     return {
       text,
       carry: { ...emptyCarry(), math: text.trim() !== "$$", list: carry.list },
+    };
+  }
+  // A list item owns a later tabbed fence. Measured from the quote
+  // column, the same tab is one byte too many and the code gains a
+  // space. The list pass measures it from the item's content column.
+  const tabbed =
+    !carry.list && line.includes("\t") ? tabFenceOpen(line, contentCol, true) : null;
+  if (tabbed) {
+    return {
+      text: `${tabbed.marker}${tabbed.info}`,
+      carry: {
+        ...emptyCarry(),
+        fence: { marker: tabbed.marker, indent: 0, literal: true, offset: tabbed.offset },
+      },
     };
   }
   const opened = openingQuoteFence(line, contentCol);

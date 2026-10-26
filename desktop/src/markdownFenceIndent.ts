@@ -81,3 +81,168 @@ export function dedentFencedContent(text: string, columns: number): string {
   const lines = text.split("\n");
   return lines.map((line) => dedentFenceLine(line, columns)).join("\n");
 }
+
+/**
+ * v1.89: cmark-gfm fence_offset when a quote or list marker has
+ * already consumed part of a tab. The offset is a count of
+ * whitespace bytes, and each byte is one column. A tab that is
+ * only partly consumed stays one byte, so the leftover columns
+ * become spaces in the code. A space-only indent is unchanged
+ * (`openingFence` / `dedentFenceLine`). `markers` is true for a
+ * block quote, whose prefix includes `>` before the content column.
+ */
+export type TabFenceOpen = { marker: string; info: string; offset: number };
+
+type TabCursor = { index: number; column: number; partial: number };
+
+export function tabFenceOpen(
+  line: string,
+  contentColumn: number,
+  markers = false,
+): TabFenceOpen | null {
+  const start = cursorAt(line, contentColumn, markers);
+  const found = firstNonspace(line, start);
+  if (found.indent > 3 || found.index >= line.length) return null;
+  const ch = line[found.index] ?? "";
+  if (ch !== "`" && ch !== "~") return null;
+  let n = 0;
+  let i = found.index;
+  while (i < line.length && line[i] === ch) {
+    n += 1;
+    i += 1;
+  }
+  if (n < 3) return null;
+  const info = line.slice(i);
+  const marker = ch.repeat(n);
+  if (!fenceInfoAllowsOpen(marker, info)) return null;
+  if (!line.slice(start.index, found.index).includes("\t")) return null;
+  return { marker, info, offset: found.bytes };
+}
+
+/** Code text of one fence line. A partial tab becomes leftover spaces. */
+export function tabFenceCodeLine(
+  line: string,
+  contentColumn: number,
+  fenceOffset: number,
+  markers = false,
+): string {
+  const cur = cursorAt(line, contentColumn, markers);
+  let left = fenceOffset;
+  while (left > 0) {
+    const ch = peek(line, cur);
+    if (ch !== " " && ch !== "\t") break;
+    advanceColumns(line, cur, 1);
+    left -= 1;
+  }
+  if (cur.partial > 0) return `${" ".repeat(cur.partial)}${line.slice(cur.index + 1)}`;
+  return line.slice(cur.index);
+}
+
+/** Closing fence measured from the same content column as the opener. */
+export function tabFenceCloses(
+  line: string,
+  contentColumn: number,
+  marker: string,
+  markers = false,
+): boolean {
+  const start = cursorAt(line, contentColumn, markers);
+  const found = firstNonspace(line, start);
+  if (found.indent > 3 || found.index >= line.length) return false;
+  const ch = marker[0] ?? "";
+  if ((line[found.index] ?? "") !== ch) return false;
+  let n = 0;
+  let i = found.index;
+  while (i < line.length && line[i] === ch) {
+    n += 1;
+    i += 1;
+  }
+  if (n < marker.length) return false;
+  for (let k = i; k < line.length; k += 1) {
+    const tail = line[k];
+    if (tail !== " " && tail !== "\t") return false;
+  }
+  return true;
+}
+
+function cursorAt(line: string, contentColumn: number, markers: boolean): TabCursor {
+  const cur: TabCursor = { index: 0, column: 0, partial: 0 };
+  if (contentColumn <= 0) return cur;
+  if (markers) {
+    advanceColumns(line, cur, contentColumn);
+    return cur;
+  }
+  while (cur.column < contentColumn) {
+    const ch = peek(line, cur);
+    if (ch !== " " && ch !== "\t") break;
+    advanceColumns(line, cur, 1);
+  }
+  return cur;
+}
+
+function advanceColumns(line: string, cur: TabCursor, count: number): void {
+  let left = count;
+  while (left > 0) {
+    if (cur.partial > 0) {
+      const step = Math.min(left, cur.partial);
+      cur.partial -= step;
+      cur.column += step;
+      left -= step;
+      if (cur.partial === 0) cur.index += 1;
+      continue;
+    }
+    if (cur.index >= line.length) return;
+    const ch = line[cur.index] ?? "";
+    if (ch === "\t") {
+      const width = 4 - (cur.column % 4);
+      const step = Math.min(left, width);
+      cur.column += step;
+      left -= step;
+      if (step < width) cur.partial = width - step;
+      else cur.index += 1;
+      continue;
+    }
+    cur.index += 1;
+    cur.column += 1;
+    left -= 1;
+  }
+}
+
+function peek(line: string, cur: TabCursor): string {
+  if (cur.partial > 0) return "\t";
+  if (cur.index >= line.length) return "";
+  return line[cur.index] ?? "";
+}
+
+function firstNonspace(
+  line: string,
+  start: TabCursor,
+): { index: number; bytes: number; indent: number } {
+  let index = start.index;
+  let column = start.column;
+  let partial = start.partial;
+  let bytes = 0;
+  while (index < line.length) {
+    if (partial > 0) {
+      column += partial;
+      partial = 0;
+      index += 1;
+      bytes += 1;
+      continue;
+    }
+    const ch = line[index] ?? "";
+    if (ch === " ") {
+      column += 1;
+      index += 1;
+      bytes += 1;
+      continue;
+    }
+    if (ch === "\t") {
+      column += 4 - (column % 4);
+      index += 1;
+      bytes += 1;
+      continue;
+    }
+    break;
+  }
+  return { index, bytes, indent: column - start.column };
+}
