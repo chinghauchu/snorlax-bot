@@ -42,8 +42,8 @@ def test_tags_are_stashed_outside_blocks() -> None:
     assert "static func animation" in SWIFT
     assert "return nil" in SWIFT
     assert "MarkdownEscape.opaqueSpans" in SWIFT
-    assert "MarkdownList.htmlBlockInterrupts" in SWIFT
-    assert "MarkdownList.htmlUntilBlockEnd" in SWIFT
+    assert "MarkdownList.htmlBlockLineEnd" in SWIFT
+    assert "MarkdownList.htmlSourceBlockLine" in SWIFT
     assert "§§SBE" in SWIFT
     assert "markdown source" in SWIFT
     assert 'if !completed || text.isEmpty || !text.contains("<")' in SWIFT
@@ -56,7 +56,8 @@ def test_tags_are_stashed_outside_blocks() -> None:
     assert "export function htmlLiteralAnimates" in DESKTOP
     assert "opaqueMarkdownRanges" in DESKTOP
     assert "stashMarkdownText" in DESKTOP
-    assert "htmlBlockInterrupts" in DESKTOP
+    assert "htmlBlockEnd" in DESKTOP
+    assert "htmlSourceBlockLine" in DESKTOP
     assert "markdown source" in DESKTOP
     assert "/v1/" not in DESKTOP
     assert "computerPane" not in DESKTOP

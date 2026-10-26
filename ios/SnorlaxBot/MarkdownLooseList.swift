@@ -337,6 +337,7 @@ enum MarkdownLooseList {
         if rest.hasPrefix(">") { return true }
         if fenceOnLine(line) != nil { return true }
         if rest.trimmingCharacters(in: .whitespaces) == "$$" { return true }
+        if MarkdownList.htmlBlockStarts(line) { return true }
         return false
     }
 

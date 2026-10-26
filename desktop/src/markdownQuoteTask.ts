@@ -41,7 +41,7 @@
 
 import {
   LAZY_CONTINUATION_MARK,
-  htmlBlockInterrupts,
+  htmlBlockStarts,
   htmlLazyTag,
   listItemIndentedCode,
   listMarkerPadding,
@@ -834,8 +834,9 @@ function innermostQuote(line: string): string {
  * This line closes the quote instead of joining it. A blank line,
  * a `$$` block, a thematic break, an ATX heading, a fence, a
  * list marker in the first three columns, or an HTML block of
- * types 1–6 does. Indented code does only when no paragraph is
- * open. A type 7 tag stays in the quote.
+ * types 1–7 does. Indented code does only when no paragraph is
+ * open. v1.87: a type 7 tag such as `<br>` ends the quote. The
+ * tag line and the lines the block owns stay outside it.
  */
 function endsLazyQuote(line: string, paragraphOpen: boolean): boolean {
   if (isBlank(line) || isMathFence(line)) return true;
@@ -844,7 +845,7 @@ function endsLazyQuote(line: string, paragraphOpen: boolean): boolean {
     isAtxHeading(line) ||
     isFenceLine(line) ||
     isMarginListMarker(line) ||
-    htmlBlockInterrupts(line)
+    htmlBlockStarts(line)
   ) {
     return true;
   }

@@ -29,17 +29,6 @@ import UIKit
 enum MarkdownHardBreak {
     static let token = "§§SBH§§"
 
-    private static let blockTags: Set<String> = [
-        "address", "article", "aside", "base", "basefont", "blockquote", "body",
-        "caption", "center", "col", "colgroup", "dd", "details", "dialog", "dir",
-        "div", "dl", "dt", "fieldset", "figcaption", "figure", "footer", "form",
-        "frame", "frameset", "h1", "h2", "h3", "h4", "h5", "h6", "head", "header",
-        "hr", "html", "iframe", "legend", "li", "link", "main", "menu", "menuitem",
-        "nav", "noframes", "ol", "optgroup", "option", "p", "param", "search",
-        "section", "summary", "table", "tbody", "td", "tfoot", "th", "thead",
-        "title", "tr", "track", "ul",
-    ]
-
     private struct Line {
         var text: String
         var start: Int
@@ -62,11 +51,6 @@ enum MarkdownHardBreak {
     private struct Span {
         var start: Int
         var end: Int
-    }
-
-    private enum HtmlKind {
-        case until(String)
-        case blank
     }
 
     /// `completed: false` returns `text` unchanged.
@@ -119,6 +103,7 @@ enum MarkdownHardBreak {
         let blocked = blockedRanges(src)
         let maskedLines = splitLines(maskRanges(src, inlineMasks(src)))
         var breaks: [Int: Int] = [:]
+        let texts = lines.map { $0.text }
         var para = false
         var quote = 0
         var stack: [ListFrame] = []
@@ -153,10 +138,21 @@ enum MarkdownHardBreak {
                 prevBlank = false
                 continue
             }
-            if let html = htmlBlockKind(raw, para: para) {
+            // v1.87: a type 7 tag at the list or quote margin closes
+            // that container and owns the following lines. An indented
+            // type 7 tag stays in the open paragraph, so a hard break
+            // there still fires. A type 1–6 block inside the item still
+            // swallows breaks.
+            let leavingList = stack.last.map { contentIndent(raw) < $0.contentCol } ?? false
+            let leavingQuote = quote > 0 && quoteDepth(raw) < quote
+            let htmlPara = leavingList || leavingQuote ? false : para
+            if let htmlEnd = MarkdownList.htmlBlockLineEnd(texts, index: index, paragraphOpen: htmlPara) {
+                if leavingList || leavingQuote {
+                    stack = []
+                    quote = 0
+                }
                 para = false
-                quote = 0
-                index = skipHtmlBlock(lines, start: index, kind: html)
+                index = htmlEnd
                 prevBlank = false
                 continue
             }
@@ -186,7 +182,7 @@ enum MarkdownHardBreak {
             while let top = stack.last {
                 let indent = contentIndent(raw)
                 if indent >= top.contentCol { break }
-                if para && !interruptsParagraph(raw, para: true) { break }
+                if para && !interruptsParagraph(raw, para: true) && !MarkdownList.htmlBlockStarts(raw) { break }
                 stack.removeLast()
             }
 
@@ -355,7 +351,7 @@ enum MarkdownHardBreak {
         if !para || isBlank(line) { return false }
         if fenceOpen(line) != nil || isAtx(line) || isMathLine(line) { return false }
         if isThematic(line) || isSetext(line) { return false }
-        if htmlBlockKind(line, para: true) != nil { return false }
+        if MarkdownList.htmlBlockInterrupts(line) { return false }
         let depth = quoteDepth(line)
         if depth > 0 && quote == 0 { return false }
         if let marker = parseMarker(stripQuote(line)), startsListItem(marker, para: true, stack: stack) {
@@ -390,7 +386,7 @@ enum MarkdownHardBreak {
     private static func interruptsParagraph(_ line: String, para: Bool) -> Bool {
         if fenceOpen(line) != nil || isAtx(line) || isMathLine(line) { return true }
         if isThematic(line) { return true }
-        if htmlBlockKind(line, para: para) != nil { return true }
+        if para ? MarkdownList.htmlBlockInterrupts(line) : MarkdownList.htmlBlockStarts(line) { return true }
         if quotePrefixAt(Array(line), from: 0) > 0 { return true }
         guard let marker = parseMarker(line) else { return false }
         return !marker.ordered || marker.number == 1
@@ -621,57 +617,6 @@ enum MarkdownHardBreak {
             let edge = offset == 0 || offset == cells.count - 1
             if edge && cell.trimmingCharacters(in: .whitespaces).isEmpty { return nil }
             return cell
-        }
-    }
-
-    private static func htmlBlockKind(_ line: String, para: Bool) -> HtmlKind? {
-        let body = line.range(of: #"^ {0,3}"#, options: .regularExpression).map { String(line[$0.upperBound...]) } ?? line
-        if body.range(of: #"^<(pre|script|style|textarea)(\s|>|$)"#, options: [.regularExpression, .caseInsensitive]) != nil {
-            let name = body.range(of: #"^<(\w+)"#, options: .regularExpression).map { match -> String in
-                let raw = String(body[match])
-                return String(raw.dropFirst()).lowercased()
-            } ?? ""
-            return .until("</\(name)>")
-        }
-        if body.hasPrefix("<!--") { return .until("-->") }
-        if body.hasPrefix("<?") { return .until("?>") }
-        if body.hasPrefix("<![CDATA[") { return .until("]]>") }
-        if body.range(of: #"^<![A-Z]"#, options: .regularExpression) != nil { return .until(">") }
-        if let tag = blockTagName(body), blockTags.contains(tag) { return .blank }
-        if !para && completeTag(body) { return .blank }
-        return nil
-    }
-
-    private static func blockTagName(_ body: String) -> String? {
-        guard let match = body.range(of: #"^</?[A-Za-z][A-Za-z0-9-]*"#, options: .regularExpression) else {
-            return nil
-        }
-        let raw = String(body[match])
-        let name = raw.hasPrefix("</") ? String(raw.dropFirst(2)) : String(raw.dropFirst())
-        let rest = String(body[match.upperBound...])
-        if !rest.isEmpty && rest.range(of: #"^[\s/>]"#, options: .regularExpression) == nil { return nil }
-        return name.lowercased()
-    }
-
-    private static func completeTag(_ body: String) -> Bool {
-        body.range(of: #"^</?[A-Za-z][A-Za-z0-9-]*(\s[^>]*)?>\s*$"#, options: .regularExpression) != nil
-    }
-
-    private static func skipHtmlBlock(_ lines: [Line], start: Int, kind: HtmlKind) -> Int {
-        switch kind {
-        case .until(let needle):
-            var index = start
-            let folded = needle.lowercased()
-            while index < lines.count {
-                let has = lines[index].text.lowercased().contains(folded)
-                index += 1
-                if has { break }
-            }
-            return index
-        case .blank:
-            var index = start + 1
-            while index < lines.count && !isBlank(lines[index].text) { index += 1 }
-            return index
         }
     }
 

@@ -52,9 +52,9 @@ def test_html_blocks_end_lists_and_quotes() -> None:
     assert "export function htmlUntilBlockEnd" in DESKTOP
     assert "v1.58" in DESKTOP
     assert "/v1/" not in DESKTOP
-    assert "MarkdownList.htmlBlockInterrupts" in QUOTES
+    assert "MarkdownList.htmlBlockStarts" in QUOTES
     assert "MarkdownList.htmlLazyTag" in QUOTES
-    assert "htmlBlockInterrupts" in DESKTOP_QUOTES
+    assert "htmlBlockStarts" in DESKTOP_QUOTES
     assert "MarkdownList.htmlUntilBlockEnd" in MARKDOWN
     assert "htmlUntilBlockEnd" in BUBBLES
 

@@ -28,21 +28,11 @@
  */
 
 import { applySafeInlineHtml } from "./markdownHtmlLiteral.ts";
+import { htmlBlockEnd, htmlBlockInterrupts, htmlBlockStarts } from "./markdownList.ts";
 import { fenceInfoAllowsOpen, fenceRanges, inRange, inlineCodeRanges, type Range } from "./math.ts";
 
 /** Placeholder swapped for a `<br>` / newline after the markdown parse. */
 export const HARD_BREAK_TOKEN = "§§SBH§§";
-
-const BLOCK_TAGS = new Set([
-  "address", "article", "aside", "base", "basefont", "blockquote", "body",
-  "caption", "center", "col", "colgroup", "dd", "details", "dialog", "dir",
-  "div", "dl", "dt", "fieldset", "figcaption", "figure", "footer", "form",
-  "frame", "frameset", "h1", "h2", "h3", "h4", "h5", "h6", "head", "header",
-  "hr", "html", "iframe", "legend", "li", "link", "main", "menu", "menuitem",
-  "nav", "noframes", "ol", "optgroup", "option", "p", "param", "search",
-  "section", "summary", "table", "tbody", "td", "tfoot", "th", "thead",
-  "title", "tr", "track", "ul",
-]);
 
 type Line = {
   text: string;
@@ -128,6 +118,7 @@ function rewriteHardBreaks(src: string): string {
   const masked = maskRanges(src, inlineMasks(src));
   const maskedLines = splitLines(masked);
   const breaks = new Map<number, number>();
+  const texts = lines.map((line) => line.text);
   let para = false;
   let quote = 0;
   let stack: ListFrame[] = [];
@@ -170,11 +161,22 @@ function rewriteHardBreaks(src: string): string {
       prevBlank = false;
       continue;
     }
-    const html = htmlBlockKind(raw, para);
-    if (html) {
+    // v1.87: a type 7 tag at the list or quote margin closes that
+    // container and owns the following lines. An indented type 7
+    // tag stays in the open paragraph, so a hard break there still
+    // fires. A type 1–6 block inside the item still swallows breaks.
+    const top = stack[stack.length - 1];
+    const leavingList = !!top && contentIndent(raw) < top.contentCol;
+    const leavingQuote = quote > 0 && quoteDepth(raw) < quote;
+    const htmlPara = leavingList || leavingQuote ? false : para;
+    const htmlEnd = htmlBlockEnd(texts, i, htmlPara);
+    if (htmlEnd != null) {
+      if (leavingList || leavingQuote) {
+        stack = [];
+        quote = 0;
+      }
       para = false;
-      quote = 0;
-      i = skipHtmlBlock(lines, i, html);
+      i = htmlEnd;
       prevBlank = false;
       continue;
     }
@@ -205,7 +207,7 @@ function rewriteHardBreaks(src: string): string {
       const top = stack[stack.length - 1]!;
       const indent = contentIndent(raw);
       if (indent >= top.contentCol) break;
-      if (para && !interruptsParagraph(raw, true)) break;
+      if (para && !interruptsParagraph(raw, true) && !htmlBlockStarts(raw)) break;
       stack.pop();
     }
 
@@ -351,7 +353,7 @@ function continuesParagraph(
   if (!para || isBlank(line)) return false;
   if (fenceOpen(line) || isAtx(line) || isMathLine(line)) return false;
   if (isThematic(line) || isSetext(line)) return false;
-  if (htmlBlockKind(line, true)) return false;
+  if (htmlBlockInterrupts(line)) return false;
   const depth = quoteDepth(line);
   if (depth > 0 && quote === 0) return false;
   const marker = parseMarker(stripQuote(line));
@@ -389,7 +391,7 @@ function startsListItem(marker: Marker, para: boolean, stack: ListFrame[]): bool
 function interruptsParagraph(line: string, para: boolean): boolean {
   if (fenceOpen(line) || isAtx(line) || isMathLine(line)) return true;
   if (isThematic(line)) return true;
-  if (htmlBlockKind(line, para)) return true;
+  if (para ? htmlBlockInterrupts(line) : htmlBlockStarts(line)) return true;
   if (lineStartsQuote(line)) return true;
   const marker = parseMarker(line);
   if (!marker) return false;
@@ -588,54 +590,6 @@ function splitPipes(line: string): string[] {
   }
   cells.push(current);
   return cells.filter((cell, index) => !(cell.trim() === "" && (index === 0 || index === cells.length - 1)));
-}
-
-type HtmlKind =
-  | { type: "until"; needle: string }
-  | { type: "blank" };
-
-function htmlBlockKind(line: string, para: boolean): HtmlKind | null {
-  const match = /^ {0,3}(.*)$/.exec(line);
-  const body = match?.[1] ?? line;
-  if (/^<(pre|script|style|textarea)(\s|>|$)/i.test(body)) {
-    const name = /^<(\w+)/.exec(body)?.[1]?.toLowerCase() ?? "";
-    return { type: "until", needle: `</${name}>` };
-  }
-  if (body.startsWith("<!--")) return { type: "until", needle: "-->" };
-  if (body.startsWith("<?")) return { type: "until", needle: "?>" };
-  if (body.startsWith("<![CDATA[")) return { type: "until", needle: "]]>" };
-  if (/^<! [A-Z]/.test(body) || /^<![A-Z]/.test(body)) return { type: "until", needle: ">" };
-  const tag = blockTagName(body);
-  if (tag && BLOCK_TAGS.has(tag)) return { type: "blank" };
-  if (!para && completeTag(body)) return { type: "blank" };
-  return null;
-}
-
-function blockTagName(body: string): string | null {
-  const match = /^<\/?([A-Za-z][A-Za-z0-9-]*)/.exec(body);
-  if (!match) return null;
-  const rest = body.slice(match[0].length);
-  if (rest !== "" && !/^[\s/>]/.test(rest)) return null;
-  return (match[1] ?? "").toLowerCase();
-}
-
-function completeTag(body: string): boolean {
-  return /^<\/?[A-Za-z][A-Za-z0-9-]*(\s[^>]*)?>\s*$/.test(body);
-}
-
-function skipHtmlBlock(lines: Line[], start: number, kind: HtmlKind): number {
-  if (kind.type === "until") {
-    let i = start;
-    while (i < lines.length) {
-      const has = lines[i]!.text.toLowerCase().includes(kind.needle.toLowerCase());
-      i += 1;
-      if (has) break;
-    }
-    return i;
-  }
-  let i = start + 1;
-  while (i < lines.length && !isBlank(lines[i]!.text)) i += 1;
-  return i;
 }
 
 function blockedRanges(src: string): Range[] {

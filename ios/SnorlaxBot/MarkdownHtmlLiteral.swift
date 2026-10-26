@@ -64,9 +64,10 @@ enum MarkdownHtmlLiteral {
     }
 
     private static func rewrite(_ src: String) -> String {
-        let chars = Array(src)
-        let opaque = MarkdownEscape.opaqueSpans(in: src)
-        let blocked = merge(opaque + htmlBlockRanges(chars, opaque))
+        let prepared = prepareCmarkHtml(src)
+        let chars = Array(prepared.text)
+        let opaque = MarkdownEscape.opaqueSpans(in: prepared.text)
+        let blocked = merge(opaque + prepared.protect)
         var out = ""
         out.reserveCapacity(chars.count)
         var index = 0
@@ -118,35 +119,146 @@ enum MarkdownHtmlLiteral {
         return token(raw)
     }
 
-    private static func htmlBlockRanges(
-        _ chars: [Character],
-        _ opaque: [(start: Int, end: Int)]
-    ) -> [(start: Int, end: Int)] {
+    /// v1.87: shift the text the parser sees onto cmark-gfm
+    /// 0.29.0.gfm.13 HTML block boundaries. `source` is type 6 there.
+    /// A complete tag gets a blank line in front of an open paragraph
+    /// and stays raw. An incomplete `source` line is stashed. `search`
+    /// is not type 6; an unfinished `<search` is disarmed, and a
+    /// finished tag stays raw only when the paragraph is already
+    /// closed. A one-line safe `<br>` stays unprotected so v1.75 can
+    /// still paint the hard-break token.
+    private static func prepareCmarkHtml(_ src: String) -> (
+        text: String,
+        protect: [(start: Int, end: Int)]
+    ) {
+        let chars = Array(src)
+        let opaque = MarkdownEscape.opaqueSpans(in: src)
         let lines = lineSpans(chars)
         let texts = lines.map { $0.text }
-        var ranges: [(start: Int, end: Int)] = []
+        var out: [String] = []
+        var spans: [(start: Int, end: Int)] = []
+        var para = false
+        var inMath = false
         var index = 0
         while index < lines.count {
             let line = lines[index]
-            if covered(line.start, opaque) || !MarkdownList.htmlBlockInterrupts(line.text) {
+            if covered(line.start, opaque) {
+                out.append(line.text)
+                para = false
+                inMath = false
                 index += 1
                 continue
             }
-            let next: Int
-            if let until = MarkdownList.htmlUntilBlockEnd(texts, index: index, paragraphOpen: true) {
-                next = until
-            } else {
-                var cursor = index + 1
-                while cursor < lines.count, !isBlank(lines[cursor].text) { cursor += 1 }
-                next = cursor
+            if line.text.trimmingCharacters(in: .whitespaces) == "$$" {
+                inMath.toggle()
+                out.append(line.text)
+                para = false
+                index += 1
+                continue
             }
-            let end = next < lines.count ? lines[next].start : chars.count
-            if end > line.start {
-                ranges.append((start: line.start, end: end))
+            if inMath {
+                out.append(line.text)
+                index += 1
+                continue
             }
-            index = max(next, index + 1)
+            if isBlank(line.text) {
+                out.append(line.text)
+                para = false
+                index += 1
+                continue
+            }
+            if MarkdownList.htmlSourceBlockLine(line.text) {
+                let end = MarkdownList.htmlBlockLineEnd(texts, index: index, paragraphOpen: false) ?? (index + 1)
+                let complete = MarkdownList.htmlLineIsCompleteTag(line.text)
+                if para { out.append("") }
+                let start = out.count
+                var cursor = index
+                while cursor < end {
+                    let text = lines[cursor].text
+                    out.append(complete ? text : token(text))
+                    cursor += 1
+                }
+                if complete { spans.append((start: start, end: out.count)) }
+                para = false
+                index = end
+                continue
+            }
+            if MarkdownList.htmlSearchBlockLine(line.text), !searchTagCloses(line.text) {
+                out.append(disarmAngle(line.text))
+                para = true
+                index += 1
+                continue
+            }
+            if let htmlEnd = MarkdownList.htmlBlockLineEnd(texts, index: index, paragraphOpen: para) {
+                // A one-line type 7 tag is stashed, or becomes a v1.75
+                // break. Types 1–6 stay raw even on one line. A type 7
+                // block with following lines stays raw.
+                let type7Only = !MarkdownList.htmlBlockInterrupts(line.text)
+                if type7Only && htmlEnd == index + 1 {
+                    out.append(line.text)
+                } else {
+                    let start = out.count
+                    var cursor = index
+                    while cursor < htmlEnd {
+                        out.append(lines[cursor].text)
+                        cursor += 1
+                    }
+                    spans.append((start: start, end: out.count))
+                }
+                para = false
+                index = htmlEnd
+                continue
+            }
+            out.append(line.text)
+            para = paragraphAfter(line.text, open: para)
+            index += 1
         }
-        return ranges
+        return (out.joined(separator: "\n"), protectRanges(out, spans))
+    }
+
+    private static func searchTagCloses(_ line: String) -> Bool {
+        let chars = Array(line)
+        guard let open = chars.firstIndex(of: "<") else { return false }
+        guard let end = htmlTagEnd(chars, open), end > open else { return false }
+        return true
+    }
+
+    private static func disarmAngle(_ line: String) -> String {
+        guard let open = line.firstIndex(of: "<") else { return line }
+        let rest = line.index(after: open)
+        return String(line[..<open]) + token("<") + String(line[rest...])
+    }
+
+    private static func paragraphAfter(_ line: String, open: Bool) -> Bool {
+        if isBlank(line) { return false }
+        if line.range(of: #"^ {0,3}#{1,6}(?:[ \t]|$)"#, options: .regularExpression) != nil { return false }
+        if line.range(of: #"^ {0,3}>"#, options: .regularExpression) != nil { return false }
+        if line.range(of: #"^ {0,3}(?:`{3,}|~{3,})"#, options: .regularExpression) != nil { return false }
+        let rule = #"^ {0,3}(?:(?:\*[ \t]*){3,}|(?:-[ \t]*){3,}|(?:_[ \t]*){3,})$"#
+        if line.range(of: rule, options: .regularExpression) != nil { return false }
+        if !open && (line.range(of: #"^ {4,}"#, options: .regularExpression) != nil || line.hasPrefix("\t")) {
+            return false
+        }
+        return true
+    }
+
+    private static func protectRanges(
+        _ lines: [String],
+        _ spans: [(start: Int, end: Int)]
+    ) -> [(start: Int, end: Int)] {
+        var starts: [Int] = []
+        var pos = 0
+        for (index, line) in lines.enumerated() {
+            starts.append(pos)
+            pos += line.count
+            if index + 1 < lines.count { pos += 1 }
+        }
+        return spans.compactMap { span in
+            let start = span.start < starts.count ? starts[span.start] : 0
+            let end = span.end < starts.count ? starts[span.end] : pos
+            guard end > start else { return nil }
+            return (start: start, end: end)
+        }
     }
 
     private static func lineSpans(

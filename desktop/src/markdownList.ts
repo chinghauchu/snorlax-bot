@@ -578,8 +578,8 @@ function readItem(
     }
     if (sawContent && !sawBlank && !interruptsList(line)) {
       // A lazy line is still the open paragraph. Its partial
-      // indent is not part of the text. A type 7 tag (`<br>`)
-      // stays in the item and ends further lazy lines.
+      // indent is not part of the text. v1.87: a type 7 tag at
+      // this margin ends the item instead of staying lazy.
       // v1.86: a table is not a paragraph, so a lazy line after
       // one ends the item instead of joining it.
       if (body.length > 0 && lazyLineEndsItem(body)) break;
@@ -734,66 +734,212 @@ function interruptsList(line: string): boolean {
   if (rest.startsWith(">")) return true;
   if (fenceOnLine(line)) return true;
   if (rest.trim() === "$$") return true;
-  if (htmlBlockInterrupts(line)) return true;
+  // v1.87: types 1–7. A type 7 tag cannot interrupt a paragraph,
+  // but at the list margin the item has already failed to
+  // continue, so cmark-gfm opens the block outside the list.
+  if (htmlBlockStarts(line)) return true;
   return false;
 }
 
+// cmark-gfm 0.29.0.gfm.13 block tags. `source` is in that set.
+// `search` was added in CommonMark 0.31 and is not.
 const HTML_BLOCK_TAGS = new Set([
   "address", "article", "aside", "base", "basefont", "blockquote", "body",
   "caption", "center", "col", "colgroup", "dd", "details", "dialog", "dir",
   "div", "dl", "dt", "fieldset", "figcaption", "figure", "footer", "form",
   "frame", "frameset", "h1", "h2", "h3", "h4", "h5", "h6", "head", "header",
   "hr", "html", "iframe", "legend", "li", "link", "main", "menu", "menuitem",
-  "nav", "noframes", "ol", "optgroup", "option", "p", "param", "search",
-  "section", "summary", "table", "tbody", "td", "tfoot", "th", "thead",
+  "nav", "noframes", "ol", "optgroup", "option", "p", "param", "section",
+  "source", "summary", "table", "tbody", "td", "tfoot", "th", "thead",
   "title", "tr", "track", "ul",
 ]);
 
-type HtmlKind = { type: "until"; needle: string } | { type: "blank" };
+const HTML_RAW_NAMES = ["textarea", "script", "style", "pre"];
+
+const HTML_RAW_END = ["</script>", "</pre>", "</style>", "</textarea>"];
+
+type HtmlKind = { type: "until"; needles: string[]; fold: boolean } | { type: "blank" };
 
 /**
- * CommonMark HTML block start. Types 1–6 interrupt a paragraph.
- * Type 7 (any other complete tag) starts only when the paragraph
- * is already closed. Four or more leading columns are indented
- * code, not HTML. The optional slash lets `<br/>` be type 7.
+ * cmark-gfm 0.29.0.gfm.13 HTML block start.
+ * Types 1–6 interrupt a paragraph. Type 7 (any other complete
+ * open or close tag) starts only when the paragraph is already
+ * closed. Four or more leading columns are indented code.
+ * Type 1 ends on any of `</script>`, `</pre>`, `</style>`, or
+ * `</textarea>`, case-insensitively. A block tag must be followed
+ * by a space character, `>`, or `/>` — a bare `/` is not enough.
  */
 function htmlBlockKind(line: string, paragraphOpen: boolean): HtmlKind | null {
-  const lead = leadingColumns(line);
-  if (lead.columns > 3) return null;
-  const body = line.slice(lead.index);
-  const open = /^<(pre|script|style|textarea)(\s|>|$)/i.exec(body);
-  if (open) {
-    const name = (open[1] ?? "").toLowerCase();
-    return { type: "until", needle: `</${name}>` };
-  }
-  if (body.startsWith("<!--")) return { type: "until", needle: "-->" };
-  if (body.startsWith("<?")) return { type: "until", needle: "?>" };
-  if (body.startsWith("<![CDATA[")) return { type: "until", needle: "]]>" };
-  if (/^<![A-Z]/.test(body)) return { type: "until", needle: ">" };
+  const body = htmlBlockBody(line);
+  if (body == null) return null;
+  const raw = htmlRawName(body);
+  if (raw) return { type: "until", needles: HTML_RAW_END, fold: true };
+  if (body.startsWith("<!--")) return { type: "until", needles: ["-->"], fold: false };
+  if (body.startsWith("<?")) return { type: "until", needles: ["?>"], fold: false };
+  if (body.startsWith("<![CDATA[")) return { type: "until", needles: ["]]>"], fold: false };
+  if (/^<![A-Z]/.test(body)) return { type: "until", needles: [">"], fold: false };
   const tag = htmlBlockTagName(body);
   if (tag && HTML_BLOCK_TAGS.has(tag)) return { type: "blank" };
   if (!paragraphOpen && htmlCompleteTag(body)) return { type: "blank" };
   return null;
 }
 
+/** Up to three columns of indent, or null when this is indented code. */
+function htmlBlockBody(line: string): string | null {
+  const lead = leadingColumns(line);
+  if (lead.columns > 3) return null;
+  return line.slice(lead.index);
+}
+
+function htmlRawName(body: string): string | null {
+  if (body[0] !== "<") return null;
+  const rest = body.slice(1);
+  const lower = rest.toLowerCase();
+  for (const name of HTML_RAW_NAMES) {
+    if (!lower.startsWith(name)) continue;
+    const after = rest[name.length] ?? "";
+    if (after === "" || after === ">" || isHtmlSpace(after)) return name;
+  }
+  return null;
+}
+
 function htmlBlockTagName(body: string): string | null {
-  const match = /^<\/?([A-Za-z][A-Za-z0-9-]*)/.exec(body);
-  if (!match) return null;
-  const rest = body.slice(match[0].length);
-  if (rest !== "" && !/^[\s/>]/.test(rest)) return null;
-  return (match[1] ?? "").toLowerCase();
+  if (body[0] !== "<") return null;
+  let i = 1;
+  if (body[1] === "/") i = 2;
+  const start = i;
+  if (!isHtmlLetter(body[i] ?? "")) return null;
+  i += 1;
+  while (isHtmlNameChar(body[i] ?? "")) i += 1;
+  const name = body.slice(start, i).toLowerCase();
+  if (!HTML_BLOCK_TAGS.has(name)) return null;
+  const after = body[i] ?? "";
+  if (after === "" || after === ">" || isHtmlSpace(after)) return name;
+  if (after === "/" && body[i + 1] === ">") return name;
+  return null;
 }
 
 function htmlCompleteTag(body: string): boolean {
-  return /^<\/?[A-Za-z][A-Za-z0-9-]*(\s[^>]*)?\/?>\s*$/.test(body);
+  const end = scanHtmlContentTag(body);
+  if (end < 0) return false;
+  for (let i = end; i < body.length; i += 1) {
+    const ch = body[i] ?? "";
+    if (ch !== " " && ch !== "\t" && ch !== "\f") return false;
+  }
+  return true;
+}
+
+/** End index of an open or close tag at column 0, or -1. */
+function scanHtmlContentTag(body: string): number {
+  if (body[0] !== "<") return -1;
+  let i = 1;
+  if (body[i] === "/") {
+    i += 1;
+    const nameEnd = readHtmlTagName(body, i);
+    if (nameEnd < 0) return -1;
+    i = skipHtmlSpace(body, nameEnd);
+    if (body[i] !== ">") return -1;
+    return i + 1;
+  }
+  const nameEnd = readHtmlTagName(body, i);
+  if (nameEnd < 0) return -1;
+  i = nameEnd;
+  for (;;) {
+    const ws = skipHtmlSpace(body, i);
+    if (ws === i) break;
+    const attr = readHtmlAttrName(body, ws);
+    if (attr < 0) {
+      i = ws;
+      break;
+    }
+    i = attr;
+    const eq = skipHtmlSpace(body, i);
+    if (body[eq] !== "=") continue;
+    const valueEnd = readHtmlAttrValue(body, skipHtmlSpace(body, eq + 1));
+    if (valueEnd < 0) return -1;
+    i = valueEnd;
+  }
+  i = skipHtmlSpace(body, i);
+  if (body[i] === "/") i += 1;
+  if (body[i] !== ">") return -1;
+  return i + 1;
+}
+
+function readHtmlTagName(body: string, index: number): number {
+  if (!isHtmlLetter(body[index] ?? "")) return -1;
+  let i = index + 1;
+  while (isHtmlNameChar(body[i] ?? "")) i += 1;
+  return i;
+}
+
+function readHtmlAttrName(body: string, index: number): number {
+  if (!isHtmlAttrStart(body[index] ?? "")) return -1;
+  let i = index + 1;
+  while (isHtmlAttrChar(body[i] ?? "")) i += 1;
+  return i;
+}
+
+function readHtmlAttrValue(body: string, index: number): number {
+  const ch = body[index] ?? "";
+  if (ch === "'" || ch === '"') {
+    const close = body.indexOf(ch, index + 1);
+    return close < 0 ? -1 : close + 1;
+  }
+  if (!ch || isHtmlUnquotedStop(ch)) return -1;
+  let i = index + 1;
+  while (i < body.length && !isHtmlUnquotedStop(body[i] ?? "")) i += 1;
+  return i;
+}
+
+function skipHtmlSpace(body: string, index: number): number {
+  let i = index;
+  while (isHtmlSpace(body[i] ?? "")) i += 1;
+  return i;
+}
+
+function isHtmlSpace(ch: string): boolean {
+  return ch === " " || ch === "\t" || ch === "\n" || ch === "\r" || ch === "\f" || ch === "\v";
+}
+
+function isHtmlLetter(ch: string): boolean {
+  return (ch >= "A" && ch <= "Z") || (ch >= "a" && ch <= "z");
+}
+
+function isHtmlNameChar(ch: string): boolean {
+  return isHtmlLetter(ch) || (ch >= "0" && ch <= "9") || ch === "-";
+}
+
+function isHtmlAttrStart(ch: string): boolean {
+  return isHtmlLetter(ch) || ch === "_" || ch === ":";
+}
+
+function isHtmlAttrChar(ch: string): boolean {
+  return isHtmlAttrStart(ch) || (ch >= "0" && ch <= "9") || ch === "." || ch === "-";
+}
+
+function isHtmlUnquotedStop(ch: string): boolean {
+  return (
+    ch === " " ||
+    ch === "\t" ||
+    ch === "\n" ||
+    ch === "\r" ||
+    ch === "\v" ||
+    ch === "\f" ||
+    ch === '"' ||
+    ch === "'" ||
+    ch === "=" ||
+    ch === "<" ||
+    ch === ">" ||
+    ch === "`" ||
+    ch === "\0"
+  );
 }
 
 function skipHtmlBlock(lines: string[], start: number, kind: HtmlKind): number {
   if (kind.type === "until") {
-    const needle = kind.needle.toLowerCase();
     let i = start;
     while (i < lines.length) {
-      const has = (lines[i] ?? "").toLowerCase().includes(needle);
+      const has = htmlLineHasNeedle(lines[i] ?? "", kind);
       i += 1;
       if (has) break;
     }
@@ -802,6 +948,11 @@ function skipHtmlBlock(lines: string[], start: number, kind: HtmlKind): number {
   let i = start + 1;
   while (i < lines.length && !isBlank(lines[i] ?? "")) i += 1;
   return i;
+}
+
+function htmlLineHasNeedle(line: string, kind: { needles: string[]; fold: boolean }): boolean {
+  const hay = kind.fold ? line.toLowerCase() : line;
+  return kind.needles.some((needle) => hay.includes(kind.fold ? needle.toLowerCase() : needle));
 }
 
 /** Index just after an HTML block that starts at `index`, or null. */
@@ -832,19 +983,83 @@ export function htmlUntilBlockEnd(
   return skipHtmlBlock(lines, index, kind);
 }
 
-/** Types 1–6. They end a list item or a lazy quote before this line. */
+/** Types 1–6. They interrupt a paragraph. */
 export function htmlBlockInterrupts(line: string): boolean {
   return htmlBlockKind(line, true) != null;
 }
 
 /**
+ * Types 1–7. A type 7 tag does not interrupt a paragraph, but it
+ * does end a list item or a lazy blockquote when the line is not
+ * indented into that container.
+ */
+export function htmlBlockStarts(line: string): boolean {
+  return htmlBlockKind(line, false) != null;
+}
+
+/**
  * Type 7: a complete tag such as `<br>` that cannot interrupt a
- * paragraph. On a lazy list or quote line it stays in the block
- * and ends further lazy lines.
+ * paragraph. A margin list or quote line uses `htmlBlockStarts`
+ * and does not stay lazy.
  */
 export function htmlLazyTag(line: string): boolean {
   if (htmlBlockKind(line, true) != null) return false;
   return htmlBlockKind(line, false)?.type === "blank";
+}
+
+/** The line is one complete open or close tag, plus optional trailing space. */
+export function htmlLineIsCompleteTag(line: string): boolean {
+  const body = htmlBlockBody(line);
+  if (body == null) return false;
+  return htmlCompleteTag(body);
+}
+
+/**
+ * cmark-gfm type 6 `source`, which micromark does not treat as a
+ * block tag. Case-insensitive.
+ */
+export function htmlSourceBlockLine(line: string): boolean {
+  const body = htmlBlockBody(line);
+  if (body == null) return false;
+  return htmlBlockTagName(body) === "source";
+}
+
+/**
+ * A `search` tag shaped like a CommonMark 0.31 block tag.
+ * cmark-gfm 0.29.0.gfm.13 does not treat `search` as type 6.
+ */
+export function htmlSearchBlockLine(line: string): boolean {
+  const body = htmlBlockBody(line);
+  if (body == null || body[0] !== "<") return false;
+  let i = 1;
+  if (body[1] === "/") i = 2;
+  const rest = body.slice(i);
+  if (!/^search(?![A-Za-z0-9-])/i.test(rest)) return false;
+  const after = rest[6] ?? "";
+  if (after === "" || after === ">" || isHtmlSpace(after)) return true;
+  return after === "/" && rest[7] === ">";
+}
+
+/**
+ * The list splitter pulls a block out that react-markdown would
+ * keep inside the item: a type 7 tag, or a `source` block, at the
+ * list margin.
+ */
+export function listSplitByCmarkHtml(text: string): boolean {
+  if (!text.includes("<")) return false;
+  const blocks = splitMarkdownLists(text, true);
+  let sawList = false;
+  for (const block of blocks) {
+    if (block.type === "list") {
+      sawList = true;
+      continue;
+    }
+    if (!sawList || block.type !== "markdown") continue;
+    const first = block.text.split("\n").find((line) => line.trim() !== "");
+    if (!first || !htmlBlockStarts(first)) continue;
+    if (!htmlBlockInterrupts(first) || htmlSourceBlockLine(first)) return true;
+  }
+  return false;
 }
 
 function isThematicBreak(line: string): boolean {

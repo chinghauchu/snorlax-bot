@@ -532,78 +532,195 @@ enum MarkdownList {
         if rest.hasPrefix(">") { return true }
         if fenceOnLine(line) != nil { return true }
         if rest.trimmingCharacters(in: .whitespaces) == "$$" { return true }
-        if htmlBlockInterrupts(line) { return true }
+        // v1.87: types 1–7. A type 7 tag cannot interrupt a paragraph,
+        // but at the list margin the item has already failed to
+        // continue, so cmark-gfm opens the block outside the list.
+        if htmlBlockStarts(line) { return true }
         return false
     }
 
     private enum HtmlKind {
-        case until(String)
+        case until(needles: [String], fold: Bool)
         case blank
     }
 
+    /// cmark-gfm 0.29.0.gfm.13 block tags. `source` is in that set.
+    /// `search` was added in CommonMark 0.31 and is not.
     private static let htmlBlockTags: Set<String> = [
         "address", "article", "aside", "base", "basefont", "blockquote", "body",
         "caption", "center", "col", "colgroup", "dd", "details", "dialog", "dir",
         "div", "dl", "dt", "fieldset", "figcaption", "figure", "footer", "form",
         "frame", "frameset", "h1", "h2", "h3", "h4", "h5", "h6", "head", "header",
         "hr", "html", "iframe", "legend", "li", "link", "main", "menu", "menuitem",
-        "nav", "noframes", "ol", "optgroup", "option", "p", "param", "search",
-        "section", "summary", "table", "tbody", "td", "tfoot", "th", "thead",
+        "nav", "noframes", "ol", "optgroup", "option", "p", "param", "section",
+        "source", "summary", "table", "tbody", "td", "tfoot", "th", "thead",
         "title", "tr", "track", "ul",
     ]
 
-    /// CommonMark HTML block start. Types 1–6 interrupt a paragraph.
-    /// Type 7 starts only when the paragraph is already closed.
+    private static let htmlRawNames = ["textarea", "script", "style", "pre"]
+    private static let htmlRawEnd = ["</script>", "</pre>", "</style>", "</textarea>"]
+
+    /// cmark-gfm 0.29.0.gfm.13 HTML block start.
+    /// Types 1–6 interrupt a paragraph. Type 7 starts only when the
+    /// paragraph is already closed. Type 1 ends on any of the four
+    /// raw end tags. A block tag must be followed by a space character,
+    /// `>`, or `/>`.
     private static func htmlBlockKind(_ line: String, paragraphOpen: Bool) -> HtmlKind? {
-        let lead = leadingColumns(line)
-        if lead.columns > 3 { return nil }
-        let body = String(line[lead.index...])
-        if let name = htmlRawTextName(body) {
-            return .until("</\(name)>")
+        guard let body = htmlBlockBody(line) else { return nil }
+        if htmlRawName(body) != nil { return .until(needles: htmlRawEnd, fold: true) }
+        if body.hasPrefix("<!--") { return .until(needles: ["-->"], fold: false) }
+        if body.hasPrefix("<?") { return .until(needles: ["?>"], fold: false) }
+        if body.hasPrefix("<![CDATA[") { return .until(needles: ["]]>"], fold: false) }
+        if body.range(of: #"^<![A-Z]"#, options: .regularExpression) != nil {
+            return .until(needles: [">"], fold: false)
         }
-        if body.hasPrefix("<!--") { return .until("-->") }
-        if body.hasPrefix("<?") { return .until("?>") }
-        if body.hasPrefix("<![CDATA[") { return .until("]]>") }
-        if body.range(of: #"^<![A-Z]"#, options: .regularExpression) != nil { return .until(">") }
         if let tag = htmlBlockTagName(body), htmlBlockTags.contains(tag) { return .blank }
         if !paragraphOpen && htmlCompleteTag(body) { return .blank }
         return nil
     }
 
-    private static func htmlRawTextName(_ body: String) -> String? {
-        guard let match = body.range(
-            of: #"^<(pre|script|style|textarea)(\s|>|$)"#,
-            options: [.regularExpression, .caseInsensitive]
-        ) else { return nil }
-        let raw = String(body[match])
-        let name = raw.dropFirst().prefix { $0.isLetter }
-        guard !name.isEmpty else { return nil }
-        return String(name).lowercased()
+    private static func htmlBlockBody(_ line: String) -> String? {
+        let lead = leadingColumns(line)
+        if lead.columns > 3 { return nil }
+        return String(line[lead.index...])
+    }
+
+    private static func htmlRawName(_ body: String) -> String? {
+        guard body.first == "<" else { return nil }
+        let rest = String(body.dropFirst())
+        let lower = rest.lowercased()
+        for name in htmlRawNames {
+            guard lower.hasPrefix(name) else { continue }
+            let after = rest.index(rest.startIndex, offsetBy: name.count, limitedBy: rest.endIndex) ?? rest.endIndex
+            if after == rest.endIndex { return name }
+            let ch = rest[after]
+            if ch == ">" || isHtmlSpace(ch) { return name }
+        }
+        return nil
     }
 
     private static func htmlBlockTagName(_ body: String) -> String? {
-        guard let match = body.range(of: #"^</?[A-Za-z][A-Za-z0-9-]*"#, options: .regularExpression) else {
-            return nil
-        }
-        let raw = String(body[match])
-        let name = raw.hasPrefix("</") ? String(raw.dropFirst(2)) : String(raw.dropFirst())
-        let rest = String(body[match.upperBound...])
-        if !rest.isEmpty && rest.range(of: #"^[\s/>]"#, options: .regularExpression) == nil { return nil }
-        return name.lowercased()
+        let chars = Array(body)
+        guard chars.first == "<" else { return nil }
+        var index = 1
+        if chars.count > 1 && chars[1] == "/" { index = 2 }
+        let start = index
+        guard index < chars.count, isHtmlLetter(chars[index]) else { return nil }
+        index += 1
+        while index < chars.count && isHtmlNameChar(chars[index]) { index += 1 }
+        let name = String(chars[start..<index]).lowercased()
+        guard htmlBlockTags.contains(name) else { return nil }
+        if index >= chars.count || chars[index] == ">" || isHtmlSpace(chars[index]) { return name }
+        if chars[index] == "/", index + 1 < chars.count, chars[index + 1] == ">" { return name }
+        return nil
     }
 
     private static func htmlCompleteTag(_ body: String) -> Bool {
-        let pattern = "^</?[A-Za-z][A-Za-z0-9-]*(\\s[^>]*)?" + "/?>\\s*$"
-        return body.range(of: pattern, options: .regularExpression) != nil
+        let chars = Array(body)
+        guard let end = scanHtmlContentTag(chars) else { return false }
+        for ch in chars[end...] {
+            if ch != " " && ch != "\t" && ch != "\u{000C}" { return false }
+        }
+        return true
+    }
+
+    private static func scanHtmlContentTag(_ chars: [Character]) -> Int? {
+        guard chars.first == "<" else { return nil }
+        var index = 1
+        if index < chars.count && chars[index] == "/" {
+            index += 1
+            guard let nameEnd = readHtmlTagName(chars, index) else { return nil }
+            index = skipHtmlSpace(chars, nameEnd)
+            guard index < chars.count, chars[index] == ">" else { return nil }
+            return index + 1
+        }
+        guard let nameEnd = readHtmlTagName(chars, index) else { return nil }
+        index = nameEnd
+        while true {
+            let ws = skipHtmlSpace(chars, index)
+            if ws == index { break }
+            guard let attr = readHtmlAttrName(chars, ws) else {
+                index = ws
+                break
+            }
+            index = attr
+            let eq = skipHtmlSpace(chars, index)
+            if eq >= chars.count || chars[eq] != "=" { continue }
+            guard let valueEnd = readHtmlAttrValue(chars, skipHtmlSpace(chars, eq + 1)) else { return nil }
+            index = valueEnd
+        }
+        index = skipHtmlSpace(chars, index)
+        if index < chars.count && chars[index] == "/" { index += 1 }
+        guard index < chars.count, chars[index] == ">" else { return nil }
+        return index + 1
+    }
+
+    private static func readHtmlTagName(_ chars: [Character], _ index: Int) -> Int? {
+        guard index < chars.count, isHtmlLetter(chars[index]) else { return nil }
+        var cursor = index + 1
+        while cursor < chars.count && isHtmlNameChar(chars[cursor]) { cursor += 1 }
+        return cursor
+    }
+
+    private static func readHtmlAttrName(_ chars: [Character], _ index: Int) -> Int? {
+        guard index < chars.count, isHtmlAttrStart(chars[index]) else { return nil }
+        var cursor = index + 1
+        while cursor < chars.count && isHtmlAttrChar(chars[cursor]) { cursor += 1 }
+        return cursor
+    }
+
+    private static func readHtmlAttrValue(_ chars: [Character], _ index: Int) -> Int? {
+        guard index < chars.count else { return nil }
+        let ch = chars[index]
+        if ch == "'" || ch == "\"" {
+            var cursor = index + 1
+            while cursor < chars.count && chars[cursor] != ch { cursor += 1 }
+            guard cursor < chars.count else { return nil }
+            return cursor + 1
+        }
+        if isHtmlUnquotedStop(ch) { return nil }
+        var cursor = index + 1
+        while cursor < chars.count && !isHtmlUnquotedStop(chars[cursor]) { cursor += 1 }
+        return cursor
+    }
+
+    private static func skipHtmlSpace(_ chars: [Character], _ index: Int) -> Int {
+        var cursor = index
+        while cursor < chars.count && isHtmlSpace(chars[cursor]) { cursor += 1 }
+        return cursor
+    }
+
+    private static func isHtmlSpace(_ ch: Character) -> Bool {
+        ch == " " || ch == "\t" || ch == "\n" || ch == "\r" || ch == "\u{000C}" || ch == "\u{000B}"
+    }
+
+    private static func isHtmlLetter(_ ch: Character) -> Bool {
+        (ch >= "A" && ch <= "Z") || (ch >= "a" && ch <= "z")
+    }
+
+    private static func isHtmlNameChar(_ ch: Character) -> Bool {
+        isHtmlLetter(ch) || (ch >= "0" && ch <= "9") || ch == "-"
+    }
+
+    private static func isHtmlAttrStart(_ ch: Character) -> Bool {
+        isHtmlLetter(ch) || ch == "_" || ch == ":"
+    }
+
+    private static func isHtmlAttrChar(_ ch: Character) -> Bool {
+        isHtmlAttrStart(ch) || (ch >= "0" && ch <= "9") || ch == "." || ch == "-"
+    }
+
+    private static func isHtmlUnquotedStop(_ ch: Character) -> Bool {
+        ch == " " || ch == "\t" || ch == "\n" || ch == "\r" || ch == "\u{000B}" || ch == "\u{000C}"
+            || ch == "\"" || ch == "'" || ch == "=" || ch == "<" || ch == ">" || ch == "`" || ch == "\0"
     }
 
     private static func skipHtmlBlock(_ lines: [String], start: Int, kind: HtmlKind) -> Int {
         switch kind {
-        case .until(let needle):
+        case .until(let needles, let fold):
             var index = start
-            let folded = needle.lowercased()
             while index < lines.count {
-                let has = lines[index].lowercased().contains(folded)
+                let has = htmlLineHasNeedle(lines[index], needles: needles, fold: fold)
                 index += 1
                 if has { break }
             }
@@ -612,6 +729,13 @@ enum MarkdownList {
             var index = start + 1
             while index < lines.count && !isBlank(lines[index]) { index += 1 }
             return index
+        }
+    }
+
+    private static func htmlLineHasNeedle(_ line: String, needles: [String], fold: Bool) -> Bool {
+        let hay = fold ? line.lowercased() : line
+        return needles.contains { needle in
+            hay.contains(fold ? needle.lowercased() : needle)
         }
     }
 
@@ -643,10 +767,49 @@ enum MarkdownList {
     }
 
     /// Type 7: a complete tag such as `<br>` on a lazy line.
+    /// A margin list or quote line uses `htmlBlockStarts` and does
+    /// not stay lazy.
     static func htmlLazyTag(_ line: String) -> Bool {
         if htmlBlockKind(line, paragraphOpen: true) != nil { return false }
         if case .some(.blank) = htmlBlockKind(line, paragraphOpen: false) { return true }
         return false
+    }
+
+    /// Types 1–7. A type 7 tag does not interrupt a paragraph, but it
+    /// does end a list item or a lazy blockquote at the margin.
+    static func htmlBlockStarts(_ line: String) -> Bool {
+        htmlBlockKind(line, paragraphOpen: false) != nil
+    }
+
+    /// The line is one complete open or close tag, plus optional trailing space.
+    static func htmlLineIsCompleteTag(_ line: String) -> Bool {
+        guard let body = htmlBlockBody(line) else { return false }
+        return htmlCompleteTag(body)
+    }
+
+    /// cmark-gfm type 6 `source`. Case-insensitive.
+    static func htmlSourceBlockLine(_ line: String) -> Bool {
+        guard let body = htmlBlockBody(line) else { return false }
+        return htmlBlockTagName(body) == "source"
+    }
+
+    /// A `search` tag shaped like a CommonMark 0.31 block tag.
+    /// cmark-gfm 0.29.0.gfm.13 does not treat `search` as type 6.
+    static func htmlSearchBlockLine(_ line: String) -> Bool {
+        guard let body = htmlBlockBody(line), body.first == "<" else { return false }
+        let chars = Array(body)
+        var index = 1
+        if chars.count > 1 && chars[1] == "/" { index = 2 }
+        let rest = String(chars.dropFirst(index))
+        guard rest.range(of: #"^search(?![A-Za-z0-9-])"#, options: [.regularExpression, .caseInsensitive]) != nil else {
+            return false
+        }
+        let after = rest.index(rest.startIndex, offsetBy: 6, limitedBy: rest.endIndex) ?? rest.endIndex
+        if after == rest.endIndex { return true }
+        let ch = rest[after]
+        if ch == ">" || isHtmlSpace(ch) { return true }
+        let next = rest.index(after: after)
+        return ch == "/" && next < rest.endIndex && rest[next] == ">"
     }
 
     /// CommonMark only lets some markers interrupt a paragraph.

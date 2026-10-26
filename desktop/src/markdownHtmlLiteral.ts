@@ -43,7 +43,13 @@
  */
 
 import { opaqueMarkdownRanges, stashMarkdownText } from "./markdownEscape.ts";
-import { htmlBlockInterrupts, htmlUntilBlockEnd } from "./markdownList.ts";
+import {
+  htmlBlockEnd,
+  htmlBlockInterrupts,
+  htmlLineIsCompleteTag,
+  htmlSearchBlockLine,
+  htmlSourceBlockLine,
+} from "./markdownList.ts";
 import type { Range } from "./math.ts";
 
 /** Never animate, including when Reduce Motion is off. */
@@ -105,9 +111,11 @@ export function literalizeRawHtml(text: string, completed = true): string {
   return next;
 }
 
-function rewrite(src: string): string {
+function rewrite(input: string): string {
+  const prepared = prepareCmarkHtml(input);
+  const src = prepared.text;
   const opaque = opaqueMarkdownRanges(src);
-  const blocked = mergeRanges([...opaque, ...htmlBlockRanges(src, opaque)]);
+  const blocked = mergeRanges([...opaque, ...prepared.protect]);
   let out = "";
   let i = 0;
   let bi = 0;
@@ -164,32 +172,133 @@ function safeOrStash(raw: string): string {
 }
 
 /**
- * A type 1–6 HTML block, from the opening line through the line
- * before whatever follows the block. The `<` stays so the parser
- * still ends a list or a quote there. Type 7 is not included.
+ * v1.87: shift micromark's HTML blocks onto cmark-gfm 0.29.0.gfm.13.
+ * `source` is type 6 there and not in micromark, so a complete tag
+ * gets a blank line in front of an open paragraph and stays raw.
+ * An incomplete `source` line is stashed. `search` is not type 6;
+ * an unfinished `<search` is disarmed, and a finished tag is left
+ * raw only when the paragraph is already closed. A one-line safe
+ * `<br>` stays out of the protected range so v1.75 can still paint
+ * the hard-break token. Copy keeps the original markdown.
  */
-function htmlBlockRanges(src: string, opaque: Range[]): Range[] {
+function prepareCmarkHtml(src: string): { text: string; protect: Range[] } {
+  const opaque = opaqueMarkdownRanges(src);
   const lines = lineSpans(src);
   const texts = lines.map((line) => line.text);
-  const ranges: Range[] = [];
+  const out: string[] = [];
+  const spans: { start: number; end: number }[] = [];
+  let para = false;
+  let inMath = false;
   let index = 0;
   while (index < lines.length) {
     const line = lines[index]!;
-    if (covered(line.start, opaque) || !htmlBlockInterrupts(line.text)) {
+    if (covered(line.start, opaque)) {
+      out.push(line.text);
+      para = false;
+      inMath = false;
       index += 1;
       continue;
     }
-    const until = htmlUntilBlockEnd(texts, index, true);
-    let next = until;
-    if (next == null) {
-      next = index + 1;
-      while (next < lines.length && !isBlankLine(lines[next]!.text)) next += 1;
+    if (line.text.trim() === "$$") {
+      inMath = !inMath;
+      out.push(line.text);
+      para = false;
+      index += 1;
+      continue;
     }
-    const end = next < lines.length ? lines[next]!.start : src.length;
-    if (end > line.start) ranges.push({ start: line.start, end });
-    index = Math.max(next, index + 1);
+    if (inMath) {
+      out.push(line.text);
+      index += 1;
+      continue;
+    }
+    if (isBlankLine(line.text)) {
+      out.push(line.text);
+      para = false;
+      index += 1;
+      continue;
+    }
+    if (htmlSourceBlockLine(line.text)) {
+      const end = htmlBlockEnd(texts, index, false) ?? index + 1;
+      const complete = htmlLineIsCompleteTag(line.text);
+      if (para) out.push("");
+      const start = out.length;
+      for (let j = index; j < end; j += 1) {
+        const text = lines[j]!.text;
+        out.push(complete ? text : stashMarkdownText(text));
+      }
+      if (complete) spans.push({ start, end: out.length });
+      para = false;
+      index = end;
+      continue;
+    }
+    if (htmlSearchBlockLine(line.text) && !searchTagClosesOnLine(line.text)) {
+      out.push(disarmAngle(line.text));
+      para = true;
+      index += 1;
+      continue;
+    }
+    const htmlEnd = htmlBlockEnd(texts, index, para);
+    if (htmlEnd != null) {
+      // A one-line type 7 tag is stashed (or becomes a v1.75 break).
+      // Types 1–6 stay raw even on one line so the paragraph still
+      // ends. A type 7 block with following lines stays raw so those
+      // lines are not parsed as markdown.
+      const type7Only = !htmlBlockInterrupts(line.text);
+      if (type7Only && htmlEnd === index + 1) {
+        out.push(line.text);
+      } else {
+        const start = out.length;
+        for (let j = index; j < htmlEnd; j += 1) out.push(lines[j]!.text);
+        spans.push({ start, end: out.length });
+      }
+      para = false;
+      index = htmlEnd;
+      continue;
+    }
+    out.push(line.text);
+    para = paragraphAfter(line.text, para);
+    index += 1;
   }
-  return ranges;
+  return { text: out.join("\n"), protect: protectRanges(out, spans) };
+}
+
+function searchTagClosesOnLine(line: string): boolean {
+  const open = line.indexOf("<");
+  if (open < 0) return false;
+  const end = htmlTagEnd(line, open);
+  return end > open;
+}
+
+function disarmAngle(line: string): string {
+  const open = line.indexOf("<");
+  if (open < 0) return line;
+  return `${line.slice(0, open)}${stashMarkdownText("<")}${line.slice(open + 1)}`;
+}
+
+function paragraphAfter(line: string, open: boolean): boolean {
+  if (isBlankLine(line)) return false;
+  if (/^ {0,3}#{1,6}(?:[ \t]|$)/.test(line)) return false;
+  if (/^ {0,3}>/.test(line)) return false;
+  if (/^ {0,3}(?:`{3,}|~{3,})/.test(line)) return false;
+  if (/^ {0,3}(?:(?:\*[ \t]*){3,}|(?:-[ \t]*){3,}|(?:_[ \t]*){3,})$/.test(line)) return false;
+  if (!open && (/^ {4,}/.test(line) || line.startsWith("\t"))) return false;
+  return true;
+}
+
+function protectRanges(lines: string[], spans: { start: number; end: number }[]): Range[] {
+  const starts: number[] = [];
+  let pos = 0;
+  for (let i = 0; i < lines.length; i += 1) {
+    starts.push(pos);
+    pos += lines[i]!.length;
+    if (i + 1 < lines.length) pos += 1;
+  }
+  return spans
+    .map((span) => ({
+      start: starts[span.start] ?? 0,
+      end: span.end < lines.length ? (starts[span.end] ?? pos) : pos,
+    }))
+    .filter((range) => range.end > range.start);
 }
 
 function lineSpans(src: string): { start: number; end: number; text: string }[] {

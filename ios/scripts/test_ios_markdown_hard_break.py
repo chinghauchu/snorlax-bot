@@ -43,7 +43,7 @@ def test_apply_skips_streaming_and_keeps_source() -> None:
     assert "private static func fenceRanges" in SWIFT
     assert "private static func indentedCodeRanges" in SWIFT
     assert "private static func mathRanges" in SWIFT
-    assert "private static func htmlBlockKind" in SWIFT
+    assert "MarkdownList.htmlBlockLineEnd" in SWIFT
     assert "§§SBH§§" in SWIFT
     assert "soft break" in SWIFT
     assert "renders as a space" in SWIFT
