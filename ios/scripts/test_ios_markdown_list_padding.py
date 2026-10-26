@@ -41,7 +41,7 @@ def test_padding_keeps_streaming_and_source() -> None:
     assert "spacesAfter >= 5 || spacesAfter < 1 || blank" in SWIFT
     assert "markerColumn + 1" in SWIFT
     assert "v1.54" in SWIFT
-    assert "private static func lazyLine" in SWIFT
+    assert "static func lazyItemLine" in SWIFT
     assert "if !sawContent { break }" in SWIFT
     assert "markdown source" in SWIFT
     assert "UIPasteboard" not in SWIFT

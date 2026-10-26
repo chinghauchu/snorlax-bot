@@ -2,10 +2,11 @@
 # SPDX-License-Identifier: Apache-2.0
 """v1.56 CommonMark lists do not interrupt a paragraph in completed assistant replies.
 
-A completed LEFT kind=message keeps 9. / 14. / 2) / 01. in the
+A completed LEFT kind=message keeps 9. / 14. / 2) / 0. / 003. in the
 paragraph, and keeps an empty 1. or * in the paragraph too. 1. and
 1) and a bullet with text still start a list. A blank line, a
-heading, or a fence lets any start number begin a list. Streaming
+heading, or a fence lets any start number begin a list. v1.88
+lets the integer 1 (`01.`) interrupt; this file does not. Streaming
 stays the markdown string. Copy controls keep markdown source.
 No animation. No new HTTP. OpenAPI stays 0.18.0.
 Never reintroduce computerPane.ts.
@@ -39,7 +40,7 @@ PHRASE = (
 def test_interrupt_rule() -> None:
     assert "v1.56" in SWIFT
     assert "private static func markerInterruptsParagraph" in SWIFT
-    assert 'marker.digits != "1"' in SWIFT
+    assert "marker.ordered && marker.number != 1" in SWIFT
     assert "marker.text.isEmpty" in SWIFT
     assert "if !completed { return [.markdown(src)] }" in SWIFT
     assert "markdown source" in SWIFT
@@ -47,7 +48,7 @@ def test_interrupt_rule() -> None:
     assert "/v1/" not in SWIFT
     assert "v1.56" in DESKTOP
     assert "function markerInterruptsParagraph" in DESKTOP
-    assert 'marker.digits !== "1"' in DESKTOP
+    assert "marker.ordered && marker.number !== 1" in DESKTOP
     assert 'marker.text === ""' in DESKTOP
     assert "copyText" not in DESKTOP
     assert "clipboard" not in DESKTOP

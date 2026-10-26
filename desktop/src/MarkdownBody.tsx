@@ -106,6 +106,7 @@ import {
 } from "./markdownTable";
 import { listIsLoose } from "./markdownLooseList";
 import {
+  listNeedsCmarkOrderedOne,
   listSplitByCmarkHtml,
   markdownListLineRanges,
   splitMarkdownLists,
@@ -587,7 +588,9 @@ function MarkdownParsed({
   const unwrapParagraphs = useContext(TightParagraphContext);
   if (
     completed &&
-    (textHasTableInList(sourceText) || listSplitByCmarkHtml(sourceText))
+    (textHasTableInList(sourceText) ||
+      listSplitByCmarkHtml(sourceText) ||
+      listNeedsCmarkOrderedOne(sourceText))
   ) {
     return (
       <MarkdownListsWithTables
@@ -628,7 +631,10 @@ function textHasTableInList(text: string): boolean {
  * contains a table is drawn here so the table stays inside the
  * item. v1.87: a list that cmark-gfm ends at a margin type 7 tag
  * or a `source` block is drawn here too, so that tag stays outside
- * the item. Other lists stay on react-markdown.
+ * the item. v1.88: an ordered marker whose integer value is 1
+ * but whose digits are not exactly `1` (`01.`, `001.`) is drawn
+ * here too, because react-markdown leaves it in the paragraph.
+ * Other lists stay on react-markdown.
  */
 function MarkdownListsWithTables({
   text,

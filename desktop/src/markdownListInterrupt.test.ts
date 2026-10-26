@@ -73,10 +73,9 @@ test("a non-1 ordered marker stays in the paragraph", () => {
   assert.doesNotMatch(html(run), /<ol/);
 
   assert.deepEqual(blocks("Foo\n0. bar"), [{ type: "markdown", text: "Foo\n0. bar" }]);
-  assert.deepEqual(blocks("Foo\n01. bar\n02. baz"), [
-    { type: "markdown", text: "Foo\n01. bar\n02. baz" },
+  assert.deepEqual(blocks("Foo\n003. bar"), [
+    { type: "markdown", text: "Foo\n003. bar" },
   ]);
-  assert.match(html("Foo\n01. bar"), /<p>Foo\n01\. bar<\/p>/);
   assert.deepEqual(blocks("para\n2) no\n3) still"), [
     { type: "markdown", text: "para\n2) no\n3) still" },
   ]);
@@ -182,10 +181,10 @@ test("streaming stays the markdown string and copy stays source", () => {
   assert.deepEqual(blocks(live, false), [{ type: "markdown", text: live }]);
   assert.match(src, /v1\.56/);
   assert.match(src, /function markerInterruptsParagraph/);
-  assert.match(src, /marker\.digits !== "1"/);
+  assert.match(src, /marker\.ordered && marker\.number !== 1/);
   assert.match(swift, /v1\.56/);
   assert.match(swift, /markerInterruptsParagraph/);
-  assert.match(swift, /marker\.digits != "1"/);
+  assert.match(swift, /marker\.ordered && marker\.number != 1/);
   assert.match(swift, /if !completed \{ return \[.markdown\(src\)\] \}/);
   assert.doesNotMatch(src, /copyText/);
   assert.doesNotMatch(src, /clipboard/);

@@ -156,20 +156,26 @@ enum MarkdownLooseList {
                 break
             }
             if let opened = fenceOnLine(line) {
-                if leadingColumns(line).columns < marker.contentColumn { break }
-                fence = opened.marker
-                body.append(dedent(line, columns: marker.contentColumn))
-                sawContent = true
-                index += 1
-                continue
+                let cols = leadingColumns(line).columns
+                if cols >= marker.contentColumn {
+                    fence = opened.marker
+                    body.append(dedent(line, columns: marker.contentColumn))
+                    sawContent = true
+                    index += 1
+                    continue
+                }
+                if cols <= 3 { break }
             }
             if line.trimmingCharacters(in: .whitespaces) == "$$" {
-                if leadingColumns(line).columns < marker.contentColumn { break }
-                inMath = true
-                body.append(dedent(line, columns: marker.contentColumn))
-                sawContent = true
-                index += 1
-                continue
+                let cols = leadingColumns(line).columns
+                if cols >= marker.contentColumn {
+                    inMath = true
+                    body.append(dedent(line, columns: marker.contentColumn))
+                    sawContent = true
+                    index += 1
+                    continue
+                }
+                if cols <= 3 { break }
             }
             if let nested = parseMarker(line) {
                 if nested.column >= marker.contentColumn {
@@ -178,7 +184,7 @@ enum MarkdownLooseList {
                     index += 1
                     continue
                 }
-                break
+                if nested.column <= 3 { break }
             }
             if leadingColumns(line).columns >= marker.contentColumn {
                 body.append(dedent(line, columns: marker.contentColumn))
@@ -187,7 +193,7 @@ enum MarkdownLooseList {
                 continue
             }
             if sawContent && !sawBlank && !interruptsList(line) {
-                body.append(lazyLine(line))
+                body.append(MarkdownList.lazyItemLine(line))
                 index += 1
                 continue
             }
@@ -321,15 +327,8 @@ enum MarkdownLooseList {
         )
     }
 
-    private static func lazyLine(_ line: String) -> String {
-        var index = line.startIndex
-        while index < line.endIndex, line[index] == " " || line[index] == "\t" {
-            index = line.index(after: index)
-        }
-        return String(line[index...])
-    }
-
     private static func interruptsList(_ line: String) -> Bool {
+        if leadingColumns(line).columns > 3 { return false }
         if isThematicBreak(line) { return true }
         let lead = leadingColumns(line)
         let rest = String(line[lead.index...])

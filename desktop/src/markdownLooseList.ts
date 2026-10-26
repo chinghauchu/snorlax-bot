@@ -25,7 +25,12 @@
  * Keep in lockstep with `ios/SnorlaxBot/MarkdownLooseList.swift`.
  */
 
-import { htmlBlockStarts, listMarkerPadding, markdownListEnd } from "./markdownList.ts";
+import {
+  htmlBlockStarts,
+  lazyItemLine,
+  listMarkerPadding,
+  markdownListEnd,
+} from "./markdownList.ts";
 
 /** Compact gap between items of a tight list. iOS rows and task rows. */
 export const TIGHT_LIST_ITEM_SPACING_PX = 4;
@@ -174,20 +179,26 @@ function readItem(
     }
     const opened = fenceOnLine(line);
     if (opened) {
-      if (leadingColumns(line).columns < marker.contentColumn) break;
-      fence = opened.marker;
-      body.push(dedent(line, marker.contentColumn));
-      sawContent = true;
-      i += 1;
-      continue;
+      const cols = leadingColumns(line).columns;
+      if (cols >= marker.contentColumn) {
+        fence = opened.marker;
+        body.push(dedent(line, marker.contentColumn));
+        sawContent = true;
+        i += 1;
+        continue;
+      }
+      if (cols <= 3) break;
     }
     if (line.trim() === "$$") {
-      if (leadingColumns(line).columns < marker.contentColumn) break;
-      inMath = true;
-      body.push(dedent(line, marker.contentColumn));
-      sawContent = true;
-      i += 1;
-      continue;
+      const cols = leadingColumns(line).columns;
+      if (cols >= marker.contentColumn) {
+        inMath = true;
+        body.push(dedent(line, marker.contentColumn));
+        sawContent = true;
+        i += 1;
+        continue;
+      }
+      if (cols <= 3) break;
     }
     const nested = parseMarker(line);
     if (nested && nested.column >= marker.contentColumn) {
@@ -196,7 +207,7 @@ function readItem(
       i += 1;
       continue;
     }
-    if (nested && nested.column < marker.contentColumn) break;
+    if (nested && nested.column <= 3 && nested.column < marker.contentColumn) break;
     if (leadingColumns(line).columns >= marker.contentColumn) {
       body.push(dedent(line, marker.contentColumn));
       sawContent = true;
@@ -204,7 +215,7 @@ function readItem(
       continue;
     }
     if (sawContent && !sawBlank && !interruptsList(line)) {
-      body.push(line.replace(/^[ \t]+/, ""));
+      body.push(lazyItemLine(line));
       i += 1;
       continue;
     }
@@ -338,6 +349,7 @@ function parseMarker(line: string): Marker | null {
 }
 
 function interruptsList(line: string): boolean {
+  if (leadingColumns(line).columns > 3) return false;
   if (isThematicBreak(line)) return true;
   const lead = leadingColumns(line);
   const rest = line.slice(lead.index);
