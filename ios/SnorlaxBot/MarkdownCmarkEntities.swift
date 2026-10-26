@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 
 /// HTML5 named character references from cmark-gfm (2125 names).
-/// Destinations use the full table. Ordinary text stays on the
-/// smaller set in MarkdownEscape.
+/// v1.90: ordinary text, titles, image alts, and destinations
+/// share this table. A name that is not here stays literal.
 enum MarkdownCmarkEntities {
     static let named: [String: String] = [
         "AElig": "\u{C6}",

@@ -3,8 +3,8 @@
 /**
  * HTML5 named character references from cmark-gfm
  * (2125 names). Generated from cmark's entities.inc.
- * Destinations use the full table. Ordinary text stays on the
- * smaller set in markdownEscape.ts.
+ * v1.90: ordinary text, titles, image alts, and destinations
+ * share this table. A name that is not here stays literal.
  */
 
 export const CMARK_NAMED_ENTITIES: Record<string, string> = {

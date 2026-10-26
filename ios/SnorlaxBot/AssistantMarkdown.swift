@@ -32,16 +32,20 @@ struct AssistantMarkdown: View {
                         wrapScope: wrapScope
                     )
                 case .code(let language, let source):
-                    if completed && MarkdownSplit.isMermaidLanguage(language) {
+                    // v1.90: a completed fence info string decodes
+                    // character references. Streaming keeps the source
+                    // word. The code body is not decoded.
+                    let shown = completed ? MarkdownEscape.decodedText(language) : language
+                    if completed && MarkdownSplit.isMermaidLanguage(shown) {
                         MermaidFence(
-                            language: language,
+                            language: shown,
                             source: source,
                             completed: completed,
                             wrapId: CodeBlockWrap.blockId(scope: wrapScope, index: index)
                         )
                     } else {
                         CodeFence(
-                            language: language,
+                            language: shown,
                             source: source,
                             completed: completed,
                             wrapId: CodeBlockWrap.blockId(scope: wrapScope, index: index)

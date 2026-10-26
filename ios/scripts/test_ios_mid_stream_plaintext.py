@@ -126,7 +126,7 @@ def test_complete_or_stop_renders_markdown_then_split() -> None:
     assert "shouldRenderMermaid" in DESKTOP_BODY
     assert "shouldRenderMath" in DESKTOP_BODY
     assert "react-markdown" in DESKTOP_BODY
-    assert "completed && MarkdownSplit.isMermaidLanguage(language)" in MARKDOWN
+    assert "completed && MarkdownSplit.isMermaidLanguage(shown)" in MARKDOWN
     assert "completed && closed" in MARKDOWN
 
 

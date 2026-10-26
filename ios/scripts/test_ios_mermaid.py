@@ -42,7 +42,7 @@ def spoken_text(src: str) -> str:
 def test_mermaid_on_left_kind_message() -> None:
     assert "isMermaidLanguage" in MARKDOWN
     assert "MermaidFence" in MARKDOWN
-    assert "completed && MarkdownSplit.isMermaidLanguage(language)" in MARKDOWN
+    assert "completed && MarkdownSplit.isMermaidLanguage(shown)" in MARKDOWN
     assert "var completed: Bool = true" in MARKDOWN
     assert "AssistantMarkdown(" in CHAT
     assert "completed: completed" in CHAT

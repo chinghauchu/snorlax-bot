@@ -6,11 +6,14 @@
  *
  * A backslash before ASCII punctuation becomes that character and
  * must not start emphasis, a link, a list, or any other construct.
- * Named references (the common HTML5 set) and decimal / hex numeric
- * references decode to their characters. Unknown names and broken
- * references stay literal. A numeric reference that is zero, a
- * surrogate, a noncharacter, a disallowed control, or past
+ * Named references (the HTML5 set cmark-gfm uses) and decimal / hex
+ * numeric references decode to their characters. Unknown names and
+ * broken references stay literal. A numeric reference that is zero,
+ * a surrogate, a noncharacter, a disallowed control, or past
  * U+10FFFF becomes U+FFFD, matching CommonMark.
+ * v1.90: titles and image alts share this lookup, so `&ouml;` and
+ * `&ngE;` decode there too. A fence info string is not a code body;
+ * the language label keeps the decoded word.
  *
  * Code spans, fenced code, and indented code blocks are left
  * byte-for-byte so `\*` and `&amp;` stay visible there. Call this
@@ -43,6 +46,7 @@
  * Keep in lockstep with `ios/SnorlaxBot/MarkdownEscape.swift`.
  */
 
+import { CMARK_NAMED_ENTITIES } from "./markdownCmarkEntities.ts";
 import { linkDestinationSpans } from "./markdownLinkDest.ts";
 import { protectSymbolFlanks } from "./markdownSymbol.ts";
 import { protectIntrawordUnderscores } from "./markdownUnderscore.ts";
@@ -63,56 +67,6 @@ const ESCAPE_TOKEN_ENCODED = /%C2%A7%C2%A7SBE((?:[0-9A-F]{6})+)%C2%A7%C2%A7/gi;
  * (hard break), stays a backslash.
  */
 export const ASCII_PUNCT = "!\"#$%&'()*+,-./:;<=>?@[\\]^_`{|}~";
-
-/**
- * Common HTML5 named character references, plus the uppercase
- * aliases HTML5 actually defines and the check marks. Names are
- * case-sensitive. Anything else stays literal.
- */
-const NAMED: Record<string, string> = {
-  "amp": "\u0026",
-  "AMP": "\u0026",
-  "lt": "\u003C",
-  "LT": "\u003C",
-  "gt": "\u003E",
-  "GT": "\u003E",
-  "quot": "\u0022",
-  "QUOT": "\u0022",
-  "apos": "\u0027",
-  "nbsp": "\u00A0",
-  "copy": "\u00A9",
-  "COPY": "\u00A9",
-  "reg": "\u00AE",
-  "REG": "\u00AE",
-  "trade": "\u2122",
-  "TRADE": "\u2122",
-  "hellip": "\u2026",
-  "mdash": "\u2014",
-  "ndash": "\u2013",
-  "lsquo": "\u2018",
-  "rsquo": "\u2019",
-  "ldquo": "\u201C",
-  "rdquo": "\u201D",
-  "times": "\u00D7",
-  "divide": "\u00F7",
-  "deg": "\u00B0",
-  "plusmn": "\u00B1",
-  "middot": "\u00B7",
-  "bull": "\u2022",
-  "euro": "\u20AC",
-  "pound": "\u00A3",
-  "yen": "\u00A5",
-  "cent": "\u00A2",
-  "sect": "\u00A7",
-  "para": "\u00B6",
-  "larr": "\u2190",
-  "rarr": "\u2192",
-  "uarr": "\u2191",
-  "darr": "\u2193",
-  "check": "\u2713",
-  "checkmark": "\u2713",
-  "cross": "\u2717",
-};
 
 const PUNCT = new Set(ASCII_PUNCT);
 
@@ -252,10 +206,10 @@ function readReference(
     name += src[j];
     j += 1;
   }
-  if (!name || src[j] !== ";" || !Object.prototype.hasOwnProperty.call(NAMED, name)) {
+  if (!name || src[j] !== ";" || !Object.prototype.hasOwnProperty.call(CMARK_NAMED_ENTITIES, name)) {
     return null;
   }
-  return { value: NAMED[name] ?? "", next: j + 1 };
+  return { value: CMARK_NAMED_ENTITIES[name] ?? "", next: j + 1 };
 }
 
 function readNumeric(
