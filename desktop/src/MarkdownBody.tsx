@@ -94,6 +94,7 @@ import {
 } from "./markdownOrderedTask";
 import {
   TABLE_COPY_MS,
+  containsMarkdownTable,
   showTableCopy,
   protectTableCellBlocks,
   splitMarkdownTables,
@@ -103,6 +104,11 @@ import {
   type MarkdownTable,
   type TableAlign,
 } from "./markdownTable";
+import { listIsLoose } from "./markdownLooseList";
+import {
+  markdownListLineRanges,
+  splitMarkdownLists,
+} from "./markdownList";
 import {
   FOOTNOTES_TITLE,
   focusFootnote,
@@ -146,6 +152,12 @@ type Props = {
 type FenceOrder = { n: number };
 
 const FootnoteScopeContext = createContext("");
+
+/**
+ * v1.86: a tight list has no paragraph wrapper. Set while rendering
+ * the items of a tight list that contains a table.
+ */
+const TightParagraphContext = createContext(false);
 
 /** Message id shared by every bubble so a marker can find its note. */
 export function FootnoteScopeProvider({
@@ -571,6 +583,146 @@ function MarkdownParsed({
   order: FenceOrder;
   findQuery: string;
 }) {
+  const unwrapParagraphs = useContext(TightParagraphContext);
+  if (completed && textHasTableInList(sourceText)) {
+    return (
+      <MarkdownListsWithTables
+        text={sourceText}
+        knownNames={knownNames}
+        completed={completed}
+        wrapScope={wrapScope}
+        order={order}
+        findQuery={findQuery}
+        unwrapParagraphs={unwrapParagraphs}
+      />
+    );
+  }
+  return (
+    <MarkdownParsedBody
+      text={sourceText}
+      knownNames={knownNames}
+      completed={completed}
+      wrapScope={wrapScope}
+      order={order}
+      findQuery={findQuery}
+      unwrapParagraphs={unwrapParagraphs}
+    />
+  );
+}
+
+function textHasTableInList(text: string): boolean {
+  if (!text.includes("|")) return false;
+  return splitMarkdownLists(text, true).some(
+    (block) =>
+      block.type === "list" &&
+      block.list.items.some((item) => containsMarkdownTable(item)),
+  );
+}
+
+/**
+ * v1.86: react-markdown has no GFM tables. A list whose item
+ * contains a table is drawn here so the table stays inside the
+ * item. Other lists stay on react-markdown.
+ */
+function MarkdownListsWithTables({
+  text,
+  knownNames,
+  completed,
+  wrapScope,
+  order,
+  findQuery,
+  unwrapParagraphs,
+}: {
+  text: string;
+  knownNames: string[];
+  completed: boolean;
+  wrapScope: string;
+  order: FenceOrder;
+  findQuery: string;
+  unwrapParagraphs: boolean;
+}) {
+  const blocks = splitMarkdownLists(text, true);
+  const ranges = markdownListLineRanges(text, true);
+  const lines = text.replace(/\r\n/g, "\n").replace(/\r/g, "\n").split("\n");
+  let listN = 0;
+  return (
+    <>
+      {blocks.map((block, index) => {
+        if (block.type === "markdown") {
+          if (block.text === text) {
+            return (
+              <MarkdownParsedBody
+                key={`md-${index}`}
+                text={block.text}
+                knownNames={knownNames}
+                completed={completed}
+                wrapScope={wrapScope}
+                order={order}
+                findQuery={findQuery}
+                unwrapParagraphs={unwrapParagraphs}
+              />
+            );
+          }
+          return (
+            <MarkdownParsed
+              key={`md-${index}`}
+              text={block.text}
+              knownNames={knownNames}
+              completed={completed}
+              wrapScope={wrapScope}
+              order={order}
+              findQuery={findQuery}
+            />
+          );
+        }
+        const range = ranges[listN] ?? null;
+        listN += 1;
+        const slice =
+          range == null ? "" : lines.slice(range.start, range.end).join("\n");
+        const loose = slice ? listIsLoose(slice, true) : false;
+        const items = block.list.items.map((item, itemIndex) => (
+          <li key={`item-${itemIndex}`}>
+            <TightParagraphContext.Provider value={!loose}>
+              <MarkdownBody
+                text={item}
+                knownNames={knownNames}
+                completed={completed}
+                wrapScope={wrapScope}
+                fenceOrder={order}
+              />
+            </TightParagraphContext.Provider>
+          </li>
+        ));
+        if (block.list.ordered) {
+          return (
+            <ol key={`list-${index}`} start={block.list.start}>
+              {items}
+            </ol>
+          );
+        }
+        return <ul key={`list-${index}`}>{items}</ul>;
+      })}
+    </>
+  );
+}
+
+function MarkdownParsedBody({
+  text: sourceText,
+  knownNames,
+  completed,
+  wrapScope,
+  order,
+  findQuery,
+  unwrapParagraphs,
+}: {
+  text: string;
+  knownNames: string[];
+  completed: boolean;
+  wrapScope: string;
+  order: FenceOrder;
+  findQuery: string;
+  unwrapParagraphs: boolean;
+}) {
   const text = prepareLinkTitleForms(
     prepareImageAlts(
       prepareSpacedLinkDestinations(
@@ -640,6 +792,7 @@ function MarkdownParsed({
         p: ({ children }) => {
           const block = soleBlockMath(children, slots, completed, findQuery);
           if (block) return block;
+          if (unwrapParagraphs) return <>{enrich(children)}</>;
           return <p>{enrich(children)}</p>;
         },
         // v1.36: CommonMark already sets `start` when the list does

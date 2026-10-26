@@ -40,12 +40,14 @@
  */
 
 import {
+  LAZY_CONTINUATION_MARK,
   htmlBlockInterrupts,
   htmlLazyTag,
   listItemIndentedCode,
   listMarkerPadding,
   orderedListEnd,
 } from "./markdownList.ts";
+import { quoteLineInTable } from "./markdownTable.ts";
 import { listIsLoose } from "./markdownLooseList.ts";
 
 /** Empty ballot box. Not a control. */
@@ -129,13 +131,19 @@ export function splitQuoteAndTasks(
         if (rendered != null) {
           inner.push(rendered.text);
           carry = rendered.carry;
-          open = carry.fence ? false : paragraphOpenAfter(rendered.text, open);
+          // v1.86: a table is not a paragraph. A later line with no
+          // `>` does not continue the quote once a row is in a table.
+          if (carry.fence) open = false;
+          else if (quoteLineInTable(inner, inner.length - 1)) open = false;
+          else open = paragraphOpenAfter(rendered.text, open);
           i += 1;
           continue;
         }
         // v1.47: a paragraph inside the quote may continue without `>`.
         if (!open || endsLazyQuote(current, open)) break;
-        inner.push(current);
+        inner.push(
+          current.includes("|") ? LAZY_CONTINUATION_MARK + current : current,
+        );
         open = !htmlLazyTag(current);
         i += 1;
       }

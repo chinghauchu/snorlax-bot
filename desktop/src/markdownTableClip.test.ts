@@ -116,7 +116,7 @@ test("extra cells are dropped and short rows pad to the header", () => {
   assert.match(shaped.source, /DROPME/);
   assert.equal(tableClipboardText(shaped.source), aligned);
 
-  const kept = tableOf("| `a|b` | **x** |\n| :--- | ---: |\n| 1 | 2 | DROPME |");
+  const kept = tableOf("| `a\\|b` | **x** |\n| :--- | ---: |\n| 1 | 2 | DROPME |");
   assert.deepEqual(kept.header, ["`a|b`", "**x**"]);
   assert.deepEqual(kept.align, ["left", "right"]);
   assert.deepEqual(kept.rows, [["1", "2"]]);

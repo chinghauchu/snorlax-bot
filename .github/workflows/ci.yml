@@ -194,6 +194,7 @@ jobs:
           python3 ios/scripts/test_ios_markdown_strike_flank.py
           python3 ios/scripts/test_ios_markdown_autolink_path.py
           python3 ios/scripts/test_ios_markdown_autolink_edge.py
+          python3 ios/scripts/test_ios_markdown_table_edge.py
           python3 ios/scripts/test_ios_markdown_list_code_tab.py
           python3 ios/scripts/test_ios_markdown_quote_tab.py
           python3 ios/scripts/test_ios_markdown_angle_dest.py

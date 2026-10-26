@@ -22,10 +22,22 @@
  * rule, quote, list, fence, indented code, raw HTML block, or
  * `$$` line still ends it. A pipe-less header does not start a
  * table, so `foo` over `---` stays a setext heading.
+ * v1.86: cmark-gfm table edges. An unescaped `|` inside a code
+ * span splits the row. A footnote definition ends the table.
+ * A lazy delimiter is not a table, and a lazy body line ends it.
+ * A table inside a list stays in the list. A link reference
+ * definition still stays in the cell.
  * Keep in lockstep with `ios/SnorlaxBot/MarkdownTable.swift`.
  */
 
-import { htmlBlockInterrupts, htmlLazyTag } from "./markdownList.ts";
+import {
+  LAZY_CONTINUATION_MARK,
+  htmlBlockInterrupts,
+  htmlLazyTag,
+  markdownListEnd,
+  setLazyLineEndsItem,
+  splitMarkdownLists,
+} from "./markdownList.ts";
 import { fenceInfoAllowsOpen } from "./math.ts";
 
 export const TABLE_COPY_LABEL = "Copy";
@@ -81,8 +93,17 @@ export function tableCopyAnimates(reduceMotion: boolean): boolean {
   return false;
 }
 
-export function containsMarkdownTable(text: string): boolean {
-  return splitMarkdownTables(text, true).some((part) => part.type === "table");
+export function containsMarkdownTable(text: string, seen?: Set<string>): boolean {
+  if (!text || !text.includes("|")) return false;
+  if (splitMarkdownTables(text, true).some((part) => part.type === "table")) return true;
+  if (seen?.has(text)) return false;
+  const next = seen ?? new Set<string>();
+  next.add(text);
+  return splitMarkdownLists(text, true).some(
+    (block) =>
+      block.type === "list" &&
+      block.list.items.some((item) => containsMarkdownTable(item, next)),
+  );
 }
 
 /**
@@ -98,7 +119,10 @@ export function splitMarkdownTables(
   const src = text.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
   if (!completed) return [{ type: "markdown", text: src }];
 
-  const lines = src.split("\n");
+  const rawLines = src.split("\n");
+  const peeled = rawLines.map(peelLazyContinuation);
+  const lines = peeled.map((part) => part.text);
+  const lazy = peeled.map((part) => part.lazy);
   const segments: MarkdownTableSegment[] = [];
   let mdStart = 0;
   let i = 0;
@@ -120,7 +144,14 @@ export function splitMarkdownTables(
       i += 1;
       continue;
     }
-    const found = parseTable(lines, i);
+    // A table inside a list stays with the item. Hoisting it would
+    // paint the table as a sibling of the list.
+    const listEnd = markdownListEnd(lines, i);
+    if (listEnd != null && listEnd > i) {
+      i = listEnd;
+      continue;
+    }
+    const found = parseTable(lines, i, lazy);
     if (!found) {
       i += 1;
       continue;
@@ -131,8 +162,48 @@ export function splitMarkdownTables(
     mdStart = i;
   }
   pushMarkdown(lines.length);
-  if (segments.length === 0) return [{ type: "markdown", text: src }];
+  if (segments.length === 0) return [{ type: "markdown", text: lines.join("\n") }];
   return segments;
+}
+
+function peelLazyContinuation(line: string): { text: string; lazy: boolean } {
+  if (line.startsWith(LAZY_CONTINUATION_MARK)) {
+    return { text: line.slice(LAZY_CONTINUATION_MARK.length), lazy: true };
+  }
+  return { text: line, lazy: false };
+}
+
+/**
+ * True when `lines[index]` sits inside a table. Fences and `$$`
+ * are not tables. A lazy delimiter does not open one. Quote and
+ * list continuation use this so a lazy line after a table ends
+ * the block instead of joining it.
+ */
+export function quoteLineInTable(lines: string[], index: number): boolean {
+  if (index < 0 || index >= lines.length) return false;
+  const peeled = lines.map(peelLazyContinuation);
+  const texts = peeled.map((part) => part.text);
+  const lazy = peeled.map((part) => part.lazy);
+  let i = 0;
+  let fence: string | null = null;
+  let inMath = false;
+  while (i < texts.length && i <= index) {
+    const gate = blockGate(texts[i] ?? "", fence, inMath);
+    fence = gate.fence;
+    inMath = gate.inMath;
+    if (gate.blocked) {
+      i += 1;
+      continue;
+    }
+    const found = parseTable(texts, i, lazy);
+    if (found && found.next > i) {
+      if (index >= i && index < found.next) return true;
+      i = found.next;
+      continue;
+    }
+    i += 1;
+  }
+  return false;
 }
 
 function blockGate(
@@ -167,8 +238,12 @@ function blockGate(
 function parseTable(
   lines: string[],
   start: number,
+  lazy?: boolean[],
 ): { table: MarkdownTable; next: number } | null {
   if (start + 1 >= lines.length) return null;
+  // A lazy continuation cannot open a table. The header may be lazy
+  // when the delimiter itself is quoted or indented.
+  if (lazy?.[start + 1]) return null;
   const headerLine = lines[start] ?? "";
   const delimLine = lines[start + 1] ?? "";
   if (!isTableLine(headerLine) || !isTableLine(delimLine)) return null;
@@ -181,6 +256,7 @@ function parseTable(
   const body: string[][] = [];
   let next = start + 2;
   while (next < lines.length) {
+    if (lazy?.[next]) break;
     const line = lines[next] ?? "";
     if (!isTableLine(line) || interruptsTable(line)) break;
     const row = splitRow(line, true);
@@ -205,8 +281,12 @@ function parseTable(
  * when those lines are not a table. Reference links and footnotes
  * use this so a pipe-less body row is not stolen as a definition.
  */
-export function markdownTableEnd(lines: string[], start: number): number {
-  return parseTable(lines, start)?.next ?? start;
+export function markdownTableEnd(
+  lines: string[],
+  start: number,
+  lazy?: boolean[],
+): number {
+  return parseTable(lines, start, lazy)?.next ?? start;
 }
 
 function isTableLine(line: string): boolean {
@@ -234,7 +314,20 @@ function interruptsTable(line: string): boolean {
   if (isFenceLine(line)) return true;
   if (rest.trim() === "$$") return true;
   if (htmlBlockInterrupts(line) || htmlLazyTag(line)) return true;
+  if (isFootnoteDefinition(line)) return true;
   return false;
+}
+
+/**
+ * v1.86: with the footnote extension, `[^1]: note` ends the table.
+ * The definition is then a footnote. A link reference `[ref]: url`
+ * is not a footnote and stays a cell.
+ */
+function isFootnoteDefinition(line: string): boolean {
+  const lead = leadingColumns(line);
+  if (lead.columns > 3) return false;
+  const rest = line.slice(lead.index);
+  return /^\[\^[A-Za-z0-9_-]+\]:[ \t]*/.test(rest);
 }
 
 function isThematicBreak(line: string): boolean {
@@ -313,6 +406,16 @@ export function splitRow(line: string, pipeLess = false): string[] | null {
       if (ch === "\\" && (body[i + 1] ?? "") === "|") {
         current += "|";
         i += 2;
+        continue;
+      }
+      // v1.86: cmark-gfm splits on `|` even inside a code span, and
+      // the next cell does not stay inside that span.
+      if (ch === "|") {
+        pipes += 1;
+        cells.push(current.trim());
+        current = "";
+        code = 0;
+        i += 1;
         continue;
       }
       current += ch;
@@ -493,3 +596,5 @@ function rectangular(
   while (nextAlign.length < width) nextAlign.push("left");
   return { header: fit(header), rows: rows.map(fit), align: nextAlign };
 }
+
+setLazyLineEndsItem((body) => quoteLineInTable(body, body.length - 1));

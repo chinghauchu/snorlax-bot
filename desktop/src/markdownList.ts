@@ -61,6 +61,30 @@
  * Keep in lockstep with `ios/SnorlaxBot/MarkdownList.swift`.
  */
 
+/**
+ * v1.86: a lazy continuation that contains `|` is marked so a later
+ * table parse can refuse a lazy delimiter or a lazy body row.
+ * Lines without a pipe stay unmarked. `foo` then `bar` is unchanged.
+ */
+export const LAZY_CONTINUATION_MARK = "§§SBTL§§";
+
+/**
+ * v1.86: a table is not a paragraph. When the item body already
+ * ends inside a table, a lazy line ends the item. markdownTable.ts
+ * installs the probe. Until then, lazy lines stay in the item.
+ */
+let lazyLineEndsItem: (body: string[]) => boolean = () => false;
+
+export function setLazyLineEndsItem(probe: (body: string[]) => boolean): void {
+  lazyLineEndsItem = probe;
+}
+
+function markLazyContinuation(line: string): string {
+  const text = line.replace(/^[ \t]+/, "");
+  if (!text.includes("|")) return text;
+  return LAZY_CONTINUATION_MARK + text;
+}
+
 export type MarkdownListGroup = {
   ordered: boolean;
   /** First marker's number. Bullets use 1 and ignore it. */
@@ -177,6 +201,54 @@ export function splitMarkdownLists(
   pushMarkdown(lines.length);
   if (blocks.length === 0) return [{ type: "markdown", text: src }];
   return blocks;
+}
+
+/**
+ * Line spans of each top-level list, in the same order as
+ * `splitMarkdownLists`. A tight list that contains a table uses
+ * this to keep paragraph tags off the item.
+ */
+export function markdownListLineRanges(
+  text: string,
+  completed = true,
+): { start: number; end: number }[] {
+  if (!text || !completed) return [];
+  const src = text.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
+  const lines = src.split("\n");
+  const ranges: { start: number; end: number }[] = [];
+  let i = 0;
+  let fence: string | null = null;
+  let inMath = false;
+  let paragraph = false;
+
+  while (i < lines.length) {
+    const line = lines[i] ?? "";
+    const gate = blockGate(line, fence, inMath);
+    fence = gate.fence;
+    inMath = gate.inMath;
+    if (gate.blocked) {
+      paragraph = false;
+      i += 1;
+      continue;
+    }
+    const htmlEnd = htmlBlockEnd(lines, i, paragraph);
+    if (htmlEnd != null) {
+      paragraph = false;
+      i = htmlEnd;
+      continue;
+    }
+    const marker = parseMarker(line);
+    if (marker && marker.column <= 3 && (!paragraph || markerInterruptsParagraph(marker))) {
+      const found = readList(lines, i, marker);
+      ranges.push({ start: i, end: found.next });
+      i = found.next;
+      paragraph = false;
+      continue;
+    }
+    paragraph = nextParagraphOpen(line, paragraph);
+    i += 1;
+  }
+  return ranges;
 }
 
 /**
@@ -508,7 +580,10 @@ function readItem(
       // A lazy line is still the open paragraph. Its partial
       // indent is not part of the text. A type 7 tag (`<br>`)
       // stays in the item and ends further lazy lines.
-      body.push(line.replace(/^[ \t]+/, ""));
+      // v1.86: a table is not a paragraph, so a lazy line after
+      // one ends the item instead of joining it.
+      if (body.length > 0 && lazyLineEndsItem(body)) break;
+      body.push(markLazyContinuation(line));
       paragraph = true;
       if (htmlLazyTag(line)) sawBlank = true;
       i += 1;
