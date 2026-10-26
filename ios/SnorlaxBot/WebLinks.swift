@@ -25,6 +25,14 @@ import SwiftUI
 /// `mailto:` prefix stays in the text. A scheme other than mailto
 /// before the address stays plain. Pass `emails: true` only for
 /// that completed reply; user text and a streaming bubble do not.
+/// v1.85: the http(s) scan uses cmark-gfm's domain rule. An underscore
+/// in either of the last two segments (ten segments or fewer) is not
+/// a link. The character before the scheme cannot be an ASCII letter.
+/// The first host character cannot be punctuation. A trailing
+/// entity-like run is letters only, so `&hl;` stays outside and
+/// `&hl1;` keeps the digits. An extended email must end in a letter.
+/// Only the exact prefix `mailto:` is part of the link; `MAILTO:`
+/// stays outside the address. Other schemes stay plain.
 /// Keep in lockstep with `desktop/src/linkify.ts`.
 enum WebLinks {
     struct Piece: Equatable {
@@ -147,7 +155,27 @@ enum WebLinks {
                 searchLocation = match.range.location + 1
                 continue
             }
+            // v1.85: cmark rewinds ASCII letters into the scheme.
+            if range.lowerBound > text.startIndex {
+                let prev = text[text.index(before: range.lowerBound)]
+                if isAsciiAlpha(prev) {
+                    searchLocation = match.range.location + 1
+                    continue
+                }
+            }
             let scanned = String(text[range])
+            let scheme = scanned.lowercased().hasPrefix("https://") ? 8 : 7
+            let hostCharIndex = text.index(range.lowerBound, offsetBy: scheme, limitedBy: text.endIndex) ?? text.endIndex
+            guard hostCharIndex < text.endIndex, isAutolinkHostChar(text[hostCharIndex]) else {
+                searchLocation = match.range.location + 1
+                continue
+            }
+            let hostPos = text.distance(from: text.startIndex, to: hostCharIndex)
+            guard checkDomain(Array(text), hostPos, allowShort: true) != nil else {
+                let next = text.index(range.lowerBound, offsetBy: scheme)
+                searchLocation = text.utf16.distance(from: text.startIndex, to: next)
+                continue
+            }
             let raw = clipAngleCloser(text, range.lowerBound, scanned)
             let rawEnd = text.index(range.lowerBound, offsetBy: raw.count)
             if streaming && rawEnd == text.endIndex { break }
@@ -360,10 +388,11 @@ enum WebLinks {
         ch == " " || ch == "\t" || ch == "\n" || ch == "\r" || ch == "\u{000C}" || ch == "\u{000B}"
     }
 
-    /// cmark-gfm `check_domain`. Returns where the domain scan stopped.
-    private static func checkDomain(_ chars: [Character], _ start: Int) -> Int? {
+    /// cmark-gfm `check_domain`. `allowShort` is the http(s) scan:
+    /// a host with no dot is allowed. `www.` passes false.
+    private static func checkDomain(_ chars: [Character], _ start: Int, allowShort: Bool = false) -> Int? {
         let size = chars.count - start
-        if size < 4 { return nil }
+        if !allowShort && size < 4 { return nil }
         var np = 0
         var uscore1 = 0
         var uscore2 = 0
@@ -379,20 +408,41 @@ enum WebLinks {
                 uscore1 = uscore2
                 uscore2 = 0
                 np += 1
-            } else if !isHostChar(c) && c != "-" {
+            } else if !isAutolinkHostChar(c) && c != "-" {
                 break
             }
             i += 1
         }
         if (uscore1 > 0 || uscore2 > 0) && np <= 10 { return nil }
-        if np == 0 { return nil }
-        return start + i
+        if allowShort || np > 0 { return start + i }
+        return nil
     }
 
-    private static func isHostChar(_ ch: Character) -> Bool {
-        guard let scalar = ch.unicodeScalars.first, ch.unicodeScalars.count == 1 else { return false }
-        let v = scalar.value
-        return (v >= 48 && v <= 57) || (v >= 65 && v <= 90) || (v >= 97 && v <= 122)
+    /// cmark ASCII punctuation, including symbols such as `$` `+` `<` `=`.
+    private static let cmarkAsciiPunct: Set<Character> = Set("!\"#$%&'()*+,-./:;<=>?@[\\]^_`{|}~")
+
+    /// cmark-gfm `is_valid_hostchar`: not a space and not punctuation.
+    private static func isAutolinkHostChar(_ ch: Character) -> Bool {
+        if isWwwSpace(ch) || ch.unicodeScalars.contains(where: { $0.properties.generalCategory == .spaceSeparator }) {
+            return false
+        }
+        if isCmarkPunct(ch) { return false }
+        return true
+    }
+
+    private static func isCmarkPunct(_ ch: Character) -> Bool {
+        if ch.unicodeScalars.count == 1, let scalar = ch.unicodeScalars.first, scalar.value < 128 {
+            return cmarkAsciiPunct.contains(ch)
+        }
+        return ch.unicodeScalars.contains { scalar in
+            switch scalar.properties.generalCategory {
+            case .connectorPunctuation, .dashPunctuation, .openPunctuation,
+                 .closePunctuation, .initialPunctuation, .finalPunctuation, .otherPunctuation:
+                return true
+            default:
+                return false
+            }
+        }
     }
 
     /// GFM extended-autolink path trim: trailing punct, unmatched `)`, entities.
@@ -421,8 +471,10 @@ enum WebLinks {
                 continue
             }
             if c == ";" {
+                // cmark walks letters only. `&hl;` drops the entity.
+                // `&hl1;` keeps the digits and drops the semicolon.
                 var k = end - 2
-                while k > start && isAlnum(chars[k]) {
+                while k > start && isAsciiAlpha(chars[k]) {
                     k -= 1
                 }
                 if k >= start && k < end - 2 && chars[k] == "&" {
@@ -441,6 +493,12 @@ enum WebLinks {
         guard let scalar = ch.unicodeScalars.first, ch.unicodeScalars.count == 1 else { return false }
         let v = scalar.value
         return (v >= 48 && v <= 57) || (v >= 65 && v <= 90) || (v >= 97 && v <= 122)
+    }
+
+    private static func isAsciiAlpha(_ ch: Character) -> Bool {
+        guard let scalar = ch.unicodeScalars.first, ch.unicodeScalars.count == 1 else { return false }
+        let v = scalar.value
+        return (v >= 65 && v <= 90) || (v >= 97 && v <= 122)
     }
 
     private static func codeRanges(in text: String) -> [Range<String.Index>] {
@@ -615,7 +673,8 @@ enum WebLinks {
     }
 
     private static func isEmailDomain(_ domain: String) -> Bool {
-        guard !domain.isEmpty, !domain.hasSuffix("-"), !domain.hasSuffix("_") else { return false }
+        // cmark requires the last character to be a letter.
+        guard !domain.isEmpty, let last = domain.last, isAsciiAlpha(last) else { return false }
         let labels = domain.split(separator: ".", omittingEmptySubsequences: false)
         guard labels.count >= 2 else { return false }
         return labels.allSatisfy { label in
@@ -695,8 +754,10 @@ enum WebLinks {
             if streaming && domainEnd == chars.count { return nil }
             let visible = mailtoPrefixStart(chars, local, blocked)
             if visible == local && local > 0 && chars[local - 1] == ":" {
-                i = at + 1
-                continue
+                if !isMailtoCaseVariant(chars, local - 1) {
+                    i = at + 1
+                    continue
+                }
             }
             return EmailHit(start: visible, end: domainEnd, value: String(chars[visible..<domainEnd]))
         }
@@ -752,10 +813,20 @@ enum WebLinks {
         guard localStart >= 7 else { return localStart }
         let prefixStart = localStart - 7
         let prefix = String(chars[prefixStart..<localStart])
-        guard prefix.lowercased() == "mailto:" else { return localStart }
+        // Exact `mailto:` only. `MAILTO:` is not this prefix.
+        guard prefix == "mailto:" else { return localStart }
         if blocked.contains(where: { $0.contains(prefixStart) }) { return localStart }
         if prefixStart > 0 && isAlnum(chars[prefixStart - 1]) { return localStart }
         return prefixStart
+    }
+
+    /// `MAILTO:` and `Mailto:` are not the prefix, but the address after
+    /// them is still an email. Any other scheme stays plain.
+    private static func isMailtoCaseVariant(_ chars: [Character], _ colon: Int) -> Bool {
+        var i = colon
+        while i > 0 && isAsciiAlpha(chars[i - 1]) { i -= 1 }
+        let scheme = String(chars[i..<colon])
+        return scheme.count == 6 && scheme.lowercased() == "mailto" && scheme != "mailto"
     }
 
     private static func emailBlocked(_ text: String) -> [Range<Int>] {
