@@ -62,6 +62,10 @@ import SwiftUI
 /// spaces, and a later tab stays a tab. A line that continues
 /// an open paragraph is not code. A fence whose indent is
 /// under four columns is unchanged. Streaming stays plain text.
+///
+/// v1.89: a tab partly consumed by the list marker is one byte of
+/// fence indent, not its full column width. The leftover columns
+/// stay spaces in the code. Space-only fences are unchanged.
 /// Keep in lockstep with `desktop/src/markdownList.ts`.
 enum MarkdownList {
     struct Group: Equatable {
@@ -273,6 +277,8 @@ enum MarkdownList {
         }
         var index = start + 1
         var fence: String?
+        var fenceOffset = 0
+        var fenceLiteral = false
         var inMath = false
         var sawBlank = false
         var sawContent = !marker.text.isEmpty
@@ -280,13 +286,41 @@ enum MarkdownList {
         while index < lines.count {
             let line = lines[index]
             if let open = fence {
-                body.append(dedent(line, columns: marker.contentColumn))
-                if let opened = fenceOnLine(line),
-                   opened.marker.first == open.first,
-                   opened.marker.count >= open.count,
-                   opened.info.trimmingCharacters(in: .whitespaces).isEmpty
-                {
-                    fence = nil
+                if fenceLiteral {
+                    if MarkdownFenceIndent.tabFenceCloses(
+                        line,
+                        contentColumn: marker.contentColumn,
+                        marker: open
+                    ) {
+                        body.append(open)
+                        fence = nil
+                        fenceLiteral = false
+                    } else if !line.trimmingCharacters(in: .whitespaces).isEmpty,
+                              leadingColumns(line).columns < marker.contentColumn
+                    {
+                        // Not indented to the item, so the item and the open fence end.
+                        // The line itself belongs to the parent.
+                        fence = nil
+                        fenceLiteral = false
+                        break
+                    } else {
+                        body.append(
+                            MarkdownFenceIndent.tabFenceCodeLine(
+                                line,
+                                contentColumn: marker.contentColumn,
+                                fenceOffset: fenceOffset
+                            )
+                        )
+                    }
+                } else {
+                    body.append(dedent(line, columns: marker.contentColumn))
+                    if let opened = fenceOnLine(line),
+                       opened.marker.first == open.first,
+                       opened.marker.count >= open.count,
+                       opened.info.trimmingCharacters(in: .whitespaces).isEmpty
+                    {
+                        fence = nil
+                    }
                 }
                 index += 1
                 continue
@@ -325,16 +359,31 @@ enum MarkdownList {
                 index += 1
                 continue
             }
+            if leadingColumns(line).columns >= marker.contentColumn,
+               let tabbed = MarkdownFenceIndent.tabFenceOpen(line, contentColumn: marker.contentColumn)
+            {
+                fence = tabbed.marker
+                fenceOffset = tabbed.offset
+                fenceLiteral = true
+                body.append(tabbed.marker + tabbed.info)
+                sawContent = true
+                paragraph = false
+                index += 1
+                continue
+            }
             if let opened = fenceOnLine(line) {
                 let cols = leadingColumns(line).columns
                 if cols >= marker.contentColumn {
                     fence = opened.marker
+                    fenceLiteral = false
                     body.append(dedent(line, columns: marker.contentColumn))
                     sawContent = true
                     paragraph = false
                     index += 1
                     continue
                 }
+                // Four or more columns cannot open a fence. Fall through
+                // so an open paragraph keeps the line as lazy text.
                 if cols <= 3 { break }
             }
             if line.trimmingCharacters(in: .whitespaces) == "$$" {
