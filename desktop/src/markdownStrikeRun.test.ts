@@ -100,7 +100,7 @@ test("whitespace flanking stays literal and a soft newline strikes", () => {
   assert.doesNotMatch(afterBreak, /<del/);
 });
 
-test("nested marks, code, and a mixed single tilde stay put", () => {
+test("nested marks and code stay put, and a length-1 pair may hold a longer run", () => {
   assert.match(render("~~**bold**~~"), /<del class="md-strike"><strong>bold<\/strong><\/del>/);
   assert.match(render("**~~x~~**"), /<strong><del class="md-strike">x<\/del><\/strong>/);
   const code = render("say `~~nope~~` and ~~yes~~");
@@ -109,9 +109,7 @@ test("nested marks, code, and a mixed single tilde stay put", () => {
   const fence = render("~~~\n~~nope~~\n~~~\n\n~~yes~~");
   assert.match(fence, /<pre><code>~~nope~~\n<\/code><\/pre>/);
   assert.match(fence, /<del class="md-strike">yes<\/del>/);
-  const mixed = render("~foo~~bar~");
-  assert.doesNotMatch(mixed, /<del/);
-  assert.match(mixed, /~foo~~bar~/);
+  assert.equal(struck(render("~foo~~bar~")), "foo~~bar");
   assert.equal(struck(render("~~foo~bar~~")), "foo~bar");
   assert.equal(struck(render("~~foo.~~")), "foo.");
 });
@@ -143,11 +141,11 @@ test("streaming stays plain and copy keeps markdown source", () => {
   assert.doesNotMatch(singleSrc, /clipboard/);
   assert.doesNotMatch(strikeSrc, /\/v1\//);
   assert.match(strikeSrc, /end - i === 2/);
-  assert.match(singleSrc, /end - i === 1/);
-  assert.match(singleSrc, /shieldStrayTildes/);
-  assert.match(swift, /shieldStrayTildes/);
-  assert.match(swift, /§§SBE00007E§§/);
-  assert.match(swift, /end - i == 1/);
+  assert.match(strikeSrc, /runInLink/);
+  assert.doesNotMatch(singleSrc, /shieldStrayTildes/);
+  assert.doesNotMatch(swift, /shieldStrayTildes/);
+  assert.match(swift, /v1\.84 retires/);
+  assert.match(swift, /if !completed \|\| text.isEmpty \|\| !text.contains\("~"\)/);
   assert.doesNotMatch(swift, /UIPasteboard/);
   assert.doesNotMatch(swift, /\/v1\//);
   assert.ok(roadmap.includes(PHRASE));

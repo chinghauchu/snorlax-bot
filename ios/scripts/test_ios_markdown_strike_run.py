@@ -5,9 +5,9 @@
 A completed LEFT kind=message treats a strikethrough delimiter as a
 run of exactly two tildes. x ~~~foo~~~ y and ~~foo~~~ stay literal.
 ~~a~~~b~~ strikes a~~~b. ~~ foo ~~ stays literal. ~text~ still
-strikes. ~foo~~bar~ stays literal because a leftover single tilde is
-stashed. A soft newline inside ~~ strikes. A hard break still ends
-the pair. Code stays literal. Streaming stays plain text. Copy keeps
+strikes. v1.84 strikes ~foo~~bar~ as one pair of length 1. A soft
+newline inside ~~ strikes. A hard break still ends the pair. Code
+stays literal. Streaming stays plain text. Copy keeps
 markdown source. No animation. No new HTTP. OpenAPI stays 0.18.0.
 Never reintroduce computerPane.ts.
 """
@@ -39,14 +39,12 @@ PHRASE = "v1.70 GFM strikethrough tilde runs in completed assistant replies"
 
 def test_exact_double_run_and_stray_single() -> None:
     assert "end - i === 2" in BREAKS
-    assert "findDoubleRun" in BREAKS
+    assert "end - i === 1" in BREAKS
     assert "runInLink" in BREAKS
-    assert "shieldStrayTildes" in DESKTOP
-    assert "end - i === 1" in DESKTOP
-    assert "stashMarkdownText" in DESKTOP
-    assert "shieldStrayTildes" in SWIFT
-    assert "§§SBE00007E§§" in SWIFT
-    assert "end - i == 1" in SWIFT
+    assert "shieldStrayTildes" not in DESKTOP
+    assert "v1.84 retires" in DESKTOP
+    assert "shieldStrayTildes" not in SWIFT
+    assert "v1.84 retires" in SWIFT
     assert "static func promote(_ text: String, completed: Bool)" in SWIFT
     assert 'if !completed || text.isEmpty || !text.contains("~")' in SWIFT
     assert "markdown source" in SWIFT

@@ -37,16 +37,14 @@ PHRASE = "v1.50 GFM single-tilde strikethrough in completed assistant replies"
 def test_promote_keeps_streaming_and_source() -> None:
     assert "static func promote(_ text: String, completed: Bool)" in SWIFT
     assert 'if !completed || text.isEmpty || !text.contains("~")' in SWIFT
-    assert "isSingleOpener" in SWIFT
-    assert "findCloser" in SWIFT
-    assert "tildeInUrl" in SWIFT
-    assert "inLinkDestination" in SWIFT
-    assert "§§SBH§§" in SWIFT
+    assert "v1.84 retires" in SWIFT
+    assert "shieldStrayTildes" not in SWIFT
     assert "markdown source" in SWIFT
     assert "UIPasteboard" not in SWIFT
     assert "/v1/" not in SWIFT
     assert "export function promoteSingleTilde" in DESKTOP
-    assert "HARD_BREAK_TOKEN" in DESKTOP
+    assert "v1.84 retires" in DESKTOP
+    assert "shieldStrayTildes" not in DESKTOP
     assert "markdown source" in DESKTOP
     assert "copyText" not in DESKTOP
     assert "clipboard" not in DESKTOP
