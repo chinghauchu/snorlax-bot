@@ -43,14 +43,22 @@
  * v1.79: a link or image destination is left for the destination
  * pass. `&#38;` and `&#x27;` there must reach the markdown parser
  * so the href matches cmark-gfm. Ordinary text still decodes here.
+ * v1.91: a backslash inside an angle autolink or raw HTML stays a
+ * backslash. cmark-gfm does not treat it as an escape there.
+ * An autolink is copied whole, so `&amp;` inside the URL stays
+ * the source characters too. A raw HTML tag or HTML block still
+ * decodes a character reference (v1.61). `\<` before a tag is
+ * still an escape, so the following text is not raw HTML.
  * Keep in lockstep with `ios/SnorlaxBot/MarkdownEscape.swift`.
  */
 
 import { CMARK_NAMED_ENTITIES } from "./markdownCmarkEntities.ts";
+import { htmlTagEnd } from "./markdownHtmlLiteral.ts";
 import { linkDestinationSpans } from "./markdownLinkDest.ts";
+import { htmlBlockEnd } from "./markdownList.ts";
 import { protectSymbolFlanks } from "./markdownSymbol.ts";
 import { protectIntrawordUnderscores } from "./markdownUnderscore.ts";
-import { fenceRanges, inlineCodeRanges, type Range } from "./math.ts";
+import { fenceRanges, inRange, inlineCodeRanges, type Range } from "./math.ts";
 
 /** Placeholder. Six uppercase hex digits per Unicode scalar. */
 export const ESCAPE_TOKEN = /§§SBE((?:[0-9A-F]{6})+)§§/g;
@@ -79,17 +87,45 @@ export function protectMarkdownEscapes(text: string, completed = true): string {
   const prepared = protectSymbolFlanks(protectIntrawordUnderscores(text, true), true);
   if (!prepared.includes("\\") && !prepared.includes("&")) return prepared;
   const blocked = blockedRanges(prepared);
+  // v1.91: raw HTML keeps a backslash, and still decodes `&`.
+  const literal = slashLiteralRanges(prepared, blocked);
   let out = "";
   let i = 0;
   let bi = 0;
+  let li = 0;
   while (i < prepared.length) {
+    while (bi < blocked.length && i >= blocked[bi]!.end) bi += 1;
+    while (li < literal.length && i >= literal[li]!.end) li += 1;
     if (bi < blocked.length && i >= blocked[bi]!.start && i < blocked[bi]!.end) {
       out += prepared.slice(i, blocked[bi]!.end);
       i = blocked[bi]!.end;
       bi += 1;
       continue;
     }
-    while (bi < blocked.length && i >= blocked[bi]!.end) bi += 1;
+    if (li < literal.length && i >= literal[li]!.start && i < literal[li]!.end) {
+      const end = literal[li]!.end;
+      while (i < end) {
+        while (bi < blocked.length && i >= blocked[bi]!.end) bi += 1;
+        if (bi < blocked.length && i >= blocked[bi]!.start && blocked[bi]!.start < end) {
+          const stop = Math.min(blocked[bi]!.end, end);
+          out += prepared.slice(i, stop);
+          i = stop;
+          continue;
+        }
+        if (prepared[i] === "&") {
+          const ref = readReference(prepared, i);
+          if (ref && ref.next <= end) {
+            out += escapeToken(ref.value);
+            i = ref.next;
+            continue;
+          }
+        }
+        out += prepared[i] ?? "";
+        i += 1;
+      }
+      li += 1;
+      continue;
+    }
     const ch = prepared[i] ?? "";
     if (ch === "\\" && i + 1 < prepared.length && PUNCT.has(prepared[i + 1] ?? "")) {
       out += escapeToken(prepared[i + 1] ?? "");
@@ -256,7 +292,156 @@ function blockedRanges(src: string): Range[] {
   const fences = fenceRanges(src);
   const codes = inlineCodeRanges(src, fences);
   const indented = indentedCodeRanges(src, fences);
-  return mergeRanges([...fences, ...codes, ...indented, ...linkDestinationSpans(src)]);
+  const code = mergeRanges([...fences, ...codes, ...indented]);
+  // v1.91: an angle autolink is not an escape context. Copy it
+  // whole so `\*` and `&amp;` stay the source characters.
+  return mergeRanges([...code, ...linkDestinationSpans(src), ...autolinkRanges(src, code)]);
+}
+
+/**
+ * Raw HTML where a backslash stays, and a character reference
+ * still decodes. HTML blocks and inline tags. Not code, not an
+ * autolink, not a link destination.
+ */
+function slashLiteralRanges(src: string, blocked: Range[]): Range[] {
+  const blocks = rawHtmlBlockRanges(src);
+  const tags = inlineTagRanges(src, mergeRanges([...blocked, ...blocks]));
+  return mergeRanges([...blocks, ...tags]);
+}
+
+const AUTOLINK_SCHEME = /^[A-Za-z][A-Za-z0-9+.-]{1,31}:/;
+const AUTOLINK_EMAIL =
+  /^[A-Za-z0-9.!#$%&'*+/=?^_`{|}~-]+@[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?(?:\.[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?)*$/;
+
+/** CommonMark angle autolinks. An escaped `\<` is not one. */
+function autolinkRanges(src: string, skip: Range[]): Range[] {
+  const ranges: Range[] = [];
+  let i = 0;
+  while (i < src.length) {
+    if (inRange(i, skip)) {
+      i += 1;
+      continue;
+    }
+    if (src[i] !== "<" || escapedAt(src, i)) {
+      i += 1;
+      continue;
+    }
+    const end = autolinkEnd(src, i);
+    if (end == null) {
+      i += 1;
+      continue;
+    }
+    ranges.push({ start: i, end });
+    i = end;
+  }
+  return ranges;
+}
+
+function autolinkEnd(src: string, start: number): number | null {
+  let j = start + 1;
+  while (j < src.length) {
+    const ch = src[j] ?? "";
+    if (ch === ">") break;
+    const code = ch.codePointAt(0) ?? 0;
+    if (ch === "<" || code <= 32 || code === 127) return null;
+    j += 1;
+  }
+  if (src[j] !== ">") return null;
+  const inner = src.slice(start + 1, j);
+  if (!inner || (!AUTOLINK_SCHEME.test(inner) && !AUTOLINK_EMAIL.test(inner))) return null;
+  return j + 1;
+}
+
+type LineSpan = { text: string; start: number; nl: number };
+
+/** cmark HTML blocks. A backslash in the block is not an escape. */
+function rawHtmlBlockRanges(src: string): Range[] {
+  const fences = fenceRanges(src);
+  const lines = splitLineSpans(src);
+  const texts = lines.map((line) => line.text);
+  const ranges: Range[] = [];
+  let para = false;
+  let i = 0;
+  while (i < lines.length) {
+    const line = lines[i]!;
+    if (fences.some((fence) => line.start >= fence.start && line.start < fence.end)) {
+      para = false;
+      i += 1;
+      continue;
+    }
+    if (line.text.trim() === "$$") {
+      para = false;
+      i += 1;
+      while (i < lines.length && lines[i]!.text.trim() !== "$$") i += 1;
+      if (i < lines.length) i += 1;
+      continue;
+    }
+    const end = htmlBlockEnd(texts, i, para);
+    if (end != null && end > i) {
+      const last = lines[end - 1]!;
+      ranges.push({ start: line.start, end: last.nl < 0 ? src.length : last.nl });
+      para = false;
+      i = end;
+      continue;
+    }
+    para = !isBlankLine(line.text) && !blockClosesParagraph(line.text, para);
+    i += 1;
+  }
+  return ranges;
+}
+
+function splitLineSpans(src: string): LineSpan[] {
+  const parts = src.split("\n");
+  const lines: LineSpan[] = [];
+  let start = 0;
+  for (let i = 0; i < parts.length; i += 1) {
+    const text = parts[i] ?? "";
+    const nl = i + 1 < parts.length ? start + text.length : -1;
+    lines.push({ text, start, nl });
+    start += text.length + 1;
+  }
+  return lines;
+}
+
+function inlineTagRanges(src: string, skip: Range[]): Range[] {
+  const ranges: Range[] = [];
+  let i = 0;
+  while (i < src.length) {
+    if (inRange(i, skip)) {
+      i += 1;
+      continue;
+    }
+    if (src[i] === "<" && !escapedAt(src, i)) {
+      const end = htmlTagEnd(src, i);
+      if (end > i) {
+        ranges.push({ start: i, end });
+        i = end;
+        continue;
+      }
+    }
+    i += 1;
+  }
+  return ranges;
+}
+
+function escapedAt(src: string, index: number): boolean {
+  let count = 0;
+  for (let i = index - 1; i >= 0 && src[i] === "\\"; i -= 1) count += 1;
+  return count % 2 === 1;
+}
+
+function isBlankLine(line: string): boolean {
+  return contentIndent(line) == null;
+}
+
+/** A line that ends an open paragraph, or is not a paragraph itself. */
+function blockClosesParagraph(line: string, para: boolean): boolean {
+  if (/^ {0,3}#{1,6}(?:[ \t]|$)/.test(line)) return true;
+  if (/^ {0,3}>/.test(line)) return true;
+  if (/^ {0,3}(?:`{3,}|~{3,})/.test(line)) return true;
+  if (/^ {0,3}(?:(?:\*[ \t]*){3,}|(?:-[ \t]*){3,}|(?:_[ \t]*){3,})$/.test(line)) return true;
+  const indent = contentIndent(line);
+  return !para && indent != null && indent >= 4;
 }
 
 /**

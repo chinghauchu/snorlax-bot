@@ -63,6 +63,11 @@ enum MarkdownEscape {
     /// the characters instead of U+FFFD or an emoji.
     /// v1.79 leaves a link or image destination untouched so
     /// `&#38;` in the href reaches the markdown parser.
+    /// v1.91: a backslash inside an angle autolink or raw HTML
+    /// stays a backslash. An autolink is copied whole, so
+    /// `&amp;` in the URL stays the source characters. A raw
+    /// HTML tag or HTML block still decodes a character
+    /// reference. `\<` before a tag is still an escape.
     static func protect(_ text: String, completed: Bool = true) -> String {
         if !completed || text.isEmpty { return text }
         let underscored = MarkdownUnderscore.protect(text, completed: true)
@@ -70,18 +75,42 @@ enum MarkdownEscape {
         if !prepared.contains("\\") && !prepared.contains("&") { return prepared }
         let chars = Array(prepared)
         let blocked = protectedRanges(chars)
+        let literal = slashLiteralSpans(chars, blocked: blocked)
         var out = ""
         out.reserveCapacity(chars.count)
         var index = 0
         var block = 0
+        var lit = 0
         while index < chars.count {
+            while block < blocked.count, index >= blocked[block].end { block += 1 }
+            while lit < literal.count, index >= literal[lit].end { lit += 1 }
             if block < blocked.count, index >= blocked[block].start, index < blocked[block].end {
                 out.append(contentsOf: chars[index..<blocked[block].end])
                 index = blocked[block].end
                 block += 1
                 continue
             }
-            while block < blocked.count, index >= blocked[block].end { block += 1 }
+            if lit < literal.count, index >= literal[lit].start, index < literal[lit].end {
+                let end = literal[lit].end
+                while index < end {
+                    while block < blocked.count, index >= blocked[block].end { block += 1 }
+                    if block < blocked.count, index >= blocked[block].start, blocked[block].start < end {
+                        let stop = min(blocked[block].end, end)
+                        out.append(contentsOf: chars[index..<stop])
+                        index = stop
+                        continue
+                    }
+                    if chars[index] == "&", let ref = readReference(chars, index), ref.next <= end {
+                        out.append(token(ref.value))
+                        index = ref.next
+                        continue
+                    }
+                    out.append(chars[index])
+                    index += 1
+                }
+                lit += 1
+                continue
+            }
             let ch = chars[index]
             if ch == "\\", index + 1 < chars.count, asciiPunct.contains(chars[index + 1]) {
                 out.append(token(String(chars[index + 1])))
@@ -325,11 +354,191 @@ enum MarkdownEscape {
     }
 
     private static func protectedRanges(_ chars: [Character]) -> [Span] {
-        var spans = protectedCode(chars)
+        let code = protectedCode(chars)
+        var spans = code
         for dest in MarkdownLinkDest.spans(chars) {
             spans.append(Span(start: dest.start, end: dest.end))
         }
+        // v1.91: an angle autolink is not an escape context.
+        spans.append(contentsOf: autolinkSpans(chars, skipping: code))
         return merge(spans)
+    }
+
+    /// Raw HTML where a backslash stays and a character reference
+    /// still decodes. Not code, not an autolink, not a destination.
+    private static func slashLiteralSpans(_ chars: [Character], blocked: [Span]) -> [Span] {
+        let blocks = rawHtmlBlockSpans(chars)
+        var skip = blocked
+        skip.append(contentsOf: blocks)
+        let tags = inlineTagSpans(chars, skipping: merge(skip))
+        return merge(blocks + tags)
+    }
+
+    /// CommonMark angle autolinks. An escaped `\<` is not one.
+    private static func autolinkSpans(_ chars: [Character], skipping: [Span]) -> [Span] {
+        var ranges: [Span] = []
+        var index = 0
+        while index < chars.count {
+            if inSpan(index, skipping) {
+                index += 1
+                continue
+            }
+            if chars[index] != "<" || isEscaped(chars, index) {
+                index += 1
+                continue
+            }
+            if let end = autolinkEnd(chars, index) {
+                ranges.append(Span(start: index, end: end))
+                index = end
+                continue
+            }
+            index += 1
+        }
+        return ranges
+    }
+
+    private static func autolinkEnd(_ chars: [Character], _ start: Int) -> Int? {
+        var cursor = start + 1
+        while cursor < chars.count {
+            let ch = chars[cursor]
+            if ch == ">" { break }
+            if ch == "<" || isAutolinkStop(ch) { return nil }
+            cursor += 1
+        }
+        guard cursor < chars.count, chars[cursor] == ">" else { return nil }
+        let inner = String(chars[(start + 1)..<cursor])
+        if inner.isEmpty || (!isSchemeAutolink(inner) && !isEmailAutolink(inner)) { return nil }
+        return cursor + 1
+    }
+
+    private static func isAutolinkStop(_ ch: Character) -> Bool {
+        guard let scalar = ch.unicodeScalars.first, ch.unicodeScalars.count == 1 else { return false }
+        return scalar.value <= 32 || scalar.value == 127
+    }
+
+    /// Scheme is a letter, then 1–31 scheme characters, then `:`.
+    private static func isSchemeAutolink(_ text: String) -> Bool {
+        let chars = Array(text)
+        guard chars.count >= 3, isAsciiLetter(chars[0]) else { return false }
+        var index = 1
+        while index < chars.count, index < 32, isSchemeChar(chars[index]) { index += 1 }
+        guard index >= 2, index < chars.count, chars[index] == ":" else { return false }
+        return true
+    }
+
+    private static func isAsciiLetter(_ ch: Character) -> Bool {
+        guard let scalar = ch.unicodeScalars.first, ch.unicodeScalars.count == 1 else { return false }
+        return (scalar >= "A" && scalar <= "Z") || (scalar >= "a" && scalar <= "z")
+    }
+
+    private static func isSchemeChar(_ ch: Character) -> Bool {
+        if isAsciiLetter(ch) { return true }
+        guard let scalar = ch.unicodeScalars.first, ch.unicodeScalars.count == 1 else { return false }
+        return (scalar >= "0" && scalar <= "9") || ch == "+" || ch == "." || ch == "-"
+    }
+
+    private static func isEmailAutolink(_ text: String) -> Bool {
+        let pattern =
+            #"^[A-Za-z0-9.!#$%&'*+/=?^_`{|}~-]+@[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?(?:\.[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?)*$"#
+        guard let re = try? NSRegularExpression(pattern: pattern) else { return false }
+        let range = NSRange(text.startIndex..., in: text)
+        return re.firstMatch(in: text, range: range) != nil
+    }
+
+    private static func isEscaped(_ chars: [Character], _ index: Int) -> Bool {
+        var count = 0
+        var cursor = index - 1
+        while cursor >= 0, chars[cursor] == "\\" {
+            count += 1
+            cursor -= 1
+        }
+        return count % 2 == 1
+    }
+
+    /// cmark HTML blocks. A backslash in the block is not an escape.
+    private static func rawHtmlBlockSpans(_ chars: [Character]) -> [Span] {
+        let fences = fenceRanges(chars)
+        var lines: [String] = []
+        var starts: [Int] = []
+        var index = 0
+        while index <= chars.count {
+            let end = lineEnd(chars, index)
+            starts.append(index)
+            lines.append(String(chars[index..<end]))
+            if end >= chars.count { break }
+            index = end + 1
+        }
+        var spans: [Span] = []
+        var para = false
+        var line = 0
+        while line < lines.count {
+            let start = starts[line]
+            if inSpan(start, fences) {
+                para = false
+                line += 1
+                continue
+            }
+            if lines[line].trimmingCharacters(in: .whitespaces) == "$$" {
+                para = false
+                line += 1
+                while line < lines.count, lines[line].trimmingCharacters(in: .whitespaces) != "$$" {
+                    line += 1
+                }
+                if line < lines.count { line += 1 }
+                continue
+            }
+            if let htmlEnd = MarkdownList.htmlBlockLineEnd(lines, index: line, paragraphOpen: para),
+               htmlEnd > line
+            {
+                let last = htmlEnd - 1
+                let rangeEnd = last + 1 < starts.count ? starts[last + 1] - 1 : chars.count
+                spans.append(Span(start: start, end: rangeEnd))
+                para = false
+                line = htmlEnd
+                continue
+            }
+            let text = lines[line]
+            para = !isBlankLine(text) && !blockClosesParagraph(text, para: para)
+            line += 1
+        }
+        return spans
+    }
+
+    private static func inlineTagSpans(_ chars: [Character], skipping: [Span]) -> [Span] {
+        var ranges: [Span] = []
+        var index = 0
+        while index < chars.count {
+            if inSpan(index, skipping) {
+                index += 1
+                continue
+            }
+            if chars[index] == "<", !isEscaped(chars, index),
+               let end = MarkdownHtmlLiteral.htmlTagEnd(chars, index)
+            {
+                ranges.append(Span(start: index, end: end))
+                index = end
+                continue
+            }
+            index += 1
+        }
+        return ranges
+    }
+
+    private static func isBlankLine(_ line: String) -> Bool {
+        contentIndent(Array(line), 0, line.count) == nil
+    }
+
+    /// A line that ends an open paragraph, or is not a paragraph itself.
+    private static func blockClosesParagraph(_ line: String, para: Bool) -> Bool {
+        if line.range(of: #"^ {0,3}#{1,6}(?:[ \t]|$)"#, options: .regularExpression) != nil { return true }
+        if line.range(of: #"^ {0,3}>"#, options: .regularExpression) != nil { return true }
+        if line.range(of: #"^ {0,3}(?:`{3,}|~{3,})"#, options: .regularExpression) != nil { return true }
+        if line.range(
+            of: #"^ {0,3}(?:(?:\*[ \t]*){3,}|(?:-[ \t]*){3,}|(?:_[ \t]*){3,})$"#,
+            options: .regularExpression
+        ) != nil { return true }
+        let indent = contentIndent(Array(line), 0, Array(line).count)
+        return !para && indent != nil && indent! >= 4
     }
 
     private static func fenceRanges(_ chars: [Character]) -> [Span] {

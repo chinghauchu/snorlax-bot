@@ -36,6 +36,11 @@ import Foundation
 /// `ẞ` / `ß` / `SS` match and `ς` matches `Σ`. A label may be
 /// 1000 characters, which is what cmark-gfm accepts. Streaming
 /// stays plain. Copy keeps markdown source.
+/// v1.91: a label matches the source text, not the parsed inlines.
+/// A backslash stays in the label, so `[bar][foo\!]` does not
+/// match `[foo!]` and `[foo\bar]` does not match `[foobar]`.
+/// `[foo\!]` still matches `[foo\!]`, and the link text parses
+/// the escape, so the visible word is `foo!`.
 /// Keep in lockstep with `desktop/src/markdownReferenceLink.ts`.
 enum MarkdownReferenceLink {
     private struct Target {
@@ -880,21 +885,9 @@ enum MarkdownReferenceLink {
         return j + 1
     }
 
+    /// v1.91: cmark folds case and whitespace only. `foo\!` is not `foo!`.
     private static func normalizeLabel(_ raw: String) -> String {
-        var out = ""
-        let chars = Array(raw)
-        var i = 0
-        while i < chars.count {
-            let ch = chars[i]
-            if ch == "\\" && i + 1 < chars.count {
-                out.append(chars[i + 1])
-                i += 2
-                continue
-            }
-            out.append(ch)
-            i += 1
-        }
-        let folded = MarkdownCaseFold.fold(out)
+        let folded = MarkdownCaseFold.fold(raw)
         let parts = folded.split { $0.isWhitespace }.map(String.init)
         return parts.joined(separator: " ")
     }
