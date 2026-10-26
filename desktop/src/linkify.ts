@@ -25,6 +25,14 @@
  * `mailto:` prefix stays in the text. `xmpp:` is not linked. Pass
  * `emails: true` only for that completed reply; user text and a
  * streaming bubble do not.
+ * v1.85: the http(s) scan uses cmark-gfm's domain rule. An underscore
+ * in either of the last two segments (ten segments or fewer) is not
+ * a link. The character before the scheme cannot be an ASCII letter.
+ * The first host character cannot be punctuation. A trailing
+ * entity-like run is letters only, so `&hl;` stays outside and
+ * `&hl1;` keeps the digits. An extended email must end in a letter.
+ * Only the exact prefix `mailto:` is part of the link; `MAILTO:`
+ * stays outside the address. `ftp:` and `xmpp:` stay plain.
  * Keep in lockstep with `ios/SnorlaxBot/WebLinks.swift`.
  */
 
@@ -190,6 +198,25 @@ function splitHttp(text: string, streaming: boolean): WebPiece[] {
       cursor = idx + 1;
       continue;
     }
+    // v1.85: cmark rewinds ASCII letters into the scheme. `foohttp://`
+    // is not http. A digit or punctuation before the scheme still is.
+    if (idx > 0 && isAsciiAlpha(text[idx - 1]!)) {
+      cursor = idx + 1;
+      continue;
+    }
+    const scheme = schemeLength(scanned);
+    const hostStart = idx + scheme;
+    // The first character after `://` must be a host character.
+    // `http://-example.com`, `http://.com`, and `http://[::1]/` are not.
+    if (hostStart >= text.length || !isAutolinkHostChar(text[hostStart]!)) {
+      cursor = idx + 1;
+      continue;
+    }
+    // Same domain scan as `www.`, but a dot is not required (`http://localhost`).
+    if (checkDomain(text, hostStart, true) == null) {
+      cursor = hostStart;
+      continue;
+    }
     const raw = clipAngleCloser(text, idx, scanned);
     if (streaming && idx + raw.length === text.length) break;
     const url = trimTrailingPunctuation(raw);
@@ -300,13 +327,16 @@ function isWwwSpace(ch: string): boolean {
 }
 
 /**
- * cmark-gfm `check_domain`: at least one dot in `www.…`, and no
- * underscore in the last two segments (unless there are more than
- * ten dots). Returns the index where the domain scan stopped.
+ * cmark-gfm `check_domain`. An underscore in either of the last two
+ * segments rejects the link when there are ten dots or fewer. More
+ * than ten dots still links, so a long name cannot force quadratic
+ * work. `allowShort` is the http(s) scan: a host with no dot
+ * (`localhost`) is allowed. `www.` passes false and still needs a dot.
+ * Returns the index where the domain scan stopped.
  */
-function checkDomain(text: string, start: number): number | null {
+function checkDomain(text: string, start: number, allowShort = false): number | null {
   const size = text.length - start;
-  if (size < 4) return null;
+  if (!allowShort && size < 4) return null;
   let np = 0;
   let uscore1 = 0;
   let uscore2 = 0;
@@ -320,23 +350,34 @@ function checkDomain(text: string, start: number): number | null {
       uscore1 = uscore2;
       uscore2 = 0;
       np += 1;
-    } else if (!isHostChar(c) && c !== "-") {
+    } else if (!isAutolinkHostChar(c) && c !== "-") {
       break;
     }
     i += 1;
   }
   if ((uscore1 > 0 || uscore2 > 0) && np <= 10) return null;
-  if (np === 0) return null;
-  return start + i;
+  if (allowShort || np > 0) return start + i;
+  return null;
 }
 
-function isHostChar(ch: string): boolean {
+/** cmark ASCII punctuation, including symbols such as `$` `+` `<` `=`. */
+const CMARK_ASCII_PUNCT = "!\"#$%&'()*+,-./:;<=>?@[\\]^_`{|}~";
+
+/**
+ * cmark-gfm `is_valid_hostchar`: not a space and not punctuation.
+ * ASCII uses cmark's punctuation set. Other characters use the
+ * Unicode punctuation category. `-` is punctuation here; the domain
+ * scan allows it on its own.
+ */
+function isAutolinkHostChar(ch: string): boolean {
+  if (!ch || isWwwSpace(ch) || /^\p{Zs}$/u.test(ch)) return false;
+  if (CMARK_ASCII_PUNCT.includes(ch) || /^\p{P}$/u.test(ch)) return false;
+  return true;
+}
+
+function isAsciiAlpha(ch: string): boolean {
   const code = ch.charCodeAt(0);
-  return (
-    (code >= 48 && code <= 57) ||
-    (code >= 65 && code <= 90) ||
-    (code >= 97 && code <= 122)
-  );
+  return (code >= 65 && code <= 90) || (code >= 97 && code <= 122);
 }
 
 /** GFM extended-autolink path trim: trailing punct, unmatched `)`, entities. */
@@ -362,8 +403,10 @@ function autolinkDelim(text: string, start: number, linkEnd: number): number {
       continue;
     }
     if (c === ";") {
+      // cmark walks letters only. `&hl;` drops the entity. `&hl1;`
+      // keeps the digits and drops the semicolon.
       let k = end - 2;
-      while (k > start && isAlnum(text[k]!)) k -= 1;
+      while (k > start && isAsciiAlpha(text[k]!)) k -= 1;
       if (k >= start && k < end - 2 && text[k] === "&") end = k;
       else end -= 1;
       continue;
@@ -600,8 +643,10 @@ function nextEmail(
     if (streaming && domainEnd === text.length) return null;
     const visible = mailtoPrefixStart(text, local, blocked);
     if (visible === local && local > 0 && text[local - 1] === ":") {
-      i = at + 1;
-      continue;
+      if (!isMailtoCaseVariant(text, local - 1)) {
+        i = at + 1;
+        continue;
+      }
     }
     return { start: visible, end: domainEnd, value: text.slice(visible, domainEnd) };
   }
@@ -626,7 +671,9 @@ function isEmailLocal(local: string): boolean {
 }
 
 function isEmailDomain(domain: string): boolean {
-  if (!domain || domain.endsWith("-") || domain.endsWith("_")) return false;
+  // cmark requires the last character to be a letter. `foo@bar.com2`
+  // and `foo@bar.b2` stay plain. A digit earlier in a label stays.
+  if (!domain || !isAsciiAlpha(domain[domain.length - 1]!)) return false;
   const labels = domain.split(".");
   if (labels.length < 2) return false;
   for (const label of labels) {
@@ -686,10 +733,22 @@ function mailtoPrefixStart(
 ): number {
   if (localStart < 7) return localStart;
   const prefixStart = localStart - 7;
-  if (text.slice(prefixStart, localStart).toLowerCase() !== "mailto:") return localStart;
+  // Exact `mailto:` only. `MAILTO:` is not this prefix.
+  if (text.slice(prefixStart, localStart) !== "mailto:") return localStart;
   if (inRanges(blocked, prefixStart)) return localStart;
   if (prefixStart > 0 && isAlnum(text[prefixStart - 1]!)) return localStart;
   return prefixStart;
+}
+
+/**
+ * `MAILTO:` and `Mailto:` are not the prefix, but the address after
+ * them is still an email. `xmpp:` and `notmailto:` stay plain.
+ */
+function isMailtoCaseVariant(text: string, colon: number): boolean {
+  let i = colon;
+  while (i > 0 && isAsciiAlpha(text[i - 1]!)) i -= 1;
+  const scheme = text.slice(i, colon);
+  return scheme.length === 6 && scheme.toLowerCase() === "mailto" && scheme !== "mailto";
 }
 
 function emailBlocked(text: string): Array<[number, number]> {

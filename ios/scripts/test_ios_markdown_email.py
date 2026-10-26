@@ -45,7 +45,8 @@ def test_parser() -> None:
     assert "isExtendedMailto" in SWIFT
     assert "if isMailtoEmail(url) { return true }" in SWIFT
     assert "if isExtendedMailto(url) { return true }" in SWIFT
-    assert 'prefix.lowercased() == "mailto:"' in SWIFT
+    assert 'prefix == "mailto:"' in SWIFT
+    assert "visible.prefix(7).lowercased() == \"mailto:\"" in SWIFT
     assert "xmpp" not in SWIFT
     assert "withAnimation" not in SWIFT
     assert "UIPasteboard" not in SWIFT
