@@ -353,6 +353,11 @@ enum MarkdownList {
                 continue
             }
             if sawContent && !sawBlank && !interruptsList(line) {
+                // v1.86: a table is not a paragraph, so a lazy line
+                // after one ends the item instead of joining it.
+                if let last = body.indices.last, MarkdownTable.quoteLineInTable(body, index: last) {
+                    break
+                }
                 body.append(lazyLine(line))
                 paragraph = true
                 if htmlLazyTag(line) { sawBlank = true }
@@ -503,13 +508,20 @@ enum MarkdownList {
         return String(line[cur.index...])
     }
 
+    /// v1.86: prefix on a lazy line that contains `|`. A later table
+    /// parse refuses a lazy delimiter and a lazy body row. Lines
+    /// without a pipe stay unmarked.
+    static let lazyContinuationMark = "§§SBTL§§"
+
     /// Drop the partial indent on a lazy continuation line.
     private static func lazyLine(_ line: String) -> String {
         var index = line.startIndex
         while index < line.endIndex, line[index] == " " || line[index] == "\t" {
             index = line.index(after: index)
         }
-        return String(line[index...])
+        let text = String(line[index...])
+        if text.contains("|") { return lazyContinuationMark + text }
+        return text
     }
 
     private static func interruptsList(_ line: String) -> Bool {

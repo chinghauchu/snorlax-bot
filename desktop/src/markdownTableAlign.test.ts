@@ -110,8 +110,8 @@ test("an escaped pipe stays one cell, including inside inline code", () => {
   const star = splitRow("| `a\\*b` | c |");
   assert.deepEqual(star, ["`a\\*b`", "c"]);
 
-  const plainCode = tableOf("| `a|b` | c |\n| --- | --- |\n| 1 | 2 |");
-  assert.deepEqual(plainCode.header, ["`a|b`", "c"]);
+  const plainCode = splitMarkdownTables("| `a|b` | c |\n| --- | --- |\n| 1 | 2 |", true);
+  assert.equal(plainCode[0]?.type, "markdown");
 
   const aligned = tableOf(
     ["| L | C | R |", "| :--- | :---: | ---: |", "| `x\\|y` | m | n |"].join("\n"),

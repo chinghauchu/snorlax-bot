@@ -22,6 +22,11 @@ import SwiftUI
 /// rule, quote, list, fence, indented code, raw HTML block, or
 /// `$$` line still ends it. A pipe-less header does not start a
 /// table, so `foo` over `---` stays a setext heading.
+/// v1.86: cmark-gfm table edges. An unescaped `|` inside a code
+/// span splits the row. A footnote definition ends the table.
+/// A lazy delimiter is not a table, and a lazy body line ends it.
+/// A table inside a list stays in the list. A link reference
+/// definition still stays in the cell.
 /// Keep in lockstep with `desktop/src/markdownTable.ts`.
 enum MarkdownTable {
     enum Align: Equatable {
@@ -49,7 +54,10 @@ enum MarkdownTable {
             .replacingOccurrences(of: "\r\n", with: "\n")
             .replacingOccurrences(of: "\r", with: "\n")
         if !completed { return [.markdown(src)] }
-        let lines = src.split(separator: "\n", omittingEmptySubsequences: false).map(String.init)
+        let rawLines = src.split(separator: "\n", omittingEmptySubsequences: false).map(String.init)
+        let peeled = rawLines.map { peel($0) }
+        let lines = peeled.map(\.text)
+        let lazy = peeled.map(\.lazy)
         var pieces: [Piece] = []
         var mdStart = 0
         var index = 0
@@ -73,7 +81,12 @@ enum MarkdownTable {
                 index += 1
                 continue
             }
-            guard let found = parseTable(lines, start: index) else {
+            // A table inside a list stays with the item.
+            if let listEnd = MarkdownList.listEnd(lines, start: index), listEnd > index {
+                index = listEnd
+                continue
+            }
+            guard let found = parseTable(lines, start: index, lazy: lazy) else {
                 index += 1
                 continue
             }
@@ -83,15 +96,65 @@ enum MarkdownTable {
             mdStart = index
         }
         pushMarkdown(lines.count)
-        if pieces.isEmpty { return [.markdown(src)] }
+        if pieces.isEmpty { return [.markdown(lines.joined(separator: "\n"))] }
         return pieces
     }
 
     static func containsTable(_ text: String) -> Bool {
-        split(text, completed: true).contains { piece in
+        containsTable(text, seen: [])
+    }
+
+    private static func containsTable(_ text: String, seen: Set<String>) -> Bool {
+        if text.isEmpty || !text.contains("|") { return false }
+        if split(text, completed: true).contains(where: { piece in
             if case .table = piece { return true }
             return false
+        }) {
+            return true
         }
+        if seen.contains(text) { return false }
+        var next = seen
+        next.insert(text)
+        return MarkdownList.split(text, completed: true).contains { block in
+            guard case .list(let group) = block else { return false }
+            return group.items.contains { containsTable($0, seen: next) }
+        }
+    }
+
+    private static func peel(_ line: String) -> (text: String, lazy: Bool) {
+        let mark = MarkdownList.lazyContinuationMark
+        if line.hasPrefix(mark) {
+            return (String(line.dropFirst(mark.count)), true)
+        }
+        return (line, false)
+    }
+
+    /// True when `lines[index]` sits inside a table. A lazy delimiter
+    /// does not open one. Quote and list continuation use this.
+    static func quoteLineInTable(_ lines: [String], index: Int) -> Bool {
+        guard index >= 0, index < lines.count else { return false }
+        let peeled = lines.map { peel($0) }
+        let texts = peeled.map(\.text)
+        let lazy = peeled.map(\.lazy)
+        var cursor = 0
+        var fence: String?
+        var inMath = false
+        while cursor < texts.count && cursor <= index {
+            let gate = blockGate(texts[cursor], fence: fence, inMath: inMath)
+            fence = gate.fence
+            inMath = gate.inMath
+            if gate.blocked {
+                cursor += 1
+                continue
+            }
+            if let found = parseTable(texts, start: cursor, lazy: lazy), found.next > cursor {
+                if index >= cursor && index < found.next { return true }
+                cursor = found.next
+                continue
+            }
+            cursor += 1
+        }
+        return false
     }
 
     private struct Parsed {
@@ -99,8 +162,9 @@ enum MarkdownTable {
         var next: Int
     }
 
-    private static func parseTable(_ lines: [String], start: Int) -> Parsed? {
+    private static func parseTable(_ lines: [String], start: Int, lazy: [Bool]? = nil) -> Parsed? {
         guard start + 1 < lines.count else { return nil }
+        if lazy?[start + 1] == true { return nil }
         let headerLine = lines[start]
         let delimLine = lines[start + 1]
         guard isTableLine(headerLine), isTableLine(delimLine) else { return nil }
@@ -109,6 +173,7 @@ enum MarkdownTable {
         var body: [[String]] = []
         var next = start + 2
         while next < lines.count {
+            if lazy?[next] == true { break }
             let line = lines[next]
             if !isTableLine(line) || interruptsTable(line) { break }
             guard let row = splitRow(line, pipeLess: true) else { break }
@@ -194,7 +259,16 @@ enum MarkdownTable {
         if isFenceLine(line) { return true }
         if rest.trimmingCharacters(in: .whitespaces) == "$$" { return true }
         if MarkdownList.htmlBlockInterrupts(line) || MarkdownList.htmlLazyTag(line) { return true }
+        if isFootnoteDefinition(line) { return true }
         return false
+    }
+
+    /// v1.86: `[^1]: note` ends the table. `[ref]: url` stays a cell.
+    private static func isFootnoteDefinition(_ line: String) -> Bool {
+        let lead = leadingColumns(line)
+        if lead.columns > 3 { return false }
+        let rest = String(line.dropFirst(lead.index))
+        return rest.range(of: #"^\[\^[A-Za-z0-9_-]+\]:[ \t]*"#, options: .regularExpression) != nil
     }
 
     private static func isThematicBreak(_ line: String) -> Bool {
@@ -283,6 +357,15 @@ enum MarkdownTable {
                 if ch == "\\", index + 1 < chars.count, chars[index + 1] == "|" {
                     current.append("|")
                     index += 2
+                    continue
+                }
+                // v1.86: cmark-gfm splits on `|` even inside a code span.
+                if ch == "|" {
+                    pipes += 1
+                    cells.append(current.trimmingCharacters(in: .whitespaces))
+                    current = ""
+                    code = 0
+                    index += 1
                     continue
                 }
                 current.append(ch)

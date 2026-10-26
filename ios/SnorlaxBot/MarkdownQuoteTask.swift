@@ -112,13 +112,25 @@ enum MarkdownQuoteTask {
                     if let rendered = renderQuoteLine(current, carry: carry, paragraphOpen: open) {
                         inner.append(rendered.text)
                         carry = rendered.carry
-                        open = carry.fence == nil && paragraphOpenAfter(rendered.text, wasOpen: open)
+                        // v1.86: a table is not a paragraph. A later line
+                        // with no `>` does not continue the quote.
+                        if carry.fence != nil {
+                            open = false
+                        } else if MarkdownTable.quoteLineInTable(inner, index: inner.count - 1) {
+                            open = false
+                        } else {
+                            open = paragraphOpenAfter(rendered.text, wasOpen: open)
+                        }
                         index += 1
                         continue
                     }
                     // v1.47: a paragraph inside the quote may continue without `>`.
                     if !open || endsLazyQuote(current, paragraphOpen: open) { break }
-                    inner.append(current)
+                    if current.contains("|") {
+                        inner.append(MarkdownList.lazyContinuationMark + current)
+                    } else {
+                        inner.append(current)
+                    }
                     open = !MarkdownList.htmlLazyTag(current)
                     index += 1
                 }

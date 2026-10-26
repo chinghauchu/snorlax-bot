@@ -157,8 +157,8 @@ test("inline formatting stays, and block starts stay characters", () => {
   assert.equal(protectTableCellBlocks("foo*bar*baz"), "foo*bar*baz");
 });
 
-test("escaped pipes and code-span pipes still stay one formatted cell", () => {
-  const source = ["| - item | **a \\| b** |", "| --- | --- |", "| `a|b` | [go](https://example.com) |"].join(
+test("escaped pipes stay one formatted cell; an unescaped code-span pipe splits", () => {
+  const source = ["| - item | **a \\| b** |", "| --- | --- |", "| `a\\|b` | [go](https://example.com) |"].join(
     "\n",
   );
   const parts = splitMarkdownTables(source, true);
@@ -176,7 +176,7 @@ test("escaped pipes and code-span pipes still stay one formatted cell", () => {
   assert.equal(shown(parts[0].table.header[1] ?? ""), "a | b");
   assert.match(renderCell(parts[0].table.rows[0]?.[0] ?? ""), /<code>a\|b<\/code>/);
   assert.match(renderCell(parts[0].table.rows[0]?.[1] ?? ""), /href="https:\/\/example.com"/);
-  assert.deepEqual(splitRow("| `a|b` | c |"), ["`a|b`", "c"]);
+  assert.deepEqual(splitRow("| `a|b` | c |"), ["`a", "b`", "c"]);
   assert.deepEqual(splitRow("| **a \\| b** | c |"), ["**a \\| b**", "c"]);
 });
 

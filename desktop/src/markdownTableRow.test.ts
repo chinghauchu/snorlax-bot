@@ -169,9 +169,10 @@ test("a pipe-less definition stays in the table", () => {
   ].join("\n");
   const extracted = extractFootnotes(noted, true);
   assert.equal(extracted.notes.length, 1);
-  assert.match(extracted.notes[0]?.text ?? "", /outside/);
-  assert.match(extracted.text, /\[\^1\]: inside/);
-  assert.deepEqual(tableOf(extracted.text).table.rows, [["[^1]: inside", ""]]);
+  assert.match(extracted.notes[0]?.text ?? "", /inside/);
+  assert.doesNotMatch(extracted.text, /\[\^1\]: inside/);
+  assert.match(extracted.text, /\[\^1\]: outside/);
+  assert.deepEqual(tableOf(extracted.text).table.rows, []);
 });
 
 test("desktop and iOS continue a pipe-less row, and OpenAPI stays 0.18.0", () => {

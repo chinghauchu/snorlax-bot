@@ -143,10 +143,7 @@ test("pipes without a delimiter, fences, and streaming stay plain text", () => {
   assert.equal(tableCopyAnimates(false), false);
   assert.equal(tableCopyAnimates(true), false);
   const coded = splitMarkdownTables("| `a|b` | c |\n| --- | --- |\n| 1 | 2 |", true);
-  assert.equal(coded[0]?.type, "table");
-  if (coded[0]?.type === "table") {
-    assert.deepEqual(coded[0].table.header, ["`a|b`", "c"]);
-  }
+  assert.equal(coded[0]?.type, "markdown");
   const bare = splitMarkdownTables("name | score\n--- | ---\nAda | 10", true);
   assert.equal(bare[0]?.type, "table");
   if (bare[0]?.type === "table") {
