@@ -169,7 +169,7 @@ test("desktop and iOS share the padding rule and do not grow the protocol", () =
   assert.match(swift, /spacesAfter >= 5 \|\| spacesAfter < 1 \|\| blank/);
   assert.match(swift, /markerColumn \+ 1/);
   assert.match(swift, /v1\.54/);
-  assert.match(swift, /lazyLine/);
+  assert.match(swift, /lazyItemLine/);
   assert.match(looseSwift, /MarkdownList\.listMarkerPadding/);
   assert.match(looseSwift, /sawContent/);
   assert.doesNotMatch(swift, /UIPasteboard/);

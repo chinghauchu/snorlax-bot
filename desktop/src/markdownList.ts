@@ -24,13 +24,21 @@
  *
  * v1.56: a list marker does not interrupt an open paragraph
  * unless CommonMark allows it. An ordered marker interrupts
- * only when its digits are exactly `1` (`1.` or `1)`), so
- * `9.`, `14.`, `0.`, `01.`, and `2)` stay paragraph text.
- * An empty marker (`1.` or `*` with no item text) stays text
- * too. A bullet that has text still interrupts. A blank line,
- * an ATX heading, a fence, a block quote, a thematic break,
- * or the start of the chunk lets any start number begin a
- * list, including `0.` and `01.`.
+ * only when its start number is 1, so `9.`, `14.`, `0.`, and
+ * `2)` stay paragraph text. An empty marker (`1.` or `*`
+ * with no item text) stays text too. A bullet that has text
+ * still interrupts. A blank line, an ATX heading, a fence, a
+ * block quote, a thematic break, or the start of the chunk
+ * lets any start number begin a list, including `0.` and
+ * `003.`.
+ *
+ * v1.88: cmark-gfm's start number is the integer value, so
+ * `01.`, `001.`, and `000000001.` are 1 and do interrupt.
+ * A line indented four or more columns that is short of the
+ * item's content column is a lazy continuation, even when
+ * the text would be a heading, rule, fence, quote, list
+ * marker, or HTML block at the margin. The stored line
+ * escapes that block start so a later parse keeps the text.
  *
  * v1.57: `-`, `*`, and `+` are different lists, matching
  * react-markdown. A later margin item stays in the list only
@@ -83,6 +91,44 @@ function markLazyContinuation(line: string): string {
   const text = line.replace(/^[ \t]+/, "");
   if (!text.includes("|")) return text;
   return LAZY_CONTINUATION_MARK + text;
+}
+
+/**
+ * v1.88: lazy text, with a block start at column 0 escaped so
+ * the next parse keeps it in the paragraph. A pipe still takes
+ * the table mark.
+ */
+export function lazyItemLine(line: string): string {
+  const stripped = line.replace(/^[ \t]+/, "");
+  return markLazyContinuation(guardLazyBlock(stripped));
+}
+
+function guardLazyBlock(line: string): string {
+  if (!opensBlockAtMargin(line)) return line;
+  const marker = parseMarker(line);
+  if (marker?.ordered && marker.column === 0 && line.startsWith(`${marker.digits}${marker.delimiter}`)) {
+    const token = `${marker.digits}${marker.delimiter}`;
+    return `${marker.digits}\\${marker.delimiter}${line.slice(token.length)}`;
+  }
+  return `\\${line}`;
+}
+
+/** A block cmark-gfm can open when this line's indent is 0–3. */
+function opensBlockAtMargin(line: string): boolean {
+  if (leadingColumns(line).columns > 3) return false;
+  if (isThematicBreak(line) || isAtxHeadingLine(line) || isBlockQuoteLine(line)) return true;
+  if (isSetextUnderline(line)) return true;
+  if (fenceOnLine(line)) return true;
+  if (line.trim() === "$$") return true;
+  if (htmlBlockInterrupts(line)) return true;
+  const marker = parseMarker(line);
+  return marker != null && marker.column <= 3;
+}
+
+function isSetextUnderline(line: string): boolean {
+  const lead = leadingColumns(line);
+  if (lead.columns > 3) return false;
+  return /^(?:=+|-{2,})[ \t]*$/.test(line.slice(lead.index));
 }
 
 export type MarkdownListGroup = {
@@ -285,13 +331,14 @@ export function orderedListEnd(lines: string[], start: number): number | null {
 
 /**
  * CommonMark only lets some markers interrupt a paragraph.
- * An ordered marker interrupts only when its digits are `1`,
- * so `01.` and `9.` stay text. A marker with no item text
- * (`1.` / `*` alone) stays text too.
+ * An ordered marker interrupts only when its integer start is
+ * 1, so `01.` does and `9.`, `0.`, and `003.` stay text. A
+ * marker with no item text (`1.` / `*` alone) stays text too.
  */
 function markerInterruptsParagraph(marker: Marker): boolean {
   if (marker.text === "") return false;
-  if (marker.ordered && marker.digits !== "1") return false;
+  // v1.88: cmark-gfm compares the integer start, so `01.` is 1.
+  if (marker.ordered && marker.number !== 1) return false;
   return true;
 }
 
@@ -543,22 +590,30 @@ function readItem(
     }
     const opened = fenceOnLine(line);
     if (opened) {
-      if (leadingColumns(line).columns < marker.contentColumn) break;
-      fence = opened.marker;
-      body.push(dedent(line, marker.contentColumn));
-      sawContent = true;
-      paragraph = false;
-      i += 1;
-      continue;
+      const cols = leadingColumns(line).columns;
+      if (cols >= marker.contentColumn) {
+        fence = opened.marker;
+        body.push(dedent(line, marker.contentColumn));
+        sawContent = true;
+        paragraph = false;
+        i += 1;
+        continue;
+      }
+      // Four or more columns cannot open a fence. Fall through
+      // so an open paragraph keeps the line as lazy text.
+      if (cols <= 3) break;
     }
     if (line.trim() === "$$") {
-      if (leadingColumns(line).columns < marker.contentColumn) break;
-      inMath = true;
-      body.push(dedent(line, marker.contentColumn));
-      sawContent = true;
-      paragraph = false;
-      i += 1;
-      continue;
+      const cols = leadingColumns(line).columns;
+      if (cols >= marker.contentColumn) {
+        inMath = true;
+        body.push(dedent(line, marker.contentColumn));
+        sawContent = true;
+        paragraph = false;
+        i += 1;
+        continue;
+      }
+      if (cols <= 3) break;
     }
     const nested = parseMarker(line);
     if (nested && nested.column >= marker.contentColumn) {
@@ -568,7 +623,9 @@ function readItem(
       i += 1;
       continue;
     }
-    if (nested && nested.column < marker.contentColumn) break;
+    // A marker in the first three columns ends the item. One
+    // indented four or more cannot open a list.
+    if (nested && nested.column <= 3 && nested.column < marker.contentColumn) break;
     if (leadingColumns(line).columns >= marker.contentColumn) {
       body.push(dedent(line, marker.contentColumn));
       sawContent = true;
@@ -582,8 +639,10 @@ function readItem(
       // this margin ends the item instead of staying lazy.
       // v1.86: a table is not a paragraph, so a lazy line after
       // one ends the item instead of joining it.
+      // v1.88: a 4-column line that only looks like a block
+      // stays in the paragraph, with the block start escaped.
       if (body.length > 0 && lazyLineEndsItem(body)) break;
-      body.push(markLazyContinuation(line));
+      body.push(lazyItemLine(line));
       paragraph = true;
       if (htmlLazyTag(line)) sawBlank = true;
       i += 1;
@@ -727,6 +786,9 @@ function markerRemainder(line: string, cur: MarkerCursor): string {
 }
 
 function interruptsList(line: string): boolean {
+  // Four or more columns cannot open a block. The line is lazy
+  // text when a paragraph is open.
+  if (leadingColumns(line).columns > 3) return false;
   if (isThematicBreak(line)) return true;
   const lead = leadingColumns(line);
   const rest = line.slice(lead.index);
@@ -1045,6 +1107,57 @@ export function htmlSearchBlockLine(line: string): boolean {
  * keep inside the item: a type 7 tag, or a `source` block, at the
  * list margin.
  */
+/**
+ * v1.88: micromark only lets the digit string `1` interrupt a
+ * paragraph. cmark-gfm uses the integer, so `01.` and `001.`
+ * interrupt too, including when that marker is nested in an
+ * item. Desktop draws those replies through the list splitter.
+ */
+export function listNeedsCmarkOrderedOne(text: string): boolean {
+  if (!text || !/0+1[.)]/.test(text)) return false;
+  return scanOrderedOne(text);
+}
+
+function scanOrderedOne(text: string): boolean {
+  const src = text.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
+  const lines = src.split("\n");
+  let i = 0;
+  let fence: string | null = null;
+  let inMath = false;
+  let paragraph = false;
+  while (i < lines.length) {
+    const line = lines[i] ?? "";
+    const gate = blockGate(line, fence, inMath);
+    fence = gate.fence;
+    inMath = gate.inMath;
+    if (gate.blocked) {
+      paragraph = false;
+      i += 1;
+      continue;
+    }
+    const htmlEnd = htmlBlockEnd(lines, i, paragraph);
+    if (htmlEnd != null) {
+      paragraph = false;
+      i = htmlEnd;
+      continue;
+    }
+    const marker = parseMarker(line);
+    if (marker && marker.column <= 3 && (!paragraph || markerInterruptsParagraph(marker))) {
+      if (paragraph && marker.ordered && marker.number === 1 && marker.digits !== "1") return true;
+      const found = readList(lines, i, marker);
+      for (const item of found.list.items) {
+        if (scanOrderedOne(item)) return true;
+      }
+      i = found.next;
+      paragraph = false;
+      continue;
+    }
+    paragraph = nextParagraphOpen(line, paragraph);
+    i += 1;
+  }
+  return false;
+}
+
 export function listSplitByCmarkHtml(text: string): boolean {
   if (!text.includes("<")) return false;
   const blocks = splitMarkdownLists(text, true);

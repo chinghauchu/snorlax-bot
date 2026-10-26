@@ -20,13 +20,21 @@ import SwiftUI
 ///
 /// v1.56: a list marker does not interrupt an open paragraph
 /// unless CommonMark allows it. An ordered marker interrupts
-/// only when its digits are exactly `1` (`1.` or `1)`), so
-/// `9.`, `14.`, `0.`, `01.`, and `2)` stay paragraph text.
-/// An empty marker (`1.` or `*` with no item text) stays text
-/// too. A bullet that has text still interrupts. A blank line,
-/// an ATX heading, a fence, a block quote, a thematic break,
-/// or the start of the chunk lets any start number begin a
-/// list, including `0.` and `01.`.
+/// only when its start number is 1, so `9.`, `14.`, `0.`, and
+/// `2)` stay paragraph text. An empty marker (`1.` or `*`
+/// with no item text) stays text too. A bullet that has text
+/// still interrupts. A blank line, an ATX heading, a fence, a
+/// block quote, a thematic break, or the start of the chunk
+/// lets any start number begin a list, including `0.` and
+/// `003.`.
+///
+/// v1.88: cmark-gfm's start number is the integer value, so
+/// `01.`, `001.`, and `000000001.` are 1 and do interrupt.
+/// A line indented four or more columns that is short of the
+/// item's content column is a lazy continuation, even when
+/// the text would be a heading, rule, fence, quote, list
+/// marker, or HTML block at the margin. The stored line
+/// escapes that block start so a later parse keeps the text.
 ///
 /// v1.57: `-`, `*`, and `+` are different lists, matching desktop
 /// react-markdown. A later margin item stays in the list only when
@@ -318,22 +326,28 @@ enum MarkdownList {
                 continue
             }
             if let opened = fenceOnLine(line) {
-                if leadingColumns(line).columns < marker.contentColumn { break }
-                fence = opened.marker
-                body.append(dedent(line, columns: marker.contentColumn))
-                sawContent = true
-                paragraph = false
-                index += 1
-                continue
+                let cols = leadingColumns(line).columns
+                if cols >= marker.contentColumn {
+                    fence = opened.marker
+                    body.append(dedent(line, columns: marker.contentColumn))
+                    sawContent = true
+                    paragraph = false
+                    index += 1
+                    continue
+                }
+                if cols <= 3 { break }
             }
             if line.trimmingCharacters(in: .whitespaces) == "$$" {
-                if leadingColumns(line).columns < marker.contentColumn { break }
-                inMath = true
-                body.append(dedent(line, columns: marker.contentColumn))
-                sawContent = true
-                paragraph = false
-                index += 1
-                continue
+                let cols = leadingColumns(line).columns
+                if cols >= marker.contentColumn {
+                    inMath = true
+                    body.append(dedent(line, columns: marker.contentColumn))
+                    sawContent = true
+                    paragraph = false
+                    index += 1
+                    continue
+                }
+                if cols <= 3 { break }
             }
             if let nested = parseMarker(line) {
                 if nested.column >= marker.contentColumn {
@@ -343,7 +357,7 @@ enum MarkdownList {
                     index += 1
                     continue
                 }
-                if nested.column < marker.contentColumn { break }
+                if nested.column <= 3 && nested.column < marker.contentColumn { break }
             }
             if leadingColumns(line).columns >= marker.contentColumn {
                 body.append(dedent(line, columns: marker.contentColumn))
@@ -355,10 +369,12 @@ enum MarkdownList {
             if sawContent && !sawBlank && !interruptsList(line) {
                 // v1.86: a table is not a paragraph, so a lazy line
                 // after one ends the item instead of joining it.
+                // v1.88: a 4-column line that only looks like a block
+                // stays in the paragraph, with the block start escaped.
                 if let last = body.indices.last, MarkdownTable.quoteLineInTable(body, index: last) {
                     break
                 }
-                body.append(lazyLine(line))
+                body.append(lazyItemLine(line))
                 paragraph = true
                 if htmlLazyTag(line) { sawBlank = true }
                 index += 1
@@ -513,18 +529,51 @@ enum MarkdownList {
     /// without a pipe stay unmarked.
     static let lazyContinuationMark = "§§SBTL§§"
 
-    /// Drop the partial indent on a lazy continuation line.
-    private static func lazyLine(_ line: String) -> String {
+    /// v1.88: lazy text. A block start at column 0 is escaped so
+    /// the next parse keeps it in the paragraph. A pipe still
+    /// takes the table mark.
+    static func lazyItemLine(_ line: String) -> String {
         var index = line.startIndex
         while index < line.endIndex, line[index] == " " || line[index] == "\t" {
             index = line.index(after: index)
         }
-        let text = String(line[index...])
-        if text.contains("|") { return lazyContinuationMark + text }
-        return text
+        let guarded = guardLazyBlock(String(line[index...]))
+        if guarded.contains("|") { return lazyContinuationMark + guarded }
+        return guarded
+    }
+
+    private static func guardLazyBlock(_ line: String) -> String {
+        if !opensBlockAtMargin(line) { return line }
+        if let marker = parseMarker(line), marker.ordered, marker.column == 0 {
+            let token = marker.digits + marker.delimiter
+            if line.hasPrefix(token) {
+                return marker.digits + "\\" + marker.delimiter + String(line.dropFirst(token.count))
+            }
+        }
+        return "\\" + line
+    }
+
+    /// A block cmark-gfm can open when this line's indent is 0–3.
+    private static func opensBlockAtMargin(_ line: String) -> Bool {
+        if leadingColumns(line).columns > 3 { return false }
+        if isThematicBreak(line) || isAtxHeadingLine(line) || isBlockQuoteLine(line) { return true }
+        if isSetextUnderline(line) { return true }
+        if fenceOnLine(line) != nil { return true }
+        if line.trimmingCharacters(in: .whitespaces) == "$$" { return true }
+        if htmlBlockInterrupts(line) { return true }
+        if let marker = parseMarker(line), marker.column <= 3 { return true }
+        return false
+    }
+
+    private static func isSetextUnderline(_ line: String) -> Bool {
+        let lead = leadingColumns(line)
+        if lead.columns > 3 { return false }
+        let rest = String(line[lead.index...])
+        return rest.range(of: #"^(?:=+|-{2,})[ \t]*$"#, options: .regularExpression) != nil
     }
 
     private static func interruptsList(_ line: String) -> Bool {
+        if leadingColumns(line).columns > 3 { return false }
         if isThematicBreak(line) { return true }
         let lead = leadingColumns(line)
         let rest = String(line[lead.index...])
@@ -813,12 +862,13 @@ enum MarkdownList {
     }
 
     /// CommonMark only lets some markers interrupt a paragraph.
-    /// An ordered marker interrupts only when its digits are `1`,
-    /// so `01.` and `9.` stay text. A marker with no item text
-    /// (`1.` / `*` alone) stays text too.
+    /// An ordered marker interrupts only when its integer start is
+    /// 1, so `01.` does and `9.`, `0.`, and `003.` stay text. A
+    /// marker with no item text (`1.` / `*` alone) stays text too.
     private static func markerInterruptsParagraph(_ marker: Marker) -> Bool {
         if marker.text.isEmpty { return false }
-        if marker.ordered && marker.digits != "1" { return false }
+        // v1.88: cmark-gfm compares the integer start, so `01.` is 1.
+        if marker.ordered && marker.number != 1 { return false }
         return true
     }
 
