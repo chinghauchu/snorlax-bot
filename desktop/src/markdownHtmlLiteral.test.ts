@@ -262,8 +262,8 @@ test("streaming stays plain and copy keeps markdown source", () => {
   assert.match(swift, /static func animation/);
   assert.match(swift, /return nil/);
   assert.match(swift, /MarkdownEscape\.opaqueSpans/);
-  assert.match(swift, /MarkdownList\.htmlBlockInterrupts/);
-  assert.match(swift, /MarkdownList\.htmlUntilBlockEnd/);
+  assert.match(swift, /MarkdownList\.htmlBlockLineEnd/);
+  assert.match(swift, /MarkdownList\.htmlSourceBlockLine/);
   assert.match(swift, /§§SBE/);
   assert.match(swift, /markdown source/);
   assert.doesNotMatch(swift, /UIPasteboard/);

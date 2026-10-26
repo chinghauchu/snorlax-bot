@@ -850,14 +850,16 @@ enum MarkdownQuoteTask {
         return current
     }
 
-    /// This line closes the quote instead of joining it. Types 1–6
-    /// of an HTML block do. A type 7 tag stays in the quote.
+    /// This line closes the quote instead of joining it. Types 1–7
+    /// of an HTML block do. v1.87: a type 7 tag such as `<br>` ends
+    /// the quote. The tag line and the lines the block owns stay
+    /// outside it.
     private static func endsLazyQuote(_ line: String, paragraphOpen: Bool) -> Bool {
         if isBlank(line) || isMathFence(line) { return true }
         if isThematicBreak(line) || isAtxHeading(line) || isFenceLine(line) || isMarginListMarker(line) {
             return true
         }
-        if MarkdownList.htmlBlockInterrupts(line) { return true }
+        if MarkdownList.htmlBlockStarts(line) { return true }
         if !paragraphOpen && isIndentedCodeLine(line) { return true }
         return false
     }

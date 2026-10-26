@@ -106,6 +106,7 @@ import {
 } from "./markdownTable";
 import { listIsLoose } from "./markdownLooseList";
 import {
+  listSplitByCmarkHtml,
   markdownListLineRanges,
   splitMarkdownLists,
 } from "./markdownList";
@@ -584,7 +585,10 @@ function MarkdownParsed({
   findQuery: string;
 }) {
   const unwrapParagraphs = useContext(TightParagraphContext);
-  if (completed && textHasTableInList(sourceText)) {
+  if (
+    completed &&
+    (textHasTableInList(sourceText) || listSplitByCmarkHtml(sourceText))
+  ) {
     return (
       <MarkdownListsWithTables
         text={sourceText}
@@ -622,7 +626,9 @@ function textHasTableInList(text: string): boolean {
 /**
  * v1.86: react-markdown has no GFM tables. A list whose item
  * contains a table is drawn here so the table stays inside the
- * item. Other lists stay on react-markdown.
+ * item. v1.87: a list that cmark-gfm ends at a margin type 7 tag
+ * or a `source` block is drawn here too, so that tag stays outside
+ * the item. Other lists stay on react-markdown.
  */
 function MarkdownListsWithTables({
   text,

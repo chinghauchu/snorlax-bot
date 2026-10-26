@@ -124,12 +124,14 @@ test("the list and quote split follows that HTML block rule", () => {
   assert.deepEqual(items("* foo\n<div>\n* bar"), ["foo"]);
   assert.equal(lists(splitMarkdownLists("* foo\n<div>\n* bar", true)).length, 1);
   assert.deepEqual(items("- foo\n<!-- x -->\nbar"), ["foo"]);
-  assert.deepEqual(items("- foo\n<br>\nbar"), ["foo\n<br>"]);
-  assert.deepEqual(items("- foo\n<br/>\nbar"), ["foo\n<br/>"]);
-  assert.deepEqual(items("- foo\n<BR>\nbar"), ["foo\n<BR>"]);
+  // v1.87: a type 7 tag at the margin ends the item. The tag and
+  // the lines it owns stay outside. An indented tag stays inline.
+  assert.deepEqual(items("- foo\n<br>\nbar"), ["foo"]);
+  assert.deepEqual(items("- foo\n<br/>\nbar"), ["foo"]);
+  assert.deepEqual(items("- foo\n<BR>\nbar"), ["foo"]);
   assert.deepEqual(items("- foo\n  <br>\n  bar"), ["foo\n<br>\nbar"]);
   assert.deepEqual(items("- foo\n<span>x</span>\nbar"), ["foo\n<span>x</span>\nbar"]);
-  assert.deepEqual(items("- foo\n<br>\n  bar"), ["foo\n<br>\nbar"]);
+  assert.deepEqual(items("- foo\n<br>\n  bar"), ["foo"]);
 
   const afterComment = lists(splitMarkdownLists("foo\n<!-- c -->\n9. bar", true));
   assert.equal(afterComment.length, 1);
@@ -144,7 +146,7 @@ test("the list and quote split follows that HTML block rule", () => {
   assert.equal(lists(splitMarkdownLists("foo\n\n<br>\n\n9. bar", true))[0]?.start, 9);
 
   assert.equal(quoteText("> foo\n<div>\nbar"), "foo");
-  assert.equal(quoteText("> foo\n<br>\nbar"), "foo\n<br>");
+  assert.equal(quoteText("> foo\n<br>\nbar"), "foo");
   assert.equal(quoteText("> foo\nbar"), "foo\nbar");
   assert.equal(quoteText("> foo\n<!-- c -->\nbar"), "foo");
   assert.deepEqual(items("- foo\nbar"), ["foo\nbar"]);
@@ -185,7 +187,7 @@ test("streaming stays plain and copy keeps markdown source", () => {
   assert.match(src, /htmlLazyTag/);
   assert.match(src, /export function htmlUntilBlockEnd/);
   assert.match(src, /v1\.58/);
-  assert.match(quotes, /htmlBlockInterrupts/);
+  assert.match(quotes, /htmlBlockStarts/);
   assert.match(quotes, /htmlLazyTag/);
   assert.match(bubbles, /htmlUntilBlockEnd/);
   assert.match(swift, /htmlBlockInterrupts/);
@@ -193,7 +195,7 @@ test("streaming stays plain and copy keeps markdown source", () => {
   assert.match(swift, /htmlUntilBlockEnd/);
   assert.match(swift, /v1\.58/);
   assert.match(swift, /if !completed \{ return \[.markdown\(src\)\] \}/);
-  assert.match(quoteSwift, /MarkdownList\.htmlBlockInterrupts/);
+  assert.match(quoteSwift, /MarkdownList\.htmlBlockStarts/);
   assert.match(quoteSwift, /MarkdownList\.htmlLazyTag/);
   assert.match(markdown, /MarkdownList\.htmlUntilBlockEnd/);
   assert.match(body, /react-markdown/);

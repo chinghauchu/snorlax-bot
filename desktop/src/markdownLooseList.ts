@@ -25,7 +25,7 @@
  * Keep in lockstep with `ios/SnorlaxBot/MarkdownLooseList.swift`.
  */
 
-import { listMarkerPadding, markdownListEnd } from "./markdownList.ts";
+import { htmlBlockStarts, listMarkerPadding, markdownListEnd } from "./markdownList.ts";
 
 /** Compact gap between items of a tight list. iOS rows and task rows. */
 export const TIGHT_LIST_ITEM_SPACING_PX = 4;
@@ -345,6 +345,7 @@ function interruptsList(line: string): boolean {
   if (rest.startsWith(">")) return true;
   if (fenceOnLine(line)) return true;
   if (rest.trim() === "$$") return true;
+  if (htmlBlockStarts(line)) return true;
   return false;
 }
 
