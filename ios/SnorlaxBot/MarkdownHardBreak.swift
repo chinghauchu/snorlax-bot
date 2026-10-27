@@ -25,6 +25,12 @@ import UIKit
 /// Streaming (`completed: false`) returns the text unchanged.
 /// Copy controls keep markdown source.
 /// No animation. No new HTTP.
+/// v1.96: spaces that are only list-marker padding are not a
+/// hard break. `-   ` then an indented `foo` is a list item,
+/// and the same line inside a quote stays a list. A marker
+/// whose text is indented code (`1.     code  `) keeps those
+/// spaces in the code. A real break (`- foo  ` then `bar`)
+/// stays a break.
 /// Keep in lockstep with `desktop/src/markdownHardBreak.ts`.
 enum MarkdownHardBreak {
     static let token = "§§SBH§§"
@@ -201,7 +207,13 @@ enum MarkdownHardBreak {
                     }
                     stack.append(ListFrame(markerCol: marker.col, contentCol: marker.contentCol, ordered: marker.ordered))
                 }
-                para = true
+                // v1.96: padding after the marker, and indented code in
+                // that text, are not paragraph lines.
+                if let itemText = listItemParagraphText(line) {
+                    para = remainderOpensParagraph(itemText)
+                } else {
+                    para = true
+                }
                 quote = quoteDepth(line)
             } else if isAtx(line) || isThematic(line) || isMathLine(line) {
                 para = false
@@ -390,6 +402,48 @@ enum MarkdownHardBreak {
         if quotePrefixAt(Array(line), from: 0) > 0 { return true }
         guard let marker = parseMarker(line) else { return false }
         return !marker.ordered || marker.number == 1
+    }
+
+    /// Text after a list marker's padding. A blank marker line is `""`.
+    private static func listItemParagraphText(_ line: String) -> String? {
+        let body = stripQuote(line)
+        if isThematic(body) { return nil }
+        let lead = leadingColumns(body)
+        let chars = Array(body)
+        if lead.index >= chars.count { return nil }
+        let rest = Array(chars[lead.index...])
+        var tokenCount = 0
+        if rest[0] == "-" || rest[0] == "+" || rest[0] == "*" {
+            tokenCount = 1
+        } else {
+            var digits = 0
+            var cursor = 0
+            while cursor < rest.count, digits < 9, isDigit(rest[cursor]) {
+                digits += 1
+                cursor += 1
+            }
+            guard digits > 0, cursor < rest.count, rest[cursor] == "." || rest[cursor] == ")" else {
+                return nil
+            }
+            tokenCount = digits + 1
+        }
+        let after = lead.index + tokenCount
+        if after < chars.count, chars[after] != " ", chars[after] != "\t" { return nil }
+        guard let markerIndex = body.index(body.startIndex, offsetBy: after, limitedBy: body.endIndex) else {
+            return nil
+        }
+        let padded = MarkdownList.listMarkerPadding(
+            body,
+            markerIndex: markerIndex,
+            markerColumn: lead.columns + tokenCount
+        )
+        return padded.text
+    }
+
+    /// Empty padding and indented code are not paragraph text.
+    private static func remainderOpensParagraph(_ text: String) -> Bool {
+        if text.trimmingCharacters(in: .whitespaces).isEmpty { return false }
+        return leadingColumns(text).columns < 4
     }
 
     private static func parseMarker(_ line: String) -> Marker? {
