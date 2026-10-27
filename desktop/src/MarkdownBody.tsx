@@ -1131,7 +1131,7 @@ export function HttpsText({
   const fromContext = useFindQuery();
   const query = findQuery ?? fromContext;
   const rawPieces = splitWebUrls(text, { streaming, emails });
-  const hasEscape = text.includes("§§SBE");
+  const hasEscape = text.includes("§§SBE") || text.includes("\uE000SBW");
   const pieces = hasEscape
     ? rawPieces.map((piece) => ({
         ...piece,

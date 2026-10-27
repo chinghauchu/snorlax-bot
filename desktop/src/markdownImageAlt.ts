@@ -29,6 +29,7 @@
  * Keep in lockstep with `ios/SnorlaxBot/MarkdownImageAlt.swift`.
  */
 
+import { isCmarkUnicodeSpace } from "./markdownEmphasis.ts";
 import { ASCII_PUNCT, readCharacterReference, stashMarkdownText } from "./markdownEscape.ts";
 import { readCommonMarkTitle } from "./markdownLinkTitleForm.ts";
 import { htmlTagEnd } from "./markdownHtmlLiteral.ts";
@@ -256,7 +257,8 @@ function flanking(
 }
 
 function isWs(ch: string): boolean {
-  return /^\s$/u.test(ch);
+  // v1.94: cmark-gfm space, not every Unicode White_Space character.
+  return isCmarkUnicodeSpace(ch);
 }
 
 function isPunct(ch: string): boolean {

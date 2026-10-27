@@ -24,9 +24,13 @@
  * Streaming (`completed: false`) returns the text unchanged.
  * Copy controls keep markdown source — this module does not copy.
  * No animation. No new HTTP.
+ * v1.94: after the tree is built, strong nested inside strong
+ * becomes one strong. cmark-gfm's HTML emits one `<strong>`
+ * for that nest. Emphasis nested in emphasis stays nested.
  * Keep in lockstep with `ios/SnorlaxBot/MarkdownHardBreak.swift`.
  */
 
+import { flattenNestedStrong } from "./markdownEmphasis.ts";
 import { applySafeInlineHtml } from "./markdownHtmlLiteral.ts";
 import { htmlBlockEnd, htmlBlockInterrupts, htmlBlockStarts } from "./markdownList.ts";
 import { fenceInfoAllowsOpen, fenceRanges, inRange, inlineCodeRanges, type Range } from "./math.ts";
@@ -84,6 +88,8 @@ export function remarkHardBreaks(): (tree: MdastNode) => void {
     // v1.75: paired kbd / sub / sup tokens become elements after
     // a bare <br> has already been split into a break node.
     applySafeInlineHtml(tree);
+    // v1.94: cmark-gfm HTML collapses strong-in-strong to one tag.
+    flattenNestedStrong(tree);
   };
 }
 
