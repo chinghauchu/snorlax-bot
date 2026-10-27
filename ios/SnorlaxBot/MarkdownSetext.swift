@@ -46,6 +46,11 @@ import SwiftUI
 /// are not part of the text. `headingInlineSource` runs the same
 /// hard-break pass paragraphs already use.
 ///
+/// v1.93: a tab stop counts toward indented code, and heading
+/// text stays inline. `Foo` then four spaces then `-` or `***`,
+/// then an underline, is one heading. `# Hi` then a space and a
+/// tab then `---` is code, then a rule.
+///
 /// Streaming (`completed: false`) returns the text unchanged.
 /// Copy controls keep markdown source — this type does not write
 /// the pasteboard. No animation. No new HTTP.
@@ -72,8 +77,11 @@ enum MarkdownSetext {
     /// soft break. Two trailing spaces, or a backslash before the
     /// newline, becomes the hard-break token. A marker inside a code
     /// span stays literal. The underline is not included.
+    /// v1.93: a later line that would start a block is escaped so
+    /// the characters stay inline. A code span opened earlier is
+    /// left alone.
     static func headingInlineSource(_ text: String) -> String {
-        MarkdownHardBreak.apply(text, completed: true)
+        MarkdownHardBreak.apply(escapeHeadingBlockLines(text), completed: true)
     }
 
     /// `completed: false` returns `text` unchanged.
@@ -470,10 +478,125 @@ enum MarkdownSetext {
         return info.trimmingCharacters(in: .whitespaces).isEmpty
     }
 
+    /// v1.93: a tab stop counts. Column 4 or more is indented code.
     private static func isIndentedCodeLine(_ line: String) -> Bool {
-        if isBlank(line) { return false }
-        if line.hasPrefix("\t") { return true }
-        return line.range(of: #"^ {4,}"#, options: .regularExpression) != nil
+        guard let columns = MarkdownIndentedCode.contentColumns(line) else { return false }
+        return columns >= 4
+    }
+
+    /// Heading text is one paragraph of inlines. Escape a later
+    /// line that would start a block. A code span that opened on
+    /// an earlier line already owns the characters.
+    private static func escapeHeadingBlockLines(_ text: String) -> String {
+        guard text.contains("\n") else { return text }
+        let spans = codeSpans(text)
+        // A newline inside a code span is a space. Folding it first
+        // keeps a later `***` from becoming a thematic break.
+        var collapsed = ""
+        let chars = Array(text)
+        for (index, ch) in chars.enumerated() {
+            if ch == "\n", spans.contains(where: { index >= $0.start && index < $0.end }) {
+                collapsed.append(" ")
+            } else {
+                collapsed.append(ch)
+            }
+        }
+        guard collapsed.contains("\n") else { return collapsed }
+        let lines = collapsed.components(separatedBy: "\n")
+        return lines.enumerated().map { index, line in
+            index == 0 ? line : escapeHeadingBlockLine(line)
+        }.joined(separator: "\n")
+    }
+
+    private struct CodeSpan {
+        var start: Int
+        var end: Int
+    }
+
+    private static func codeSpans(_ text: String) -> [CodeSpan] {
+        let chars = Array(text)
+        var ranges: [CodeSpan] = []
+        var i = 0
+        while i < chars.count {
+            if chars[i] != "`" {
+                i += 1
+                continue
+            }
+            var n = 1
+            while i + n < chars.count, chars[i + n] == "`" { n += 1 }
+            var j = i + n
+            var matched = false
+            while j < chars.count {
+                if chars[j] == "\n" {
+                    var k = j + 1
+                    while k < chars.count, chars[k] == " " || chars[k] == "\t" { k += 1 }
+                    if k < chars.count, chars[k] == "\n" { break }
+                }
+                if chars[j] != "`" {
+                    j += 1
+                    continue
+                }
+                var m = 1
+                while j + m < chars.count, chars[j + m] == "`" { m += 1 }
+                if m == n {
+                    ranges.append(CodeSpan(start: i, end: j + m))
+                    i = j + m
+                    matched = true
+                    break
+                }
+                j += m
+            }
+            if !matched { i += n }
+        }
+        return ranges
+    }
+
+    private static func escapeHeadingBlockLine(_ line: String) -> String {
+        if isThematic(line) || setextUnderline(line) != nil || isSingleDash(line) {
+            return escapeFirstMarker(line)
+        }
+        if isAtx(line) || isQuoteLine(line) { return escapeFirstMarker(line) }
+        if openingFence(line) != nil { return escapeFenceMarkers(line) }
+        if line.range(of: #"^( {0,3})[-+*](?:[ \t]|$)"#, options: .regularExpression) != nil {
+            return escapeFirstMarker(line)
+        }
+        if let match = line.range(of: #"^( {0,3})(\d{1,9})([.)])(?=[ \t]|$)"#, options: .regularExpression) {
+            let head = String(line[match])
+            guard let delim = head.last else { return line }
+            let digits = head.dropLast()
+            let rest = line[match.upperBound...]
+            return String(digits) + "\\" + String(delim) + rest
+        }
+        return line
+    }
+
+    private static func isSingleDash(_ line: String) -> Bool {
+        line.range(of: #"^ {0,3}-[ \t]*$"#, options: .regularExpression) != nil
+    }
+
+    private static func escapeFirstMarker(_ line: String) -> String {
+        let chars = Array(line)
+        guard let index = chars.firstIndex(where: { $0 != " " && $0 != "\t" }) else { return line }
+        var out = String(chars[..<index])
+        out.append("\\")
+        out.append(contentsOf: chars[index...])
+        return out
+    }
+
+    private static func escapeFenceMarkers(_ line: String) -> String {
+        guard let match = line.range(of: #"^( {0,3})([`~]{3,})"#, options: .regularExpression) else {
+            return line
+        }
+        let head = String(line[match])
+        let rest = String(line[match.upperBound...])
+        var escaped = ""
+        for ch in head {
+            if ch == "`" || ch == "~" {
+                escaped.append("\\")
+            }
+            escaped.append(ch)
+        }
+        return escaped + rest
     }
 
     private static func isAtx(_ line: String) -> Bool {

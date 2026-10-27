@@ -19,7 +19,11 @@
  * item (the list renderer paints the rule there). A line that
  * only looks like a break inside an HTML block stays in the
  * block. A break at the list's margin still ends the list.
- * `* * *` is a break, not a list item. Streaming
+ * `* * *` is a break, not a list item.
+ * v1.93: a tab stop counts toward the four-column indent.
+ * A space and a tab before `---` is indented code when no
+ * paragraph is open, so that line is not setext text and
+ * the next `---` stays a rule. Streaming
  * (`completed: false`) returns the text unchanged.
  * Copy controls keep markdown source — this module does not copy.
  * No animation. No new HTTP.
@@ -28,6 +32,7 @@
 
 import { splitWebUrls } from "./linkify.ts";
 import { ASCII_PUNCT } from "./markdownEscape.ts";
+import { contentColumns } from "./markdownIndentedCode.ts";
 import { htmlBlockEnd, markdownListEnd } from "./markdownList.ts";
 
 export type BreakBlock =
@@ -654,8 +659,8 @@ function listItemContentColumn(line: string): number {
 }
 
 function isIndentedCode(line: string): boolean {
-  if (line.startsWith("\t")) return true;
-  return /^ {4,}/.test(line);
+  const columns = contentColumns(line);
+  return columns != null && columns >= 4;
 }
 
 function stripIndent(line: string): string {

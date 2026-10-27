@@ -10,7 +10,10 @@ import SwiftUI
 /// v1.82: a break indented into an open list item stays in that item.
 /// A line that only looks like a break inside an HTML block stays in
 /// the block. A break at the list's margin still ends the list.
-/// `* * *` is a break, not a list item. Streaming (`completed: false`)
+/// `* * *` is a break, not a list item. v1.93: a tab stop counts
+/// toward the four-column indent, so a space and a tab before
+/// `---` is not setext text when no paragraph is open. Streaming
+/// (`completed: false`)
 /// returns the text unchanged. Copy controls keep markdown source — this type
 /// only splits text for display and does not write the pasteboard.
 /// No animation. No new HTTP.
@@ -192,9 +195,10 @@ enum MarkdownBreak {
         return columns
     }
 
+    /// v1.93: a tab stop counts toward the four-column indent.
     private static func isIndentedCode(_ line: String) -> Bool {
-        if line.hasPrefix("\t") { return true }
-        return line.range(of: #"^ {4,}"#, options: .regularExpression) != nil
+        guard let columns = MarkdownIndentedCode.contentColumns(line) else { return false }
+        return columns >= 4
     }
 
     private static func stripIndent(_ line: String) -> String {

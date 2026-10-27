@@ -50,6 +50,18 @@
  * part of the text. `headingInlineSource` runs the same hard-break
  * pass paragraphs already use.
  *
+ * v1.93: two cmark-gfm edges those cuts still missed. A
+ * continuation whose indent is four columns, counting a tab
+ * stop, is indented code when no paragraph is open (`# Hi`
+ * then a space and a tab then `---` is code, then a rule).
+ * The same line under an open paragraph stays heading text.
+ * That text is inline. `Foo` then four spaces then `-` or
+ * `***`, then an underline, is one heading whose second line
+ * is the characters, not a nested heading or a rule. A code
+ * span that already opened keeps those characters. A fence,
+ * quote, ATX line, or list marker on a later heading line
+ * stays text too.
+ *
  * Streaming (`completed: false`) returns the text unchanged.
  * Copy controls keep markdown source — this module does not copy.
  * No animation. No new HTTP.
@@ -57,7 +69,9 @@
  */
 
 import { applyHardLineBreaks } from "./markdownHardBreak.ts";
+import { contentColumns } from "./markdownIndentedCode.ts";
 import { htmlBlockEnd } from "./markdownList.ts";
+import { inlineCodeRanges } from "./math.ts";
 
 export type SetextBlock =
   | { type: "markdown"; text: string }
@@ -81,7 +95,7 @@ export function setextAnimates(reduceMotion: boolean): boolean {
  * span stays literal. The underline is not included.
  */
 export function headingInlineSource(text: string): string {
-  return applyHardLineBreaks(text, true);
+  return applyHardLineBreaks(escapeHeadingBlockLines(text), true);
 }
 
 /**
@@ -446,9 +460,67 @@ function isClosingFence(line: string, open: string): boolean {
 }
 
 function isIndentedCodeLine(line: string): boolean {
-  if (isBlank(line)) return false;
-  if (line.startsWith("\t")) return true;
-  return /^ {4,}/.test(line);
+  const columns = contentColumns(line);
+  return columns != null && columns >= 4;
+}
+
+/**
+ * Heading text is one paragraph of inlines. A later line that
+ * looks like a block would be a new block if the markdown
+ * parser saw the newline. Escape that line so the characters
+ * stay. A code span opened on an earlier line already owns
+ * the characters, so those lines stay as written.
+ */
+function escapeHeadingBlockLines(text: string): string {
+  if (!text.includes("\n")) return text;
+  const ranges = inlineCodeRanges(text, []);
+  // A newline inside a code span is a space, the same way cmark
+  // folds code-span line endings. Folding it first keeps a later
+  // `***` from becoming a thematic break.
+  let collapsed = "";
+  for (let i = 0; i < text.length; i += 1) {
+    const ch = text[i] ?? "";
+    if (ch === "\n" && ranges.some((span) => i >= span.start && i < span.end)) {
+      collapsed += " ";
+      continue;
+    }
+    collapsed += ch;
+  }
+  if (!collapsed.includes("\n")) return collapsed;
+  const lines = collapsed.split("\n");
+  return lines
+    .map((line, index) => (index === 0 ? line : escapeHeadingBlockLine(line)))
+    .join("\n");
+}
+
+function escapeHeadingBlockLine(line: string): string {
+  if (isThematic(line) || setextUnderline(line) || /^ {0,3}-[ \t]*$/.test(line)) {
+    return escapeFirstMarker(line);
+  }
+  if (isAtx(line)) return line.replace(/^( {0,3})#/, "$1\\#");
+  if (isQuoteLine(line)) return line.replace(/^( {0,3})>/, "$1\\>");
+  if (openingFence(line)) return escapeFenceMarkers(line);
+  if (/^( {0,3})[-+*](?:[ \t]|$)/.test(line)) return escapeFirstMarker(line);
+  const ordered = /^( {0,3})(\d{1,9})([.)])(?=[ \t]|$)/.exec(line);
+  if (ordered) {
+    const lead = ordered[1] ?? "";
+    const digits = ordered[2] ?? "";
+    const mark = ordered[3] ?? "";
+    return `${lead}${digits}\\${mark}${line.slice(lead.length + digits.length + mark.length)}`;
+  }
+  return line;
+}
+
+function escapeFirstMarker(line: string): string {
+  const index = line.search(/[^ \t]/);
+  if (index < 0) return line;
+  return `${line.slice(0, index)}\\${line.slice(index)}`;
+}
+
+function escapeFenceMarkers(line: string): string {
+  return line.replace(/^((?: {0,3})?)([`~]{3,})/, (_all, lead: string, marker: string) => {
+    return lead + marker.replace(/[`~]/g, (ch) => `\\${ch}`);
+  });
 }
 
 function isAtx(line: string): boolean {
