@@ -36,6 +36,16 @@ import SwiftUI
 /// marker, or HTML block at the margin. The stored line
 /// escapes that block start so a later parse keeps the text.
 ///
+/// v2.01: the first block of a list item is not a paragraph
+/// interrupt. `Foo` / `- 2. bar`, `- foo` / `  - 2. bar`, and
+/// `Foo` / `- 01. bar` are nested ordered lists. This parser
+/// stores the item text and `AssistantMarkdown` parses it
+/// again, so any start number opens there, including `0.`,
+/// `2)`, `003.`, and `01.`. A `2.` that continues a paragraph
+/// (`- foo` / `  2. bar`, or `Foo` / `2. bar`) stays text.
+/// Desktop react-markdown still has interrupt set on that
+/// first line, so those replies go through the same splitter.
+///
 /// v1.57: `-`, `*`, and `+` are different lists, matching desktop
 /// react-markdown. A later margin item stays in the list only when
 /// it uses that same bullet. A nested marker of another character
