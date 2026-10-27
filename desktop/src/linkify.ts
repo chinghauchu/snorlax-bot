@@ -33,6 +33,12 @@
  * `&hl1;` keeps the digits. An extended email must end in a letter.
  * Only the exact prefix `mailto:` is part of the link; `MAILTO:`
  * stays outside the address. `ftp:` and `xmpp:` stay plain.
+ * v1.99: a real HTML character reference is stashed before this
+ * scan. A trailing `§§SBE` token is the decoded character of a
+ * reference the delimiter already trimmed, so it stays outside
+ * the link. A `§§SBL` token is source text cmark keeps inside
+ * the URL (`&copy;` in the path, `&#38` before a trimmed
+ * semicolon, a backslash). That token is not peeled.
  * Keep in lockstep with `ios/SnorlaxBot/WebLinks.swift`.
  */
 
@@ -220,7 +226,7 @@ function splitHttp(text: string, streaming: boolean): WebPiece[] {
     const raw = clipAngleCloser(text, idx, scanned);
     if (streaming && idx + raw.length === text.length) break;
     const url = trimTrailingPunctuation(raw);
-    if (!isSafeWebUrl(url)) {
+    if (!isSafeWebUrl(stripEscapeTokens(url))) {
       cursor = idx + schemeLength(scanned);
       continue;
     }
@@ -305,7 +311,7 @@ function nextWww(
       continue;
     }
     const value = text.slice(idx, end);
-    if (!isSafeWebUrl(linkHref(value))) {
+    if (!isSafeWebUrl(stripEscapeTokens(linkHref(value)))) {
       i = idx + 4;
       continue;
     }
@@ -380,6 +386,37 @@ function isAsciiAlpha(ch: string): boolean {
   return (code >= 65 && code <= 90) || (code >= 97 && code <= 122);
 }
 
+/**
+ * v1.99: spans of bare http(s) and www autolinks on raw source, after
+ * the trailing-punctuation trim. A trailing `&copy;` is not included,
+ * so the escape pass can decode it outside the link. Character
+ * references inside the span stay source text. Emails are not spans.
+ */
+export function extendedAutolinkRanges(text: string): Array<{ start: number; end: number }> {
+  if (!text) return [];
+  const pieces = splitWebUrls(text, { emails: false });
+  const ranges: Array<{ start: number; end: number }> = [];
+  let offset = 0;
+  for (const piece of pieces) {
+    if (piece.type === "link") ranges.push({ start: offset, end: offset + piece.value.length });
+    offset += piece.value.length;
+  }
+  return ranges;
+}
+
+/** A decoded-character stash the escape pass left in the text. */
+const ESCAPE_TOKEN_TAIL = /§§SBE(?:[0-9A-F]{6})+§§$/;
+
+function trailingEscapeToken(text: string, start: number, end: number): number | null {
+  const match = ESCAPE_TOKEN_TAIL.exec(text.slice(start, end));
+  if (!match) return null;
+  return end - match[0].length;
+}
+
+function stripEscapeTokens(value: string): string {
+  return value.replace(/§§SB[EL](?:[0-9A-F]{6})+§§/g, "");
+}
+
 /** GFM extended-autolink path trim: trailing punct, unmatched `)`, entities. */
 function autolinkDelim(text: string, start: number, linkEnd: number): number {
   let end = linkEnd;
@@ -391,6 +428,11 @@ function autolinkDelim(text: string, start: number, linkEnd: number): number {
     else if (c === ")") closing += 1;
   }
   while (end > start) {
+    const tokenAt = trailingEscapeToken(text, start, end);
+    if (tokenAt != null) {
+      end = tokenAt;
+      continue;
+    }
     const c = text[end - 1]!;
     if (c === ")") {
       if (closing <= opening) return end;

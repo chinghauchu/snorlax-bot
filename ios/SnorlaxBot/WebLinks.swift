@@ -33,6 +33,9 @@ import SwiftUI
 /// `&hl1;` keeps the digits. An extended email must end in a letter.
 /// Only the exact prefix `mailto:` is part of the link; `MAILTO:`
 /// stays outside the address. Other schemes stay plain.
+/// v1.99: a trailing `§§SBE` token is a character reference the
+/// delimiter already trimmed (`&copy;` becomes © outside the link).
+/// A `§§SBL` token is source text that stays inside the URL.
 /// Keep in lockstep with `desktop/src/linkify.ts`.
 enum WebLinks {
     struct Piece: Equatable {
@@ -80,10 +83,13 @@ enum WebLinks {
     )
 
     static func url(_ raw: String) -> URL? {
-        if let href = emailHref(raw), let parsed = URL(string: href), allows(parsed) {
+        // v1.99: piece text can still hold escape tokens. The opened
+        // URL is the restored characters; the visible run restores later.
+        let source = raw.contains("§§SB") ? MarkdownEscape.restoreString(raw) : raw
+        if let href = emailHref(source), let parsed = URL(string: href), allows(parsed) {
             return parsed
         }
-        let candidate = raw.hasPrefix("www.") ? "http://" + raw : raw
+        let candidate = source.hasPrefix("www.") ? "http://" + source : source
         if let parsed = URL(string: candidate), allows(parsed) { return parsed }
         // Foundation rejects some characters that are valid in real links.
         let encoded = candidate
@@ -445,6 +451,51 @@ enum WebLinks {
         }
     }
 
+    /// v1.99: spans of bare http(s) and www autolinks on raw source, after
+    /// the trailing-punctuation trim. A trailing `&copy;` is not included.
+    /// Emails are not spans. Character offsets match `Array(text)`.
+    static func extendedAutolinkSpans(_ chars: [Character]) -> [(start: Int, end: Int)] {
+        if chars.isEmpty { return [] }
+        let pieces = split(String(chars), streaming: false, emails: false)
+        var ranges: [(start: Int, end: Int)] = []
+        var offset = 0
+        for piece in pieces {
+            let count = piece.value.count
+            if piece.kind == .link {
+                ranges.append((start: offset, end: offset + count))
+            }
+            offset += count
+        }
+        return ranges
+    }
+
+    /// A decoded-character stash (`§§SBE`) at the end of a candidate.
+    /// `§§SBL` is source text that belongs inside the URL, so it stays.
+    private static func trailingEscapeToken(_ chars: [Character], _ start: Int, _ end: Int) -> Int? {
+        guard end - start >= 13 else { return nil }
+        guard chars[end - 1] == "§", chars[end - 2] == "§" else { return nil }
+        var hexStart = end - 2
+        while hexStart > start, isHexUpper(chars[hexStart - 1]) {
+            hexStart -= 1
+        }
+        let hexCount = end - 2 - hexStart
+        guard hexCount >= 6, hexCount.isMultiple(of: 6) else { return nil }
+        let prefixStart = hexStart - 5
+        guard prefixStart >= start else { return nil }
+        guard chars[prefixStart] == "§",
+              chars[prefixStart + 1] == "§",
+              chars[prefixStart + 2] == "S",
+              chars[prefixStart + 3] == "B",
+              chars[prefixStart + 4] == "E" else { return nil }
+        return prefixStart
+    }
+
+    private static func isHexUpper(_ ch: Character) -> Bool {
+        guard let scalar = ch.unicodeScalars.first, ch.unicodeScalars.count == 1 else { return false }
+        let v = scalar.value
+        return (v >= 48 && v <= 57) || (v >= 65 && v <= 70)
+    }
+
     /// GFM extended-autolink path trim: trailing punct, unmatched `)`, entities.
     private static func autolinkDelim(_ chars: [Character], _ start: Int, _ linkEnd: Int) -> Int {
         var end = linkEnd
@@ -459,6 +510,10 @@ enum WebLinks {
         }
         let trail: Set<Character> = ["?", "!", ".", ",", ":", "*", "_", "~", "'", "\""]
         while end > start {
+            if let tokenAt = trailingEscapeToken(chars, start, end) {
+                end = tokenAt
+                continue
+            }
             let c = chars[end - 1]
             if c == ")" {
                 if closing <= opening { return end }
