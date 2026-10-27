@@ -27,12 +27,24 @@
  * v1.94: after the tree is built, strong nested inside strong
  * becomes one strong. cmark-gfm's HTML emits one `<strong>`
  * for that nest. Emphasis nested in emphasis stays nested.
+ *
+ * v1.96: spaces that are only list-marker padding are not a
+ * hard break. `-   ` then an indented `foo` is a list item,
+ * and the same line inside a quote stays a list. A marker
+ * whose text is indented code (`1.     code  `) keeps those
+ * spaces in the code. A real break (`- foo  ` then `bar`)
+ * stays a break.
  * Keep in lockstep with `ios/SnorlaxBot/MarkdownHardBreak.swift`.
  */
 
 import { flattenNestedStrong } from "./markdownEmphasis.ts";
 import { applySafeInlineHtml } from "./markdownHtmlLiteral.ts";
-import { htmlBlockEnd, htmlBlockInterrupts, htmlBlockStarts } from "./markdownList.ts";
+import {
+  htmlBlockEnd,
+  htmlBlockInterrupts,
+  htmlBlockStarts,
+  listMarkerPadding,
+} from "./markdownList.ts";
 import { fenceInfoAllowsOpen, fenceRanges, inRange, inlineCodeRanges, type Range } from "./math.ts";
 
 /** Placeholder swapped for a `<br>` / newline after the markdown parse. */
@@ -241,7 +253,12 @@ function rewriteHardBreaks(src: string): string {
           ordered: marker.ordered,
         });
       }
-      para = true;
+      // v1.96: padding after the marker, and indented code in
+      // that text, are not paragraph lines. Two spaces there
+      // must not become a break before the markdown parser
+      // sees the list.
+      const itemText = listItemParagraphText(line);
+      para = itemText == null ? true : remainderOpensParagraph(itemText);
       quote = quoteDepth(line);
     } else if (isAtx(line) || isThematic(line) || isMathLine(line)) {
       para = false;
@@ -402,6 +419,36 @@ function interruptsParagraph(line: string, para: boolean): boolean {
   const marker = parseMarker(line);
   if (!marker) return false;
   return !marker.ordered || marker.number === 1;
+}
+
+/**
+ * Text after a list marker's padding, or null when `line` is
+ * not a marker. A blank marker line is `""`. Five or more
+ * spaces keep one separator and return the rest, which may
+ * be indented code.
+ */
+function listItemParagraphText(line: string): string | null {
+  const body = stripQuote(line);
+  if (isThematic(body)) return null;
+  const lead = leadingColumns(body);
+  const rest = body.slice(lead.index);
+  let token = "";
+  if (rest[0] === "-" || rest[0] === "+" || rest[0] === "*") {
+    token = rest[0];
+  } else {
+    const match = /^(\d{1,9})[.)]/.exec(rest);
+    if (!match) return null;
+    token = match[0] ?? "";
+  }
+  const after = lead.index + token.length;
+  if (after < body.length && body[after] !== " " && body[after] !== "\t") return null;
+  return listMarkerPadding(body, after, lead.columns + token.length).text;
+}
+
+/** Empty padding and indented code are not paragraph text. */
+function remainderOpensParagraph(text: string): boolean {
+  if (text.trim() === "") return false;
+  return leadingColumns(text).columns < 4;
 }
 
 function parseMarker(line: string): Marker | null {
