@@ -8,7 +8,9 @@
  * renders as a code block when it is not a paragraph continuation
  * and not list-item content. There is no info string, so the block
  * is monochrome. Blank lines inside the run stay. Trailing blank
- * lines do not. An indented line cannot interrupt a paragraph.
+ * lines do not. v1.95: an interior blank keeps columns past the
+ * fourth, spaces or a tab stop, the same way cmark-gfm does.
+ * An indented line cannot interrupt a paragraph.
  * Fences, `$$`, and a top-level list (including a loose
  * continuation) stay markdown so the existing renderers keep them.
  * Streaming (`completed: false`) returns the text unchanged.
@@ -95,7 +97,9 @@ export function splitIndentedCode(
           const nextIndent = j < lines.length ? contentColumns(upcoming) : null;
           if (nextIndent != null && nextIndent >= 4) {
             while (i < j) {
-              collected.push("");
+              // v1.95: a blank line is still a code line. Columns
+              // past the fourth stay; four or fewer become empty.
+              collected.push(dedentCodeLine(lines[i] ?? ""));
               i += 1;
             }
             continue;
@@ -183,9 +187,11 @@ export function isThematicBreakLine(line: string): boolean {
   return count >= 3;
 }
 
-/** Drop one indent level (four columns) from a code line. */
+/**
+ * Drop one indent level (four columns) from a code line.
+ * A blank line keeps whatever columns remain past the fourth.
+ */
 export function dedentCodeLine(line: string): string {
-  if (isBlank(line)) return "";
   let columns = 0;
   let index = 0;
   while (index < line.length && columns < 4) {
