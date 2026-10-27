@@ -48,6 +48,16 @@
  * text, and an uppercase `<!DOCTYPE` is still one raw declaration.
  * A line that is indented code, including code inside a list, is
  * left alone.
+ *
+ * v2.03: an inline HTML comment matches that same cmark-gfm
+ * scanner. `<!-->` and `<!--->` are comments. A longer `<!--`
+ * is a comment only when the closer the scanner accepts is
+ * present, so `<!-- *bar* -->` stays raw and `<!-- *bar*--->`
+ * does not. micromark treats every `<!--` … `-->` as a comment,
+ * which hides the emphasis and keeps a following `---` from
+ * being a setext heading. The `<` of a rejected comment is
+ * stashed. A line that begins with `<!--` is still a type 2
+ * HTML block. `<!-->` and `<!--->` stay comments.
  * Keep in lockstep with `ios/SnorlaxBot/MarkdownHtmlLiteral.swift`.
  */
 
@@ -158,6 +168,12 @@ function rewrite(input: string): string {
       i += 1;
       continue;
     }
+    if (ch === "<" && isInvalidHtmlComment(src, i) && !codeLine[i]) {
+      // micromark would open a comment. cmark-gfm does not.
+      out += stashMarkdownText("<");
+      i += 1;
+      continue;
+    }
     if (ch === "<") {
       const end = htmlTagEnd(src, i);
       if (end > i && !overlaps(i, end, blocked)) {
@@ -180,6 +196,53 @@ function isLowerHtmlDeclaration(src: string, index: number): boolean {
   if (src[index] !== "<" || src[index + 1] !== "!") return false;
   const ch = src[index + 2] ?? "";
   return ch >= "a" && ch <= "z";
+}
+
+/**
+ * cmark-gfm 0.29.0.gfm.13 inline HTML comment, exclusive end.
+ * `<!-->` and `<!--->` are comments. Anything longer has to
+ * match the comment scanner: a rejected closer such as
+ * `<!-- *bar*--->` is not a comment. `-1` when `index` is not
+ * one of those comments.
+ */
+export function cmarkHtmlCommentEnd(src: string, index: number): number {
+  if (!src.startsWith("<!--", index)) return -1;
+  if (src.startsWith("<!-->", index)) return index + 5;
+  if (src.startsWith("<!--->", index)) return index + 6;
+  const len = scanHtmlComment(src, index + 2);
+  return len > 0 ? index + 2 + len : -1;
+}
+
+/** `<!--` that cmark-gfm does not accept as an inline comment. */
+function isInvalidHtmlComment(src: string, index: number): boolean {
+  return src.startsWith("<!--", index) && cmarkHtmlCommentEnd(src, index) < 0;
+}
+
+/**
+ * Length of a comment scanned from the first `-` of `<!--`,
+ * or 0. This is the cmark-gfm 0.29.0.gfm.13 re2c machine:
+ * `"--" (non-hyphen+ | "-" non-hyphen | "--" non-">")* "-->"`.
+ */
+function scanHtmlComment(src: string, start: number): number {
+  const at = (i: number): string => (i < src.length ? src[i]! : "\0");
+  const normal = (ch: string): boolean => ch !== "\0" && ch !== "-";
+  if (at(start) !== "-" || at(start + 1) !== "-") return 0;
+  let p = start + 1;
+  while (p <= src.length + 1) {
+    p += 1;
+    let ch = at(p);
+    if (normal(ch)) continue;
+    if (ch !== "-") return 0;
+    p += 1;
+    ch = at(p);
+    if (normal(ch)) continue;
+    if (ch !== "-") return 0;
+    p += 1;
+    ch = at(p);
+    if (ch === ">") return p + 1 - start;
+    if (ch === "\0") return 0;
+  }
+  return 0;
 }
 
 /**
@@ -421,10 +484,7 @@ function mergeRanges(ranges: Range[]): Range[] {
  */
 export function htmlTagEnd(src: string, i: number): number {
   if (src[i] !== "<") return -1;
-  if (src.startsWith("<!--", i)) {
-    const close = src.indexOf("-->", i + 2);
-    return close < 0 ? -1 : close + 3;
-  }
+  if (src.startsWith("<!--", i)) return cmarkHtmlCommentEnd(src, i);
   if (src.startsWith("<![CDATA[", i)) {
     const close = src.indexOf("]]>", i + 9);
     return close < 0 ? -1 : close + 3;
