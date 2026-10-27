@@ -41,6 +41,14 @@ import UIKit
 /// `<` is stashed. An uppercase `<!DOCTYPE` stays one raw
 /// declaration. Indented code, including code inside a list, is
 /// left alone.
+///
+/// v2.03: an inline HTML comment matches that same cmark-gfm
+/// scanner. `<!-->` and `<!--->` are comments. A longer `<!--`
+/// is a comment only when the closer the scanner accepts is
+/// present, so `<!-- *bar* -->` stays raw and `<!-- *bar*--->`
+/// does not. The `<` of a rejected comment is stashed so
+/// emphasis still runs. A line that begins with `<!--` stays a
+/// type 2 HTML block.
 /// Keep in lockstep with `desktop/src/markdownHtmlLiteral.ts`.
 enum MarkdownHtmlLiteral {
     /// Never animate, including when Reduce Motion is off.
@@ -110,6 +118,12 @@ enum MarkdownHtmlLiteral {
                 index += 1
                 continue
             }
+            if ch == "<", isInvalidHtmlComment(chars, index), index < codeLine.count, !codeLine[index] {
+                // micromark would open a comment. cmark-gfm does not.
+                out.append(token("<"))
+                index += 1
+                continue
+            }
             if ch == "<", let end = htmlTagEnd(chars, index), end > index, !overlaps(index, end, blocked) {
                 out.append(safeOrStash(String(chars[index..<end])))
                 index = end
@@ -129,6 +143,51 @@ enum MarkdownHtmlLiteral {
         }
         let ch = chars[index + 2]
         return ch >= "a" && ch <= "z"
+    }
+
+    /// cmark-gfm 0.29.0.gfm.13 inline HTML comment, exclusive end.
+    /// `<!-->` and `<!--->` are comments. A rejected closer such
+    /// as `<!-- *bar*--->` is nil.
+    static func cmarkHtmlCommentEnd(_ chars: [Character], _ index: Int) -> Int? {
+        guard hasPrefix(chars, index, "<!--") else { return nil }
+        if hasPrefix(chars, index, "<!-->") { return index + 5 }
+        if hasPrefix(chars, index, "<!--->") { return index + 6 }
+        let len = scanHtmlComment(chars, index + 2)
+        guard len > 0 else { return nil }
+        return index + 2 + len
+    }
+
+    /// `<!--` that cmark-gfm does not accept as an inline comment.
+    private static func isInvalidHtmlComment(_ chars: [Character], _ index: Int) -> Bool {
+        hasPrefix(chars, index, "<!--") && cmarkHtmlCommentEnd(chars, index) == nil
+    }
+
+    /// Length from the first `-` of `<!--`, or 0. Same re2c
+    /// machine as cmark-gfm 0.29.0.gfm.13.
+    private static func scanHtmlComment(_ chars: [Character], _ start: Int) -> Int {
+        func at(_ i: Int) -> Character {
+            i < chars.count ? chars[i] : "\0"
+        }
+        func normal(_ ch: Character) -> Bool {
+            ch != "\0" && ch != "-"
+        }
+        if at(start) != "-" || at(start + 1) != "-" { return 0 }
+        var cursor = start + 1
+        while cursor <= chars.count + 1 {
+            cursor += 1
+            var ch = at(cursor)
+            if normal(ch) { continue }
+            if ch != "-" { return 0 }
+            cursor += 1
+            ch = at(cursor)
+            if normal(ch) { continue }
+            if ch != "-" { return 0 }
+            cursor += 1
+            ch = at(cursor)
+            if ch == ">" { return cursor + 1 - start }
+            if ch == "\0" { return 0 }
+        }
+        return 0
     }
 
     /// Lines the parser treats as indented code. Top-level code is
@@ -390,8 +449,7 @@ enum MarkdownHtmlLiteral {
     static func htmlTagEnd(_ chars: [Character], _ index: Int) -> Int? {
         guard index < chars.count, chars[index] == "<" else { return nil }
         if hasPrefix(chars, index, "<!--") {
-            guard let close = find(Array("-->"), in: chars, from: index + 2) else { return nil }
-            return close + 3
+            return cmarkHtmlCommentEnd(chars, index)
         }
         if hasPrefix(chars, index, "<![CDATA[") {
             guard let close = find(Array("]]>"), in: chars, from: index + 9) else { return nil }
