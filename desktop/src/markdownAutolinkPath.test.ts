@@ -180,7 +180,8 @@ test("a completed reply links the path and streaming still waits at the buffer e
   assert.match(wiki, /O&#x27;Brien/);
 
   const gt = rendered("see https://example.com/a>b now");
-  assert.deepEqual(hrefs(gt), ["https://example.com/a>b"]);
+  // v2.00: the visible text still has `>`. The href percent-encodes it.
+  assert.deepEqual(hrefs(gt), ["https://example.com/a%3Eb"]);
   assert.match(gt, /a&gt;b/);
 
   const angle = rendered("<https://example.com/O'Brien>");

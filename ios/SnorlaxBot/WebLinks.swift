@@ -36,6 +36,9 @@ import SwiftUI
 /// v1.99: a trailing `§§SBE` token is a character reference the
 /// delimiter already trimmed (`&copy;` becomes © outside the link).
 /// A `§§SBL` token is source text that stays inside the URL.
+/// v2.00: the opened URL percent-encodes like cmark-gfm. The visible
+/// text is unchanged. A `]` kept on a `www.` link is `%5D`. Non-ASCII
+/// is UTF-8 `%HH`. `&` and `'` stay characters.
 /// Keep in lockstep with `desktop/src/linkify.ts`.
 enum WebLinks {
     struct Piece: Equatable {
@@ -90,13 +93,18 @@ enum WebLinks {
         if raw.contains("§§SB") {
             raw = MarkdownEscape.restoreString(raw)
         }
-        if let href = emailHref(raw), let parsed = URL(string: href), allows(parsed) {
-            return parsed
+        if let href = emailHref(raw) {
+            let encoded = MarkdownLinkDest.autolinkHref(href)
+            if let parsed = URL(string: encoded), allows(parsed) {
+                return parsed
+            }
         }
         let candidate = raw.hasPrefix("www.") ? "http://" + raw : raw
-        if let parsed = URL(string: candidate), allows(parsed) { return parsed }
-        // Foundation rejects some characters that are valid in real links.
-        let encoded = candidate
+        // v2.00: same percent-encoding as the desktop href. Foundation
+        // still rejects a raw `(` that cmark leaves in the path.
+        let href = MarkdownLinkDest.autolinkHref(candidate)
+        if let parsed = URL(string: href), allows(parsed) { return parsed }
+        let encoded = href
             .replacingOccurrences(of: "(", with: "%28")
             .replacingOccurrences(of: ")", with: "%29")
             .replacingOccurrences(of: "[", with: "%5B")
@@ -106,7 +114,7 @@ enum WebLinks {
             .replacingOccurrences(of: "\"", with: "%22")
             .replacingOccurrences(of: "`", with: "%60")
             .replacingOccurrences(of: ">", with: "%3E")
-        guard encoded != candidate, let parsed = URL(string: encoded), allows(parsed) else { return nil }
+        guard encoded != href, let parsed = URL(string: encoded), allows(parsed) else { return nil }
         return parsed
     }
 

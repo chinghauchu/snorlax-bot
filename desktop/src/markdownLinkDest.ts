@@ -426,7 +426,12 @@ function readNumeric(src: string, i: number): { value: string; next: number } | 
   return { value: String.fromCodePoint(code), next: j + 1 };
 }
 
-function encodeCmarkHref(value: string): string {
+/**
+ * cmark-gfm `houdini_escape_href`. Unsafe bytes become `%HH`.
+ * `&` and `'` stay characters so an HTML attribute can escape them.
+ * v2.00 also uses this for extended autolink destinations.
+ */
+export function encodeCmarkHref(value: string): string {
   let out = "";
   for (const ch of value) {
     const cp = ch.codePointAt(0) ?? 0;
