@@ -209,3 +209,4 @@ jobs:
           python3 ios/scripts/test_ios_markdown_entity_ref.py
           python3 ios/scripts/test_ios_markdown_backslash.py
           python3 ios/scripts/test_ios_markdown_reference_def.py
+          python3 ios/scripts/test_ios_markdown_setext_inline.py

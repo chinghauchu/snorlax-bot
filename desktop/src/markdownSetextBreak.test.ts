@@ -127,11 +127,11 @@ test("emphasis and code spans keep their own break rules", () => {
   assert.doesNotMatch(soft, /<br/);
 
   assert.equal(headingText("Foo `a  \nb`\n===\n"), "Foo `a  \nb`");
-  assert.equal(headingInlineSource("Foo `a  \nb`"), "Foo `a  \nb`");
+  assert.equal(headingInlineSource("Foo `a  \nb`"), "Foo `a   b`");
   assert.match(paint("Foo `a  \nb`"), /Foo <code>a {3}b<\/code>/);
   assert.doesNotMatch(paint("Foo `a  \nb`"), /<br/);
 
-  assert.equal(headingInlineSource("Foo `a\\\nb`"), "Foo `a\\\nb`");
+  assert.equal(headingInlineSource("Foo `a\\\nb`"), "Foo `a\\ b`");
   assert.match(paint("Foo `a\\\nb`"), /Foo <code>a\\ b<\/code>/);
 
   assert.equal(headingText("Foo `a\n    b`\n===\n"), "Foo `a\nb`");
@@ -177,12 +177,15 @@ test("streaming stays plain and this cut stays clients-only", () => {
   assert.deepEqual(splitSetextHeadings(live, false), [{ type: "markdown", text: live }]);
   assert.match(app, /copyText\(reply\.content\)/);
   assert.match(src, /v1\.83/);
-  assert.match(src, /return applyHardLineBreaks\(text, true\)/);
+  assert.match(src, /return applyHardLineBreaks\(escapeHeadingBlockLines\(text\), true\)/);
   assert.match(src, /if \(spaces >= 2\)/);
   assert.doesNotMatch(src, /copyText/);
   assert.doesNotMatch(src, /\/v1\//);
   assert.match(swift, /v1\.83/);
-  assert.match(swift, /MarkdownHardBreak\.apply\(text, completed: true\)/);
+  assert.match(
+    swift,
+    /MarkdownHardBreak\.apply\(escapeHeadingBlockLines\(text\), completed: true\)/,
+  );
   assert.match(swift, /if spaces >= 2/);
   assert.doesNotMatch(swift, /UIPasteboard/);
   assert.doesNotMatch(swift, /\/v1\//);

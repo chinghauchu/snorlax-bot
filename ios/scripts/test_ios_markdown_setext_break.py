@@ -48,12 +48,12 @@ def test_heading_breaks_are_shared() -> None:
     assert "v1.83" in SWIFT
     assert "v1.83" in DESKTOP
     assert "static func headingInlineSource(_ text: String) -> String" in SWIFT
-    assert "MarkdownHardBreak.apply(text, completed: true)" in SWIFT
+    assert "MarkdownHardBreak.apply(escapeHeadingBlockLines(text), completed: true)" in SWIFT
     assert "private static func normalizeHeadingLine(_ line: String) -> String" in SWIFT
     assert "if spaces >= 2" in SWIFT
     assert 'replacingOccurrences(of: "\\n", with: MarkdownHardBreak.token)' not in SWIFT
     assert "export function headingInlineSource(text: string): string" in DESKTOP
-    assert "return applyHardLineBreaks(text, true)" in DESKTOP
+    assert "return applyHardLineBreaks(escapeHeadingBlockLines(text), true)" in DESKTOP
     assert "function normalizeHeadingLine(line: string): string" in DESKTOP
     assert "if (spaces >= 2)" in DESKTOP
     assert "withAnimation" not in SWIFT
