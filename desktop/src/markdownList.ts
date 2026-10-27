@@ -71,6 +71,11 @@
  * v1.89: a tab partly consumed by the list marker is one byte of
  * fence indent, not its full column width. The leftover columns
  * stay spaces in the code. Space-only fences are unchanged.
+ *
+ * v1.95: a blank line inside an item's indented code keeps
+ * columns past the code indent. The stored line is four spaces
+ * plus that remainder, so the indented-code pass matches
+ * cmark-gfm. A blank that only separates blocks stays empty.
  */
 
 import { tabFenceCloses, tabFenceCodeLine, tabFenceOpen } from "./markdownFenceIndent.ts";
@@ -542,9 +547,12 @@ function readItem(
   const openingCode = listItemIndentedCode(lines[start] ?? "", marker.contentColumn);
   const body: string[] = [];
   let paragraph = false;
+  let inIndentedCode = false;
   if (marker.text !== "") {
-    if (openingCode != null) body.push(`    ${openingCode}`);
-    else {
+    if (openingCode != null) {
+      body.push(`    ${openingCode}`);
+      inIndentedCode = true;
+    } else {
       body.push(marker.text);
       paragraph = true;
     }
@@ -610,7 +618,16 @@ function readItem(
         break;
       }
       if (leadingColumns(upcoming).columns >= marker.contentColumn) {
-        body.push("");
+        const nextCode =
+          inIndentedCode &&
+          listItemIndentedCode(upcoming, marker.contentColumn) != null;
+        if (nextCode) {
+          const extra = listItemIndentedCode(line, marker.contentColumn);
+          body.push(extra == null ? "" : `    ${extra}`);
+        } else {
+          body.push("");
+          inIndentedCode = false;
+        }
         sawBlank = true;
         paragraph = false;
         i += 1;
@@ -624,6 +641,7 @@ function readItem(
         body.push(`    ${code}`);
         sawContent = true;
         paragraph = false;
+        inIndentedCode = true;
         i += 1;
         continue;
       }
@@ -638,6 +656,7 @@ function readItem(
         body.push(`${tabbed.marker}${tabbed.info}`);
         sawContent = true;
         paragraph = false;
+        inIndentedCode = false;
         i += 1;
         continue;
       }
@@ -651,6 +670,7 @@ function readItem(
         body.push(dedent(line, marker.contentColumn));
         sawContent = true;
         paragraph = false;
+        inIndentedCode = false;
         i += 1;
         continue;
       }
@@ -665,6 +685,7 @@ function readItem(
         body.push(dedent(line, marker.contentColumn));
         sawContent = true;
         paragraph = false;
+        inIndentedCode = false;
         i += 1;
         continue;
       }
@@ -675,6 +696,7 @@ function readItem(
       body.push(dedent(line, marker.contentColumn));
       sawContent = true;
       paragraph = true;
+      inIndentedCode = false;
       i += 1;
       continue;
     }
@@ -685,6 +707,7 @@ function readItem(
       body.push(dedent(line, marker.contentColumn));
       sawContent = true;
       paragraph = true;
+      inIndentedCode = false;
       i += 1;
       continue;
     }
@@ -699,6 +722,7 @@ function readItem(
       if (body.length > 0 && lazyLineEndsItem(body)) break;
       body.push(lazyItemLine(line));
       paragraph = true;
+      inIndentedCode = false;
       if (htmlLazyTag(line)) sawBlank = true;
       i += 1;
       continue;

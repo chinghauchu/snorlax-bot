@@ -66,6 +66,11 @@ import SwiftUI
 /// v1.89: a tab partly consumed by the list marker is one byte of
 /// fence indent, not its full column width. The leftover columns
 /// stay spaces in the code. Space-only fences are unchanged.
+///
+/// v1.95: a blank line inside an item's indented code keeps
+/// columns past the code indent. The stored line is four spaces
+/// plus that remainder, so the indented-code pass matches
+/// cmark-gfm. A blank that only separates blocks stays empty.
 /// Keep in lockstep with `desktop/src/markdownList.ts`.
 enum MarkdownList {
     struct Group: Equatable {
@@ -267,9 +272,11 @@ enum MarkdownList {
         let openingCode = listItemIndentedCode(lines[start], contentColumn: marker.contentColumn)
         var body: [String] = []
         var paragraph = false
+        var inIndentedCode = false
         if !marker.text.isEmpty {
             if let code = openingCode {
                 body.append(String(repeating: " ", count: 4) + code)
+                inIndentedCode = true
             } else {
                 body.append(marker.text)
                 paragraph = true
@@ -344,7 +351,18 @@ enum MarkdownList {
                     break
                 }
                 if leadingColumns(upcoming).columns >= marker.contentColumn {
-                    body.append("")
+                    if inIndentedCode,
+                       listItemIndentedCode(upcoming, contentColumn: marker.contentColumn) != nil
+                    {
+                        if let extra = listItemIndentedCode(line, contentColumn: marker.contentColumn) {
+                            body.append(String(repeating: " ", count: 4) + extra)
+                        } else {
+                            body.append("")
+                        }
+                    } else {
+                        body.append("")
+                        inIndentedCode = false
+                    }
                     sawBlank = true
                     paragraph = false
                     index += 1
@@ -356,6 +374,7 @@ enum MarkdownList {
                 body.append(String(repeating: " ", count: 4) + code)
                 sawContent = true
                 paragraph = false
+                inIndentedCode = true
                 index += 1
                 continue
             }
@@ -368,6 +387,7 @@ enum MarkdownList {
                 body.append(tabbed.marker + tabbed.info)
                 sawContent = true
                 paragraph = false
+                inIndentedCode = false
                 index += 1
                 continue
             }
@@ -379,6 +399,7 @@ enum MarkdownList {
                     body.append(dedent(line, columns: marker.contentColumn))
                     sawContent = true
                     paragraph = false
+                    inIndentedCode = false
                     index += 1
                     continue
                 }
@@ -393,6 +414,7 @@ enum MarkdownList {
                     body.append(dedent(line, columns: marker.contentColumn))
                     sawContent = true
                     paragraph = false
+                    inIndentedCode = false
                     index += 1
                     continue
                 }
@@ -403,6 +425,7 @@ enum MarkdownList {
                     body.append(dedent(line, columns: marker.contentColumn))
                     sawContent = true
                     paragraph = true
+                    inIndentedCode = false
                     index += 1
                     continue
                 }
@@ -412,6 +435,7 @@ enum MarkdownList {
                 body.append(dedent(line, columns: marker.contentColumn))
                 sawContent = true
                 paragraph = true
+                inIndentedCode = false
                 index += 1
                 continue
             }
@@ -425,6 +449,7 @@ enum MarkdownList {
                 }
                 body.append(lazyItemLine(line))
                 paragraph = true
+                inIndentedCode = false
                 if htmlLazyTag(line) { sawBlank = true }
                 index += 1
                 continue
