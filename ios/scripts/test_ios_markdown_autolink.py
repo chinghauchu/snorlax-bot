@@ -50,7 +50,9 @@ def test_www_autolink_matches_gfm_and_opens_http() -> None:
     assert 'scheme == "http"' in LINKS
     assert 'scheme == "https"' in LINKS
     assert "export function linkHref" in DESKTOP
-    assert 'return `http://${visible}`' in DESKTOP
+    # v2.00 encodes the href after the www prefix. The prefix stays http://.
+    assert 'href = `http://${visible}`' in DESKTOP
+    assert "encodeCmarkHref(href)" in DESKTOP
     assert "function splitWww" in DESKTOP
     assert "function checkDomain" in DESKTOP
     assert 'prev === "*" || prev === "_" || prev === "~" || prev === "("' in DESKTOP
