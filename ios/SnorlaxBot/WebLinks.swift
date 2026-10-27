@@ -85,11 +85,15 @@ enum WebLinks {
     static func url(_ raw: String) -> URL? {
         // v1.99: piece text can still hold escape tokens. The opened
         // URL is the restored characters; the visible run restores later.
-        let source = raw.contains("§§SB") ? MarkdownEscape.restoreString(raw) : raw
-        if let href = emailHref(source), let parsed = URL(string: href), allows(parsed) {
+        // The www prefix stays `http://` plus that text (v1.34).
+        var raw = raw
+        if raw.contains("§§SB") {
+            raw = MarkdownEscape.restoreString(raw)
+        }
+        if let href = emailHref(raw), let parsed = URL(string: href), allows(parsed) {
             return parsed
         }
-        let candidate = source.hasPrefix("www.") ? "http://" + source : source
+        let candidate = raw.hasPrefix("www.") ? "http://" + raw : raw
         if let parsed = URL(string: candidate), allows(parsed) { return parsed }
         // Foundation rejects some characters that are valid in real links.
         let encoded = candidate
