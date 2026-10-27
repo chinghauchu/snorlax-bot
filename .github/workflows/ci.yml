@@ -215,3 +215,4 @@ jobs:
           python3 ios/scripts/test_ios_markdown_list_item.py
           python3 ios/scripts/test_ios_markdown_quote_list.py
           python3 ios/scripts/test_ios_markdown_list_fence.py
+          python3 ios/scripts/test_ios_markdown_autolink_entity.py

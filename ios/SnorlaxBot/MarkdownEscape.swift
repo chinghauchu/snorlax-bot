@@ -31,6 +31,11 @@ import UIKit
 /// the source characters. `&#87654321;` is not U+FFFD and
 /// `&#x0001F600;` is not an emoji.
 /// No animation. No new HTTP.
+/// v1.99: a bare http(s) or www autolink keeps a character
+/// reference as source (`§§SBL`), so the link text keeps
+/// `&copy;`. A trailing reference still decodes (`§§SBE`)
+/// and stays outside the URL. A backslash before punctuation
+/// in that span stays a backslash.
 /// Keep in lockstep with `desktop/src/markdownEscape.ts`.
 enum MarkdownEscape {
     private struct Span {
@@ -70,6 +75,9 @@ enum MarkdownEscape {
     /// `&amp;` in the URL stays the source characters. A raw
     /// HTML tag or HTML block still decodes a character
     /// reference. `\<` before a tag is still an escape.
+    /// v1.99: inside a bare http(s) or www autolink, stash the
+    /// source of a character reference and a backslash before
+    /// punctuation. A trailing reference stays outside that span.
     static func protect(_ text: String, completed: Bool = true) -> String {
         if !completed || text.isEmpty { return text }
         let underscored = MarkdownUnderscore.protect(text, completed: true)
@@ -78,19 +86,55 @@ enum MarkdownEscape {
         if !prepared.contains("\\") && !prepared.contains("&") { return prepared }
         let chars = Array(prepared)
         let blocked = protectedRanges(chars)
+        let extended = extendedLiteralSpans(chars, blocked: blocked)
         let literal = slashLiteralSpans(chars, blocked: blocked)
         var out = ""
         out.reserveCapacity(chars.count)
         var index = 0
         var block = 0
+        var ext = 0
         var lit = 0
         while index < chars.count {
             while block < blocked.count, index >= blocked[block].end { block += 1 }
+            while ext < extended.count, index >= extended[ext].end { ext += 1 }
             while lit < literal.count, index >= literal[lit].end { lit += 1 }
             if block < blocked.count, index >= blocked[block].start, index < blocked[block].end {
                 out.append(contentsOf: chars[index..<blocked[block].end])
                 index = blocked[block].end
                 block += 1
+                continue
+            }
+            // v1.99: source of a character reference inside a bare autolink.
+            if ext < extended.count, index >= extended[ext].start, index < extended[ext].end {
+                let end = extended[ext].end
+                while index < end {
+                    if chars[index] == "\\" {
+                        let next = index + 1 < chars.count ? chars[index + 1] : "\0"
+                        if asciiPunct.contains(next) {
+                            if index + 1 < end {
+                                out.append(literalToken(String(chars[index...index + 1])))
+                                index += 2
+                                continue
+                            }
+                            out.append(literalToken("\\"))
+                            index += 1
+                            continue
+                        }
+                    }
+                    if chars[index] == "&", let ref = readReference(chars, index) {
+                        if ref.next <= end {
+                            out.append(literalToken(String(chars[index..<ref.next])))
+                            index = ref.next
+                            continue
+                        }
+                        out.append(literalToken(String(chars[index..<end])))
+                        index = end
+                        continue
+                    }
+                    out.append(chars[index])
+                    index += 1
+                }
+                ext += 1
                 continue
             }
             if lit < literal.count, index >= literal[lit].start, index < literal[lit].end {
@@ -135,7 +179,7 @@ enum MarkdownEscape {
     /// including when the URL percent-encoded the token.
     static func restore(_ source: AttributedString) -> AttributedString {
         let raw = String(source.characters)
-        let needsText = raw.contains("§§SBE") || raw.contains(MarkdownEmphasis.mark)
+        let needsText = raw.contains("§§SBE") || raw.contains("§§SBL") || raw.contains(MarkdownEmphasis.mark)
         let needsLink = source.runs.contains { run in
             guard let link = run.link else { return false }
             let abs = link.absoluteString
@@ -146,7 +190,7 @@ enum MarkdownEscape {
         if needsText {
             for run in source.runs {
                 let slice = String(source[run.range].characters)
-                if !slice.contains("§§SBE") && !slice.contains(MarkdownEmphasis.mark) {
+                if !slice.contains("§§SBE") && !slice.contains("§§SBL") && !slice.contains(MarkdownEmphasis.mark) {
                     output.append(source[run.range])
                     continue
                 }
@@ -173,8 +217,8 @@ enum MarkdownEscape {
         for _ in 0..<8 {
             let before = current
             current = MarkdownEmphasis.restoreString(current)
-            if current.contains("§§SBE"),
-               let re = try? NSRegularExpression(pattern: #"§§SBE((?:[0-9A-F]{6})+)§§"#) {
+            if current.contains("§§SBE") || current.contains("§§SBL"),
+               let re = try? NSRegularExpression(pattern: #"§§SB[EL]((?:[0-9A-F]{6})+)§§"#) {
                 let ns = current as NSString
                 let matches = re.matches(in: current, range: NSRange(location: 0, length: ns.length))
                 if !matches.isEmpty {
@@ -201,11 +245,21 @@ enum MarkdownEscape {
     }
 
     private static func token(_ value: String) -> String {
+        "§§SBE\(hexDigits(value))§§"
+    }
+
+    /// v1.99: source characters that stay inside a bare autolink.
+    /// The autolink scan peels `§§SBE` and leaves this token.
+    private static func literalToken(_ value: String) -> String {
+        "§§SBL\(hexDigits(value))§§"
+    }
+
+    private static func hexDigits(_ value: String) -> String {
         var hex = ""
         for scalar in value.unicodeScalars {
             hex += String(format: "%06X", scalar.value)
         }
-        return "§§SBE\(hex)§§"
+        return hex
     }
 
     private static func decodeHex(_ hex: String) -> String? {
@@ -367,6 +421,29 @@ enum MarkdownEscape {
         // v1.91: an angle autolink is not an escape context.
         spans.append(contentsOf: autolinkSpans(chars, skipping: code))
         return merge(spans)
+    }
+
+    /// v1.99: bare http(s) and www autolinks outside code, a link
+    /// destination, or an angle autolink. Split around those spans.
+    private static func extendedLiteralSpans(_ chars: [Character], blocked: [Span]) -> [Span] {
+        var ranges: [Span] = []
+        for span in WebLinks.extendedAutolinkSpans(chars) {
+            if span.end <= span.start { continue }
+            var cursor = span.start
+            for hard in blocked {
+                if hard.end <= cursor { continue }
+                if hard.start >= span.end { break }
+                if hard.start > cursor {
+                    ranges.append(Span(start: cursor, end: min(hard.start, span.end)))
+                }
+                cursor = max(cursor, hard.end)
+                if cursor >= span.end { break }
+            }
+            if cursor < span.end {
+                ranges.append(Span(start: cursor, end: span.end))
+            }
+        }
+        return ranges
     }
 
     /// Raw HTML where a backslash stays and a character reference

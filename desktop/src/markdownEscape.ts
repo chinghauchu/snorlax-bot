@@ -52,9 +52,18 @@
  * the source characters too. A raw HTML tag or HTML block still
  * decodes a character reference (v1.61). `\<` before a tag is
  * still an escape, so the following text is not raw HTML.
+ * v1.99: a bare http(s) or www autolink is the same kind of
+ * non-escape context. A character reference inside it is stashed
+ * as those source characters (`§§SBL`), so the link text keeps
+ * `&copy;` and the parser cannot decode `&#38;` across the
+ * trimmed semicolon. A backslash before punctuation in that span
+ * stays a backslash. A trailing reference is not part of the
+ * link. It still decodes to a `§§SBE` token, and the autolink
+ * scan leaves that character outside the URL.
  * Keep in lockstep with `ios/SnorlaxBot/MarkdownEscape.swift`.
  */
 
+import { extendedAutolinkRanges } from "./linkify.ts";
 import { CMARK_NAMED_ENTITIES } from "./markdownCmarkEntities.ts";
 import { htmlTagEnd } from "./markdownHtmlLiteral.ts";
 import { linkDestinationSpans } from "./markdownLinkDest.ts";
@@ -66,6 +75,13 @@ import { fenceRanges, inRange, inlineCodeRanges, type Range } from "./math.ts";
 
 /** Placeholder. Six uppercase hex digits per Unicode scalar. */
 export const ESCAPE_TOKEN = /§§SBE((?:[0-9A-F]{6})+)§§/g;
+
+/**
+ * v1.99: source characters that belong inside a bare autolink.
+ * Same hex payload as `§§SBE`, but the autolink scan does not peel
+ * it. A decoded trailing entity stays `§§SBE` so it can.
+ */
+const LITERAL_TOKEN = /§§SBL((?:[0-9A-F]{6})+)§§/g;
 
 /**
  * The same placeholder after a URL encoder turns `§` (U+00A7) into
@@ -93,19 +109,63 @@ export function protectMarkdownEscapes(text: string, completed = true): string {
   );
   if (!prepared.includes("\\") && !prepared.includes("&")) return prepared;
   const blocked = blockedRanges(prepared);
+  const extended = extendedLiteralRanges(prepared, blocked);
   // v1.91: raw HTML keeps a backslash, and still decodes `&`.
   const literal = slashLiteralRanges(prepared, blocked);
   let out = "";
   let i = 0;
   let bi = 0;
+  let ei = 0;
   let li = 0;
   while (i < prepared.length) {
     while (bi < blocked.length && i >= blocked[bi]!.end) bi += 1;
+    while (ei < extended.length && i >= extended[ei]!.end) ei += 1;
     while (li < literal.length && i >= literal[li]!.end) li += 1;
     if (bi < blocked.length && i >= blocked[bi]!.start && i < blocked[bi]!.end) {
       out += prepared.slice(i, blocked[bi]!.end);
       i = blocked[bi]!.end;
       bi += 1;
+      continue;
+    }
+    // v1.99: keep the source of a character reference inside a bare
+    // http(s) or www autolink. A trailing reference is outside this span.
+    if (ei < extended.length && i >= extended[ei]!.start && i < extended[ei]!.end) {
+      const end = extended[ei]!.end;
+      while (i < end) {
+        if (prepared[i] === "\\") {
+          const next = i + 1 < prepared.length ? (prepared[i + 1] ?? "") : "";
+          if (next && PUNCT.has(next)) {
+            // The punctuation may sit just outside the trimmed link.
+            // Stash the backslash either way so the parser cannot eat it.
+            if (i + 1 < end) {
+              out += literalToken(prepared.slice(i, i + 2));
+              i += 2;
+              continue;
+            }
+            out += literalToken("\\");
+            i += 1;
+            continue;
+          }
+        }
+        if (prepared[i] === "&") {
+          const ref = readReference(prepared, i);
+          if (ref && ref.next <= end) {
+            out += literalToken(prepared.slice(i, ref.next));
+            i = ref.next;
+            continue;
+          }
+          // `&#38;` loses only the semicolon. Stash `&#38` so the
+          // parser cannot glue the semicolon back on and decode it.
+          if (ref && ref.next > end) {
+            out += literalToken(prepared.slice(i, end));
+            i = end;
+            continue;
+          }
+        }
+        out += prepared[i] ?? "";
+        i += 1;
+      }
+      ei += 1;
       continue;
     }
     if (li < literal.length && i >= literal[li]!.start && i < literal[li]!.end) {
@@ -164,11 +224,15 @@ export function restoreMarkdownEscapes(text: string): string {
   for (let pass = 0; pass < 8; pass += 1) {
     const encoded = /%C2%A7%C2%A7SBE/i.test(out);
     const emphasis = out.includes("\uE000SBW");
-    if (!out.includes("§§SBE") && !encoded && !emphasis) break;
+    if (!out.includes("§§SBE") && !out.includes("§§SBL") && !encoded && !emphasis) break;
     const before = out;
     if (out.includes("§§SBE")) {
       ESCAPE_TOKEN.lastIndex = 0;
       out = out.replace(ESCAPE_TOKEN, (raw, hex: string) => decodeHex(hex) ?? raw);
+    }
+    if (out.includes("§§SBL")) {
+      LITERAL_TOKEN.lastIndex = 0;
+      out = out.replace(LITERAL_TOKEN, (raw, hex: string) => decodeHex(hex) ?? raw);
     }
     if (/%C2%A7%C2%A7SBE/i.test(out)) {
       ESCAPE_TOKEN_ENCODED.lastIndex = 0;
@@ -180,13 +244,22 @@ export function restoreMarkdownEscapes(text: string): string {
   return out;
 }
 
-function escapeToken(value: string): string {
+function hexToken(mark: "SBE" | "SBL", value: string): string {
   let hex = "";
   for (const ch of value) {
     const cp = ch.codePointAt(0) ?? 0;
     hex += cp.toString(16).toUpperCase().padStart(6, "0");
   }
-  return `§§SBE${hex}§§`;
+  return `§§${mark}${hex}§§`;
+}
+
+function escapeToken(value: string): string {
+  return hexToken("SBE", value);
+}
+
+/** Source text that must survive the parser and stay inside an autolink. */
+function literalToken(value: string): string {
+  return hexToken("SBL", value);
 }
 
 /**
@@ -304,6 +377,28 @@ function blockedRanges(src: string): Range[] {
   // v1.91: an angle autolink is not an escape context. Copy it
   // whole so `\*` and `&amp;` stay the source characters.
   return mergeRanges([...code, ...linkDestinationSpans(src), ...autolinkRanges(src, code)]);
+}
+
+/**
+ * v1.99: bare http(s) and www autolinks that are not already inside
+ * code, a link destination, or an angle autolink. Sorted, and split
+ * around those harder spans so the copy loop can walk them in order.
+ */
+function extendedLiteralRanges(src: string, blocked: Range[]): Range[] {
+  const ranges: Range[] = [];
+  for (const span of extendedAutolinkRanges(src)) {
+    if (span.end <= span.start) continue;
+    let cursor = span.start;
+    for (const hard of blocked) {
+      if (hard.end <= cursor) continue;
+      if (hard.start >= span.end) break;
+      if (hard.start > cursor) ranges.push({ start: cursor, end: Math.min(hard.start, span.end) });
+      cursor = Math.max(cursor, hard.end);
+      if (cursor >= span.end) break;
+    }
+    if (cursor < span.end) ranges.push({ start: cursor, end: span.end });
+  }
+  return ranges;
 }
 
 /**
