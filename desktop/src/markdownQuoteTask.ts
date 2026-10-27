@@ -38,6 +38,13 @@
  * v1.89: a tab partly consumed by `>` is one byte of fence indent.
  * The leftover columns stay spaces in the code. A space-only
  * fence is unchanged.
+ * v1.97: a block quote marker in the first three columns can
+ * still be the body of an open bullet item. `- foo` then
+ * `  > bar` is a quote inside the item, not a quote after
+ * the list. A marker short of the item's content column
+ * (`- foo` then `> bar`) still ends the item. Ordered lists
+ * already stayed intact. Section 5.1's own examples already
+ * matched.
  * Streaming stays plain text.
  * Keep in lockstep with `ios/SnorlaxBot/MarkdownQuoteTask.swift`.
  */
@@ -49,6 +56,7 @@ import {
   htmlLazyTag,
   listItemIndentedCode,
   listMarkerPadding,
+  markdownListEnd,
   orderedListEnd,
 } from "./markdownList.ts";
 import { quoteLineInTable } from "./markdownTable.ts";
@@ -125,6 +133,13 @@ export function splitQuoteAndTasks(
       continue;
     }
     if (stripQuoteMarker(line) != null) {
+      // v1.97: `  > bar` under `- foo` is item content. Pulling
+      // it out splits the list and drops a hard break that
+      // belongs inside the quote.
+      if (quoteOwnedByList(lines, i)) {
+        i += 1;
+        continue;
+      }
       const start = i;
       const inner: string[] = [];
       let open = false;
@@ -197,6 +212,20 @@ export function splitQuoteAndTasks(
   pushMarkdown(lines.length);
   if (blocks.length === 0) return [{ type: "markdown", text: src }];
   return blocks;
+}
+
+/**
+ * True when `lines[index]` is inside a list that started earlier.
+ * The quote marker is then item content, including a nested
+ * quote (`- foo` / `  > bar`). A marker in a smaller column is
+ * not covered, so it still starts a following quote.
+ */
+function quoteOwnedByList(lines: string[], index: number): boolean {
+  for (let start = index - 1; start >= 0; start -= 1) {
+    const end = markdownListEnd(lines, start);
+    if (end != null && end > index) return true;
+  }
+  return false;
 }
 
 /**
