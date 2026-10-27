@@ -33,6 +33,14 @@ import UIKit
 /// attributes, a comment, a script, and a non-tag (`<3`,
 /// `a <b c`, `<not a tag>`, `1 < 2 > 0`) stay literal text.
 /// Nothing in the tag is copied onto the element.
+///
+/// v2.02: cmark-gfm 0.29.0.gfm.13 opens an HTML declaration only
+/// when `<!` is followed by an ASCII uppercase letter. A lowercase
+/// letter stays in the paragraph, so `*bar*` inside `<!doctype`
+/// emphasizes and a following `---` stays a setext heading. The
+/// `<` is stashed. An uppercase `<!DOCTYPE` stays one raw
+/// declaration. Indented code, including code inside a list, is
+/// left alone.
 /// Keep in lockstep with `desktop/src/markdownHtmlLiteral.ts`.
 enum MarkdownHtmlLiteral {
     /// Never animate, including when Reduce Motion is off.
@@ -68,6 +76,7 @@ enum MarkdownHtmlLiteral {
         let chars = Array(prepared.text)
         let opaque = MarkdownEscape.opaqueSpans(in: prepared.text)
         let blocked = merge(opaque + prepared.protect)
+        let codeLine = indentedCodeMask(chars)
         var out = ""
         out.reserveCapacity(chars.count)
         var index = 0
@@ -95,6 +104,12 @@ enum MarkdownHtmlLiteral {
                 index += 2
                 continue
             }
+            if ch == "<", isLowerHtmlDeclaration(chars, index), index < codeLine.count, !codeLine[index] {
+                // micromark would open a declaration. cmark-gfm does not.
+                out.append(token("<"))
+                index += 1
+                continue
+            }
             if ch == "<", let end = htmlTagEnd(chars, index), end > index, !overlaps(index, end, blocked) {
                 out.append(safeOrStash(String(chars[index..<end])))
                 index = end
@@ -104,6 +119,66 @@ enum MarkdownHtmlLiteral {
             index += 1
         }
         return settle(out)
+    }
+
+    /// cmark-gfm 0.29.0.gfm.13: `<!` plus an ASCII uppercase letter.
+    /// A lowercase letter is not a declaration on that version.
+    private static func isLowerHtmlDeclaration(_ chars: [Character], _ index: Int) -> Bool {
+        guard index + 2 < chars.count, chars[index] == "<", chars[index + 1] == "!" else {
+            return false
+        }
+        let ch = chars[index + 2]
+        return ch >= "a" && ch <= "z"
+    }
+
+    /// Lines the parser treats as indented code. Top-level code is
+    /// already opaque. Code inside a list is not, and stashing its
+    /// `<` would show the token. A paragraph continued with four
+    /// spaces is not code.
+    private static func indentedCodeMask(_ chars: [Character]) -> [Bool] {
+        var mask = Array(repeating: false, count: chars.count)
+        var inCode = false
+        var prevBlank = true
+        var i = 0
+        while i <= chars.count {
+            var end = i
+            while end < chars.count, chars[end] != "\n" { end += 1 }
+            let indent = lineIndent(chars, i, end)
+            let blank = indent == nil
+            if !blank, let indent, indent < 4 { inCode = false }
+            if !inCode, prevBlank, let indent, indent >= 4 { inCode = true }
+            if inCode, !blank {
+                var k = i
+                while k < end {
+                    mask[k] = true
+                    k += 1
+                }
+            }
+            prevBlank = blank
+            if end >= chars.count { break }
+            i = end + 1
+        }
+        return mask
+    }
+
+    private static func lineIndent(_ chars: [Character], _ start: Int, _ end: Int) -> Int? {
+        var col = 0
+        var i = start
+        while i < end {
+            let ch = chars[i]
+            if ch == " " {
+                col += 1
+                i += 1
+                continue
+            }
+            if ch == "\t" {
+                col += 4 - (col % 4)
+                i += 1
+                continue
+            }
+            return col
+        }
+        return nil
     }
 
     /// A bare break or wrap tag becomes a render token. Every
