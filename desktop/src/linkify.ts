@@ -39,8 +39,14 @@
  * the link. A `§§SBL` token is source text cmark keeps inside
  * the URL (`&copy;` in the path, `&#38` before a trimmed
  * semicolon, a backslash). That token is not peeled.
+ * v2.00: the href percent-encodes the way cmark-gfm's HTML
+ * renderer does (`houdini_escape_href`). The visible text is
+ * unchanged. A `]` that stays inside a `www.` link is `%5D`.
+ * Non-ASCII is UTF-8 `%HH`. `&` and `'` stay characters.
  * Keep in lockstep with `ios/SnorlaxBot/WebLinks.swift`.
  */
+
+import { encodeCmarkHref } from "./markdownLinkDest.ts";
 
 export type WebPiece =
   | { type: "text"; value: string }
@@ -91,10 +97,15 @@ export function isSafeWebUrl(href: string | undefined | null): boolean {
  * is already absolute.
  */
 export function linkHref(visible: string): string {
-  if (visible.startsWith("www.")) return `http://${visible}`;
-  const mail = emailHref(visible);
-  if (mail) return mail;
-  return visible;
+  // v2.00: cmark stores the autolink URL, then percent-encodes it
+  // when writing the href. The visible run is still `visible`.
+  let href = visible;
+  if (visible.startsWith("www.")) href = `http://${visible}`;
+  else {
+    const mail = emailHref(visible);
+    if (mail) href = mail;
+  }
+  return encodeCmarkHref(href);
 }
 
 /**

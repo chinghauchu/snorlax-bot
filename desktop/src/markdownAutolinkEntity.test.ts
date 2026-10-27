@@ -149,7 +149,7 @@ test("trailing character references match cmark-gfm extended autolinks", () => {
 
 test("a backslash inside the autolink stays, and the paren stays outside", () => {
   const html = rendered("http://example.com/foo\\)");
-  assert.match(html, /<a href="http:\/\/example.com\/foo\\">http:\/\/example.com\/foo\\<\/a>\)/);
+  assert.match(html, /<a href="http:\/\/example.com\/foo%5C">http:\/\/example.com\/foo\\<\/a>\)/);
   assert.equal(
     protectMarkdownEscapes(protectMarkdownEscapes("http://example.com/foo\\)", true), true),
     protectMarkdownEscapes("http://example.com/foo\\)", true),

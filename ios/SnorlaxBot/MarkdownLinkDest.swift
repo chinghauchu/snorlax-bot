@@ -405,6 +405,14 @@ enum MarkdownLinkDest {
         return (String(scalar), cursor + 1)
     }
 
+    /// v2.00: cmark-gfm `houdini_escape_href` for an extended autolink.
+    /// The visible text stays the source characters. `&` and `'` stay
+    /// characters. Other unsafe bytes, including `]` and non-ASCII, are
+    /// `%HH`. Link destinations already use this through `prepare`.
+    static func autolinkHref(_ value: String) -> String {
+        encodeHref(value)
+    }
+
     private static func encodeHref(_ value: String) -> String {
         var out = ""
         for scalar in value.unicodeScalars {
