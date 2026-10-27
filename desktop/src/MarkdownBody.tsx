@@ -106,6 +106,7 @@ import {
 } from "./markdownTable";
 import { listIsLoose } from "./markdownLooseList";
 import {
+  listNeedsCmarkOrderedItemStart,
   listNeedsCmarkOrderedOne,
   listSplitByCmarkHtml,
   listSplitByTabFence,
@@ -592,6 +593,7 @@ function MarkdownParsed({
     (textHasTableInList(sourceText) ||
       listSplitByCmarkHtml(sourceText) ||
       listNeedsCmarkOrderedOne(sourceText) ||
+      listNeedsCmarkOrderedItemStart(sourceText) ||
       listSplitByTabFence(sourceText))
   ) {
     return (
@@ -636,7 +638,11 @@ function textHasTableInList(text: string): boolean {
  * the item. v1.88: an ordered marker whose integer value is 1
  * but whose digits are not exactly `1` (`01.`, `001.`) is drawn
  * here too, because react-markdown leaves it in the paragraph.
- * Other lists stay on react-markdown.
+ * v2.01: the first block of an interrupting list item can be
+ * an ordered list at any start (`2.`, `0.`, `2)`, `003.`,
+ * `01.`). react-markdown still has interrupt set on that
+ * line, so the marker stays text. The splitter re-parses the
+ * item. Other lists stay on react-markdown.
  */
 function MarkdownListsWithTables({
   text,

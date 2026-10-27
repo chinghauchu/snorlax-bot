@@ -40,6 +40,17 @@
  * marker, or HTML block at the margin. The stored line
  * escapes that block start so a later parse keeps the text.
  *
+ * v2.01: the first block of a list item is not a paragraph
+ * interrupt. `Foo` / `- 2. bar`, `- foo` / `  - 2. bar`, and
+ * `Foo` / `- 01. bar` are nested ordered lists. micromark
+ * still has interrupt set on that first line, so `2.`,
+ * `0.`, `2)`, `003.`, and `01.` stay literal. Re-parsing
+ * the item, which iOS already does, opens the list. Desktop
+ * draws those replies through this splitter. A `2.` that
+ * continues a paragraph (`- foo` / `  2. bar`, or `Foo` /
+ * `2. bar`) stays text. `1.` and `1)` on that first line
+ * already opened.
+ *
  * v1.57: `-`, `*`, and `+` are different lists, matching
  * react-markdown. A later margin item stays in the list only
  * when it uses that same bullet. A nested marker of another
@@ -1256,6 +1267,97 @@ function scanOrderedOne(text: string): boolean {
     i += 1;
   }
   return false;
+}
+
+/**
+ * v2.01: micromark keeps `interrupt` set on the first line of a
+ * list that interrupted a paragraph, so an ordered marker there
+ * opens only for the digit string `1` (`1.` / `1)`). cmark-gfm
+ * parses that line as the item's first block, where any start
+ * opens: `2.`, `0.`, `003.`, `2)`, and `01.`. A later item in
+ * the same list already opens, and so does the same marker at
+ * the start of a chunk. Desktop draws a reply that hits the
+ * miss through the list splitter; iOS already re-parses items.
+ */
+export function listNeedsCmarkOrderedItemStart(text: string): boolean {
+  if (!text || !/\d{1,9}[.)]/.test(text)) return false;
+  return scanOrderedItemStart(text);
+}
+
+function scanOrderedItemStart(text: string): boolean {
+  const src = text.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
+  const lines = src.split("\n");
+  let i = 0;
+  let fence: string | null = null;
+  let inMath = false;
+  let paragraph = false;
+  while (i < lines.length) {
+    const line = lines[i] ?? "";
+    const gate = blockGate(line, fence, inMath);
+    fence = gate.fence;
+    inMath = gate.inMath;
+    if (gate.blocked) {
+      paragraph = false;
+      i += 1;
+      continue;
+    }
+    const htmlEnd = htmlBlockEnd(lines, i, paragraph);
+    if (htmlEnd != null) {
+      paragraph = false;
+      i = htmlEnd;
+      continue;
+    }
+    const marker = parseMarker(line);
+    if (marker && marker.column <= 3 && (!paragraph || markerInterruptsParagraph(marker))) {
+      const found = readList(lines, i, marker);
+      if (paragraph) {
+        const head = (found.list.items[0] ?? "").split("\n", 1)[0] ?? "";
+        if (interruptingLineMissesOrderedStart(head)) return true;
+      }
+      for (const item of found.list.items) {
+        if (scanOrderedItemStart(item)) return true;
+      }
+      i = found.next;
+      paragraph = false;
+      continue;
+    }
+    paragraph = nextParagraphOpen(line, paragraph);
+    i += 1;
+  }
+  return false;
+}
+
+/**
+ * True when this line, parsed while interrupt is still set,
+ * begins with an ordered marker micromark will not open.
+ * Bullets, quotes, and `1.` / `1)` still open, and the text
+ * after them is under the same interrupt.
+ */
+function interruptingLineMissesOrderedStart(line: string): boolean {
+  let rest = line;
+  for (let guard = 0; guard < 16; guard += 1) {
+    const peeled = peelOneQuoteMarker(rest);
+    if (peeled != null) {
+      rest = peeled;
+      continue;
+    }
+    const marker = parseMarker(rest);
+    if (!marker || marker.column > 3) return false;
+    if (marker.ordered && marker.digits !== "1") return true;
+    if (!marker.text) return false;
+    rest = marker.text;
+  }
+  return false;
+}
+
+/** One `>` marker and its optional following space. Tabs stay. */
+function peelOneQuoteMarker(line: string): string | null {
+  let i = 0;
+  while (i < line.length && i < 3 && line[i] === " ") i += 1;
+  if (line[i] !== ">") return null;
+  i += 1;
+  if (line[i] === " ") i += 1;
+  return line.slice(i);
 }
 
 export function listSplitByCmarkHtml(text: string): boolean {
