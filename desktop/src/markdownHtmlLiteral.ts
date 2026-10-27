@@ -39,6 +39,15 @@
  * and a non-tag (`<3`, `a <b c`, `<not a tag>`, `1 < 2 > 0`)
  * stay literal text. Nothing in the tag is copied onto the
  * element.
+ *
+ * v2.02: cmark-gfm 0.29.0.gfm.13 opens an HTML declaration only
+ * when `<!` is followed by an ASCII uppercase letter. micromark
+ * follows CommonMark 0.30 and also opens on a lowercase letter,
+ * so `<!doctype *bar*>` hides the emphasis and a following `---`
+ * becomes a rule. The `<` is stashed. The rest of the line stays
+ * text, and an uppercase `<!DOCTYPE` is still one raw declaration.
+ * A line that is indented code, including code inside a list, is
+ * left alone.
  * Keep in lockstep with `ios/SnorlaxBot/MarkdownHtmlLiteral.swift`.
  */
 
@@ -116,6 +125,7 @@ function rewrite(input: string): string {
   const src = prepared.text;
   const opaque = opaqueMarkdownRanges(src);
   const blocked = mergeRanges([...opaque, ...prepared.protect]);
+  const codeLine = indentedCodeMask(src);
   let out = "";
   let i = 0;
   let bi = 0;
@@ -142,6 +152,12 @@ function rewrite(input: string): string {
       i += 2;
       continue;
     }
+    if (ch === "<" && isLowerHtmlDeclaration(src, i) && !codeLine[i]) {
+      // micromark would open a declaration. cmark-gfm does not.
+      out += stashMarkdownText("<");
+      i += 1;
+      continue;
+    }
     if (ch === "<") {
       const end = htmlTagEnd(src, i);
       if (end > i && !overlaps(i, end, blocked)) {
@@ -154,6 +170,60 @@ function rewrite(input: string): string {
     i += 1;
   }
   return settleSafeTokens(out);
+}
+
+/**
+ * cmark-gfm 0.29.0.gfm.13: `<!` plus an ASCII uppercase letter.
+ * A lowercase letter is not a declaration on that version.
+ */
+function isLowerHtmlDeclaration(src: string, index: number): boolean {
+  if (src[index] !== "<" || src[index + 1] !== "!") return false;
+  const ch = src[index + 2] ?? "";
+  return ch >= "a" && ch <= "z";
+}
+
+/**
+ * Lines micromark will parse as indented code. Top-level code is
+ * already opaque. A code block inside a list is not, and stashing
+ * its `<` would show the token in the chip. A paragraph continued
+ * with four spaces is not code, so a declaration there still disarms.
+ */
+function indentedCodeMask(src: string): boolean[] {
+  const mask = new Array<boolean>(src.length).fill(false);
+  let inCode = false;
+  let prevBlank = true;
+  let i = 0;
+  while (i <= src.length) {
+    const nl = src.indexOf("\n", i);
+    const end = nl < 0 ? src.length : nl;
+    const indent = lineIndent(src.slice(i, end));
+    const blank = indent == null;
+    if (indent != null && indent < 4) inCode = false;
+    if (!inCode && prevBlank && indent != null && indent >= 4) inCode = true;
+    if (inCode && !blank) {
+      for (let k = i; k < end; k += 1) mask[k] = true;
+    }
+    prevBlank = blank;
+    if (nl < 0) break;
+    i = nl + 1;
+  }
+  return mask;
+}
+
+function lineIndent(line: string): number | null {
+  let col = 0;
+  for (const ch of line) {
+    if (ch === " ") {
+      col += 1;
+      continue;
+    }
+    if (ch === "\t") {
+      col += 4 - (col % 4);
+      continue;
+    }
+    return col;
+  }
+  return null;
 }
 
 /**

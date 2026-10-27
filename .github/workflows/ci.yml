@@ -218,3 +218,4 @@ jobs:
           python3 ios/scripts/test_ios_markdown_autolink_entity.py
           python3 ios/scripts/test_ios_markdown_autolink_href.py
           python3 ios/scripts/test_ios_markdown_ordered_start.py
+          python3 ios/scripts/test_ios_markdown_declaration.py
