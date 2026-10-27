@@ -1451,32 +1451,15 @@ enum MarkdownSplit {
     }
 
     static func stabilize(_ text: String) -> String {
-        let lines = text.split(separator: "\n", omittingEmptySubsequences: false)
-        var fence: String?
+        // v1.98: a list item's fence stays in the item. A closer in
+        // the first three columns is not a new fence, so nothing is
+        // appended after the list.
+        let lines = text.split(separator: "\n", omittingEmptySubsequences: false).map(String.init)
+        var state = MarkdownCodeSpan.DocumentFence()
         for line in lines {
-            let raw = String(line)
-            guard let match = raw.range(of: #"^( {0,3})(`{3,}|~{3,})(.*)$"#, options: .regularExpression) else {
-                continue
-            }
-            let body = String(raw[match])
-            guard let markerRange = body.range(of: #"[`~]{3,}"#, options: .regularExpression) else { continue }
-            let marker = String(body[markerRange])
-            let info = String(body[markerRange.upperBound...])
-            if fence == nil {
-                if MarkdownCodeSpan.fenceInfoAllowsOpen(marker: marker, info: info) {
-                    fence = marker
-                }
-                continue
-            }
-            if let open = fence,
-               marker.first == open.first,
-               marker.count >= open.count,
-               info.trimmingCharacters(in: .whitespaces).isEmpty
-            {
-                fence = nil
-            }
+            _ = MarkdownCodeSpan.step(&state, line)
         }
-        guard let closer = fence else { return text }
+        guard let closer = state.top else { return text }
         return text.hasSuffix("\n") ? text + closer : text + "\n" + closer
     }
 
@@ -1676,7 +1659,45 @@ enum MarkdownSplit {
     }
 
     private static func firstFence(in text: Substring) -> Range<Substring.Index>? {
-        lineFenceRange(in: text, closing: nil)
+        // v1.98: a fence that belongs to a list item is not a segment.
+        // The list split dedents it, and the nested pass draws the code.
+        var state = MarkdownCodeSpan.DocumentFence()
+        var lineStart = text.startIndex
+        while lineStart < text.endIndex {
+            let lineEnd = text[lineStart...].firstIndex(of: "\n") ?? text.endIndex
+            let line = String(text[lineStart..<lineEnd])
+            let event = MarkdownCodeSpan.step(&state, line)
+            let opensTop = event == .topOpen || (event == .listEnded && state.top != nil)
+            if opensTop, let marker = marginFenceMarker(in: text, lineStart: lineStart, lineEnd: lineEnd) {
+                return marker
+            }
+            if lineEnd == text.endIndex { break }
+            lineStart = text.index(after: lineEnd)
+        }
+        return nil
+    }
+
+    private static func marginFenceMarker(
+        in text: Substring,
+        lineStart: Substring.Index,
+        lineEnd: Substring.Index
+    ) -> Range<Substring.Index>? {
+        var index = lineStart
+        var spaces = 0
+        while index < lineEnd, spaces < 4, text[index] == " " {
+            spaces += 1
+            index = text.index(after: index)
+        }
+        guard spaces <= 3, index < lineEnd else { return nil }
+        let mark = text[index]
+        guard mark == "`" || mark == "~" else { return nil }
+        let start = index
+        while index < lineEnd, text[index] == mark {
+            index = text.index(after: index)
+        }
+        let count = text.distance(from: start, to: index)
+        guard count >= 3 else { return nil }
+        return start..<index
     }
 
     private static func closingFence(in text: Substring, matching open: String) -> Range<Substring.Index>? {

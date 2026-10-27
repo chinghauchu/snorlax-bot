@@ -214,3 +214,4 @@ jobs:
           python3 ios/scripts/test_ios_markdown_indented_code_blank.py
           python3 ios/scripts/test_ios_markdown_list_item.py
           python3 ios/scripts/test_ios_markdown_quote_list.py
+          python3 ios/scripts/test_ios_markdown_list_fence.py

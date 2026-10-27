@@ -78,7 +78,12 @@
  * cmark-gfm. A blank that only separates blocks stays empty.
  */
 
-import { tabFenceCloses, tabFenceCodeLine, tabFenceOpen } from "./markdownFenceIndent.ts";
+import {
+  openingFence,
+  tabFenceCloses,
+  tabFenceCodeLine,
+  tabFenceOpen,
+} from "./markdownFenceIndent.ts";
 
 /**
  * v1.86: a lazy continuation that contains `|` is marked so a later
@@ -548,19 +553,28 @@ function readItem(
   const body: string[] = [];
   let paragraph = false;
   let inIndentedCode = false;
+  let fence: string | null = null;
+  let fenceOffset = 0;
+  let fenceLiteral = false;
   if (marker.text !== "") {
     if (openingCode != null) {
       body.push(`    ${openingCode}`);
       inIndentedCode = true;
     } else {
       body.push(marker.text);
-      paragraph = true;
+      // v1.98: the item text itself may be the opening fence.
+      // The closer is indented to the content column, which can
+      // still be only two or three spaces from the margin.
+      const opened = openingFence(marker.text);
+      if (opened) {
+        fence = opened.marker;
+        paragraph = false;
+      } else {
+        paragraph = true;
+      }
     }
   }
   let i = start + 1;
-  let fence: string | null = null;
-  let fenceOffset = 0;
-  let fenceLiteral = false;
   let inMath = false;
   let sawBlank = false;
   let sawContent = marker.text !== "";
@@ -583,13 +597,20 @@ function readItem(
           body.push(tabFenceCodeLine(line, marker.contentColumn, fenceOffset));
         }
       } else {
-        body.push(dedent(line, marker.contentColumn));
-        const opened = fenceOnLine(line);
+        // A line short of the item ends the fence with the item.
+        // The line itself belongs to the parent.
+        if (line.trim() !== "" && leadingColumns(line).columns < marker.contentColumn) {
+          fence = null;
+          break;
+        }
+        const bodyLine = dedent(line, marker.contentColumn);
+        body.push(bodyLine);
+        const closed = openingFence(bodyLine);
         if (
-          opened &&
-          opened.marker[0] === fence[0] &&
-          opened.marker.length >= fence.length &&
-          opened.info.trim() === ""
+          closed &&
+          closed.marker[0] === fence[0] &&
+          closed.marker.length >= fence.length &&
+          closed.info.trim() === ""
         ) {
           fence = null;
         }
