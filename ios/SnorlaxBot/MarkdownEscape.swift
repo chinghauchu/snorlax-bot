@@ -58,6 +58,8 @@ enum MarkdownEscape {
     /// v1.67 stashes `__init__`-style identifiers first, so a
     /// word-boundary dunder stays literal when there is no escape.
     /// v1.68 then stashes BMP Unicode symbols so `*` flanking matches.
+    /// v1.94 then stashes whitespace cmark-gfm does not count, so
+    /// `*` flanking matches on U+000B, U+0085, U+2028, U+2029, and U+FEFF.
     /// v1.69 stashes a numeric reference with more digits than
     /// CommonMark allows, so `&#87654321;` and `&#x0001F600;` stay
     /// the characters instead of U+FFFD or an emoji.
@@ -71,7 +73,8 @@ enum MarkdownEscape {
     static func protect(_ text: String, completed: Bool = true) -> String {
         if !completed || text.isEmpty { return text }
         let underscored = MarkdownUnderscore.protect(text, completed: true)
-        let prepared = MarkdownSymbol.protect(underscored, completed: true)
+        let symbols = MarkdownSymbol.protect(underscored, completed: true)
+        let prepared = MarkdownEmphasis.protect(symbols, completed: true)
         if !prepared.contains("\\") && !prepared.contains("&") { return prepared }
         let chars = Array(prepared)
         let blocked = protectedRanges(chars)
@@ -132,7 +135,7 @@ enum MarkdownEscape {
     /// including when the URL percent-encoded the token.
     static func restore(_ source: AttributedString) -> AttributedString {
         let raw = String(source.characters)
-        let needsText = raw.contains("§§SBE")
+        let needsText = raw.contains("§§SBE") || raw.contains(MarkdownEmphasis.mark)
         let needsLink = source.runs.contains { run in
             guard let link = run.link else { return false }
             let abs = link.absoluteString
@@ -143,7 +146,7 @@ enum MarkdownEscape {
         if needsText {
             for run in source.runs {
                 let slice = String(source[run.range].characters)
-                if !slice.contains("§§SBE") {
+                if !slice.contains("§§SBE") && !slice.contains(MarkdownEmphasis.mark) {
                     output.append(source[run.range])
                     continue
                 }
@@ -168,29 +171,31 @@ enum MarkdownEscape {
     static func restoreString(_ text: String) -> String {
         var current = text
         for _ in 0..<8 {
-            guard current.contains("§§SBE") else { return current }
-            guard let re = try? NSRegularExpression(pattern: #"§§SBE((?:[0-9A-F]{6})+)§§"#) else {
-                return current
-            }
-            let ns = current as NSString
-            let matches = re.matches(in: current, range: NSRange(location: 0, length: ns.length))
-            if matches.isEmpty { return current }
-            var out = ""
-            var cursor = 0
-            for match in matches {
-                let range = match.range
-                if range.location > cursor {
-                    out += ns.substring(with: NSRange(location: cursor, length: range.location - cursor))
+            let before = current
+            current = MarkdownEmphasis.restoreString(current)
+            if current.contains("§§SBE"),
+               let re = try? NSRegularExpression(pattern: #"§§SBE((?:[0-9A-F]{6})+)§§"#) {
+                let ns = current as NSString
+                let matches = re.matches(in: current, range: NSRange(location: 0, length: ns.length))
+                if !matches.isEmpty {
+                    var out = ""
+                    var cursor = 0
+                    for match in matches {
+                        let range = match.range
+                        if range.location > cursor {
+                            out += ns.substring(with: NSRange(location: cursor, length: range.location - cursor))
+                        }
+                        let hex = ns.substring(with: match.range(at: 1))
+                        out += decodeHex(hex) ?? ns.substring(with: range)
+                        cursor = range.location + range.length
+                    }
+                    if cursor < ns.length {
+                        out += ns.substring(from: cursor)
+                    }
+                    current = out
                 }
-                let hex = ns.substring(with: match.range(at: 1))
-                out += decodeHex(hex) ?? ns.substring(with: range)
-                cursor = range.location + range.length
             }
-            if cursor < ns.length {
-                out += ns.substring(from: cursor)
-            }
-            if out == current { return current }
-            current = out
+            if current == before { return current }
         }
         return current
     }

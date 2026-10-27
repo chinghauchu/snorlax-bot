@@ -241,8 +241,8 @@ enum MarkdownImageAlt {
     ) -> (canOpen: Bool, canClose: Bool) {
         let before: Character = index == 0 ? "\n" : src[index - 1]
         let after: Character = index + count >= src.count ? "\n" : src[index + count]
-        let afterWs = isWhitespace(after)
-        let beforeWs = isWhitespace(before)
+        let afterWs = MarkdownEmphasis.isCmarkSpace(after)
+        let beforeWs = MarkdownEmphasis.isCmarkSpace(before)
         let afterPunct = isPunctuation(after)
         let beforePunct = isPunctuation(before)
         let left = !afterWs && (!afterPunct || beforeWs || beforePunct)
@@ -251,10 +251,6 @@ enum MarkdownImageAlt {
             return (left && (!right || beforePunct), right && (!left || afterPunct))
         }
         return (left, right)
-    }
-
-    private static func isWhitespace(_ ch: Character) -> Bool {
-        ch.unicodeScalars.allSatisfy { $0.properties.isWhitespace }
     }
 
     private static func isPunctuation(_ ch: Character) -> Bool {

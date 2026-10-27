@@ -43,6 +43,9 @@
  * v1.79: a link or image destination is left for the destination
  * pass. `&#38;` and `&#x27;` there must reach the markdown parser
  * so the href matches cmark-gfm. Ordinary text still decodes here.
+ * v1.94: whitespace that micromark counts and cmark-gfm does not
+ * (U+000B, U+0085, U+2028, U+2029, U+FEFF) is stashed first, so
+ * `*` flanking matches. A real cmark space stays whitespace.
  * v1.91: a backslash inside an angle autolink or raw HTML stays a
  * backslash. cmark-gfm does not treat it as an escape there.
  * An autolink is copied whole, so `&amp;` inside the URL stays
@@ -56,6 +59,7 @@ import { CMARK_NAMED_ENTITIES } from "./markdownCmarkEntities.ts";
 import { htmlTagEnd } from "./markdownHtmlLiteral.ts";
 import { linkDestinationSpans } from "./markdownLinkDest.ts";
 import { htmlBlockEnd } from "./markdownList.ts";
+import { protectEmphasisWhitespace, restoreEmphasisSpaces } from "./markdownEmphasis.ts";
 import { protectSymbolFlanks } from "./markdownSymbol.ts";
 import { protectIntrawordUnderscores } from "./markdownUnderscore.ts";
 import { fenceRanges, inRange, inlineCodeRanges, type Range } from "./math.ts";
@@ -84,7 +88,9 @@ const PUNCT = new Set(ASCII_PUNCT);
  */
 export function protectMarkdownEscapes(text: string, completed = true): string {
   if (!completed || !text) return text;
-  const prepared = protectSymbolFlanks(protectIntrawordUnderscores(text, true), true);
+  const prepared = protectEmphasisWhitespace(
+    protectSymbolFlanks(protectIntrawordUnderscores(text, true), true),
+  );
   if (!prepared.includes("\\") && !prepared.includes("&")) return prepared;
   const blocked = blockedRanges(prepared);
   // v1.91: raw HTML keeps a backslash, and still decodes `&`.
@@ -157,7 +163,8 @@ export function restoreMarkdownEscapes(text: string): string {
   let out = text;
   for (let pass = 0; pass < 8; pass += 1) {
     const encoded = /%C2%A7%C2%A7SBE/i.test(out);
-    if (!out.includes("§§SBE") && !encoded) break;
+    const emphasis = out.includes("\uE000SBW");
+    if (!out.includes("§§SBE") && !encoded && !emphasis) break;
     const before = out;
     if (out.includes("§§SBE")) {
       ESCAPE_TOKEN.lastIndex = 0;
@@ -167,6 +174,7 @@ export function restoreMarkdownEscapes(text: string): string {
       ESCAPE_TOKEN_ENCODED.lastIndex = 0;
       out = out.replace(ESCAPE_TOKEN_ENCODED, (raw, hex: string) => decodeHex(hex) ?? raw);
     }
+    if (out.includes("\uE000SBW")) out = restoreEmphasisSpaces(out);
     if (out === before) break;
   }
   return out;
