@@ -1,27 +1,20 @@
 // SPDX-License-Identifier: Apache-2.0
 
-/** Close an unclosed fenced code block so streamed deltas do not swallow the rest. */
+import { emptyDocumentFence, stepDocumentFence } from "./math.ts";
+
+/**
+ * Close an unclosed top-level fence so streamed deltas do not
+ * swallow the rest. v1.98: a fence that is the text of a list
+ * marker stays inside that item. Its closer, even in the first
+ * three columns, is not a new fence, and no extra closer is
+ * appended after the list.
+ */
 export function stabilizeMarkdown(src: string): string {
   const lines = src.split("\n");
-  let fence: string | null = null;
-  for (const line of lines) {
-    const match = /^( {0,3})(`{3,}|~{3,})(.*)$/.exec(line);
-    if (!match) continue;
-    const marker = match[2] ?? "";
-    const info = match[3] ?? "";
-    if (!fence) {
-      // ``` `` ``` is a code span, not an opening fence.
-      if (marker[0] === "`" && info.includes("`")) continue;
-      fence = marker;
-      continue;
-    }
-    const sameTick = marker[0] === fence[0];
-    if (sameTick && marker.length >= fence.length && info.trim() === "") {
-      fence = null;
-    }
-  }
-  if (!fence) return src;
-  const closer = fence;
+  const state = emptyDocumentFence();
+  for (const line of lines) stepDocumentFence(state, line);
+  if (!state.top) return src;
+  const closer = state.top;
   return src.endsWith("\n") ? `${src}${closer}` : `${src}\n${closer}`;
 }
 

@@ -273,19 +273,29 @@ enum MarkdownList {
         var body: [String] = []
         var paragraph = false
         var inIndentedCode = false
+        var fence: String?
+        var fenceOffset = 0
+        var fenceLiteral = false
         if !marker.text.isEmpty {
             if let code = openingCode {
                 body.append(String(repeating: " ", count: 4) + code)
                 inIndentedCode = true
             } else {
                 body.append(marker.text)
-                paragraph = true
+                // v1.98: the item text itself may be the opening fence.
+                // The closer is indented to the content column, which can
+                // still be only two or three spaces from the margin.
+                if let opened = fenceOnLine(marker.text),
+                   leadingColumns(marker.text).columns <= 3
+                {
+                    fence = opened.marker
+                    paragraph = false
+                } else {
+                    paragraph = true
+                }
             }
         }
         var index = start + 1
-        var fence: String?
-        var fenceOffset = 0
-        var fenceLiteral = false
         var inMath = false
         var sawBlank = false
         var sawContent = !marker.text.isEmpty
@@ -320,11 +330,21 @@ enum MarkdownList {
                         )
                     }
                 } else {
-                    body.append(dedent(line, columns: marker.contentColumn))
-                    if let opened = fenceOnLine(line),
-                       opened.marker.first == open.first,
-                       opened.marker.count >= open.count,
-                       opened.info.trimmingCharacters(in: .whitespaces).isEmpty
+                    // A line short of the item ends the fence with the item.
+                    // The line itself belongs to the parent.
+                    if !line.trimmingCharacters(in: .whitespaces).isEmpty,
+                       leadingColumns(line).columns < marker.contentColumn
+                    {
+                        fence = nil
+                        break
+                    }
+                    let bodyLine = dedent(line, columns: marker.contentColumn)
+                    body.append(bodyLine)
+                    if let closed = fenceOnLine(bodyLine),
+                       leadingColumns(bodyLine).columns <= 3,
+                       closed.marker.first == open.first,
+                       closed.marker.count >= open.count,
+                       closed.info.trimmingCharacters(in: .whitespaces).isEmpty
                     {
                         fence = nil
                     }

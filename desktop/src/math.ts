@@ -82,38 +82,268 @@ export function fenceInfoAllowsOpen(marker: string, info: string): boolean {
   return true;
 }
 
+/**
+ * v1.98: a fence that is the text of a list marker is open until
+ * its closer, which may sit in the first three columns. That
+ * closer is not a new fence. A top-level fence is unchanged.
+ */
+export type DocumentFence = {
+  top: string | null;
+  list: { marker: string; contentColumn: number } | null;
+};
+
+export type FenceEvent =
+  | "none"
+  | "top-open"
+  | "top-inside"
+  | "top-close"
+  | "list-open"
+  | "list-inside"
+  | "list-close"
+  | "list-ended";
+
+export function emptyDocumentFence(): DocumentFence {
+  return { top: null, list: null };
+}
+
+/** One source line. `list-ended` reprocesses the line; read `state` after. */
+export function stepDocumentFence(state: DocumentFence, line: string): FenceEvent {
+  if (state.top) {
+    if (closesFence(line, state.top, 0)) {
+      state.top = null;
+      return "top-close";
+    }
+    return "top-inside";
+  }
+  if (state.list) {
+    const open = state.list;
+    if (itemEnded(line, open.contentColumn)) {
+      state.list = null;
+      stepDocumentFence(state, line);
+      return "list-ended";
+    }
+    if (closesFence(line, open.marker, open.contentColumn)) {
+      state.list = null;
+      return "list-close";
+    }
+    return "list-inside";
+  }
+  const top = fenceAtMargin(line);
+  if (top) {
+    state.top = top.marker;
+    return "top-open";
+  }
+  const list = listMarkerFence(line);
+  if (list) {
+    state.list = list;
+    return "list-open";
+  }
+  return "none";
+}
+
 /** Fenced ``` / ~~~ ranges, including an unclosed tail. */
 export function fenceRanges(src: string): Range[] {
   const ranges: Range[] = [];
+  const state = emptyDocumentFence();
+  let openAt: number | null = null;
   let i = 0;
-  let open: { marker: string; start: number } | null = null;
   while (i <= src.length) {
     const nl = src.indexOf("\n", i);
     const lineEnd = nl < 0 ? src.length : nl;
     const line = src.slice(i, lineEnd);
-    const match = /^( {0,3})(`{3,}|~{3,})(.*)$/.exec(line);
-    if (match) {
-      const marker = match[2] ?? "";
-      const info = match[3] ?? "";
-      if (!open) {
-        if (fenceInfoAllowsOpen(marker, info)) open = { marker, start: i };
-      } else {
-        const sameTick = marker[0] === open.marker[0];
-        if (
-          sameTick &&
-          marker.length >= open.marker.length &&
-          info.trim() === ""
-        ) {
-          ranges.push({ start: open.start, end: lineEnd });
-          open = null;
-        }
-      }
+    const event = stepDocumentFence(state, line);
+    if (event === "top-open" || event === "list-open") {
+      openAt = i;
+    } else if (event === "top-close" || event === "list-close") {
+      if (openAt != null) ranges.push({ start: openAt, end: lineEnd });
+      openAt = null;
+    } else if (event === "list-ended") {
+      if (openAt != null) ranges.push({ start: openAt, end: i });
+      openAt = state.top || state.list ? i : null;
     }
     if (nl < 0) break;
     i = nl + 1;
   }
-  if (open) ranges.push({ start: open.start, end: src.length });
+  if (openAt != null) ranges.push({ start: openAt, end: src.length });
   return ranges;
+}
+
+type FenceHit = { marker: string; info: string };
+
+function fenceAtMargin(line: string): FenceHit | null {
+  let indent = 0;
+  while (indent < line.length && indent < 4 && line[indent] === " ") indent += 1;
+  if (indent > 3) return null;
+  return fenceRun(line.slice(indent));
+}
+
+function fenceRun(text: string): FenceHit | null {
+  const match = /^(`{3,}|~{3,})(.*)$/.exec(text);
+  if (!match) return null;
+  const marker = match[1] ?? "";
+  const info = match[2] ?? "";
+  if (!fenceInfoAllowsOpen(marker, info)) return null;
+  return { marker, info };
+}
+
+function closesFence(line: string, marker: string, contentColumn: number): boolean {
+  if (line.trim() === "") return false;
+  if (contentColumn > 0 && leadingColumns(line).columns < contentColumn) return false;
+  const body = contentColumn > 0 ? dedentColumns(line, contentColumn) : line;
+  const fence = fenceAtMargin(body);
+  if (!fence) return false;
+  if (fence.marker[0] !== marker[0]) return false;
+  if (fence.marker.length < marker.length) return false;
+  return fence.info.trim() === "";
+}
+
+function itemEnded(line: string, contentColumn: number): boolean {
+  if (line.trim() === "") return false;
+  return leadingColumns(line).columns < contentColumn;
+}
+
+function listMarkerFence(line: string): { marker: string; contentColumn: number } | null {
+  if (isMarginThematicBreak(line)) return null;
+  const lead = leadingColumns(line);
+  if (lead.columns > 3) return null;
+  const rest = line.slice(lead.index);
+  const bullet = /^([-+*])/.exec(rest);
+  const ordered = /^(\d{1,9})([.)])/.exec(rest);
+  const token = bullet?.[1] ?? ordered?.[0] ?? "";
+  if (!token) return null;
+  const after = lead.index + token.length;
+  if (after >= line.length) return null;
+  const sep = line[after];
+  if (sep !== " " && sep !== "\t") return null;
+  const padded = markerPadding(line, after, lead.columns + token.length);
+  if (!padded.text) return null;
+  const fence = fenceAtMargin(padded.text);
+  if (!fence) return null;
+  return { marker: fence.marker, contentColumn: padded.contentColumn };
+}
+
+function isMarginThematicBreak(line: string): boolean {
+  let i = 0;
+  while (i < line.length && i < 3 && line[i] === " ") i += 1;
+  const mark = line[i];
+  if (mark !== "-" && mark !== "*" && mark !== "_") return false;
+  let count = 0;
+  for (let j = i; j < line.length; j += 1) {
+    const c = line[j];
+    if (c === mark) {
+      count += 1;
+      continue;
+    }
+    if (c === " " || c === "\t") continue;
+    return false;
+  }
+  return count >= 3;
+}
+
+type ColCursor = { col: number; index: number; partial: number };
+
+function leadingColumns(line: string): { columns: number; index: number } {
+  let columns = 0;
+  let index = 0;
+  while (index < line.length) {
+    const ch = line[index];
+    if (ch === " ") {
+      columns += 1;
+      index += 1;
+      continue;
+    }
+    if (ch === "\t") {
+      columns += 4 - (columns % 4);
+      index += 1;
+      continue;
+    }
+    break;
+  }
+  return { columns, index };
+}
+
+function dedentColumns(line: string, columns: number): string {
+  let col = 0;
+  let index = 0;
+  while (index < line.length && col < columns) {
+    const ch = line[index];
+    if (ch === " ") {
+      col += 1;
+      index += 1;
+      continue;
+    }
+    if (ch === "\t") {
+      const next = col + (4 - (col % 4));
+      index += 1;
+      if (next > columns) return `${" ".repeat(next - columns)}${line.slice(index)}`;
+      col = next;
+      continue;
+    }
+    break;
+  }
+  return line.slice(index);
+}
+
+function markerPadding(
+  line: string,
+  markerIndex: number,
+  markerColumn: number,
+): { contentColumn: number; text: string } {
+  const start = { col: markerColumn, index: markerIndex, partial: 0 };
+  const cur = { col: start.col, index: start.index, partial: 0 };
+  let guard = 0;
+  do {
+    const before = cur.col;
+    advanceColumn(line, cur);
+    if (cur.col === before) break;
+    guard += 1;
+  } while (cur.col - start.col < 5 && isPadSpace(peekColumn(line, cur)) && guard < 32);
+  const spacesAfter = cur.col - start.col;
+  const blank = peekColumn(line, cur) == null;
+  if (spacesAfter >= 5 || spacesAfter < 1 || blank) {
+    const back = { col: start.col, index: start.index, partial: 0 };
+    if (isPadSpace(peekColumn(line, back))) advanceColumn(line, back);
+    return {
+      contentColumn: markerColumn + 1,
+      text: blank ? "" : remainder(line, back),
+    };
+  }
+  return { contentColumn: markerColumn + spacesAfter, text: remainder(line, cur) };
+}
+
+function advanceColumn(line: string, cur: ColCursor): void {
+  if (cur.partial > 0) {
+    cur.partial -= 1;
+    cur.col += 1;
+    if (cur.partial === 0) cur.index += 1;
+    return;
+  }
+  if (cur.index >= line.length) return;
+  const ch = line[cur.index] ?? "";
+  if (ch === "\t") {
+    const width = 4 - (cur.col % 4);
+    cur.col += 1;
+    if (width > 1) cur.partial = width - 1;
+    else cur.index += 1;
+    return;
+  }
+  cur.col += 1;
+  cur.index += 1;
+}
+
+function peekColumn(line: string, cur: ColCursor): string | null {
+  if (cur.partial > 0) return "\t";
+  if (cur.index >= line.length) return null;
+  return line[cur.index] ?? null;
+}
+
+function isPadSpace(ch: string | null): boolean {
+  return ch === " " || ch === "\t";
+}
+
+function remainder(line: string, cur: ColCursor): string {
+  if (cur.partial > 0) return `${" ".repeat(cur.partial)}${line.slice(cur.index + 1)}`;
+  return line.slice(cur.index);
 }
 
 /**
