@@ -81,6 +81,7 @@ struct ChatView: View {
             ComposerBar(
                 agentName: chatTitle,
                 isChannel: agent.isChannel,
+                onPreviewPendingImage: { openLightbox($0) },
                 focused: $composerFocused,
                 showJump: stick.showJump,
                 onCopyLastReply: { copyLastAssistantReply() },
@@ -3052,6 +3053,7 @@ struct ChatView: View {
 private struct ComposerBar: View {
     let agentName: String
     var isChannel: Bool
+    var onPreviewPendingImage: (ImageLightbox.Target) -> Void = { _ in }
     var focused: FocusState<Bool>.Binding
     var showJump = false
     var onCopyLastReply: () -> Void = {}
@@ -3517,11 +3519,27 @@ private struct ComposerBar: View {
     private func pendingChip(_ row: PendingChatAttachment) -> some View {
         if row.kind == .image, let data = row.previewData, let uiImage = UIImage(data: data) {
             ZStack(alignment: .topTrailing) {
-                Image(uiImage: uiImage)
-                    .resizable()
-                    .scaledToFill()
-                    .frame(width: 56, height: 56)
-                    .clipShape(RoundedRectangle(cornerRadius: 8))
+                Button {
+                    guard let bytes = PendingImagePreview.previewData(kind: row.kind, data: data) else {
+                        return
+                    }
+                    onPreviewPendingImage(
+                        ImageLightbox.Target(
+                            id: row.id,
+                            url: row.url,
+                            name: row.name,
+                            local: bytes
+                        )
+                    )
+                } label: {
+                    Image(uiImage: uiImage)
+                        .resizable()
+                        .scaledToFill()
+                        .frame(width: 56, height: 56)
+                        .clipShape(RoundedRectangle(cornerRadius: 8))
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(PendingImagePreview.accessibilityLabel(name: row.name))
                 Button {
                     model.removePending(id: row.id)
                 } label: {
@@ -3530,7 +3548,10 @@ private struct ComposerBar: View {
                         .frame(width: 20, height: 20)
                         .contentShape(Rectangle())
                 }
-                .frame(width: 44, height: 44)
+                .buttonStyle(.plain)
+                // 22pt so the rest of the 56pt thumb opens the preview.
+                // Video and file chips keep the 44pt remove hit.
+                .frame(width: 22, height: 22)
                 .accessibilityLabel("Remove \(row.name)")
             }
             .frame(width: 56, height: 56)

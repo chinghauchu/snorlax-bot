@@ -226,3 +226,4 @@ jobs:
           python3 ios/scripts/test_ios_markdown_html_line_tab.py
           python3 ios/scripts/test_ios_markdown_html_slash.py
           python3 ios/scripts/test_ios_code_highlight_clike.py
+          python3 ios/scripts/test_ios_pending_image_preview.py
