@@ -24,6 +24,8 @@ struct ChatView: View {
     @State private var lightboxFrame: ImageLightbox.Target?
     @State private var lightboxPaint = ImageLightbox.Paint.hidden
     @State private var lightboxGeneration = 0
+    @State private var lightboxZoom = LightboxZoom.State.fit
+    @State private var lightboxFitted = CGSize.zero
     @FocusState private var lightboxCloseFocused: Bool
     @State private var readingOffsetY: CGFloat = 0
     @State private var readingNearBottom = true
@@ -131,6 +133,9 @@ struct ChatView: View {
         .environment(\.quoteChordBlocked, quoteChordBlocked)
         .onKeyPress(phases: [.down, .up, .`repeat`]) { press in
             if deleteConfirmKey(press) == .handled {
+                return .handled
+            }
+            if lightboxZoomKey(press) == .handled {
                 return .handled
             }
             if press.phase != .down && !press.phase.contains(.`repeat`) {
@@ -310,7 +315,9 @@ struct ChatView: View {
                     target: frame,
                     shown: lightboxPaint.shown,
                     reduceMotion: reduceMotion,
+                    zoom: $lightboxZoom,
                     closeFocused: $lightboxCloseFocused,
+                    onFitted: { lightboxFitted = $0 },
                     onClose: { closeLightbox() }
                 )
             }
@@ -2021,6 +2028,8 @@ struct ChatView: View {
     }
 
     private func openLightbox(_ target: ImageLightbox.Target) {
+        lightboxZoom = .fit
+        lightboxFitted = .zero
         lightboxFrame = target
         lightbox = target
         composerFocused = false
@@ -2043,6 +2052,7 @@ struct ChatView: View {
         lightboxPaint = next
         if !next.mounted {
             lightboxFrame = nil
+            lightboxZoom = .fit
             return
         }
         let delay = ImageLightbox.fadeSeconds(reduceMotion: reduceMotion)
@@ -2051,6 +2061,7 @@ struct ChatView: View {
             guard generation == lightboxGeneration else { return }
             lightboxPaint = .hidden
             lightboxFrame = nil
+            lightboxZoom = .fit
         }
     }
 
@@ -2058,8 +2069,40 @@ struct ChatView: View {
     private func dismissLightboxImmediately() {
         lightbox = nil
         lightboxFrame = nil
+        lightboxZoom = .fit
+        lightboxFitted = .zero
         lightboxPaint = .hidden
         lightboxGeneration += 1
+    }
+
+    /// + / = zoom in, − zooms out, and 0 fits while the lightbox is open.
+    /// Command and Control stay with transcript text size, which this
+    /// overlay already blocks. A key repeat keeps stepping.
+    private func lightboxZoomKey(_ press: KeyPress) -> KeyPress.Result {
+        guard lightbox != nil else { return .ignored }
+        guard let action = LightboxZoom.keyAction(
+            key: press.key.character,
+            characters: press.characters,
+            command: press.modifiers.contains(.command),
+            control: press.modifiers.contains(.control),
+            option: press.modifiers.contains(.option),
+            shift: press.modifiers.contains(.shift)
+        ) else { return .ignored }
+        if press.phase == .up { return .handled }
+        let next = LightboxZoom.applied(
+            lightboxZoom,
+            action: action,
+            fittedWidth: lightboxFitted.width,
+            fittedHeight: lightboxFitted.height
+        )
+        if let animation = LightboxZoom.animation(reduceMotion: reduceMotion) {
+            withAnimation(animation) { lightboxZoom = next }
+        } else {
+            var transaction = Transaction()
+            transaction.disablesAnimations = true
+            withTransaction(transaction) { lightboxZoom = next }
+        }
+        return .handled
     }
 
     private func findBar(index: Int, total: Int) -> some View {
