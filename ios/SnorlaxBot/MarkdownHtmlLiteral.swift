@@ -77,6 +77,16 @@ import UIKit
 /// feed inside quotes stays a normal tag. v1.94 still stashes
 /// line tabulation before this pass. `<br\f>` is not a bare
 /// break.
+///
+/// v2.07: that line-tabulation stash is cmark spacechar. v1.94
+/// hides U+000B before this scan, and micromark then emphasizes
+/// inside `<a\vhref="*bar*">` and hides emphasis in
+/// `<a href=x\v*bar*>`. The stash counts as tag whitespace and
+/// ends an unquoted value, the same way a raw line tab does.
+/// A line that is an HTML block only because of it is stashed.
+/// A line tab inside quotes stays a normal tag and is painted
+/// back as U+000B. `<br\v>` is not a bare break. `*\va\v*`
+/// stays emphasis.
 /// Keep in lockstep with `desktop/src/markdownHtmlLiteral.ts`.
 enum MarkdownHtmlLiteral {
     /// Never animate, including when Reduce Motion is off.
@@ -177,6 +187,13 @@ enum MarkdownHtmlLiteral {
                 index += 1
                 continue
             }
+            if ch == "<", isLineTabUnquotedTag(chars, index), index < codeLine.count, !codeLine[index] {
+                // micromark keeps the line-tab stash inside the unquoted value.
+                // cmark-gfm stops the value, so the tag does not match.
+                out.append(token("<"))
+                index += 1
+                continue
+            }
             if ch == "<", let end = htmlTagEnd(chars, index), end > index, !overlaps(index, end, blocked) {
                 out.append(safeOrStash(String(chars[index..<end])))
                 index = end
@@ -226,8 +243,12 @@ enum MarkdownHtmlLiteral {
         guard isUpper(chars[cursor]) else { return nil }
         cursor += 1
         while cursor < chars.count, isUpper(chars[cursor]) { cursor += 1 }
-        guard cursor < chars.count, isDeclSpace(chars[cursor]) else { return nil }
-        while cursor < chars.count, isDeclSpace(chars[cursor]) { cursor += 1 }
+        guard declSpaceLen(chars, cursor) > 0 else { return nil }
+        while cursor < chars.count {
+            let span = declSpaceLen(chars, cursor)
+            if span == 0 { break }
+            cursor += span
+        }
         while cursor < chars.count, chars[cursor] != ">", chars[cursor] != "\0" {
             cursor += 1
         }
@@ -341,6 +362,14 @@ enum MarkdownHtmlLiteral {
     /// cmark `spacechar`: space, tab, newline, CR, form feed, vertical tab.
     private static func isDeclSpace(_ ch: Character) -> Bool {
         ch == " " || ch == "\t" || ch == "\n" || ch == "\r" || ch == "\u{000B}" || ch == "\u{000C}"
+    }
+
+    /// Length of one declaration space at `index`, including a line-tab stash.
+    private static func declSpaceLen(_ chars: [Character], _ index: Int) -> Int {
+        let stashed = MarkdownEmphasis.lineTabLength(chars, index)
+        if stashed > 0 { return stashed }
+        guard index < chars.count, isDeclSpace(chars[index]) else { return 0 }
+        return 1
     }
 
     /// Length from the first `-` of `<!--`, or 0. Same re2c
@@ -486,7 +515,7 @@ enum MarkdownHtmlLiteral {
                 let end = MarkdownList.htmlBlockLineEnd(texts, index: index, paragraphOpen: false) ?? (index + 1)
                 let complete = MarkdownList.htmlLineIsCompleteTag(line.text)
                 if para { out.append("") }
-                if formFeedOpensBlock(line.text) {
+                if formFeedOpensBlock(line.text) || lineTabOpensBlock(line.text) {
                     var cursor = index
                     while cursor < end {
                         out.append(token(lines[cursor].text))
@@ -497,7 +526,7 @@ enum MarkdownHtmlLiteral {
                     var cursor = index
                     while cursor < end {
                         let text = lines[cursor].text
-                        out.append(complete ? text : token(text))
+                        out.append(complete ? revealLineTabs(text) : token(text))
                         cursor += 1
                     }
                     if complete { spans.append((start: start, end: out.count)) }
@@ -519,7 +548,7 @@ enum MarkdownHtmlLiteral {
                 let type7Only = !MarkdownList.htmlBlockInterrupts(line.text)
                 if type7Only && htmlEnd == index + 1 {
                     out.append(line.text)
-                } else if formFeedOpensBlock(line.text) {
+                } else if formFeedOpensBlock(line.text) || lineTabOpensBlock(line.text) {
                     // micromark would parse the block. cmark-gfm keeps it raw.
                     if para { out.append("") }
                     var cursor = index
@@ -531,7 +560,7 @@ enum MarkdownHtmlLiteral {
                     let start = out.count
                     var cursor = index
                     while cursor < htmlEnd {
-                        out.append(lines[cursor].text)
+                        out.append(revealLineTabs(lines[cursor].text))
                         cursor += 1
                     }
                     spans.append((start: start, end: out.count))
@@ -573,6 +602,74 @@ enum MarkdownHtmlLiteral {
         guard slice.contains("\u{000C}") else { return false }
         let stripped = slice.filter { $0 != "\u{000C}" }
         return htmlTagEnd(stripped, 0) != nil
+    }
+
+    /// The line is a cmark HTML block only because a line tabulation
+    /// (raw U+000B, or its v1.94 flanking stash) is tag whitespace.
+    /// Replacing that character with `*` drops the block. A line tab
+    /// inside a quoted value still leaves a block.
+    private static func lineTabOpensBlock(_ line: String) -> Bool {
+        let has = line.contains(MarkdownEmphasis.lineTabToken) || line.contains("\u{000B}")
+        guard has, MarkdownList.htmlBlockStarts(line) else { return false }
+        let stripped = line
+            .replacingOccurrences(of: MarkdownEmphasis.lineTabToken, with: "*")
+            .replacingOccurrences(of: "\u{000B}", with: "*")
+        return !MarkdownList.htmlBlockStarts(stripped)
+    }
+
+    /// micromark would accept this as a tag only by keeping a line
+    /// tabulation inside an unquoted value. cmark-gfm does not.
+    /// The character may already be the v1.94 stash.
+    private static func isLineTabUnquotedTag(_ chars: [Character], _ index: Int) -> Bool {
+        guard index < chars.count, chars[index] == "<", htmlTagEnd(chars, index) == nil else { return false }
+        var end = chars.count
+        var cursor = index
+        while cursor + 1 < chars.count {
+            if chars[cursor] == "\n", chars[cursor + 1] == "\n" {
+                end = cursor
+                break
+            }
+            cursor += 1
+        }
+        let slice = Array(chars[index..<end])
+        guard slice.contains("\u{000B}") || MarkdownEmphasis.lineTabLength(slice, 0) > 0 || sliceContainsLineTab(slice) else {
+            return false
+        }
+        return htmlTagEnd(withoutLineTabs(slice), 0) != nil
+    }
+
+    private static func sliceContainsLineTab(_ chars: [Character]) -> Bool {
+        var index = 0
+        while index < chars.count {
+            if MarkdownEmphasis.lineTabLength(chars, index) > 0 { return true }
+            index += 1
+        }
+        return false
+    }
+
+    private static func withoutLineTabs(_ chars: [Character]) -> [Character] {
+        var out: [Character] = []
+        var index = 0
+        while index < chars.count {
+            let stashed = MarkdownEmphasis.lineTabLength(chars, index)
+            if stashed > 0 {
+                index += stashed
+                continue
+            }
+            if chars[index] == "\u{000B}" {
+                index += 1
+                continue
+            }
+            out.append(chars[index])
+            index += 1
+        }
+        return out
+    }
+
+    /// Paint a line-tab stash back to U+000B inside a block micromark already accepts.
+    private static func revealLineTabs(_ line: String) -> String {
+        guard line.contains(MarkdownEmphasis.lineTabToken) else { return line }
+        return line.replacingOccurrences(of: MarkdownEmphasis.lineTabToken, with: "\u{000B}")
     }
 
     private static func searchTagCloses(_ line: String) -> Bool {
@@ -719,14 +816,20 @@ enum MarkdownHtmlLiteral {
     }
 
     /// cmark `spacechar` inside a tag, with at most one line ending.
-    /// Form feed (U+000C) is spacechar. A second line ending stays
-    /// outside the tag. Line tabulation is a v1.94 flanking stash.
+    /// Form feed (U+000C) and line tabulation (U+000B) are spacechar.
+    /// The v1.94 flanking stash of line tabulation counts as the same
+    /// character. A second line ending stays outside the tag.
     private static func skipWs(_ chars: [Character], _ index: Int) -> Int {
         var cursor = index
         var line = false
         while cursor < chars.count {
+            let stashed = MarkdownEmphasis.lineTabLength(chars, cursor)
+            if stashed > 0 {
+                cursor += stashed
+                continue
+            }
             let ch = chars[cursor]
-            if ch == " " || ch == "\t" || ch == "\u{000C}" {
+            if ch == " " || ch == "\t" || ch == "\u{000C}" || ch == "\u{000B}" {
                 cursor += 1
                 continue
             }
@@ -754,10 +857,16 @@ enum MarkdownHtmlLiteral {
             guard let close = find([ch], in: chars, from: index + 1) else { return nil }
             return close + 1
         }
-        if isUnquotedStop(ch) { return nil }
+        if unquotedStops(chars, index) { return nil }
         var cursor = index + 1
-        while cursor < chars.count, !isUnquotedStop(chars[cursor]) { cursor += 1 }
+        while cursor < chars.count, !unquotedStops(chars, cursor) { cursor += 1 }
         return cursor
+    }
+
+    private static func unquotedStops(_ chars: [Character], _ index: Int) -> Bool {
+        if MarkdownEmphasis.lineTabLength(chars, index) > 0 { return true }
+        guard index < chars.count else { return true }
+        return isUnquotedStop(chars[index])
     }
 
     private static func hasPrefix(_ chars: [Character], _ index: Int, _ prefix: String) -> Bool {
@@ -1126,7 +1235,7 @@ enum MarkdownHtmlLiteral {
     }
 
     private static func isUnquotedStop(_ ch: Character) -> Bool {
-        ch == " " || ch == "\t" || ch == "\n" || ch == "\r" || ch == "\u{000C}"
+        ch == " " || ch == "\t" || ch == "\n" || ch == "\r" || ch == "\u{000B}" || ch == "\u{000C}"
             || ch == "\"" || ch == "'" || ch == "=" || ch == "<" || ch == ">" || ch == "`"
     }
 }
