@@ -32,6 +32,8 @@ enum MarkdownImage {
         var title: String?
         /// http(s) destination when this image is the whole link.
         var link: String?
+        /// v2.13 gallery id. Empty keeps the single-image `md:` + url id.
+        var lightboxID: String = ""
     }
 
     enum Piece: Equatable {
@@ -782,9 +784,10 @@ struct MarkdownInlineImage: View {
             openURL(url)
             return
         }
+        let id = image.lightboxID.isEmpty ? "md:" + image.url : image.lightboxID
         openMarkdownImage(
             ImageLightbox.Target(
-                id: "md:" + image.url,
+                id: id,
                 url: image.url,
                 name: label,
                 local: uiImage?.pngData()

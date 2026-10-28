@@ -964,6 +964,8 @@ private struct MarkdownRun: View {
     @Environment(\.openURL) private var openURL
     @Environment(\.chatFind) private var find
     @Environment(\.markdownFootnotes) private var markdownFootnotes
+    @Environment(\.markdownLightboxScope) private var lightboxScope
+    @Environment(\.markdownLightboxCounts) private var lightboxCounts
     @Environment(AppModel.self) private var model
     @State private var shownFootnote: MarkdownFootnote.Note?
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
@@ -986,7 +988,7 @@ private struct MarkdownRun: View {
     }
 
     var body: some View {
-        let pieces = flowPieces
+        let pieces = assignedLightboxIDs(flowPieces)
         let content = Group {
             if pieces.count == 1, case .text(let only) = pieces[0] {
                 markdownText(only)
@@ -1015,6 +1017,23 @@ private struct MarkdownRun: View {
             MarkdownFootnotePopover(note: note, names: names)
                 .presentationCompactAdaptation(.popover)
                 .environment(\.markdownFootnotes, markdownFootnotes)
+        }
+    }
+
+    /// Gallery ids match `LightboxStep.strip` for this bubble.
+    /// A nested body with no message id keeps the single-image id.
+    private func assignedLightboxIDs(_ pieces: [MarkdownFlowPiece]) -> [MarkdownFlowPiece] {
+        guard !lightboxScope.messageID.isEmpty else { return pieces }
+        return pieces.map { piece in
+            guard case .image(var image) = piece, image.link == nil else { return piece }
+            let occurrence = lightboxCounts.next(image.url)
+            image.lightboxID = LightboxStep.markdownID(
+                messageID: lightboxScope.messageID,
+                bubble: lightboxScope.bubble,
+                url: image.url,
+                occurrence: occurrence
+            )
+            return .image(image)
         }
     }
 

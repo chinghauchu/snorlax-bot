@@ -4372,8 +4372,51 @@ legend {
 
 .image-lightbox-zoom:hover:not(:disabled),
 .image-lightbox-save:hover,
-.image-lightbox-close:hover {
+.image-lightbox-close:hover,
+.image-lightbox-step:hover:not([aria-disabled="true"]) {
   color: var(--text);
+}
+
+.image-lightbox-step {
+  position: absolute;
+  top: 50%;
+  z-index: 1;
+  height: 28px;
+  margin: 0;
+  padding: 0 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg-elevated);
+  color: var(--text-muted);
+  font-size: 12px;
+  line-height: 1.3;
+  transform: translateY(-50%);
+  cursor: pointer;
+}
+
+.image-lightbox-step[data-edge="previous"] {
+  left: 12px;
+}
+
+.image-lightbox-step[data-edge="next"] {
+  right: 12px;
+}
+
+.image-lightbox-step[aria-disabled="true"] {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.image-lightbox-count {
+  position: absolute;
+  bottom: 12px;
+  left: 50%;
+  z-index: 1;
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 12px;
+  line-height: 1.3;
+  transform: translateX(-50%);
 }
 
 @media (prefers-reduced-motion: reduce) {

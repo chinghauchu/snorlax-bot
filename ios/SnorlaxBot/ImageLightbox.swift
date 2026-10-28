@@ -92,8 +92,12 @@ struct ImageLightboxOverlay: View {
     let reduceMotion: Bool
     @Binding var zoom: LightboxZoom.State
     var closeFocused: FocusState<Bool>.Binding
+    var stepLabel: String? = nil
+    var canStepPrevious = false
+    var canStepNext = false
     let onFitted: (CGSize) -> Void
     let onClose: () -> Void
+    var onStep: (LightboxStep.Direction) -> Void = { _ in }
 
     @Environment(AppModel.self) private var model
     @State private var image: UIImage?
@@ -198,6 +202,37 @@ struct ImageLightboxOverlay: View {
                 }
                 .padding(12)
             }
+            .overlay(alignment: .leading) {
+                if stepLabel != nil {
+                    stepButton(
+                        LightboxStep.previousLabel,
+                        accessibility: LightboxStep.previousAccessibility,
+                        enabled: canStepPrevious,
+                        direction: .previous
+                    )
+                    .padding(.leading, 12)
+                }
+            }
+            .overlay(alignment: .trailing) {
+                if stepLabel != nil {
+                    stepButton(
+                        LightboxStep.nextLabel,
+                        accessibility: LightboxStep.nextAccessibility,
+                        enabled: canStepNext,
+                        direction: .next
+                    )
+                    .padding(.trailing, 12)
+                }
+            }
+            .overlay(alignment: .bottom) {
+                if let stepLabel {
+                    Text(stepLabel)
+                        .font(.system(size: 12))
+                        .foregroundStyle(.secondary)
+                        .accessibilityLabel("Image \(stepLabel)")
+                        .padding(.bottom, 12)
+                }
+            }
         }
         .sheet(isPresented: Binding(
             get: { shareURL != nil },
@@ -221,6 +256,15 @@ struct ImageLightboxOverlay: View {
         .onExitCommand(perform: onClose)
         .simultaneousGesture(
             DragGesture(minimumDistance: 24).onEnded { value in
+                if let direction = LightboxStep.swipeDirection(
+                    x: value.translation.width,
+                    y: value.translation.height,
+                    scale: zoom.scale
+                ) {
+                    guard LightboxStep.keepsOpen() else { return }
+                    onStep(direction)
+                    return
+                }
                 if LightboxZoom.allowsSwipeDismiss(scale: zoom.scale),
                    ImageLightbox.swipeDismisses(translation: value.translation) {
                     onClose()
@@ -240,6 +284,29 @@ struct ImageLightboxOverlay: View {
             if isShown { closeFocused.wrappedValue = true }
         }
         .task(id: target.id) { await load() }
+    }
+
+    private func stepButton(
+        _ title: String,
+        accessibility: String,
+        enabled: Bool,
+        direction: LightboxStep.Direction
+    ) -> some View {
+        Button(title) {
+            guard enabled, LightboxStep.keepsOpen(), LightboxStep.animates() == false else { return }
+            onStep(direction)
+        }
+        .font(.system(size: 12))
+        .foregroundStyle(.secondary)
+        .padding(.horizontal, 10)
+        .padding(.vertical, 6)
+        .background {
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .fill(Color(uiColor: .secondarySystemBackground))
+        }
+        .buttonStyle(.plain)
+        .opacity(enabled ? 1 : 0.4)
+        .accessibilityLabel(enabled ? accessibility : "\(accessibility), unavailable")
     }
 
     /// Scale the picture already shown. The overlay stays open.

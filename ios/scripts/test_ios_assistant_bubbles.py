@@ -47,7 +47,9 @@ def test_split_on_blank_lines_and_mid_stream_single() -> None:
 def test_actions_only_on_last_bubble() -> None:
     bubbles_for = CHAT.find("ForEach(Array(leftBubbles.enumerated())")
     assert bubbles_for > 0
-    chunk = CHAT[bubbles_for : bubbles_for + 3600]
+    # v2.13 stamps a lightbox scope on each bubble inside the ForEach.
+    # Copy / Speak / Regenerate stay after that loop.
+    chunk = CHAT[bubbles_for : bubbles_for + 4200]
     actions = chunk.find("if showCopy || showSpeak")
     assert actions > 0
     for_each = chunk[:actions]
