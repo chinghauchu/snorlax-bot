@@ -58,22 +58,26 @@ export function lightboxFocusOrder(saveOffered: boolean): LightboxControl[] {
   return saveOffered ? ["save", "close"] : ["close"];
 }
 
-/** Wrap around the offered controls. A missing focus starts at the end. */
-export function nextLightboxFocus(
-  order: readonly LightboxControl[],
-  current: LightboxControl | null,
+/**
+ * Wrap around the offered controls. A missing focus starts at the end.
+ * The order can be Save/Close or the v2.12 zoom order.
+ */
+export function nextLightboxFocus<T extends string>(
+  order: readonly T[],
+  current: T | null,
   backward: boolean,
-): LightboxControl {
-  if (order.length === 0) return "close";
+): T {
+  const last = order[order.length - 1];
+  if (last === undefined) return "close" as T;
   const index = current == null ? -1 : order.indexOf(current);
   if (backward) {
-    if (index <= 0) return order[order.length - 1] ?? "close";
-    return order[index - 1] ?? "close";
+    if (index <= 0) return last;
+    return order[index - 1] ?? last;
   }
   if (index < 0 || index >= order.length - 1) {
-    return order[(index + 1) % order.length] ?? "close";
+    return order[(index + 1) % order.length] ?? last;
   }
-  return order[index + 1] ?? "close";
+  return order[index + 1] ?? last;
 }
 
 /**

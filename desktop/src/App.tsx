@@ -1,5 +1,6 @@
 import {
   ClipboardEvent,
+  CSSProperties,
   DragEvent,
   FormEvent,
   Fragment,
@@ -583,7 +584,6 @@ import {
   LIGHTBOX_SAVE_ARIA,
   LIGHTBOX_SAVE_LABEL,
   downloadLightboxBlob,
-  lightboxFocusOrder,
   lightboxSaveFilename,
   lightboxSaveKeepsOpen,
   lightboxSaveOffered,
@@ -591,6 +591,24 @@ import {
   readLightboxImageBlob,
   sniffImageExtension,
 } from "./lightboxSave";
+import {
+  LIGHTBOX_ZOOM_FIT,
+  LIGHTBOX_ZOOM_IN_ARIA,
+  LIGHTBOX_ZOOM_IN_LABEL,
+  LIGHTBOX_ZOOM_OUT_ARIA,
+  LIGHTBOX_ZOOM_OUT_LABEL,
+  lightboxPanEnabled,
+  lightboxZoomApplied,
+  lightboxZoomCanIn,
+  lightboxZoomCanOut,
+  lightboxZoomFocusOrder,
+  lightboxZoomKey,
+  lightboxZoomPanned,
+  lightboxZoomTransitionMs,
+  lightboxZoomWheeled,
+  type LightboxZoom,
+  type LightboxZoomAction,
+} from "./lightboxZoom";
 import {
   applyFinishedPreview,
   previewOwnsMessages,
@@ -1683,8 +1701,26 @@ export function App() {
   const lightboxReturnRef = useRef<HTMLElement | null>(null);
   const lightboxCloseRef = useRef<HTMLButtonElement>(null);
   const lightboxSaveRef = useRef<HTMLButtonElement>(null);
+  const lightboxZoomInRef = useRef<HTMLButtonElement>(null);
+  const lightboxZoomOutRef = useRef<HTMLButtonElement>(null);
+  const lightboxBackdropRef = useRef<HTMLDivElement>(null);
+  const lightboxZoomFrameRef = useRef<HTMLDivElement>(null);
   const lightboxSaving = useRef(false);
   const lightboxWasOpen = useRef(false);
+  const lightboxWheelPending = useRef(0);
+  const lightboxPanDrag = useRef<{
+    id: number;
+    x: number;
+    y: number;
+    originX: number;
+    originY: number;
+    scale: number;
+  } | null>(null);
+  const [lightboxZoom, setLightboxZoom] = useState<LightboxZoom>(LIGHTBOX_ZOOM_FIT);
+  const [lightboxZoomDragging, setLightboxZoomDragging] = useState(false);
+  const commitLightboxZoomRef = useRef<(action: LightboxZoomAction) => void>(
+    () => {},
+  );
   lightboxTargetRef.current = lightboxTarget;
   const composerRef = useRef<HTMLTextAreaElement>(null);
   const composerRootRef = useRef<HTMLElement>(null);
@@ -2252,6 +2288,10 @@ export function App() {
   const openImageLightbox = useCallback(
     (target: ImageLightboxTarget, trigger: HTMLElement) => {
       lightboxReturnRef.current = trigger;
+      lightboxWheelPending.current = 0;
+      lightboxPanDrag.current = null;
+      setLightboxZoomDragging(false);
+      setLightboxZoom(LIGHTBOX_ZOOM_FIT);
       setLightboxTarget(target);
     },
     [],
@@ -2260,6 +2300,16 @@ export function App() {
   const closeImageLightbox = useCallback(() => {
     setLightboxTarget(null);
   }, []);
+
+  commitLightboxZoomRef.current = (action) => {
+    const node = lightboxZoomFrameRef.current;
+    const fitted = {
+      width: node?.clientWidth ?? 0,
+      height: node?.clientHeight ?? 0,
+    };
+    lightboxWheelPending.current = 0;
+    setLightboxZoom((current) => lightboxZoomApplied(current, action, fitted));
+  };
 
   async function saveLightboxImage() {
     if (!lightboxSaveKeepsOpen()) return;
@@ -2322,6 +2372,59 @@ export function App() {
     if (!lightboxPaint.shown || !lightboxTarget) return;
     lightboxCloseRef.current?.focus({ preventScroll: true });
   }, [lightboxPaint.shown, lightboxTarget]);
+
+  useEffect(() => {
+    const id = lightboxFrame?.id ?? null;
+    if (!id) return;
+    setLightboxZoom(LIGHTBOX_ZOOM_FIT);
+    lightboxWheelPending.current = 0;
+    lightboxPanDrag.current = null;
+    setLightboxZoomDragging(false);
+  }, [lightboxFrame?.id]);
+
+  useEffect(() => {
+    const onKey = (event: globalThis.KeyboardEvent) => {
+      if (lightboxTargetRef.current == null) return;
+      if (isComposerComposing(event)) return;
+      const action = lightboxZoomKey({
+        key: event.key,
+        metaKey: event.metaKey,
+        ctrlKey: event.ctrlKey,
+        altKey: event.altKey,
+        shiftKey: event.shiftKey,
+      });
+      if (!action) return;
+      event.preventDefault();
+      event.stopPropagation();
+      event.stopImmediatePropagation();
+      commitLightboxZoomRef.current(action);
+    };
+    window.addEventListener("keydown", onKey, true);
+    return () => window.removeEventListener("keydown", onKey, true);
+  }, []);
+
+  useEffect(() => {
+    const backdrop = lightboxBackdropRef.current;
+    if (!backdrop || !lightboxPaint.mounted) return;
+    const onWheel = (event: WheelEvent) => {
+      event.preventDefault();
+      const frame = lightboxZoomFrameRef.current;
+      if (!frame || !frame.contains(event.target as Node)) return;
+      const fitted = { width: frame.clientWidth, height: frame.clientHeight };
+      setLightboxZoom((current) => {
+        const stepped = lightboxZoomWheeled(
+          current,
+          event.deltaY,
+          lightboxWheelPending.current,
+          fitted,
+        );
+        lightboxWheelPending.current = stepped.pending;
+        return stepped.zoom;
+      });
+    };
+    backdrop.addEventListener("wheel", onWheel, { passive: false });
+    return () => backdrop.removeEventListener("wheel", onWheel);
+  }, [lightboxPaint.mounted, lightboxFrame?.id]);
 
   useEffect(() => {
     setLightboxTarget(null);
@@ -9874,24 +9977,39 @@ export function App() {
       ) : null}
       {lightboxPaint.mounted && lightboxFrame ? (
         <div
+          ref={lightboxBackdropRef}
           className="image-lightbox-backdrop"
           data-shown={lightboxPaint.shown ? "true" : "false"}
           onMouseDown={() => closeImageLightbox()}
           onKeyDown={(event) => {
             if (event.key !== "Tab") return;
             const offered = lightboxSaveOffered({ url: lightboxFrame.url });
-            const order = lightboxFocusOrder(offered);
+            const order = lightboxZoomFocusOrder({
+              saveOffered: offered,
+              canZoomOut: lightboxZoomCanOut(lightboxZoom.scale),
+              canZoomIn: lightboxZoomCanIn(lightboxZoom.scale),
+            });
             const active = document.activeElement;
             const current =
-              active === lightboxSaveRef.current
-                ? "save"
-                : active === lightboxCloseRef.current
-                  ? "close"
-                  : null;
+              active === lightboxZoomOutRef.current
+                ? "zoomOut"
+                : active === lightboxZoomInRef.current
+                  ? "zoomIn"
+                  : active === lightboxSaveRef.current
+                    ? "save"
+                    : active === lightboxCloseRef.current
+                      ? "close"
+                      : null;
             const next = nextLightboxFocus(order, current, event.shiftKey);
             event.preventDefault();
             const node =
-              next === "save" ? lightboxSaveRef.current : lightboxCloseRef.current;
+              next === "zoomOut"
+                ? lightboxZoomOutRef.current
+                : next === "zoomIn"
+                  ? lightboxZoomInRef.current
+                  : next === "save"
+                    ? lightboxSaveRef.current
+                    : lightboxCloseRef.current;
             node?.focus({ preventScroll: true });
           }}
         >
@@ -9904,6 +10022,28 @@ export function App() {
             onMouseDown={(event) => event.stopPropagation()}
           >
             <div className="image-lightbox-actions">
+              <button
+                ref={lightboxZoomOutRef}
+                type="button"
+                className="image-lightbox-zoom"
+                aria-label={LIGHTBOX_ZOOM_OUT_ARIA}
+                disabled={!lightboxZoomCanOut(lightboxZoom.scale)}
+                onMouseDown={(event) => event.stopPropagation()}
+                onClick={() => commitLightboxZoomRef.current("out")}
+              >
+                {LIGHTBOX_ZOOM_OUT_LABEL}
+              </button>
+              <button
+                ref={lightboxZoomInRef}
+                type="button"
+                className="image-lightbox-zoom"
+                aria-label={LIGHTBOX_ZOOM_IN_ARIA}
+                disabled={!lightboxZoomCanIn(lightboxZoom.scale)}
+                onMouseDown={(event) => event.stopPropagation()}
+                onClick={() => commitLightboxZoomRef.current("in")}
+              >
+                {LIGHTBOX_ZOOM_IN_LABEL}
+              </button>
               {lightboxSaveOffered({ url: lightboxFrame.url }) ? (
                 <button
                   ref={lightboxSaveRef}
@@ -9926,12 +10066,75 @@ export function App() {
                 {IMAGE_LIGHTBOX_CLOSE}
               </button>
             </div>
-            <AuthedImg
-              className="image-lightbox-image"
-              src={lightboxFrame.url}
-              session={session}
-              alt={lightboxLabel(lightboxFrame.name)}
-            />
+            <div
+              ref={lightboxZoomFrameRef}
+              className="image-lightbox-frame"
+              data-pannable={lightboxPanEnabled(lightboxZoom.scale) ? "true" : "false"}
+              data-panning={lightboxZoomDragging ? "true" : "false"}
+              onMouseDown={(event) => event.stopPropagation()}
+              onDoubleClick={(event) => {
+                event.preventDefault();
+                event.stopPropagation();
+                commitLightboxZoomRef.current("toggle");
+              }}
+              onPointerDown={(event) => {
+                if (event.button !== 0) return;
+                if (!lightboxPanEnabled(lightboxZoom.scale)) return;
+                event.stopPropagation();
+                event.currentTarget.setPointerCapture(event.pointerId);
+                lightboxPanDrag.current = {
+                  id: event.pointerId,
+                  x: event.clientX,
+                  y: event.clientY,
+                  originX: lightboxZoom.x,
+                  originY: lightboxZoom.y,
+                  scale: lightboxZoom.scale,
+                };
+                setLightboxZoomDragging(true);
+              }}
+              onPointerMove={(event) => {
+                const drag = lightboxPanDrag.current;
+                if (!drag || drag.id !== event.pointerId) return;
+                const node = event.currentTarget;
+                setLightboxZoom(
+                  lightboxZoomPanned(
+                    drag.scale,
+                    drag.originX,
+                    drag.originY,
+                    event.clientX - drag.x,
+                    event.clientY - drag.y,
+                    { width: node.clientWidth, height: node.clientHeight },
+                  ),
+                );
+              }}
+              onPointerUp={(event) => {
+                if (lightboxPanDrag.current?.id !== event.pointerId) return;
+                lightboxPanDrag.current = null;
+                setLightboxZoomDragging(false);
+              }}
+              onPointerCancel={(event) => {
+                if (lightboxPanDrag.current?.id !== event.pointerId) return;
+                lightboxPanDrag.current = null;
+                setLightboxZoomDragging(false);
+              }}
+            >
+              <AuthedImg
+                className="image-lightbox-image"
+                src={lightboxFrame.url}
+                session={session}
+                alt={lightboxLabel(lightboxFrame.name)}
+                draggable={false}
+                zoomAnimate={
+                  lightboxZoomTransitionMs(
+                    window.matchMedia("(prefers-reduced-motion: reduce)").matches,
+                    lightboxZoomDragging,
+                  ) > 0
+                }
+                style={{
+                  transform: `translate(${lightboxZoom.x}px, ${lightboxZoom.y}px) scale(${lightboxZoom.scale})`,
+                }}
+              />
+            </div>
           </div>
         </div>
       ) : null}
@@ -10257,11 +10460,17 @@ function AuthedImg({
   session,
   alt,
   className,
+  style,
+  draggable,
+  zoomAnimate,
 }: {
   src: string;
   session: Session | null;
   alt: string;
   className?: string;
+  style?: CSSProperties;
+  draggable?: boolean;
+  zoomAnimate?: boolean;
 }) {
   const [out, setOut] = useState(src);
 
@@ -10289,7 +10498,18 @@ function AuthedImg({
     };
   }, [src, session]);
 
-  return <img className={className} src={out} alt={alt} />;
+  return (
+    <img
+      className={className}
+      src={out}
+      alt={alt}
+      style={style}
+      draggable={draggable}
+      {...(zoomAnimate === undefined
+        ? {}
+        : { "data-zoom-animate": zoomAnimate ? "true" : "false" })}
+    />
+  );
 }
 
 function PendingVideoThumb({

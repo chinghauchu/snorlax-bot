@@ -12,6 +12,10 @@ import UIKit
 /// image, including a pending preview. The system share sheet receives
 /// that file. Photo-library permission is not requested. The overlay
 /// stays open. Nothing is sent and a pending chip is not removed.
+///
+/// v2.12: Zoom out and Zoom in sit with Save. Double-tap toggles 1×
+/// and 2×. Pinch zooms between 1× and 4×. A zoomed picture can be
+/// dragged. Swipe-down dismisses only at 1×.
 enum ImageLightbox {
     static let close = "Close"
     static let label = "Image"
@@ -86,13 +90,20 @@ struct ImageLightboxOverlay: View {
     let target: ImageLightbox.Target
     let shown: Bool
     let reduceMotion: Bool
+    @Binding var zoom: LightboxZoom.State
     var closeFocused: FocusState<Bool>.Binding
+    let onFitted: (CGSize) -> Void
     let onClose: () -> Void
 
     @Environment(AppModel.self) private var model
     @State private var image: UIImage?
     @State private var imageData: Data?
     @State private var shareURL: URL?
+    @State private var fitted = CGSize.zero
+    @State private var pinchBase: Double = 1
+    @State private var pinchActive = false
+    @State private var panOrigin = CGSize.zero
+    @State private var panActive = false
 
     var body: some View {
         GeometryReader { geo in
@@ -110,6 +121,46 @@ struct ImageLightboxOverlay: View {
             .frame(width: geo.size.width, height: geo.size.height)
             .overlay(alignment: .topTrailing) {
                 HStack(spacing: 8) {
+                    Button(LightboxZoom.zoomOutLabel) {
+                        applyZoom(.zoomOut)
+                    }
+                    .font(.system(size: 12))
+                    .foregroundStyle(.secondary)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 6)
+                    .background {
+                        RoundedRectangle(cornerRadius: 8, style: .continuous)
+                            .fill(Color(uiColor: .secondarySystemBackground))
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(!LightboxZoom.canZoomOut(zoom.scale))
+                    .opacity(LightboxZoom.canZoomOut(zoom.scale) ? 1 : 0.4)
+                    .accessibilityLabel(LightboxZoom.zoomOutAccessibility)
+                    .transaction { transaction in
+                        if !LightboxZoom.animatesLabel(reduceMotion: reduceMotion) {
+                            transaction.animation = nil
+                        }
+                    }
+                    Button(LightboxZoom.zoomInLabel) {
+                        applyZoom(.zoomIn)
+                    }
+                    .font(.system(size: 12))
+                    .foregroundStyle(.secondary)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 6)
+                    .background {
+                        RoundedRectangle(cornerRadius: 8, style: .continuous)
+                            .fill(Color(uiColor: .secondarySystemBackground))
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(!LightboxZoom.canZoomIn(zoom.scale))
+                    .opacity(LightboxZoom.canZoomIn(zoom.scale) ? 1 : 0.4)
+                    .accessibilityLabel(LightboxZoom.zoomInAccessibility)
+                    .transaction { transaction in
+                        if !LightboxZoom.animatesLabel(reduceMotion: reduceMotion) {
+                            transaction.animation = nil
+                        }
+                    }
                     if imageData != nil {
                         Button(LightboxSave.label) {
                             saveImage()
@@ -170,11 +221,18 @@ struct ImageLightboxOverlay: View {
         .onExitCommand(perform: onClose)
         .simultaneousGesture(
             DragGesture(minimumDistance: 24).onEnded { value in
-                if ImageLightbox.swipeDismisses(translation: value.translation) {
+                if LightboxZoom.allowsSwipeDismiss(scale: zoom.scale),
+                   ImageLightbox.swipeDismisses(translation: value.translation) {
                     onClose()
                 }
             }
         )
+        .onChange(of: zoom) { _, next in
+            if !pinchActive && !panActive {
+                pinchBase = next.scale
+                panOrigin = CGSize(width: next.x, height: next.y)
+            }
+        }
         .onAppear {
             if shown { closeFocused.wrappedValue = true }
         }
@@ -182,6 +240,32 @@ struct ImageLightboxOverlay: View {
             if isShown { closeFocused.wrappedValue = true }
         }
         .task(id: target.id) { await load() }
+    }
+
+    /// Scale the picture already shown. The overlay stays open.
+    /// Nothing is sent and a pending chip is not removed.
+    private func applyZoom(_ action: LightboxZoom.Action) {
+        guard LightboxZoom.keepsOpen() else { return }
+        let next = LightboxZoom.applied(
+            zoom,
+            action: action,
+            fittedWidth: fitted.width,
+            fittedHeight: fitted.height
+        )
+        if let animation = LightboxZoom.animation(reduceMotion: reduceMotion) {
+            withAnimation(animation) { zoom = next }
+        } else {
+            var transaction = Transaction()
+            transaction.disablesAnimations = true
+            withTransaction(transaction) { zoom = next }
+        }
+        pinchBase = next.scale
+        panOrigin = CGSize(width: next.x, height: next.y)
+    }
+
+    private func rememberFitted(_ size: CGSize) {
+        fitted = size
+        onFitted(size)
     }
 
     @ViewBuilder
@@ -192,9 +276,76 @@ struct ImageLightboxOverlay: View {
                 .resizable()
                 .interpolation(.high)
                 .frame(width: max(size.width, 1), height: max(size.height, 1))
+                .scaleEffect(zoom.scale)
+                .offset(x: zoom.x, y: zoom.y)
                 .contentShape(Rectangle())
+                .highPriorityGesture(
+                    TapGesture(count: 2).onEnded {
+                        guard LightboxZoom.doubleTapZooms(count: 2) else { return }
+                        applyZoom(.toggle)
+                    }
+                )
                 .onTapGesture {}
+                .simultaneousGesture(
+                    MagnificationGesture()
+                        .onChanged { value in
+                            if !pinchActive {
+                                pinchActive = true
+                                pinchBase = zoom.scale
+                                panOrigin = CGSize(width: zoom.x, height: zoom.y)
+                            }
+                            zoom = LightboxZoom.pinched(
+                                baseScale: pinchBase,
+                                magnification: value,
+                                x: panOrigin.width,
+                                y: panOrigin.height,
+                                fittedWidth: size.width,
+                                fittedHeight: size.height
+                            )
+                        }
+                        .onEnded { value in
+                            let next = LightboxZoom.pinched(
+                                baseScale: pinchBase,
+                                magnification: value,
+                                x: panOrigin.width,
+                                y: panOrigin.height,
+                                fittedWidth: size.width,
+                                fittedHeight: size.height
+                            )
+                            zoom = next
+                            pinchActive = false
+                            pinchBase = next.scale
+                            panOrigin = CGSize(width: next.x, height: next.y)
+                        }
+                )
+                .simultaneousGesture(
+                    DragGesture(minimumDistance: 4)
+                        .onChanged { value in
+                            guard LightboxZoom.panEnabled(zoom.scale) else { return }
+                            if !panActive {
+                                panActive = true
+                                panOrigin = CGSize(width: zoom.x, height: zoom.y)
+                            }
+                            zoom = LightboxZoom.panned(
+                                scale: zoom.scale,
+                                originX: panOrigin.width,
+                                originY: panOrigin.height,
+                                dx: value.translation.width,
+                                dy: value.translation.height,
+                                fittedWidth: size.width,
+                                fittedHeight: size.height
+                            )
+                        }
+                        .onEnded { _ in
+                            panActive = false
+                            panOrigin = CGSize(width: zoom.x, height: zoom.y)
+                        }
+                )
                 .accessibilityLabel(ImageLightbox.label(for: target.name))
+                .accessibilityHint(LightboxZoom.doubleTapHint(scale: zoom.scale))
+                .onAppear { rememberFitted(size) }
+                .onChange(of: size.width) { _, _ in rememberFitted(size) }
+                .onChange(of: size.height) { _, _ in rememberFitted(size) }
         } else {
             ProgressView()
                 .tint(.white)
