@@ -65,6 +65,15 @@
  * would hide the emphasis and a following `---` would stay a
  * rule. The `<` is stashed. A line that begins with `<!` plus
  * an uppercase letter is still a type 4 HTML block.
+ *
+ * v2.05: inline processing instructions and CDATA use the same
+ * cmark-gfm closer. micromark closes at the first `?>` or `]]>`,
+ * so `<? *bar*??>` and `<![CDATA[ *bar*]]]>` hide the emphasis.
+ * The re2c body can consume `??>` and `]]]>`, so those are not
+ * closers. The `<` is stashed. `<? *bar*?>`, `<? *bar*???>`, and
+ * `<![CDATA[ *bar*]]>` stay one raw span, and a later real closer
+ * still swallows the text in front of it. A line that begins
+ * with `<?` or `<![CDATA[` is still an HTML block.
  * Keep in lockstep with `ios/SnorlaxBot/MarkdownHtmlLiteral.swift`.
  */
 
@@ -187,6 +196,18 @@ function rewrite(input: string): string {
       i += 1;
       continue;
     }
+    if (ch === "<" && isInvalidHtmlPi(src, i) && !codeLine[i]) {
+      // micromark would open a processing instruction. cmark-gfm does not.
+      out += stashMarkdownText("<");
+      i += 1;
+      continue;
+    }
+    if (ch === "<" && isInvalidHtmlCdata(src, i) && !codeLine[i]) {
+      // micromark would open CDATA. cmark-gfm does not.
+      out += stashMarkdownText("<");
+      i += 1;
+      continue;
+    }
     if (ch === "<") {
       const end = htmlTagEnd(src, i);
       if (end > i && !overlaps(i, end, blocked)) {
@@ -264,6 +285,109 @@ export function cmarkHtmlCommentEnd(src: string, index: number): number {
 /** `<!--` that cmark-gfm does not accept as an inline comment. */
 function isInvalidHtmlComment(src: string, index: number): boolean {
   return src.startsWith("<!--", index) && cmarkHtmlCommentEnd(src, index) < 0;
+}
+
+/**
+ * cmark-gfm 0.29.0.gfm.13 inline processing instruction, exclusive
+ * end. The body is `([^?>\0]+ | [?][^>\0] | [>])+` and the closer
+ * is `?>`. `<? *bar*?>` and `<? *bar*???>` match. `<? *bar*??>`
+ * does not: `??>` is body text, not a closer. `-1` when `index`
+ * is not one of those instructions.
+ */
+export function cmarkHtmlPiEnd(src: string, index: number): number {
+  if (!src.startsWith("<?", index)) return -1;
+  const bodyEnd = scanHtmlPi(src, index + 2);
+  return src.startsWith("?>", bodyEnd) ? bodyEnd + 2 : -1;
+}
+
+/** `<?` that cmark-gfm does not accept as a processing instruction. */
+function isInvalidHtmlPi(src: string, index: number): boolean {
+  return src.startsWith("<?", index) && cmarkHtmlPiEnd(src, index) < 0;
+}
+
+/**
+ * Exclusive end of a PI body scanned from the character after `<?`.
+ * An empty body is allowed, so `<??>` still matches.
+ */
+function scanHtmlPi(src: string, start: number): number {
+  let cursor = start;
+  while (cursor < src.length) {
+    const ch = src[cursor] ?? "";
+    if (ch !== "?" && ch !== ">" && ch !== "\0") {
+      cursor += 1;
+      while (cursor < src.length) {
+        const next = src[cursor] ?? "";
+        if (next === "?" || next === ">" || next === "\0") break;
+        cursor += 1;
+      }
+      continue;
+    }
+    if (ch === "?" && cursor + 1 < src.length) {
+      const next = src[cursor + 1] ?? "";
+      if (next !== ">" && next !== "\0") {
+        cursor += 2;
+        continue;
+      }
+    }
+    if (ch === ">") {
+      cursor += 1;
+      continue;
+    }
+    break;
+  }
+  return cursor;
+}
+
+/**
+ * cmark-gfm 0.29.0.gfm.13 inline CDATA, exclusive end. The body
+ * scanner stops in front of `]]>` and may consume `]]]>` as text.
+ * `<![CDATA[ *bar*]]>` matches. `<![CDATA[ *bar*]]]>` does not.
+ * `-1` when `index` is not one of those sections.
+ */
+export function cmarkHtmlCdataEnd(src: string, index: number): number {
+  if (!src.startsWith("<![CDATA[", index)) return -1;
+  const bodyEnd = scanHtmlCdata(src, index + 3);
+  if (bodyEnd < 0) return -1;
+  return src.startsWith("]]>", bodyEnd) ? bodyEnd + 3 : -1;
+}
+
+/** `<![CDATA[` that cmark-gfm does not accept as CDATA. */
+function isInvalidHtmlCdata(src: string, index: number): boolean {
+  return src.startsWith("<![CDATA[", index) && cmarkHtmlCdataEnd(src, index) < 0;
+}
+
+/** Exclusive end of a CDATA body scanned from `C` of `CDATA[`, or -1. */
+function scanHtmlCdata(src: string, start: number): number {
+  if (!src.startsWith("CDATA[", start)) return -1;
+  let cursor = start + 6;
+  while (cursor < src.length) {
+    const ch = src[cursor] ?? "";
+    if (ch !== "]" && ch !== "\0") {
+      cursor += 1;
+      while (cursor < src.length) {
+        const next = src[cursor] ?? "";
+        if (next === "]" || next === "\0") break;
+        cursor += 1;
+      }
+      continue;
+    }
+    if (ch === "]" && cursor + 1 < src.length) {
+      const next = src[cursor + 1] ?? "";
+      if (next !== "]" && next !== "\0") {
+        cursor += 2;
+        continue;
+      }
+      if (next === "]" && cursor + 2 < src.length) {
+        const third = src[cursor + 2] ?? "";
+        if (third !== ">" && third !== "\0") {
+          cursor += 3;
+          continue;
+        }
+      }
+    }
+    break;
+  }
+  return cursor;
 }
 
 /**
@@ -526,22 +650,18 @@ function mergeRanges(ranges: Range[]): Range[] {
 /**
  * End of a CommonMark raw HTML tag starting at `i`, or -1.
  * Comments, CDATA, processing instructions, and declarations
- * count. A declaration is uppercase, then whitespace, then `>`.
- * A tag name is an ASCII letter, then
+ * count. A processing instruction closes on `?>` and CDATA on
+ * `]]>` only when the cmark-gfm 0.29.0.gfm.13 body scanner
+ * stopped in front of that closer. A declaration is uppercase,
+ * then whitespace, then `>`. A tag name is an ASCII letter, then
  * letters, digits, and hyphens. Attributes follow the spec,
  * including one line ending in the whitespace.
  */
 export function htmlTagEnd(src: string, i: number): number {
   if (src[i] !== "<") return -1;
   if (src.startsWith("<!--", i)) return cmarkHtmlCommentEnd(src, i);
-  if (src.startsWith("<![CDATA[", i)) {
-    const close = src.indexOf("]]>", i + 9);
-    return close < 0 ? -1 : close + 3;
-  }
-  if (src.startsWith("<?", i)) {
-    const close = src.indexOf("?>", i + 2);
-    return close < 0 ? -1 : close + 2;
-  }
+  if (src.startsWith("<![CDATA[", i)) return cmarkHtmlCdataEnd(src, i);
+  if (src.startsWith("<?", i)) return cmarkHtmlPiEnd(src, i);
   if (src[i + 1] === "!") {
     const decl = cmarkHtmlDeclarationEnd(src, i);
     if (decl > i) return decl;
