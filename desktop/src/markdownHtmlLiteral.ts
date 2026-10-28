@@ -74,6 +74,18 @@
  * `<![CDATA[ *bar*]]>` stay one raw span, and a later real closer
  * still swallows the text in front of it. A line that begins
  * with `<?` or `<![CDATA[` is still an HTML block.
+ *
+ * v2.06: cmark-gfm spacechar includes form feed (U+000C).
+ * micromark does not count it as tag whitespace, so
+ * `<a\fhref="*bar*">` emphasizes and `<a href=x\f*bar*>` hides
+ * the emphasis. A form feed between the name and an attribute,
+ * around `=`, or before `>` keeps the span one raw tag. A form
+ * feed ends an unquoted value, so the emphasis runs. A line
+ * that is an HTML block only because of that form feed is
+ * stashed, so a following `---` stays inside the block. A form
+ * feed inside quotes was already a tag. v1.94 still stashes
+ * line tabulation before this pass. `<br\f>` is not a bare
+ * break.
  * Keep in lockstep with `ios/SnorlaxBot/MarkdownHtmlLiteral.swift`.
  */
 
@@ -81,6 +93,7 @@ import { opaqueMarkdownRanges, stashMarkdownText } from "./markdownEscape.ts";
 import {
   htmlBlockEnd,
   htmlBlockInterrupts,
+  htmlBlockStarts,
   htmlLineIsCompleteTag,
   htmlSearchBlockLine,
   htmlSourceBlockLine,
@@ -204,6 +217,13 @@ function rewrite(input: string): string {
     }
     if (ch === "<" && isInvalidHtmlCdata(src, i) && !codeLine[i]) {
       // micromark would open CDATA. cmark-gfm does not.
+      out += stashMarkdownText("<");
+      i += 1;
+      continue;
+    }
+    if (ch === "<" && isFormFeedUnquotedTag(src, i) && !codeLine[i]) {
+      // micromark keeps the form feed inside the unquoted value.
+      // cmark-gfm stops the value, so the tag does not match.
       out += stashMarkdownText("<");
       i += 1;
       continue;
@@ -526,12 +546,16 @@ function prepareCmarkHtml(src: string): { text: string; protect: Range[] } {
       const end = htmlBlockEnd(texts, index, false) ?? index + 1;
       const complete = htmlLineIsCompleteTag(line.text);
       if (para) out.push("");
-      const start = out.length;
-      for (let j = index; j < end; j += 1) {
-        const text = lines[j]!.text;
-        out.push(complete ? text : stashMarkdownText(text));
+      if (formFeedOpensBlock(line.text)) {
+        for (let j = index; j < end; j += 1) out.push(stashMarkdownText(lines[j]!.text));
+      } else {
+        const start = out.length;
+        for (let j = index; j < end; j += 1) {
+          const text = lines[j]!.text;
+          out.push(complete ? text : stashMarkdownText(text));
+        }
+        if (complete) spans.push({ start, end: out.length });
       }
-      if (complete) spans.push({ start, end: out.length });
       para = false;
       index = end;
       continue;
@@ -551,6 +575,10 @@ function prepareCmarkHtml(src: string): { text: string; protect: Range[] } {
       const type7Only = !htmlBlockInterrupts(line.text);
       if (type7Only && htmlEnd === index + 1) {
         out.push(line.text);
+      } else if (formFeedOpensBlock(line.text)) {
+        // micromark would parse the block. cmark-gfm keeps it raw.
+        if (para) out.push("");
+        for (let j = index; j < htmlEnd; j += 1) out.push(stashMarkdownText(lines[j]!.text));
       } else {
         const start = out.length;
         for (let j = index; j < htmlEnd; j += 1) out.push(lines[j]!.text);
@@ -565,6 +593,31 @@ function prepareCmarkHtml(src: string): { text: string; protect: Range[] } {
     index += 1;
   }
   return { text: out.join("\n"), protect: protectRanges(out, spans) };
+}
+
+/**
+ * The line is a cmark HTML block only because a form feed is
+ * tag whitespace. Replacing that form feed with `*` drops the
+ * block. A form feed inside a quoted value still leaves a block,
+ * and micromark already agrees there.
+ */
+function formFeedOpensBlock(line: string): boolean {
+  if (!line.includes("\f")) return false;
+  if (!htmlBlockStarts(line)) return false;
+  return !htmlBlockStarts(line.replaceAll("\f", "*"));
+}
+
+/**
+ * micromark would accept this as a tag only by keeping a form
+ * feed inside an unquoted value. cmark-gfm does not.
+ */
+function isFormFeedUnquotedTag(src: string, index: number): boolean {
+  if (src[index] !== "<" || htmlTagEnd(src, index) >= 0) return false;
+  const blank = src.indexOf("\n\n", index);
+  const end = blank < 0 ? src.length : blank;
+  const slice = src.slice(index, end);
+  if (!slice.includes("\f")) return false;
+  return htmlTagEnd(slice.replaceAll("\f", ""), 0) > 0;
 }
 
 function searchTagClosesOnLine(line: string): boolean {
@@ -655,7 +708,8 @@ function mergeRanges(ranges: Range[]): Range[] {
  * stopped in front of that closer. A declaration is uppercase,
  * then whitespace, then `>`. A tag name is an ASCII letter, then
  * letters, digits, and hyphens. Attributes follow the spec,
- * including one line ending in the whitespace.
+ * including one line ending in the whitespace. Form feed is
+ * cmark spacechar there, and it ends an unquoted value.
  */
 export function htmlTagEnd(src: string, i: number): number {
   if (src[i] !== "<") return -1;
@@ -701,13 +755,18 @@ export function htmlTagEnd(src: string, i: number): number {
   return j + 1;
 }
 
-/** Spaces, tabs, and at most one line ending. */
+/**
+ * cmark `spacechar` inside a tag, with at most one line ending.
+ * Form feed (U+000C) is spacechar. A second line ending is a
+ * blank line and stays outside the tag. Line tabulation is
+ * already a v1.94 flanking stash before this scan.
+ */
 function skipWs(src: string, i: number): number {
   let j = i;
   let line = false;
   while (j < src.length) {
     const ch = src[j];
-    if (ch === " " || ch === "\t") {
+    if (ch === " " || ch === "\t" || ch === "\f") {
       j += 1;
       continue;
     }
@@ -766,6 +825,7 @@ function isUnquotedStop(ch: string): boolean {
     ch === "\t" ||
     ch === "\n" ||
     ch === "\r" ||
+    ch === "\f" ||
     ch === '"' ||
     ch === "'" ||
     ch === "=" ||

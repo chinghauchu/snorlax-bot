@@ -65,6 +65,18 @@ import UIKit
 /// `<![CDATA[ *bar*]]>` stay one raw span, and a later real closer
 /// still swallows the text in front of it. A line that begins
 /// with `<?` or `<![CDATA[` stays an HTML block.
+///
+/// v2.06: cmark-gfm spacechar includes form feed (U+000C).
+/// micromark does not count it as tag whitespace, so
+/// `<a\fhref="*bar*">` emphasizes and `<a href=x\f*bar*>` hides
+/// the emphasis. A form feed between the name and an attribute,
+/// around `=`, or before `>` keeps the span one raw tag. A form
+/// feed ends an unquoted value, so the emphasis runs. A line
+/// that is an HTML block only because of that form feed is
+/// stashed, so a following `---` stays inside the block. A form
+/// feed inside quotes stays a normal tag. v1.94 still stashes
+/// line tabulation before this pass. `<br\f>` is not a bare
+/// break.
 /// Keep in lockstep with `desktop/src/markdownHtmlLiteral.ts`.
 enum MarkdownHtmlLiteral {
     /// Never animate, including when Reduce Motion is off.
@@ -154,6 +166,13 @@ enum MarkdownHtmlLiteral {
             }
             if ch == "<", isInvalidHtmlCdata(chars, index), index < codeLine.count, !codeLine[index] {
                 // micromark would open CDATA. cmark-gfm does not.
+                out.append(token("<"))
+                index += 1
+                continue
+            }
+            if ch == "<", isFormFeedUnquotedTag(chars, index), index < codeLine.count, !codeLine[index] {
+                // micromark keeps the form feed inside the unquoted value.
+                // cmark-gfm stops the value, so the tag does not match.
                 out.append(token("<"))
                 index += 1
                 continue
@@ -467,14 +486,22 @@ enum MarkdownHtmlLiteral {
                 let end = MarkdownList.htmlBlockLineEnd(texts, index: index, paragraphOpen: false) ?? (index + 1)
                 let complete = MarkdownList.htmlLineIsCompleteTag(line.text)
                 if para { out.append("") }
-                let start = out.count
-                var cursor = index
-                while cursor < end {
-                    let text = lines[cursor].text
-                    out.append(complete ? text : token(text))
-                    cursor += 1
+                if formFeedOpensBlock(line.text) {
+                    var cursor = index
+                    while cursor < end {
+                        out.append(token(lines[cursor].text))
+                        cursor += 1
+                    }
+                } else {
+                    let start = out.count
+                    var cursor = index
+                    while cursor < end {
+                        let text = lines[cursor].text
+                        out.append(complete ? text : token(text))
+                        cursor += 1
+                    }
+                    if complete { spans.append((start: start, end: out.count)) }
                 }
-                if complete { spans.append((start: start, end: out.count)) }
                 para = false
                 index = end
                 continue
@@ -492,6 +519,14 @@ enum MarkdownHtmlLiteral {
                 let type7Only = !MarkdownList.htmlBlockInterrupts(line.text)
                 if type7Only && htmlEnd == index + 1 {
                     out.append(line.text)
+                } else if formFeedOpensBlock(line.text) {
+                    // micromark would parse the block. cmark-gfm keeps it raw.
+                    if para { out.append("") }
+                    var cursor = index
+                    while cursor < htmlEnd {
+                        out.append(token(lines[cursor].text))
+                        cursor += 1
+                    }
                 } else {
                     let start = out.count
                     var cursor = index
@@ -510,6 +545,34 @@ enum MarkdownHtmlLiteral {
             index += 1
         }
         return (out.joined(separator: "\n"), protectRanges(out, spans))
+    }
+
+    /// The line is a cmark HTML block only because a form feed is
+    /// tag whitespace. Replacing that form feed with `*` drops the
+    /// block. A form feed inside a quoted value still leaves a block.
+    private static func formFeedOpensBlock(_ line: String) -> Bool {
+        guard line.contains("\u{000C}"), MarkdownList.htmlBlockStarts(line) else { return false }
+        let stripped = line.replacingOccurrences(of: "\u{000C}", with: "*")
+        return !MarkdownList.htmlBlockStarts(stripped)
+    }
+
+    /// micromark would accept this as a tag only by keeping a form
+    /// feed inside an unquoted value. cmark-gfm does not.
+    private static func isFormFeedUnquotedTag(_ chars: [Character], _ index: Int) -> Bool {
+        guard index < chars.count, chars[index] == "<", htmlTagEnd(chars, index) == nil else { return false }
+        var end = chars.count
+        var cursor = index
+        while cursor + 1 < chars.count {
+            if chars[cursor] == "\n", chars[cursor + 1] == "\n" {
+                end = cursor
+                break
+            }
+            cursor += 1
+        }
+        let slice = Array(chars[index..<end])
+        guard slice.contains("\u{000C}") else { return false }
+        let stripped = slice.filter { $0 != "\u{000C}" }
+        return htmlTagEnd(stripped, 0) != nil
     }
 
     private static func searchTagCloses(_ line: String) -> Bool {
@@ -655,12 +718,15 @@ enum MarkdownHtmlLiteral {
         return cursor + 1
     }
 
+    /// cmark `spacechar` inside a tag, with at most one line ending.
+    /// Form feed (U+000C) is spacechar. A second line ending stays
+    /// outside the tag. Line tabulation is a v1.94 flanking stash.
     private static func skipWs(_ chars: [Character], _ index: Int) -> Int {
         var cursor = index
         var line = false
         while cursor < chars.count {
             let ch = chars[cursor]
-            if ch == " " || ch == "\t" {
+            if ch == " " || ch == "\t" || ch == "\u{000C}" {
                 cursor += 1
                 continue
             }
@@ -1060,7 +1126,7 @@ enum MarkdownHtmlLiteral {
     }
 
     private static func isUnquotedStop(_ ch: Character) -> Bool {
-        ch == " " || ch == "\t" || ch == "\n" || ch == "\r"
+        ch == " " || ch == "\t" || ch == "\n" || ch == "\r" || ch == "\u{000C}"
             || ch == "\"" || ch == "'" || ch == "=" || ch == "<" || ch == ">" || ch == "`"
     }
 }
