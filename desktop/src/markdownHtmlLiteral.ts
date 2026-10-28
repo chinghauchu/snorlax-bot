@@ -58,6 +58,13 @@
  * being a setext heading. The `<` of a rejected comment is
  * stashed. A line that begins with `<!--` is still a type 2
  * HTML block. `<!-->` and `<!--->` stay comments.
+ *
+ * v2.04: that declaration also needs whitespace after the
+ * uppercase run. `<!DOCTYPE *bar*>` is one raw declaration.
+ * `<!DOCTYPE*bar*>` and `<!HTML5 *bar*>` are not, so micromark
+ * would hide the emphasis and a following `---` would stay a
+ * rule. The `<` is stashed. A line that begins with `<!` plus
+ * an uppercase letter is still a type 4 HTML block.
  * Keep in lockstep with `ios/SnorlaxBot/MarkdownHtmlLiteral.swift`.
  */
 
@@ -174,6 +181,12 @@ function rewrite(input: string): string {
       i += 1;
       continue;
     }
+    if (ch === "<" && isInvalidHtmlDeclaration(src, i) && !codeLine[i]) {
+      // micromark would open a declaration. cmark-gfm does not.
+      out += stashMarkdownText("<");
+      i += 1;
+      continue;
+    }
     if (ch === "<") {
       const end = htmlTagEnd(src, i);
       if (end > i && !overlaps(i, end, blocked)) {
@@ -196,6 +209,41 @@ function isLowerHtmlDeclaration(src: string, index: number): boolean {
   if (src[index] !== "<" || src[index + 1] !== "!") return false;
   const ch = src[index + 2] ?? "";
   return ch >= "a" && ch <= "z";
+}
+
+/**
+ * cmark-gfm 0.29.0.gfm.13 inline HTML declaration, exclusive end.
+ * `[A-Z]+`, then whitespace, then anything except `>` and NUL,
+ * then `>`. `<!DOCTYPE *bar*>` matches. `<!DOCTYPE*bar*>` does
+ * not. `-1` when `index` is not one of those declarations.
+ */
+export function cmarkHtmlDeclarationEnd(src: string, index: number): number {
+  if (src[index] !== "<" || src[index + 1] !== "!") return -1;
+  let cursor = index + 2;
+  if (!isUpper(src[cursor] ?? "")) return -1;
+  cursor += 1;
+  while (isUpper(src[cursor] ?? "")) cursor += 1;
+  if (!isDeclSpace(src[cursor] ?? "")) return -1;
+  while (isDeclSpace(src[cursor] ?? "")) cursor += 1;
+  while (cursor < src.length) {
+    const ch = src[cursor] ?? "";
+    if (ch === ">" || ch === "\0") break;
+    cursor += 1;
+  }
+  if (cursor >= src.length || src[cursor] !== ">") return -1;
+  return cursor + 1;
+}
+
+/** `<!` plus uppercase that cmark-gfm does not accept as a declaration. */
+function isInvalidHtmlDeclaration(src: string, index: number): boolean {
+  if (src[index] !== "<" || src[index + 1] !== "!") return false;
+  if (!isUpper(src[index + 2] ?? "")) return false;
+  return cmarkHtmlDeclarationEnd(src, index) < 0;
+}
+
+/** cmark `spacechar`: space, tab, newline, CR, form feed, vertical tab. */
+function isDeclSpace(ch: string): boolean {
+  return ch === " " || ch === "\t" || ch === "\n" || ch === "\r" || ch === "\f" || ch === "\v";
 }
 
 /**
@@ -477,8 +525,9 @@ function mergeRanges(ranges: Range[]): Range[] {
 
 /**
  * End of a CommonMark raw HTML tag starting at `i`, or -1.
- * Comments, CDATA, processing instructions, and uppercase
- * declarations count. A tag name is an ASCII letter, then
+ * Comments, CDATA, processing instructions, and declarations
+ * count. A declaration is uppercase, then whitespace, then `>`.
+ * A tag name is an ASCII letter, then
  * letters, digits, and hyphens. Attributes follow the spec,
  * including one line ending in the whitespace.
  */
@@ -493,9 +542,9 @@ export function htmlTagEnd(src: string, i: number): number {
     const close = src.indexOf("?>", i + 2);
     return close < 0 ? -1 : close + 2;
   }
-  if (src[i + 1] === "!" && isUpper(src[i + 2] ?? "")) {
-    const close = src.indexOf(">", i + 3);
-    return close < 0 ? -1 : close + 1;
+  if (src[i + 1] === "!") {
+    const decl = cmarkHtmlDeclarationEnd(src, i);
+    if (decl > i) return decl;
   }
   let j = i + 1;
   const closing = src[j] === "/";

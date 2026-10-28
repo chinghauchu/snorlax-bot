@@ -49,6 +49,13 @@ import UIKit
 /// does not. The `<` of a rejected comment is stashed so
 /// emphasis still runs. A line that begins with `<!--` stays a
 /// type 2 HTML block.
+///
+/// v2.04: that declaration also needs whitespace after the
+/// uppercase run. `<!DOCTYPE *bar*>` stays one raw declaration.
+/// `<!DOCTYPE*bar*>` and `<!HTML5 *bar*>` do not, so `*bar*`
+/// emphasizes and a following `---` stays a setext heading.
+/// The `<` is stashed. A line that begins with `<!` plus an
+/// uppercase letter stays a type 4 HTML block.
 /// Keep in lockstep with `desktop/src/markdownHtmlLiteral.ts`.
 enum MarkdownHtmlLiteral {
     /// Never animate, including when Reduce Motion is off.
@@ -124,6 +131,12 @@ enum MarkdownHtmlLiteral {
                 index += 1
                 continue
             }
+            if ch == "<", isInvalidHtmlDeclaration(chars, index), index < codeLine.count, !codeLine[index] {
+                // micromark would open a declaration. cmark-gfm does not.
+                out.append(token("<"))
+                index += 1
+                continue
+            }
             if ch == "<", let end = htmlTagEnd(chars, index), end > index, !overlaps(index, end, blocked) {
                 out.append(safeOrStash(String(chars[index..<end])))
                 index = end
@@ -160,6 +173,39 @@ enum MarkdownHtmlLiteral {
     /// `<!--` that cmark-gfm does not accept as an inline comment.
     private static func isInvalidHtmlComment(_ chars: [Character], _ index: Int) -> Bool {
         hasPrefix(chars, index, "<!--") && cmarkHtmlCommentEnd(chars, index) == nil
+    }
+
+    /// cmark-gfm 0.29.0.gfm.13 inline HTML declaration, exclusive end.
+    /// `[A-Z]+`, then whitespace, then anything except `>`, then `>`.
+    /// `<!DOCTYPE *bar*>` matches. `<!DOCTYPE*bar*>` is nil.
+    static func cmarkHtmlDeclarationEnd(_ chars: [Character], _ index: Int) -> Int? {
+        guard index + 2 < chars.count, chars[index] == "<", chars[index + 1] == "!" else {
+            return nil
+        }
+        var cursor = index + 2
+        guard isUpper(chars[cursor]) else { return nil }
+        cursor += 1
+        while cursor < chars.count, isUpper(chars[cursor]) { cursor += 1 }
+        guard cursor < chars.count, isDeclSpace(chars[cursor]) else { return nil }
+        while cursor < chars.count, isDeclSpace(chars[cursor]) { cursor += 1 }
+        while cursor < chars.count, chars[cursor] != ">", chars[cursor] != "\0" {
+            cursor += 1
+        }
+        guard cursor < chars.count, chars[cursor] == ">" else { return nil }
+        return cursor + 1
+    }
+
+    /// `<!` plus uppercase that cmark-gfm does not accept as a declaration.
+    private static func isInvalidHtmlDeclaration(_ chars: [Character], _ index: Int) -> Bool {
+        guard index + 2 < chars.count, chars[index] == "<", chars[index + 1] == "!", isUpper(chars[index + 2]) else {
+            return false
+        }
+        return cmarkHtmlDeclarationEnd(chars, index) == nil
+    }
+
+    /// cmark `spacechar`: space, tab, newline, CR, form feed, vertical tab.
+    private static func isDeclSpace(_ ch: Character) -> Bool {
+        ch == " " || ch == "\t" || ch == "\n" || ch == "\r" || ch == "\u{000B}" || ch == "\u{000C}"
     }
 
     /// Length from the first `-` of `<!--`, or 0. Same re2c
@@ -459,9 +505,8 @@ enum MarkdownHtmlLiteral {
             guard let close = find(Array("?>"), in: chars, from: index + 2) else { return nil }
             return close + 2
         }
-        if index + 2 < chars.count, chars[index + 1] == "!", isUpper(chars[index + 2]) {
-            guard let close = find(Array(">"), in: chars, from: index + 3) else { return nil }
-            return close + 1
+        if index + 1 < chars.count, chars[index + 1] == "!", let decl = cmarkHtmlDeclarationEnd(chars, index) {
+            return decl
         }
         var cursor = index + 1
         let closing = cursor < chars.count && chars[cursor] == "/"
