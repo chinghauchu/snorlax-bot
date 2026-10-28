@@ -87,6 +87,14 @@ import UIKit
 /// A line tab inside quotes stays a normal tag and is painted
 /// back as U+000B. `<br\v>` is not a bare break. `*\va\v*`
 /// stays emphasis.
+///
+/// v2.08: cmark-gfm 0.29.0.gfm.13 puts no spacechar between `/`
+/// and `>`. `<br />` is a bare break. `<br/ >`, `<br / >`, and
+/// `<br/\t>` are not tags, so the characters show and a following
+/// `*bar*` emphasizes. This scanner used to accept that space,
+/// so `<br/ >` became a line break and `<kbd/ >` became an empty
+/// element. `<br>`, `<br/>`, and `<br />` stay breaks.
+/// `<kbd>**Ctrl**</kbd>` still emphasizes.
 /// Keep in lockstep with `desktop/src/markdownHtmlLiteral.ts`.
 enum MarkdownHtmlLiteral {
     /// Never animate, including when Reduce Motion is off.
@@ -807,10 +815,8 @@ enum MarkdownHtmlLiteral {
             cursor = valEnd
         }
         cursor = skipWs(chars, cursor)
-        if cursor < chars.count, chars[cursor] == "/" {
-            cursor += 1
-            cursor = skipWs(chars, cursor)
-        }
+        if cursor < chars.count, chars[cursor] == "/" { cursor += 1 }
+        // v2.08: cmark-gfm puts no spacechar between `/` and `>`.
         guard cursor < chars.count, chars[cursor] == ">" else { return nil }
         return cursor + 1
     }
@@ -942,8 +948,8 @@ enum MarkdownHtmlLiteral {
         index = skipSpace(body, index)
         if index < body.endIndex, body[index] == "/" {
             index = body.index(after: index)
-            index = skipSpace(body, index)
         }
+        // v2.08: `<br/ >` is not a bare break. `<br />` still is.
         return index == body.endIndex
     }
 
@@ -960,7 +966,8 @@ enum MarkdownHtmlLiteral {
         guard wrapTags.contains(name), !name.isEmpty else { return nil }
         var index = skipSpace(body, body.index(body.startIndex, offsetBy: name.count))
         guard index < body.endIndex, body[index] == "/" else { return nil }
-        index = skipSpace(body, body.index(after: index))
+        index = body.index(after: index)
+        // v2.08: `<kbd/ >` is not an empty element. `<kbd />` still is.
         return index == body.endIndex ? name : nil
     }
 
