@@ -7,6 +7,12 @@
  * The tokenizer is local. It does not fetch, and it does not add HTTP.
  * Streaming stays plain (`completed: false`). Copy still uses the raw
  * source. Mermaid and TeX math are not languages here.
+ * v2.09: C, C++, Java, C#, and Kotlin were still monochrome. A
+ * completed fence tagged with those info strings now colors
+ * keywords, strings, comments, and numbers the same way. A C or
+ * C++ hash directive at the start of a line is a keyword. Java
+ * and Kotlin text blocks, and a C# verbatim string, stay strings.
+ * Unknown languages stay plain.
  * Keep in lockstep with `ios/SnorlaxBot/CodeHighlight.swift`.
  */
 
@@ -30,7 +36,12 @@ type Family =
   | "html"
   | "css"
   | "sql"
-  | "diff";
+  | "diff"
+  | "c"
+  | "cpp"
+  | "java"
+  | "csharp"
+  | "kotlin";
 
 type LangInfo = { family: Family; jsx: boolean };
 
@@ -60,6 +71,19 @@ const ALIASES: Record<string, LangInfo> = {
   css: { family: "css", jsx: false },
   sql: { family: "sql", jsx: false },
   diff: { family: "diff", jsx: false },
+  "c": { family: "c", jsx: false },
+  "cpp": { family: "cpp", jsx: false },
+  "c++": { family: "cpp", jsx: false },
+  "cc": { family: "cpp", jsx: false },
+  "cxx": { family: "cpp", jsx: false },
+  "hpp": { family: "cpp", jsx: false },
+  "java": { family: "java", jsx: false },
+  "csharp": { family: "csharp", jsx: false },
+  "cs": { family: "csharp", jsx: false },
+  "c#": { family: "csharp", jsx: false },
+  "kotlin": { family: "kotlin", jsx: false },
+  "kt": { family: "kotlin", jsx: false },
+  "kts": { family: "kotlin", jsx: false },
 };
 
 const PYTHON_KEYWORDS = [
@@ -139,6 +163,65 @@ const CSS_KEYWORDS = [
   "wrap", "z-index",
 ];
 
+const C_KEYWORDS = [
+  "auto", "bool", "break", "case", "char", "const", "continue", "default",
+  "do", "double", "else", "enum", "extern", "false", "float", "for", "goto",
+  "if", "inline", "int", "long", "register", "return", "short", "signed",
+  "sizeof", "static", "struct", "switch", "true", "typedef", "union",
+  "unsigned", "void", "volatile", "while",
+];
+
+const CPP_KEYWORDS = [
+  ...C_KEYWORDS,
+  "and", "and_eq", "bitand", "bitor", "catch", "class", "compl",
+  "constexpr", "const_cast", "decltype", "delete", "dynamic_cast",
+  "explicit", "export", "friend", "mutable", "namespace", "new",
+  "noexcept", "not", "not_eq", "nullptr", "operator", "or", "or_eq",
+  "private", "protected", "public", "reinterpret_cast", "static_assert",
+  "static_cast", "template", "this", "thread_local", "throw", "try",
+  "typeid", "typename", "using", "virtual", "wchar_t", "xor", "xor_eq",
+];
+
+const JAVA_KEYWORDS = [
+  "abstract", "assert", "boolean", "break", "byte", "case", "catch",
+  "char", "class", "const", "continue", "default", "do", "double", "else",
+  "enum", "extends", "false", "final", "finally", "float", "for", "goto",
+  "if", "implements", "import", "instanceof", "int", "interface", "long",
+  "native", "new", "null", "package", "private", "protected", "public",
+  "return", "short", "static", "strictfp", "super", "switch",
+  "synchronized", "this", "throw", "throws", "transient", "true", "try",
+  "void", "volatile", "while",
+];
+
+const CSHARP_KEYWORDS = [
+  "abstract", "as", "async", "await", "base", "bool", "break", "byte",
+  "case", "catch", "char", "checked", "class", "const", "continue",
+  "decimal", "default", "delegate", "do", "double", "else", "enum",
+  "event", "explicit", "extern", "false", "finally", "fixed", "float",
+  "for", "foreach", "goto", "if", "implicit", "in", "int", "interface",
+  "internal", "is", "lock", "long", "namespace", "new", "null", "object",
+  "operator", "out", "override", "params", "private", "protected",
+  "public", "readonly", "ref", "return", "sbyte", "sealed", "short",
+  "sizeof", "stackalloc", "static", "string", "struct", "switch", "this",
+  "throw", "true", "try", "typeof", "uint", "ulong", "unchecked",
+  "unsafe", "ushort", "using", "var", "virtual", "void", "volatile",
+  "while",
+];
+
+const KOTLIN_KEYWORDS = [
+  "abstract", "actual", "annotation", "as", "break", "by", "catch",
+  "class", "companion", "const", "constructor", "continue", "crossinline",
+  "data", "delegate", "do", "dynamic", "else", "enum", "expect",
+  "external", "false", "field", "file", "final", "finally", "for", "fun",
+  "get", "if", "import", "in", "infix", "init", "inline", "inner",
+  "interface", "internal", "is", "lateinit", "noinline", "null", "object",
+  "open", "operator", "out", "override", "package", "param", "private",
+  "property", "protected", "public", "receiver", "reified", "return",
+  "sealed", "set", "setparam", "super", "suspend", "tailrec", "this",
+  "throw", "true", "try", "typealias", "val", "var", "vararg", "when",
+  "where", "while",
+];
+
 const SQL_KEYWORDS = [
   "all", "alter", "and", "as", "avg", "between", "by", "case", "count",
   "create", "delete", "distinct", "drop", "else", "end", "exists",
@@ -169,6 +252,11 @@ const KEYWORDS: Record<Family, readonly string[]> = {
   css: CSS_KEYWORDS,
   sql: SQL_KEYWORDS,
   diff: [],
+  c: C_KEYWORDS,
+  cpp: CPP_KEYWORDS,
+  java: JAVA_KEYWORDS,
+  csharp: CSHARP_KEYWORDS,
+  kotlin: KOTLIN_KEYWORDS,
 };
 
 function resolveLanguage(language: string): LangInfo | null {
@@ -270,6 +358,7 @@ class Scanner {
       if (this.tryJsxTag()) continue;
       if (this.tryComment()) continue;
       if (this.tryString()) continue;
+      if (this.tryDirective()) continue;
       if (this.tryCssColor()) continue;
       if (this.tryNumber()) continue;
       if (this.tryAtKeyword()) continue;
@@ -425,9 +514,97 @@ class Scanner {
         return this.tryQuoteString(this.ch() === "'" || this.ch() === '"' ? this.ch() : "", false);
       case "sql":
         return this.trySqlString();
+      case "c":
+      case "cpp":
+      case "java":
+      case "kotlin":
+        return this.tryCLikeString();
+      case "csharp":
+        return this.tryCSharpString();
       default:
         return false;
     }
+  }
+
+  /**
+   * A C or C++ preprocessor line. Only a hash that opens the line
+   * (spaces and tabs allowed) is a directive. `#include` inside a
+   * string or a comment never reaches this.
+   */
+  private tryDirective(): boolean {
+    if (this.family !== "c" && this.family !== "cpp") return false;
+    if (this.ch() !== "#") return false;
+    let k = this.i - 1;
+    while (k >= 0 && (this.at(k) === " " || this.at(k) === "\t")) k -= 1;
+    if (k >= 0 && this.at(k) !== "\n" && this.at(k) !== "\r") return false;
+    const start = this.i;
+    this.i += 1;
+    while (this.isLetter(this.ch()) || this.ch() === "_") this.i += 1;
+    if (this.i === start + 1) {
+      this.i = start;
+      return false;
+    }
+    this.push("keyword", this.src.slice(start, this.i));
+    return true;
+  }
+
+  /** Quotes, plus Java and Kotlin text blocks. */
+  private tryCLikeString(): boolean {
+    const quote = this.ch();
+    if (quote !== '"' && quote !== "'") return false;
+    if (
+      quote === '"' &&
+      (this.family === "java" || this.family === "kotlin") &&
+      this.starts('"""')
+    ) {
+      this.consumeQuoted('"', true, false, this.i);
+      return true;
+    }
+    this.consumeQuoted(quote, false, false, this.i);
+    return true;
+  }
+
+  /** Ordinary quotes, plus `@"..."`, `$"..."`, and `$@""` / `@$""`. */
+  private tryCSharpString(): boolean {
+    if (
+      (this.ch() === "@" && this.at(this.i + 1) === '"') ||
+      (this.ch() === "$" && this.at(this.i + 1) === '"') ||
+      (this.ch() === "@" && this.at(this.i + 1) === "$" && this.at(this.i + 2) === '"') ||
+      (this.ch() === "$" && this.at(this.i + 1) === "@" && this.at(this.i + 2) === '"')
+    ) {
+      const verbatim =
+        (this.ch() === "@" && this.at(this.i + 1) === '"') ||
+        (this.ch() === "@" && this.at(this.i + 1) === "$") ||
+        (this.ch() === "$" && this.at(this.i + 1) === "@");
+      if (verbatim) {
+        this.consumeVerbatim();
+        return true;
+      }
+      const start = this.i;
+      this.i += 1;
+      this.consumeQuoted('"', false, false, start);
+      return true;
+    }
+    return this.tryCLikeString();
+  }
+
+  /** C# verbatim string. A doubled quote is one quote, not the end. */
+  private consumeVerbatim(): void {
+    const start = this.i;
+    while (this.i < this.n && this.ch() !== '"') this.i += 1;
+    if (this.ch() === '"') this.i += 1;
+    while (this.i < this.n) {
+      if (this.ch() === '"') {
+        if (this.at(this.i + 1) === '"') {
+          this.i += 2;
+          continue;
+        }
+        this.i += 1;
+        break;
+      }
+      this.i += 1;
+    }
+    this.push("string", this.src.slice(start, this.i));
   }
 
   private tryQuoteString(quote: string, raw: boolean): boolean {

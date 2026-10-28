@@ -7,6 +7,12 @@ import UIKit
 /// The tokenizer is local. It does not fetch, and it does not add HTTP.
 /// Streaming stays plain (`completed: false`). Copy still uses the raw
 /// source. Mermaid and TeX math are not languages here.
+/// v2.09: C, C++, Java, C#, and Kotlin were still monochrome. A
+/// completed fence tagged with those info strings now colors
+/// keywords, strings, comments, and numbers the same way. A C or
+/// C++ hash directive at the start of a line is a keyword. Java
+/// and Kotlin text blocks, and a C# verbatim string, stay strings.
+/// Unknown languages stay plain.
 /// Keep in lockstep with `desktop/src/codeHighlight.ts`.
 enum CodeHighlight {
     enum Kind: Equatable {
@@ -139,6 +145,7 @@ private struct LangInfo {
 
 private enum CodeFamily {
     case python, javascript, typescript, json, bash, swiftLang, go, rust, yaml, html, css, sql, diff
+    case c, cpp, java, csharp, kotlin
 }
 
 private let aliases: [String: LangInfo] = [
@@ -167,6 +174,19 @@ private let aliases: [String: LangInfo] = [
     "css": LangInfo(family: .css, jsx: false),
     "sql": LangInfo(family: .sql, jsx: false),
     "diff": LangInfo(family: .diff, jsx: false),
+    "c": LangInfo(family: .c, jsx: false),
+    "cpp": LangInfo(family: .cpp, jsx: false),
+    "c++": LangInfo(family: .cpp, jsx: false),
+    "cc": LangInfo(family: .cpp, jsx: false),
+    "cxx": LangInfo(family: .cpp, jsx: false),
+    "hpp": LangInfo(family: .cpp, jsx: false),
+    "java": LangInfo(family: .java, jsx: false),
+    "csharp": LangInfo(family: .csharp, jsx: false),
+    "cs": LangInfo(family: .csharp, jsx: false),
+    "c#": LangInfo(family: .csharp, jsx: false),
+    "kotlin": LangInfo(family: .kotlin, jsx: false),
+    "kt": LangInfo(family: .kotlin, jsx: false),
+    "kts": LangInfo(family: .kotlin, jsx: false),
 ]
 
 private let pythonKeywords = [
@@ -245,6 +265,64 @@ private let cssKeywords = [
     "wrap", "z-index",
 ]
 
+private let cKeywords = [
+    "auto", "bool", "break", "case", "char", "const", "continue", "default",
+    "do", "double", "else", "enum", "extern", "false", "float", "for", "goto",
+    "if", "inline", "int", "long", "register", "return", "short", "signed",
+    "sizeof", "static", "struct", "switch", "true", "typedef", "union",
+    "unsigned", "void", "volatile", "while",
+]
+
+private let cppExtraKeywords = [
+    "and", "and_eq", "bitand", "bitor", "catch", "class", "compl",
+    "constexpr", "const_cast", "decltype", "delete", "dynamic_cast",
+    "explicit", "export", "friend", "mutable", "namespace", "new",
+    "noexcept", "not", "not_eq", "nullptr", "operator", "or", "or_eq",
+    "private", "protected", "public", "reinterpret_cast", "static_assert",
+    "static_cast", "template", "this", "thread_local", "throw", "try",
+    "typeid", "typename", "using", "virtual", "wchar_t", "xor", "xor_eq",
+]
+
+private let javaKeywords = [
+    "abstract", "assert", "boolean", "break", "byte", "case", "catch",
+    "char", "class", "const", "continue", "default", "do", "double", "else",
+    "enum", "extends", "false", "final", "finally", "float", "for", "goto",
+    "if", "implements", "import", "instanceof", "int", "interface", "long",
+    "native", "new", "null", "package", "private", "protected", "public",
+    "return", "short", "static", "strictfp", "super", "switch",
+    "synchronized", "this", "throw", "throws", "transient", "true", "try",
+    "void", "volatile", "while",
+]
+
+private let csharpKeywords = [
+    "abstract", "as", "async", "await", "base", "bool", "break", "byte",
+    "case", "catch", "char", "checked", "class", "const", "continue",
+    "decimal", "default", "delegate", "do", "double", "else", "enum",
+    "event", "explicit", "extern", "false", "finally", "fixed", "float",
+    "for", "foreach", "goto", "if", "implicit", "in", "int", "interface",
+    "internal", "is", "lock", "long", "namespace", "new", "null", "object",
+    "operator", "out", "override", "params", "private", "protected",
+    "public", "readonly", "ref", "return", "sbyte", "sealed", "short",
+    "sizeof", "stackalloc", "static", "string", "struct", "switch", "this",
+    "throw", "true", "try", "typeof", "uint", "ulong", "unchecked",
+    "unsafe", "ushort", "using", "var", "virtual", "void", "volatile",
+    "while",
+]
+
+private let kotlinKeywords = [
+    "abstract", "actual", "annotation", "as", "break", "by", "catch",
+    "class", "companion", "const", "constructor", "continue", "crossinline",
+    "data", "delegate", "do", "dynamic", "else", "enum", "expect",
+    "external", "false", "field", "file", "final", "finally", "for", "fun",
+    "get", "if", "import", "in", "infix", "init", "inline", "inner",
+    "interface", "internal", "is", "lateinit", "noinline", "null", "object",
+    "open", "operator", "out", "override", "package", "param", "private",
+    "property", "protected", "public", "receiver", "reified", "return",
+    "sealed", "set", "setparam", "super", "suspend", "tailrec", "this",
+    "throw", "true", "try", "typealias", "val", "var", "vararg", "when",
+    "where", "while",
+]
+
 private let sqlKeywords = [
     "all", "alter", "and", "as", "avg", "between", "by", "case", "count",
     "create", "delete", "distinct", "drop", "else", "end", "exists",
@@ -277,6 +355,11 @@ private func keywordList(_ family: CodeFamily) -> [String] {
     case .html, .diff: return []
     case .css: return cssKeywords
     case .sql: return sqlKeywords
+    case .c: return cKeywords
+    case .cpp: return cKeywords + cppExtraKeywords
+    case .java: return javaKeywords
+    case .csharp: return csharpKeywords
+    case .kotlin: return kotlinKeywords
     }
 }
 
@@ -304,6 +387,7 @@ private final class Scanner {
             if tryJsxTag() { continue }
             if tryComment() { continue }
             if tryString() { continue }
+            if tryDirective() { continue }
             if tryCssColor() { continue }
             if tryNumber() { continue }
             if tryAtKeyword() { continue }
@@ -428,7 +512,7 @@ private final class Scanner {
             return false
         case .json, .html, .diff:
             return false
-        case .javascript, .typescript, .swiftLang, .go, .rust, .css:
+        case .javascript, .typescript, .swiftLang, .go, .rust, .css, .c, .cpp, .java, .csharp, .kotlin:
             if starts("//") {
                 lineComment()
                 return true
@@ -483,9 +567,83 @@ private final class Scanner {
             return false
         case .sql:
             return trySqlString()
+        case .c, .cpp, .java, .kotlin:
+            return tryCLikeString()
+        case .csharp:
+            return tryCSharpString()
         case .html, .diff:
             return false
         }
+    }
+
+    /// A C or C++ preprocessor line. Only a hash that opens the line
+    /// (spaces and tabs allowed) is a directive.
+    private func tryDirective() -> Bool {
+        guard family == .c || family == .cpp else { return false }
+        guard ch() == "#" else { return false }
+        var k = i - 1
+        while k >= 0 && (at(k) == " " || at(k) == "\t") { k -= 1 }
+        if k >= 0 && at(k) != "\n" && at(k) != "\r" { return false }
+        let start = i
+        i += 1
+        while isLetter(ch()) || ch() == "_" { i += 1 }
+        if i == start + 1 {
+            i = start
+            return false
+        }
+        push(.keyword, slice(start, i))
+        return true
+    }
+
+    /// Quotes, plus Java and Kotlin text blocks.
+    private func tryCLikeString() -> Bool {
+        let quote = ch()
+        guard quote == "\"" || quote == "'" else { return false }
+        if quote == "\"" && (family == .java || family == .kotlin) && starts("\"\"\"") {
+            consumeQuoted("\"", triple: true, raw: false, start: i)
+            return true
+        }
+        consumeQuoted(quote, triple: false, raw: false, start: i)
+        return true
+    }
+
+    /// Ordinary quotes, plus `@"..."`, `$"..."`, and `$@""` / `@$""`.
+    private func tryCSharpString() -> Bool {
+        let atQuote = ch() == "@" && at(i + 1) == "\""
+        let dollarQuote = ch() == "$" && at(i + 1) == "\""
+        let atDollar = ch() == "@" && at(i + 1) == "$" && at(i + 2) == "\""
+        let dollarAt = ch() == "$" && at(i + 1) == "@" && at(i + 2) == "\""
+        if atQuote || dollarQuote || atDollar || dollarAt {
+            let verbatim = atQuote || atDollar || dollarAt
+            if verbatim {
+                consumeVerbatim()
+                return true
+            }
+            let start = i
+            i += 1
+            consumeQuoted("\"", triple: false, raw: false, start: start)
+            return true
+        }
+        return tryCLikeString()
+    }
+
+    /// C# verbatim string. A doubled quote is one quote, not the end.
+    private func consumeVerbatim() {
+        let start = i
+        while i < n && ch() != "\"" { i += 1 }
+        if ch() == "\"" { i += 1 }
+        while i < n {
+            if ch() == "\"" {
+                if at(i + 1) == "\"" {
+                    i += 2
+                    continue
+                }
+                i += 1
+                break
+            }
+            i += 1
+        }
+        push(.string, slice(start, i))
     }
 
     private func tryQuoteString(_ quote: Character) -> Bool {
