@@ -576,6 +576,10 @@ import {
   type LightboxPaint,
 } from "./imageLightbox";
 import {
+  pendingImagePreviewAria,
+  pendingImagePreviewTarget,
+} from "./pendingImagePreview";
+import {
   applyFinishedPreview,
   previewOwnsMessages,
   rememberChatPreview,
@@ -8411,7 +8415,18 @@ export function App() {
               {pendingAttachments.map((row) =>
                 row.kind === "image" ? (
                   <div key={row.id} className="pending-thumb">
-                    <img src={row.previewUrl} alt={row.name} />
+                    <button
+                      type="button"
+                      className="pending-preview"
+                      aria-label={pendingImagePreviewAria(row.name)}
+                      onClick={(event) => {
+                        const target = pendingImagePreviewTarget(row);
+                        if (!target) return;
+                        openImageLightbox(target, event.currentTarget);
+                      }}
+                    >
+                      <img src={row.previewUrl} alt="" />
+                    </button>
                     <button
                       type="button"
                       className="pending-x"
