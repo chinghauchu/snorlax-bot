@@ -96,6 +96,14 @@
  * A line tab inside quotes stays a normal tag and is painted
  * back as U+000B. `<br\v>` is not a bare break. `*\va\v*`
  * stays emphasis.
+ *
+ * v2.08: cmark-gfm 0.29.0.gfm.13 puts no spacechar between `/`
+ * and `>`. `<br />` is a bare break. `<br/ >`, `<br / >`, and
+ * `<br/\t>` are not tags, so the characters show and a following
+ * `*bar*` emphasizes. micromark already agrees. This scanner
+ * used to accept that space, so `<br/ >` became a line break
+ * and `<kbd/ >` became an empty element. `<br>`, `<br/>`, and
+ * `<br />` stay breaks. `<kbd>**Ctrl**</kbd>` still emphasizes.
  * Keep in lockstep with `ios/SnorlaxBot/MarkdownHtmlLiteral.swift`.
  */
 
@@ -774,6 +782,9 @@ function mergeRanges(ranges: Range[]): Range[] {
  * including one line ending in the whitespace. Form feed and
  * line tabulation are cmark spacechar there, including the
  * v1.94 stash of line tabulation, and each ends an unquoted value.
+ * v2.08: `/` is followed immediately by `>`. Space, tab, a line
+ * ending, form feed, and line tabulation between them are not
+ * part of the tag.
  */
 export function htmlTagEnd(src: string, i: number): number {
   if (src[i] !== "<") return -1;
@@ -811,10 +822,8 @@ export function htmlTagEnd(src: string, i: number): number {
     j = valEnd;
   }
   j = skipWs(src, j);
-  if (src[j] === "/") {
-    j += 1;
-    j = skipWs(src, j);
-  }
+  if (src[j] === "/") j += 1;
+  // v2.08: cmark-gfm puts no spacechar between `/` and `>`.
   if (src[j] !== ">") return -1;
   return j + 1;
 }
@@ -917,10 +926,8 @@ function isBreakBody(body: string): boolean {
   if (!body.startsWith("br")) return false;
   let i = 2;
   i = skipSpace(body, i);
-  if (body[i] === "/") {
-    i += 1;
-    i = skipSpace(body, i);
-  }
+  if (body[i] === "/") i += 1;
+  // v2.08: `<br/ >` is not a bare break. `<br />` still is.
   return i === body.length;
 }
 
@@ -938,7 +945,8 @@ function emptyWrap(body: string): WrapTag | null {
   if (!name || !WRAP_TAGS.has(name)) return null;
   let i = skipSpace(body, name.length);
   if (body[i] !== "/") return null;
-  i = skipSpace(body, i + 1);
+  i += 1;
+  // v2.08: `<kbd/ >` is not an empty element. `<kbd />` still is.
   return i === body.length ? (name as WrapTag) : null;
 }
 

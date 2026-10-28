@@ -224,3 +224,4 @@ jobs:
           python3 ios/scripts/test_ios_markdown_html_closer.py
           python3 ios/scripts/test_ios_markdown_html_space.py
           python3 ios/scripts/test_ios_markdown_html_line_tab.py
+          python3 ios/scripts/test_ios_markdown_html_slash.py
