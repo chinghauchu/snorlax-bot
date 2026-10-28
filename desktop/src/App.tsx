@@ -580,6 +580,18 @@ import {
   pendingImagePreviewTarget,
 } from "./pendingImagePreview";
 import {
+  LIGHTBOX_SAVE_ARIA,
+  LIGHTBOX_SAVE_LABEL,
+  downloadLightboxBlob,
+  lightboxFocusOrder,
+  lightboxSaveFilename,
+  lightboxSaveKeepsOpen,
+  lightboxSaveOffered,
+  nextLightboxFocus,
+  readLightboxImageBlob,
+  sniffImageExtension,
+} from "./lightboxSave";
+import {
   applyFinishedPreview,
   previewOwnsMessages,
   rememberChatPreview,
@@ -1670,6 +1682,8 @@ export function App() {
   const lightboxTargetRef = useRef<ImageLightboxTarget | null>(null);
   const lightboxReturnRef = useRef<HTMLElement | null>(null);
   const lightboxCloseRef = useRef<HTMLButtonElement>(null);
+  const lightboxSaveRef = useRef<HTMLButtonElement>(null);
+  const lightboxSaving = useRef(false);
   const lightboxWasOpen = useRef(false);
   lightboxTargetRef.current = lightboxTarget;
   const composerRef = useRef<HTMLTextAreaElement>(null);
@@ -2246,6 +2260,32 @@ export function App() {
   const closeImageLightbox = useCallback(() => {
     setLightboxTarget(null);
   }, []);
+
+  async function saveLightboxImage() {
+    if (!lightboxSaveKeepsOpen()) return;
+    const frame = lightboxFrame;
+    if (!frame || lightboxSaving.current) return;
+    if (!lightboxSaveOffered({ url: frame.url })) return;
+    lightboxSaving.current = true;
+    try {
+      const blob = await readLightboxImageBlob(
+        frame.url,
+        session ? (target) => fetchAttachmentBlob(session, target) : null,
+      );
+      if (!blob || blob.size === 0) return;
+      const sniffed = sniffImageExtension(
+        new Uint8Array(await blob.slice(0, 16).arrayBuffer()),
+      );
+      downloadLightboxBlob(
+        blob,
+        lightboxSaveFilename(frame.name, frame.url, sniffed),
+      );
+    } catch {
+      // A failed read leaves the overlay up. Nothing is sent.
+    } finally {
+      lightboxSaving.current = false;
+    }
+  }
 
   useEffect(() => {
     const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
@@ -9839,8 +9879,20 @@ export function App() {
           onMouseDown={() => closeImageLightbox()}
           onKeyDown={(event) => {
             if (event.key !== "Tab") return;
+            const offered = lightboxSaveOffered({ url: lightboxFrame.url });
+            const order = lightboxFocusOrder(offered);
+            const active = document.activeElement;
+            const current =
+              active === lightboxSaveRef.current
+                ? "save"
+                : active === lightboxCloseRef.current
+                  ? "close"
+                  : null;
+            const next = nextLightboxFocus(order, current, event.shiftKey);
             event.preventDefault();
-            lightboxCloseRef.current?.focus({ preventScroll: true });
+            const node =
+              next === "save" ? lightboxSaveRef.current : lightboxCloseRef.current;
+            node?.focus({ preventScroll: true });
           }}
         >
           <div
@@ -9851,15 +9903,29 @@ export function App() {
             tabIndex={-1}
             onMouseDown={(event) => event.stopPropagation()}
           >
-            <button
-              ref={lightboxCloseRef}
-              type="button"
-              className="image-lightbox-close"
-              onMouseDown={(event) => event.stopPropagation()}
-              onClick={() => closeImageLightbox()}
-            >
-              {IMAGE_LIGHTBOX_CLOSE}
-            </button>
+            <div className="image-lightbox-actions">
+              {lightboxSaveOffered({ url: lightboxFrame.url }) ? (
+                <button
+                  ref={lightboxSaveRef}
+                  type="button"
+                  className="image-lightbox-save"
+                  aria-label={LIGHTBOX_SAVE_ARIA}
+                  onMouseDown={(event) => event.stopPropagation()}
+                  onClick={() => void saveLightboxImage()}
+                >
+                  {LIGHTBOX_SAVE_LABEL}
+                </button>
+              ) : null}
+              <button
+                ref={lightboxCloseRef}
+                type="button"
+                className="image-lightbox-close"
+                onMouseDown={(event) => event.stopPropagation()}
+                onClick={() => closeImageLightbox()}
+              >
+                {IMAGE_LIGHTBOX_CLOSE}
+              </button>
+            </div>
             <AuthedImg
               className="image-lightbox-image"
               src={lightboxFrame.url}

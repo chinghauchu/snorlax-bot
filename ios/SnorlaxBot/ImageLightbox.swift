@@ -7,6 +7,11 @@ import UIKit
 /// swipe down dismisses it. Videos stay the player. File chips stay chips.
 /// 120ms opacity; instant when Reduce Motion is on. Existing attachment
 /// bytes only. No new HTTP.
+///
+/// v2.11: Save sits beside Close and uses the bytes that painted this
+/// image, including a pending preview. The system share sheet receives
+/// that file. Photo-library permission is not requested. The overlay
+/// stays open. Nothing is sent and a pending chip is not removed.
 enum ImageLightbox {
     static let close = "Close"
     static let label = "Image"
@@ -86,6 +91,8 @@ struct ImageLightboxOverlay: View {
 
     @Environment(AppModel.self) private var model
     @State private var image: UIImage?
+    @State private var imageData: Data?
+    @State private var shareURL: URL?
 
     var body: some View {
         GeometryReader { geo in
@@ -102,21 +109,51 @@ struct ImageLightboxOverlay: View {
             }
             .frame(width: geo.size.width, height: geo.size.height)
             .overlay(alignment: .topTrailing) {
-                Button(ImageLightbox.close, action: onClose)
-                    .font(.system(size: 12))
-                    .foregroundStyle(.secondary)
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 6)
-                    .background {
-                        RoundedRectangle(cornerRadius: 8, style: .continuous)
-                            .fill(Color(uiColor: .secondarySystemBackground))
+                HStack(spacing: 8) {
+                    if imageData != nil {
+                        Button(LightboxSave.label) {
+                            saveImage()
+                        }
+                        .font(.system(size: 12))
+                        .foregroundStyle(.secondary)
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 6)
+                        .background {
+                            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                                .fill(Color(uiColor: .secondarySystemBackground))
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel(LightboxSave.accessibilityLabel)
+                        .transaction { transaction in
+                            if !LightboxSave.animates(reduceMotion: reduceMotion) {
+                                transaction.animation = nil
+                            }
+                        }
                     }
-                    .padding(12)
-                    .buttonStyle(.plain)
-                    .focused(closeFocused)
-                    .keyboardShortcut(.cancelAction)
-                    .accessibilityLabel(ImageLightbox.close)
-                    .onExitCommand(perform: onClose)
+                    Button(ImageLightbox.close, action: onClose)
+                        .font(.system(size: 12))
+                        .foregroundStyle(.secondary)
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 6)
+                        .background {
+                            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                                .fill(Color(uiColor: .secondarySystemBackground))
+                        }
+                        .buttonStyle(.plain)
+                        .focused(closeFocused)
+                        .keyboardShortcut(.cancelAction)
+                        .accessibilityLabel(ImageLightbox.close)
+                        .onExitCommand(perform: onClose)
+                }
+                .padding(12)
+            }
+        }
+        .sheet(isPresented: Binding(
+            get: { shareURL != nil },
+            set: { if !$0 { shareURL = nil } }
+        )) {
+            if let shareURL {
+                LightboxShareSheet(url: shareURL)
             }
         }
         .ignoresSafeArea()
@@ -164,14 +201,45 @@ struct ImageLightboxOverlay: View {
         }
     }
 
+    /// Write the bytes already shown and present the share sheet.
+    /// The overlay stays open. Nothing is sent and no chip is removed.
+    private func saveImage() {
+        guard LightboxSave.keepsOpen() else { return }
+        guard let imageData, !imageData.isEmpty else { return }
+        let name = LightboxSave.filename(
+            name: target.name,
+            url: target.url,
+            sniffed: LightboxSave.sniffExtension(imageData)
+        )
+        let file = LightboxSave.temporaryFileURL(filename: name)
+        do {
+            try FileManager.default.createDirectory(
+                at: file.deletingLastPathComponent(),
+                withIntermediateDirectories: true
+            )
+            try imageData.write(to: file, options: .atomic)
+        } catch {
+            return
+        }
+        shareURL = file
+    }
+
     private func load() async {
-        if let local = target.local, let uiImage = UIImage(data: local) {
+        image = nil
+        imageData = nil
+        shareURL = nil
+        if let local = target.local, !local.isEmpty, let uiImage = UIImage(data: local) {
+            imageData = local
             image = uiImage
             return
         }
         let urlString = target.url
-        if urlString.hasPrefix("data:"), let data = DataURI.decode(urlString) {
-            image = UIImage(data: data)
+        if urlString.hasPrefix("data:"),
+           let data = DataURI.decode(urlString),
+           !data.isEmpty,
+           let uiImage = UIImage(data: data) {
+            imageData = data
+            image = uiImage
             return
         }
         guard !urlString.isEmpty,
@@ -180,11 +248,25 @@ struct ImageLightboxOverlay: View {
         else { return }
         do {
             let data = try await client.data(from: url)
-            if !Task.isCancelled {
-                image = UIImage(data: data)
-            }
+            guard !Task.isCancelled, !data.isEmpty, let uiImage = UIImage(data: data) else { return }
+            imageData = data
+            image = uiImage
         } catch {
             image = nil
+            imageData = nil
         }
     }
+}
+
+/// The system share sheet for one saved image file. Save Image, Copy,
+/// and Files are the system's actions. This view does not request
+/// photo-library permission.
+private struct LightboxShareSheet: UIViewControllerRepresentable {
+    let url: URL
+
+    func makeUIViewController(context: Context) -> UIActivityViewController {
+        UIActivityViewController(activityItems: [url], applicationActivities: nil)
+    }
+
+    func updateUIViewController(_ uiViewController: UIActivityViewController, context: Context) {}
 }
