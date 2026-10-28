@@ -91,6 +91,22 @@ enum MarkdownEmphasis {
     /// Marker. U+E000 is neither cmark whitespace nor punctuation.
     static let mark = "\u{E000}SBW"
 
+    /// v2.07: the v1.94 stash of line tabulation (U+000B). cmark-gfm
+    /// counts that character as HTML spacechar. The HTML scanners
+    /// recognize this token.
+    static let lineTabToken = "\u{E000}SBW00000B\u{E000}"
+    static let lineTabChars = Array(lineTabToken)
+
+    /// Length of a line-tabulation stash at `index`, or 0.
+    static func lineTabLength(_ chars: [Character], _ index: Int) -> Int {
+        let token = lineTabChars
+        guard index >= 0, index + token.count <= chars.count else { return 0 }
+        for offset in 0..<token.count where chars[index + offset] != token[offset] {
+            return 0
+        }
+        return token.count
+    }
+
     static func restoreString(_ text: String) -> String {
         guard text.contains(mark) else { return text }
         guard let re = try? NSRegularExpression(

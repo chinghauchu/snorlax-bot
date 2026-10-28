@@ -89,6 +89,7 @@
  * cmark-gfm. A blank that only separates blocks stays empty.
  */
 
+import { lineTabStashAt } from "./markdownEmphasis.ts";
 import {
   openingFence,
   tabFenceCloses,
@@ -970,8 +971,8 @@ function htmlRawName(body: string): string | null {
   const lower = rest.toLowerCase();
   for (const name of HTML_RAW_NAMES) {
     if (!lower.startsWith(name)) continue;
-    const after = rest[name.length] ?? "";
-    if (after === "" || after === ">" || isHtmlSpace(after)) return name;
+    const at = name.length;
+    if (at >= rest.length || rest[at] === ">" || htmlSpaceLen(rest, at) > 0) return name;
   }
   return null;
 }
@@ -986,9 +987,8 @@ function htmlBlockTagName(body: string): string | null {
   while (isHtmlNameChar(body[i] ?? "")) i += 1;
   const name = body.slice(start, i).toLowerCase();
   if (!HTML_BLOCK_TAGS.has(name)) return null;
-  const after = body[i] ?? "";
-  if (after === "" || after === ">" || isHtmlSpace(after)) return name;
-  if (after === "/" && body[i + 1] === ">") return name;
+  if (i >= body.length || body[i] === ">" || htmlSpaceLen(body, i) > 0) return name;
+  if (body[i] === "/" && body[i + 1] === ">") return name;
   return null;
 }
 
@@ -1058,16 +1058,32 @@ function readHtmlAttrValue(body: string, index: number): number {
     const close = body.indexOf(ch, index + 1);
     return close < 0 ? -1 : close + 1;
   }
-  if (!ch || isHtmlUnquotedStop(ch)) return -1;
+  if (!ch || htmlUnquotedStops(body, index)) return -1;
   let i = index + 1;
-  while (i < body.length && !isHtmlUnquotedStop(body[i] ?? "")) i += 1;
+  while (i < body.length && !htmlUnquotedStops(body, i)) i += 1;
   return i;
 }
 
 function skipHtmlSpace(body: string, index: number): number {
   let i = index;
-  while (isHtmlSpace(body[i] ?? "")) i += 1;
+  while (i < body.length) {
+    const span = htmlSpaceLen(body, i);
+    if (span === 0) break;
+    i += span;
+  }
   return i;
+}
+
+/** One cmark space, or the v1.94 line-tabulation stash, or 0. */
+function htmlSpaceLen(body: string, index: number): number {
+  const stashed = lineTabStashAt(body, index);
+  if (stashed > 0) return stashed;
+  return isHtmlSpace(body[index] ?? "") ? 1 : 0;
+}
+
+function htmlUnquotedStops(body: string, index: number): boolean {
+  if (lineTabStashAt(body, index) > 0) return true;
+  return isHtmlUnquotedStop(body[index] ?? "");
 }
 
 function isHtmlSpace(ch: string): boolean {
@@ -1208,9 +1224,8 @@ export function htmlSearchBlockLine(line: string): boolean {
   if (body[1] === "/") i = 2;
   const rest = body.slice(i);
   if (!/^search(?![A-Za-z0-9-])/i.test(rest)) return false;
-  const after = rest[6] ?? "";
-  if (after === "" || after === ">" || isHtmlSpace(after)) return true;
-  return after === "/" && rest[7] === ">";
+  if (rest.length <= 6 || rest[6] === ">" || htmlSpaceLen(rest, 6) > 0) return true;
+  return rest[6] === "/" && rest[7] === ">";
 }
 
 /**

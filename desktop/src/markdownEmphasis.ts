@@ -67,6 +67,18 @@ const NON_CMARK_SPACE = new Set<number>(NON_CMARK_SPACE_CODES);
 /** Marker. U+E000 is neither cmark whitespace nor punctuation. */
 export const EMPHASIS_SPACE_MARK = "\uE000SBW";
 
+/**
+ * v2.07: the v1.94 stash of line tabulation (U+000B). cmark-gfm
+ * counts that character as HTML `spacechar` even though it is not
+ * flanking whitespace. The HTML scanners recognize this token.
+ */
+export const LINE_TAB_STASH = "\uE000SBW00000B\uE000";
+
+/** Length of a line-tabulation stash at `index`, or 0. */
+export function lineTabStashAt(src: string, index: number): number {
+  return src.startsWith(LINE_TAB_STASH, index) ? LINE_TAB_STASH.length : 0;
+}
+
 const URL_CHAR = /[A-Za-z0-9:/?#\[\]@!$&'()*+,;=%._~-]/;
 
 /** Never animate, including when Reduce Motion is off. */

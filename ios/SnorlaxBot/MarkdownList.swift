@@ -746,8 +746,11 @@ enum MarkdownList {
             guard lower.hasPrefix(name) else { continue }
             let after = rest.index(rest.startIndex, offsetBy: name.count, limitedBy: rest.endIndex) ?? rest.endIndex
             if after == rest.endIndex { return name }
-            let ch = rest[after]
-            if ch == ">" || isHtmlSpace(ch) { return name }
+            let restChars = Array(rest)
+            let at = name.count
+            if at >= restChars.count || restChars[at] == ">" || htmlSpaceLen(restChars, at) > 0 {
+                return name
+            }
         }
         return nil
     }
@@ -763,7 +766,7 @@ enum MarkdownList {
         while index < chars.count && isHtmlNameChar(chars[index]) { index += 1 }
         let name = String(chars[start..<index]).lowercased()
         guard htmlBlockTags.contains(name) else { return nil }
-        if index >= chars.count || chars[index] == ">" || isHtmlSpace(chars[index]) { return name }
+        if index >= chars.count || chars[index] == ">" || htmlSpaceLen(chars, index) > 0 { return name }
         if chars[index] == "/", index + 1 < chars.count, chars[index + 1] == ">" { return name }
         return nil
     }
@@ -831,16 +834,34 @@ enum MarkdownList {
             guard cursor < chars.count else { return nil }
             return cursor + 1
         }
-        if isHtmlUnquotedStop(ch) { return nil }
+        if unquotedStops(chars, index) { return nil }
         var cursor = index + 1
-        while cursor < chars.count && !isHtmlUnquotedStop(chars[cursor]) { cursor += 1 }
+        while cursor < chars.count && !unquotedStops(chars, cursor) { cursor += 1 }
         return cursor
     }
 
     private static func skipHtmlSpace(_ chars: [Character], _ index: Int) -> Int {
         var cursor = index
-        while cursor < chars.count && isHtmlSpace(chars[cursor]) { cursor += 1 }
+        while cursor < chars.count {
+            let span = htmlSpaceLen(chars, cursor)
+            if span == 0 { break }
+            cursor += span
+        }
         return cursor
+    }
+
+    /// One cmark space, or the v1.94 line-tabulation stash, or 0.
+    private static func htmlSpaceLen(_ chars: [Character], _ index: Int) -> Int {
+        let stashed = MarkdownEmphasis.lineTabLength(chars, index)
+        if stashed > 0 { return stashed }
+        guard index < chars.count, isHtmlSpace(chars[index]) else { return 0 }
+        return 1
+    }
+
+    private static func unquotedStops(_ chars: [Character], _ index: Int) -> Bool {
+        if MarkdownEmphasis.lineTabLength(chars, index) > 0 { return true }
+        guard index < chars.count else { return true }
+        return isHtmlUnquotedStop(chars[index])
     }
 
     private static func isHtmlSpace(_ ch: Character) -> Bool {
@@ -959,8 +980,10 @@ enum MarkdownList {
         }
         let after = rest.index(rest.startIndex, offsetBy: 6, limitedBy: rest.endIndex) ?? rest.endIndex
         if after == rest.endIndex { return true }
-        let ch = rest[after]
-        if ch == ">" || isHtmlSpace(ch) { return true }
+        let restChars = Array(rest)
+        let at = 6
+        if at >= restChars.count || restChars[at] == ">" || htmlSpaceLen(restChars, at) > 0 { return true }
+        let ch = restChars[at]
         let next = rest.index(after: after)
         return ch == "/" && next < rest.endIndex && rest[next] == ">"
     }

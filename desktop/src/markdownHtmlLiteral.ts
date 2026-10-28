@@ -86,9 +86,20 @@
  * feed inside quotes was already a tag. v1.94 still stashes
  * line tabulation before this pass. `<br\f>` is not a bare
  * break.
+ *
+ * v2.07: that line-tabulation stash is cmark spacechar. v1.94
+ * hides U+000B before this scan, and micromark then emphasizes
+ * inside `<a\vhref="*bar*">` and hides emphasis in
+ * `<a href=x\v*bar*>`. The stash counts as tag whitespace and
+ * ends an unquoted value, the same way a raw line tab does.
+ * A line that is an HTML block only because of it is stashed.
+ * A line tab inside quotes stays a normal tag and is painted
+ * back as U+000B. `<br\v>` is not a bare break. `*\va\v*`
+ * stays emphasis.
  * Keep in lockstep with `ios/SnorlaxBot/MarkdownHtmlLiteral.swift`.
  */
 
+import { LINE_TAB_STASH, lineTabStashAt } from "./markdownEmphasis.ts";
 import { opaqueMarkdownRanges, stashMarkdownText } from "./markdownEscape.ts";
 import {
   htmlBlockEnd,
@@ -228,6 +239,13 @@ function rewrite(input: string): string {
       i += 1;
       continue;
     }
+    if (ch === "<" && isLineTabUnquotedTag(src, i) && !codeLine[i]) {
+      // micromark keeps the line-tab stash inside the unquoted value.
+      // cmark-gfm stops the value, so the tag does not match.
+      out += stashMarkdownText("<");
+      i += 1;
+      continue;
+    }
     if (ch === "<") {
       const end = htmlTagEnd(src, i);
       if (end > i && !overlaps(i, end, blocked)) {
@@ -264,8 +282,12 @@ export function cmarkHtmlDeclarationEnd(src: string, index: number): number {
   if (!isUpper(src[cursor] ?? "")) return -1;
   cursor += 1;
   while (isUpper(src[cursor] ?? "")) cursor += 1;
-  if (!isDeclSpace(src[cursor] ?? "")) return -1;
-  while (isDeclSpace(src[cursor] ?? "")) cursor += 1;
+  if (declSpaceLen(src, cursor) === 0) return -1;
+  while (cursor < src.length) {
+    const span = declSpaceLen(src, cursor);
+    if (span === 0) break;
+    cursor += span;
+  }
   while (cursor < src.length) {
     const ch = src[cursor] ?? "";
     if (ch === ">" || ch === "\0") break;
@@ -285,6 +307,13 @@ function isInvalidHtmlDeclaration(src: string, index: number): boolean {
 /** cmark `spacechar`: space, tab, newline, CR, form feed, vertical tab. */
 function isDeclSpace(ch: string): boolean {
   return ch === " " || ch === "\t" || ch === "\n" || ch === "\r" || ch === "\f" || ch === "\v";
+}
+
+/** Length of one declaration space at `index`, including a line-tab stash. */
+function declSpaceLen(src: string, index: number): number {
+  const stashed = lineTabStashAt(src, index);
+  if (stashed > 0) return stashed;
+  return isDeclSpace(src[index] ?? "") ? 1 : 0;
 }
 
 /**
@@ -546,13 +575,13 @@ function prepareCmarkHtml(src: string): { text: string; protect: Range[] } {
       const end = htmlBlockEnd(texts, index, false) ?? index + 1;
       const complete = htmlLineIsCompleteTag(line.text);
       if (para) out.push("");
-      if (formFeedOpensBlock(line.text)) {
+      if (formFeedOpensBlock(line.text) || lineTabOpensBlock(line.text)) {
         for (let j = index; j < end; j += 1) out.push(stashMarkdownText(lines[j]!.text));
       } else {
         const start = out.length;
         for (let j = index; j < end; j += 1) {
           const text = lines[j]!.text;
-          out.push(complete ? text : stashMarkdownText(text));
+          out.push(complete ? revealLineTabs(text) : stashMarkdownText(text));
         }
         if (complete) spans.push({ start, end: out.length });
       }
@@ -575,13 +604,13 @@ function prepareCmarkHtml(src: string): { text: string; protect: Range[] } {
       const type7Only = !htmlBlockInterrupts(line.text);
       if (type7Only && htmlEnd === index + 1) {
         out.push(line.text);
-      } else if (formFeedOpensBlock(line.text)) {
+      } else if (formFeedOpensBlock(line.text) || lineTabOpensBlock(line.text)) {
         // micromark would parse the block. cmark-gfm keeps it raw.
         if (para) out.push("");
         for (let j = index; j < htmlEnd; j += 1) out.push(stashMarkdownText(lines[j]!.text));
       } else {
         const start = out.length;
-        for (let j = index; j < htmlEnd; j += 1) out.push(lines[j]!.text);
+        for (let j = index; j < htmlEnd; j += 1) out.push(revealLineTabs(lines[j]!.text));
         spans.push({ start, end: out.length });
       }
       para = false;
@@ -618,6 +647,40 @@ function isFormFeedUnquotedTag(src: string, index: number): boolean {
   const slice = src.slice(index, end);
   if (!slice.includes("\f")) return false;
   return htmlTagEnd(slice.replaceAll("\f", ""), 0) > 0;
+}
+
+/**
+ * The line is a cmark HTML block only because a line tabulation
+ * (raw U+000B, or its v1.94 flanking stash) is tag whitespace.
+ * Replacing that character with `*` drops the block. A line tab
+ * inside a quoted value still leaves a block.
+ */
+function lineTabOpensBlock(line: string): boolean {
+  if (!line.includes(LINE_TAB_STASH) && !line.includes("\v")) return false;
+  if (!htmlBlockStarts(line)) return false;
+  const stripped = line.replaceAll(LINE_TAB_STASH, "*").replaceAll("\v", "*");
+  return !htmlBlockStarts(stripped);
+}
+
+/**
+ * micromark would accept this as a tag only by keeping a line
+ * tabulation inside an unquoted value. cmark-gfm does not.
+ * The character may already be the v1.94 stash.
+ */
+function isLineTabUnquotedTag(src: string, index: number): boolean {
+  if (src[index] !== "<" || htmlTagEnd(src, index) >= 0) return false;
+  const blank = src.indexOf("\n\n", index);
+  const end = blank < 0 ? src.length : blank;
+  const slice = src.slice(index, end);
+  if (!slice.includes(LINE_TAB_STASH) && !slice.includes("\v")) return false;
+  const stripped = slice.replaceAll(LINE_TAB_STASH, "").replaceAll("\v", "");
+  return htmlTagEnd(stripped, 0) > 0;
+}
+
+/** Paint a line-tab stash back to U+000B inside a block micromark already accepts. */
+function revealLineTabs(text: string): string {
+  if (!text.includes(LINE_TAB_STASH)) return text;
+  return text.replaceAll(LINE_TAB_STASH, "\v");
 }
 
 function searchTagClosesOnLine(line: string): boolean {
@@ -708,8 +771,9 @@ function mergeRanges(ranges: Range[]): Range[] {
  * stopped in front of that closer. A declaration is uppercase,
  * then whitespace, then `>`. A tag name is an ASCII letter, then
  * letters, digits, and hyphens. Attributes follow the spec,
- * including one line ending in the whitespace. Form feed is
- * cmark spacechar there, and it ends an unquoted value.
+ * including one line ending in the whitespace. Form feed and
+ * line tabulation are cmark spacechar there, including the
+ * v1.94 stash of line tabulation, and each ends an unquoted value.
  */
 export function htmlTagEnd(src: string, i: number): number {
   if (src[i] !== "<") return -1;
@@ -757,16 +821,22 @@ export function htmlTagEnd(src: string, i: number): number {
 
 /**
  * cmark `spacechar` inside a tag, with at most one line ending.
- * Form feed (U+000C) is spacechar. A second line ending is a
- * blank line and stays outside the tag. Line tabulation is
- * already a v1.94 flanking stash before this scan.
+ * Form feed (U+000C) and line tabulation (U+000B) are spacechar.
+ * The v1.94 flanking stash of line tabulation counts as the same
+ * character. A second line ending is a blank line and stays
+ * outside the tag.
  */
 function skipWs(src: string, i: number): number {
   let j = i;
   let line = false;
   while (j < src.length) {
+    const stashed = lineTabStashAt(src, j);
+    if (stashed > 0) {
+      j += stashed;
+      continue;
+    }
     const ch = src[j];
-    if (ch === " " || ch === "\t" || ch === "\f") {
+    if (ch === " " || ch === "\t" || ch === "\f" || ch === "\v") {
       j += 1;
       continue;
     }
@@ -793,10 +863,15 @@ function attrValueEnd(src: string, i: number): number {
     const close = src.indexOf(ch, i + 1);
     return close < 0 ? -1 : close + 1;
   }
-  if (!ch || isUnquotedStop(ch)) return -1;
+  if (!ch || unquotedStops(src, i)) return -1;
   let j = i + 1;
-  while (j < src.length && !isUnquotedStop(src[j] ?? "")) j += 1;
+  while (j < src.length && !unquotedStops(src, j)) j += 1;
   return j;
+}
+
+function unquotedStops(src: string, index: number): boolean {
+  if (lineTabStashAt(src, index) > 0) return true;
+  return isUnquotedStop(src[index] ?? "");
 }
 
 function isLetter(ch: string): boolean {
@@ -826,6 +901,7 @@ function isUnquotedStop(ch: string): boolean {
     ch === "\n" ||
     ch === "\r" ||
     ch === "\f" ||
+    ch === "\v" ||
     ch === '"' ||
     ch === "'" ||
     ch === "=" ||
