@@ -2268,7 +2268,10 @@ export function App() {
     if (!lightboxSaveOffered({ url: frame.url })) return;
     lightboxSaving.current = true;
     try {
-      const blob = await readLightboxImageBlob(frame.url, session);
+      const blob = await readLightboxImageBlob(
+        frame.url,
+        session ? (target) => fetchAttachmentBlob(session, target) : null,
+      );
       if (!blob || blob.size === 0) return;
       const sniffed = sniffImageExtension(
         new Uint8Array(await blob.slice(0, 16).arrayBuffer()),

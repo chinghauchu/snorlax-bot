@@ -6,13 +6,10 @@
  * bytes. iOS hands the same bytes to the system share sheet and does
  * not ask for photo-library permission. The overlay stays open.
  * Nothing is sent, and a pending chip is not removed. Videos and file
- * chips never open the lightbox, so they have no Save. No new
- * animation. No new shortcut. No new HTTP route.
+ * chips never open the lightbox, so they have no Save.
+ * No new animation. No new shortcut. No new HTTP route.
  * Keep in lockstep with `ios/SnorlaxBot/LightboxSave.swift`.
  */
-
-import { fetchAttachmentBlob } from "./api.ts";
-import type { Session } from "./types.ts";
 
 export const LIGHTBOX_SAVE_LABEL = "Save";
 export const LIGHTBOX_SAVE_ARIA = "Save image";
@@ -149,12 +146,12 @@ export function sniffImageExtension(bytes: Uint8Array): string | null {
 
 /**
  * Bytes the lightbox can already show. Blob and data URLs are local.
- * Anything else uses the existing attachment fetch. An empty body is
- * not a file. This does not add a route.
+ * Anything else uses the caller's existing attachment fetch. An empty
+ * body is not a file. This does not add a route.
  */
 export async function readLightboxImageBlob(
   url: string,
-  session: Session | null,
+  readAuthed: ((url: string) => Promise<Blob>) | null,
 ): Promise<Blob | null> {
   const trimmed = url.trim();
   if (!trimmed) return null;
@@ -164,8 +161,8 @@ export async function readLightboxImageBlob(
     const blob = await response.blob();
     return blob.size > 0 ? blob : null;
   }
-  if (!session) return null;
-  const blob = await fetchAttachmentBlob(session, trimmed);
+  if (!readAuthed) return null;
+  const blob = await readAuthed(trimmed);
   return blob.size > 0 ? blob : null;
 }
 

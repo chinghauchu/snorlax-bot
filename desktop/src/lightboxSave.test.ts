@@ -150,7 +150,8 @@ test("desktop Save sits beside Close and does not dismiss or send", () => {
 
   const save = sliceFn(app, "async function saveLightboxImage()", "useEffect(() => {");
   assert.match(save, /lightboxSaveKeepsOpen\(\)/);
-  assert.match(save, /readLightboxImageBlob\(frame\.url, session\)/);
+  assert.match(save, /readLightboxImageBlob\(/);
+  assert.match(save, /fetchAttachmentBlob\(session, target\)/);
   assert.match(save, /sniffImageExtension\(/);
   assert.match(save, /downloadLightboxBlob\(/);
   assert.match(save, /lightboxSaveFilename\(frame\.name, frame\.url, sniffed\)/);
