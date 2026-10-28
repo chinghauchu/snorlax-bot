@@ -56,6 +56,15 @@ import UIKit
 /// emphasizes and a following `---` stays a setext heading.
 /// The `<` is stashed. A line that begins with `<!` plus an
 /// uppercase letter stays a type 4 HTML block.
+///
+/// v2.05: inline processing instructions and CDATA use the same
+/// cmark-gfm closer. micromark closes at the first `?>` or `]]>`,
+/// so `<? *bar*??>` and `<![CDATA[ *bar*]]]>` hide the emphasis.
+/// The re2c body can consume `??>` and `]]]>`, so those are not
+/// closers. The `<` is stashed. `<? *bar*?>`, `<? *bar*???>`, and
+/// `<![CDATA[ *bar*]]>` stay one raw span, and a later real closer
+/// still swallows the text in front of it. A line that begins
+/// with `<?` or `<![CDATA[` stays an HTML block.
 /// Keep in lockstep with `desktop/src/markdownHtmlLiteral.ts`.
 enum MarkdownHtmlLiteral {
     /// Never animate, including when Reduce Motion is off.
@@ -137,6 +146,18 @@ enum MarkdownHtmlLiteral {
                 index += 1
                 continue
             }
+            if ch == "<", isInvalidHtmlPi(chars, index), index < codeLine.count, !codeLine[index] {
+                // micromark would open a processing instruction. cmark-gfm does not.
+                out.append(token("<"))
+                index += 1
+                continue
+            }
+            if ch == "<", isInvalidHtmlCdata(chars, index), index < codeLine.count, !codeLine[index] {
+                // micromark would open CDATA. cmark-gfm does not.
+                out.append(token("<"))
+                index += 1
+                continue
+            }
             if ch == "<", let end = htmlTagEnd(chars, index), end > index, !overlaps(index, end, blocked) {
                 out.append(safeOrStash(String(chars[index..<end])))
                 index = end
@@ -193,6 +214,101 @@ enum MarkdownHtmlLiteral {
         }
         guard cursor < chars.count, chars[cursor] == ">" else { return nil }
         return cursor + 1
+    }
+
+    /// cmark-gfm 0.29.0.gfm.13 inline processing instruction, exclusive end.
+    /// `<? *bar*?>` and `<? *bar*???>` match. `<? *bar*??>` is nil:
+    /// `??>` is body text, not a closer.
+    static func cmarkHtmlPiEnd(_ chars: [Character], _ index: Int) -> Int? {
+        guard hasPrefix(chars, index, "<?") else { return nil }
+        let bodyEnd = scanHtmlPi(chars, index + 2)
+        guard hasPrefix(chars, bodyEnd, "?>") else { return nil }
+        return bodyEnd + 2
+    }
+
+    /// `<?` that cmark-gfm does not accept as a processing instruction.
+    private static func isInvalidHtmlPi(_ chars: [Character], _ index: Int) -> Bool {
+        hasPrefix(chars, index, "<?") && cmarkHtmlPiEnd(chars, index) == nil
+    }
+
+    /// Exclusive end of a PI body scanned from the character after `<?`.
+    /// An empty body is allowed, so `<??>` still matches.
+    private static func scanHtmlPi(_ chars: [Character], _ start: Int) -> Int {
+        var cursor = start
+        while cursor < chars.count {
+            let ch = chars[cursor]
+            if ch != "?" && ch != ">" && ch != "\0" {
+                cursor += 1
+                while cursor < chars.count {
+                    let next = chars[cursor]
+                    if next == "?" || next == ">" || next == "\0" { break }
+                    cursor += 1
+                }
+                continue
+            }
+            if ch == "?", cursor + 1 < chars.count {
+                let next = chars[cursor + 1]
+                if next != ">" && next != "\0" {
+                    cursor += 2
+                    continue
+                }
+            }
+            if ch == ">" {
+                cursor += 1
+                continue
+            }
+            break
+        }
+        return cursor
+    }
+
+    /// cmark-gfm 0.29.0.gfm.13 inline CDATA, exclusive end.
+    /// `<![CDATA[ *bar*]]>` matches. `<![CDATA[ *bar*]]]>` is nil:
+    /// `]]]>` is body text, not a closer.
+    static func cmarkHtmlCdataEnd(_ chars: [Character], _ index: Int) -> Int? {
+        guard hasPrefix(chars, index, "<![CDATA[") else { return nil }
+        let bodyEnd = scanHtmlCdata(chars, index + 3)
+        guard bodyEnd >= 0, hasPrefix(chars, bodyEnd, "]]>") else { return nil }
+        return bodyEnd + 3
+    }
+
+    /// `<![CDATA[` that cmark-gfm does not accept as CDATA.
+    private static func isInvalidHtmlCdata(_ chars: [Character], _ index: Int) -> Bool {
+        hasPrefix(chars, index, "<![CDATA[") && cmarkHtmlCdataEnd(chars, index) == nil
+    }
+
+    /// Exclusive end of a CDATA body scanned from `C` of `CDATA[`, or -1.
+    private static func scanHtmlCdata(_ chars: [Character], _ start: Int) -> Int {
+        guard hasPrefix(chars, start, "CDATA[") else { return -1 }
+        var cursor = start + 6
+        while cursor < chars.count {
+            let ch = chars[cursor]
+            if ch != "]" && ch != "\0" {
+                cursor += 1
+                while cursor < chars.count {
+                    let next = chars[cursor]
+                    if next == "]" || next == "\0" { break }
+                    cursor += 1
+                }
+                continue
+            }
+            if ch == "]", cursor + 1 < chars.count {
+                let next = chars[cursor + 1]
+                if next != "]" && next != "\0" {
+                    cursor += 2
+                    continue
+                }
+                if next == "]", cursor + 2 < chars.count {
+                    let third = chars[cursor + 2]
+                    if third != ">" && third != "\0" {
+                        cursor += 3
+                        continue
+                    }
+                }
+            }
+            break
+        }
+        return cursor
     }
 
     /// `<!` plus uppercase that cmark-gfm does not accept as a declaration.
@@ -498,12 +614,10 @@ enum MarkdownHtmlLiteral {
             return cmarkHtmlCommentEnd(chars, index)
         }
         if hasPrefix(chars, index, "<![CDATA[") {
-            guard let close = find(Array("]]>"), in: chars, from: index + 9) else { return nil }
-            return close + 3
+            return cmarkHtmlCdataEnd(chars, index)
         }
         if hasPrefix(chars, index, "<?") {
-            guard let close = find(Array("?>"), in: chars, from: index + 2) else { return nil }
-            return close + 2
+            return cmarkHtmlPiEnd(chars, index)
         }
         if index + 1 < chars.count, chars[index + 1] == "!", let decl = cmarkHtmlDeclarationEnd(chars, index) {
             return decl

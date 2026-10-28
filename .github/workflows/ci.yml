@@ -221,3 +221,4 @@ jobs:
           python3 ios/scripts/test_ios_markdown_declaration.py
           python3 ios/scripts/test_ios_markdown_comment_close.py
           python3 ios/scripts/test_ios_markdown_declaration_space.py
+          python3 ios/scripts/test_ios_markdown_html_closer.py
