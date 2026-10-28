@@ -13,6 +13,10 @@ import {
   type ImageLightboxTarget,
 } from "./imageLightbox";
 import {
+  markdownLightboxId,
+  nextMarkdownLightboxOccurrence,
+} from "./lightboxStep";
+import {
   imageFallbackLabel,
   imageRenderPlan,
   imageSourceKind,
@@ -22,6 +26,10 @@ import type { Session } from "./types";
 export type MarkdownMedia = {
   session: Session | null;
   onOpenImage: (target: ImageLightboxTarget, trigger: HTMLElement) => void;
+  /** Set per assistant bubble so a markdown image id matches the strip. */
+  lightboxMessageId?: string;
+  lightboxBubble?: number;
+  lightboxURLCounts?: Map<string, number>;
 };
 
 const MarkdownMediaContext = createContext<MarkdownMedia>({
@@ -131,23 +139,91 @@ export function MarkdownInlineImage({
     kind === "attachment" && media.session
       ? resolveMediaUrl(media.session.baseUrl, src)
       : src;
+  const id = markdownOpenId(media, src);
   return (
     <button
       type="button"
       className="md-image-btn"
+      data-lightbox-id={id}
       aria-label={label}
       title={tip || undefined}
       onClick={(event) => {
         event.preventDefault();
         event.stopPropagation();
         media.onOpenImage(
-          { id: `md:${src}`, url: openUrl, name: lightboxLabel(alt) },
+          { id, url: openUrl, name: lightboxLabel(alt) },
           event.currentTarget,
         );
       }}
     >
       {picture}
     </button>
+  );
+}
+
+/**
+ * The id the bubble's strip entry uses. Without a bubble scope,
+ * keep the single-image id so a footnote or other nested body
+ * still opens.
+ */
+function markdownOpenId(media: MarkdownMedia, src: string): string {
+  if (!media.lightboxMessageId || media.lightboxBubble == null || !media.lightboxURLCounts) {
+    return `md:${src}`;
+  }
+  const occurrence = nextMarkdownLightboxOccurrence(media.lightboxURLCounts, src);
+  return markdownLightboxId(
+    media.lightboxMessageId,
+    media.lightboxBubble,
+    src,
+    occurrence,
+  );
+}
+
+/**
+ * `wrapScope` is `messageId:bubble`. The first MarkdownBody in a
+ * bubble owns the occurrence map. A nested body reuses it.
+ */
+export function lightboxScopeFromWrap(wrapScope: string): {
+  lightboxMessageId?: string;
+  lightboxBubble?: number;
+  lightboxURLCounts?: Map<string, number>;
+} {
+  const at = wrapScope.lastIndexOf(":");
+  if (at <= 0) return {};
+  const bubble = Number(wrapScope.slice(at + 1));
+  if (!Number.isInteger(bubble) || bubble < 0) return {};
+  const messageId = wrapScope.slice(0, at);
+  if (!messageId) return {};
+  return {
+    lightboxMessageId: messageId,
+    lightboxBubble: bubble,
+    lightboxURLCounts: new Map(),
+  };
+}
+
+/** Fresh occurrence counts for one render of one assistant bubble. */
+export function MarkdownLightboxScope({
+  messageId,
+  bubble,
+  children,
+}: {
+  messageId: string;
+  bubble: number;
+  children: ReactNode;
+}) {
+  const parent = useMarkdownMedia();
+  const counts = new Map<string, number>();
+  return (
+    <MarkdownMediaProvider
+      value={{
+        ...parent,
+        lightboxMessageId: messageId,
+        lightboxBubble: bubble,
+        lightboxURLCounts: counts,
+      }}
+    >
+      {children}
+    </MarkdownMediaProvider>
   );
 }
 

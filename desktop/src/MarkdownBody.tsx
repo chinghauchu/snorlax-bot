@@ -74,6 +74,7 @@ import { neutralizeUnsafeImages } from "./markdownImage";
 import { prepareImageAlts } from "./markdownImageAlt";
 import {
   InMarkdownLink,
+  lightboxScopeFromWrap,
   markdownImageNode,
   MarkdownMediaProvider,
   useMarkdownMedia,
@@ -194,9 +195,17 @@ export function MarkdownBody({
   onOpenImage,
 }: Props) {
   const parentMedia = useMarkdownMedia();
+  const lightbox = parentMedia.lightboxURLCounts
+    ? {
+        lightboxMessageId: parentMedia.lightboxMessageId,
+        lightboxBubble: parentMedia.lightboxBubble,
+        lightboxURLCounts: parentMedia.lightboxURLCounts,
+      }
+    : lightboxScopeFromWrap(wrapScope);
   const media = {
     session: session !== undefined ? session : parentMedia.session,
     onOpenImage: onOpenImage ?? parentMedia.onOpenImage,
+    ...lightbox,
   };
   const stable = stabilizeMarkdown(text);
   const segments = splitMarkdownTables(stable, completed);

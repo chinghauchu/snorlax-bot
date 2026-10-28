@@ -610,6 +610,22 @@ import {
   type LightboxZoomAction,
 } from "./lightboxZoom";
 import {
+  LIGHTBOX_STEP_NEXT,
+  LIGHTBOX_STEP_NEXT_ARIA,
+  LIGHTBOX_STEP_PREVIOUS,
+  LIGHTBOX_STEP_PREVIOUS_ARIA,
+  lightboxCanStep,
+  lightboxImageStrip,
+  lightboxStepAnimates,
+  lightboxStepFocusOrder,
+  lightboxStepIndex,
+  lightboxStepKeepsOpen,
+  lightboxStepKey,
+  lightboxStepPosition,
+  lightboxStepTarget,
+  type LightboxStepDirection,
+} from "./lightboxStep";
+import {
   applyFinishedPreview,
   previewOwnsMessages,
   rememberChatPreview,
@@ -1703,6 +1719,9 @@ export function App() {
   const lightboxSaveRef = useRef<HTMLButtonElement>(null);
   const lightboxZoomInRef = useRef<HTMLButtonElement>(null);
   const lightboxZoomOutRef = useRef<HTMLButtonElement>(null);
+  const lightboxPreviousRef = useRef<HTMLButtonElement>(null);
+  const lightboxNextRef = useRef<HTMLButtonElement>(null);
+  const lightboxStripRef = useRef<ImageLightboxTarget[]>([]);
   const lightboxBackdropRef = useRef<HTMLDivElement>(null);
   const lightboxZoomFrameRef = useRef<HTMLDivElement>(null);
   const lightboxSaving = useRef(false);
@@ -1719,6 +1738,9 @@ export function App() {
   const [lightboxZoom, setLightboxZoom] = useState<LightboxZoom>(LIGHTBOX_ZOOM_FIT);
   const [lightboxZoomDragging, setLightboxZoomDragging] = useState(false);
   const commitLightboxZoomRef = useRef<(action: LightboxZoomAction) => void>(
+    () => {},
+  );
+  const commitLightboxStepRef = useRef<(direction: LightboxStepDirection) => void>(
     () => {},
   );
   lightboxTargetRef.current = lightboxTarget;
@@ -2301,6 +2323,28 @@ export function App() {
     setLightboxTarget(null);
   }, []);
 
+  commitLightboxStepRef.current = (direction) => {
+    if (!lightboxStepKeepsOpen()) return;
+    const current = lightboxTargetRef.current;
+    if (!current) return;
+    const next = lightboxStepTarget(lightboxStripRef.current, current.id, direction);
+    if (!next) return;
+    const escaped =
+      typeof CSS !== "undefined" && typeof CSS.escape === "function"
+        ? CSS.escape(next.id)
+        : next.id.replace(/"/g, '\\"');
+    const node = document.querySelector<HTMLElement>(
+      `[data-lightbox-id="${escaped}"]`,
+    );
+    if (node) lightboxReturnRef.current = node;
+    lightboxWheelPending.current = 0;
+    lightboxPanDrag.current = null;
+    setLightboxZoomDragging(false);
+    setLightboxZoom(LIGHTBOX_ZOOM_FIT);
+    setLightboxFrame(next);
+    setLightboxTarget(next);
+  };
+
   commitLightboxZoomRef.current = (action) => {
     const node = lightboxZoomFrameRef.current;
     const fitted = {
@@ -2338,10 +2382,17 @@ export function App() {
   }
 
   useEffect(() => {
+    if (!lightboxTarget) return;
+    setLightboxFrame(lightboxTarget);
+  }, [lightboxTarget]);
+
+  const lightboxOpen = lightboxTarget != null;
+  useEffect(() => {
     const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-    if (lightboxTarget) {
+    if (lightboxOpen) {
+      const opening = !lightboxWasOpen.current;
       lightboxWasOpen.current = true;
-      setLightboxFrame(lightboxTarget);
+      if (!opening) return;
       setLightboxPaint(lightboxAppear(reduce));
       if (reduce) return;
       const frame = requestAnimationFrame(() => {
@@ -2366,12 +2417,12 @@ export function App() {
       restoreLightboxFocus();
     }, ms);
     return () => window.clearTimeout(timer);
-  }, [lightboxTarget, restoreLightboxFocus]);
+  }, [lightboxOpen, restoreLightboxFocus]);
 
   useEffect(() => {
-    if (!lightboxPaint.shown || !lightboxTarget) return;
+    if (!lightboxPaint.shown || lightboxTargetRef.current == null) return;
     lightboxCloseRef.current?.focus({ preventScroll: true });
-  }, [lightboxPaint.shown, lightboxTarget]);
+  }, [lightboxPaint.shown]);
 
   useEffect(() => {
     const id = lightboxFrame?.id ?? null;
@@ -2386,6 +2437,20 @@ export function App() {
     const onKey = (event: globalThis.KeyboardEvent) => {
       if (lightboxTargetRef.current == null) return;
       if (isComposerComposing(event)) return;
+      const step = lightboxStepKey({
+        key: event.key,
+        metaKey: event.metaKey,
+        ctrlKey: event.ctrlKey,
+        altKey: event.altKey,
+        shiftKey: event.shiftKey,
+      });
+      if (step) {
+        event.preventDefault();
+        event.stopPropagation();
+        event.stopImmediatePropagation();
+        commitLightboxStepRef.current(step);
+        return;
+      }
       const action = lightboxZoomKey({
         key: event.key,
         metaKey: event.metaKey,
@@ -5103,6 +5168,38 @@ export function App() {
     busy,
     liveAssistantIdx,
   });
+  const lightboxStrip = lightboxImageStrip({
+    messages: visibleMessages.map((message, index) => ({
+      id: message.id,
+      content: message.content,
+      senderName: message.senderName,
+      senderId: message.senderId,
+      role: message.role,
+      kind: message.kind,
+      widget: message.widget,
+      connect: message.connect,
+      approve: message.approve,
+      completed: !(busy && index === liveAssistantIdx),
+      attachments: message.attachments,
+      images: message.images,
+    })),
+    channelTimeline: active?.kind === "channel" && !threadId,
+    baseUrl: session?.baseUrl ?? "",
+    pending: pendingAttachments,
+  });
+  lightboxStripRef.current = lightboxStrip;
+  const lightboxStepAt = lightboxStepIndex(lightboxStrip, lightboxFrame?.id ?? "");
+  const lightboxStepLabel = lightboxStepPosition(lightboxStepAt, lightboxStrip.length);
+  const lightboxCanPrevious = lightboxCanStep(
+    lightboxStepAt,
+    lightboxStrip.length,
+    "previous",
+  );
+  const lightboxCanNext = lightboxCanStep(
+    lightboxStepAt,
+    lightboxStrip.length,
+    "next",
+  );
   const liveToolItems = liveTraces.map((trace) => ({
     id: trace.id,
     summary: trace.summary,
@@ -8561,6 +8658,7 @@ export function App() {
                     <button
                       type="button"
                       className="pending-preview"
+                      data-lightbox-id={row.id}
                       aria-label={pendingImagePreviewAria(row.name)}
                       onClick={(event) => {
                         const target = pendingImagePreviewTarget(row);
@@ -9984,32 +10082,44 @@ export function App() {
           onKeyDown={(event) => {
             if (event.key !== "Tab") return;
             const offered = lightboxSaveOffered({ url: lightboxFrame.url });
-            const order = lightboxZoomFocusOrder({
-              saveOffered: offered,
-              canZoomOut: lightboxZoomCanOut(lightboxZoom.scale),
-              canZoomIn: lightboxZoomCanIn(lightboxZoom.scale),
+            const order = lightboxStepFocusOrder({
+              zoomOrder: lightboxZoomFocusOrder({
+                saveOffered: offered,
+                canZoomOut: lightboxZoomCanOut(lightboxZoom.scale),
+                canZoomIn: lightboxZoomCanIn(lightboxZoom.scale),
+              }),
+              canPrevious: lightboxCanPrevious,
+              canNext: lightboxCanNext,
             });
             const active = document.activeElement;
             const current =
-              active === lightboxZoomOutRef.current
-                ? "zoomOut"
-                : active === lightboxZoomInRef.current
-                  ? "zoomIn"
-                  : active === lightboxSaveRef.current
-                    ? "save"
-                    : active === lightboxCloseRef.current
-                      ? "close"
-                      : null;
+              active === lightboxPreviousRef.current
+                ? "previous"
+                : active === lightboxNextRef.current
+                  ? "next"
+                  : active === lightboxZoomOutRef.current
+                    ? "zoomOut"
+                    : active === lightboxZoomInRef.current
+                      ? "zoomIn"
+                      : active === lightboxSaveRef.current
+                        ? "save"
+                        : active === lightboxCloseRef.current
+                          ? "close"
+                          : null;
             const next = nextLightboxFocus(order, current, event.shiftKey);
             event.preventDefault();
             const node =
-              next === "zoomOut"
-                ? lightboxZoomOutRef.current
-                : next === "zoomIn"
-                  ? lightboxZoomInRef.current
-                  : next === "save"
-                    ? lightboxSaveRef.current
-                    : lightboxCloseRef.current;
+              next === "previous"
+                ? lightboxPreviousRef.current
+                : next === "next"
+                  ? lightboxNextRef.current
+                  : next === "zoomOut"
+                    ? lightboxZoomOutRef.current
+                    : next === "zoomIn"
+                      ? lightboxZoomInRef.current
+                      : next === "save"
+                        ? lightboxSaveRef.current
+                        : lightboxCloseRef.current;
             node?.focus({ preventScroll: true });
           }}
         >
@@ -10136,6 +10246,45 @@ export function App() {
               />
             </div>
           </div>
+          {lightboxStepLabel ? (
+            <>
+              <button
+                ref={lightboxPreviousRef}
+                type="button"
+                className="image-lightbox-step"
+                data-edge="previous"
+                data-step-animate={lightboxStepAnimates() ? "true" : "false"}
+                aria-label={LIGHTBOX_STEP_PREVIOUS_ARIA}
+                aria-disabled={lightboxCanPrevious ? undefined : true}
+                tabIndex={lightboxCanPrevious ? 0 : -1}
+                onMouseDown={(event) => event.stopPropagation()}
+                onClick={() => commitLightboxStepRef.current("previous")}
+              >
+                {LIGHTBOX_STEP_PREVIOUS}
+              </button>
+              <button
+                ref={lightboxNextRef}
+                type="button"
+                className="image-lightbox-step"
+                data-edge="next"
+                data-step-animate={lightboxStepAnimates() ? "true" : "false"}
+                aria-label={LIGHTBOX_STEP_NEXT_ARIA}
+                aria-disabled={lightboxCanNext ? undefined : true}
+                tabIndex={lightboxCanNext ? 0 : -1}
+                onMouseDown={(event) => event.stopPropagation()}
+                onClick={() => commitLightboxStepRef.current("next")}
+              >
+                {LIGHTBOX_STEP_NEXT}
+              </button>
+              <p
+                className="image-lightbox-count"
+                aria-label={`Image ${lightboxStepLabel}`}
+                onMouseDown={(event) => event.stopPropagation()}
+              >
+                {lightboxStepLabel}
+              </p>
+            </>
+          ) : null}
         </div>
       ) : null}
       {shortcutsOpen ? (
@@ -10416,6 +10565,7 @@ function MessageAttachmentChrome({
             key={image.id}
             type="button"
             className="bubble-image-btn"
+            data-lightbox-id={image.id}
             aria-label={lightboxLabel(image.name)}
             onClick={(event) =>
               onOpenImage(

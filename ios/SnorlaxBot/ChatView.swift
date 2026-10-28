@@ -138,6 +138,9 @@ struct ChatView: View {
             if lightboxZoomKey(press) == .handled {
                 return .handled
             }
+            if lightboxStepKey(press) == .handled {
+                return .handled
+            }
             if press.phase != .down && !press.phase.contains(.`repeat`) {
                 return .ignored
             }
@@ -317,8 +320,12 @@ struct ChatView: View {
                     reduceMotion: reduceMotion,
                     zoom: $lightboxZoom,
                     closeFocused: $lightboxCloseFocused,
+                    stepLabel: lightboxStepLabel(for: frame.id),
+                    canStepPrevious: lightboxCanStep(.previous, currentID: frame.id),
+                    canStepNext: lightboxCanStep(.next, currentID: frame.id),
                     onFitted: { lightboxFitted = $0 },
-                    onClose: { closeLightbox() }
+                    onClose: { closeLightbox() },
+                    onStep: { stepLightbox($0) }
                 )
             }
         }
@@ -2102,6 +2109,81 @@ struct ChatView: View {
             transaction.disablesAnimations = true
             withTransaction(transaction) { lightboxZoom = next }
         }
+        return .handled
+    }
+
+    private var lightboxStrip: [ImageLightbox.Target] {
+        let visible = model.visibleMessages(for: agent)
+        return LightboxStep.strip(
+            messages: visible,
+            channelTimeline: agent.isChannel && model.threadID == nil,
+            incompleteMessageID: streamingMessageID(in: visible),
+            localPreviews: model.localPreviews,
+            pending: model.pendingAttachments
+        )
+    }
+
+    /// The assistant row that is still streaming, if any.
+    private func streamingMessageID(in visible: [Message]) -> String? {
+        guard model.isSending else { return nil }
+        guard let lastUser = visible.lastIndex(where: \.isFromUser) else { return nil }
+        guard let index = visible.indices.first(where: { index in
+            let message = visible[index]
+            return index > lastUser
+                && message.role == .assistant
+                && !message.isHandoffRoot
+                && !message.isToolLine
+                && !message.isWidget
+                && !message.isConnect
+                && !message.isApprove
+        }) else { return nil }
+        return visible[index].id
+    }
+
+    private func lightboxStepLabel(for id: String) -> String? {
+        let at = LightboxStep.index(in: lightboxStrip, currentID: id)
+        return LightboxStep.positionLabel(index: at, count: lightboxStrip.count)
+    }
+
+    private func lightboxCanStep(
+        _ direction: LightboxStep.Direction,
+        currentID: String
+    ) -> Bool {
+        let at = LightboxStep.index(in: lightboxStrip, currentID: currentID)
+        return LightboxStep.canStep(index: at, count: lightboxStrip.count, direction: direction)
+    }
+
+    /// Swap the picture. The overlay stays open and does not fade.
+    private func stepLightbox(_ direction: LightboxStep.Direction) {
+        guard LightboxStep.keepsOpen() else { return }
+        guard let current = lightbox else { return }
+        guard let next = LightboxStep.target(
+            in: lightboxStrip,
+            currentID: current.id,
+            direction: direction
+        ) else { return }
+        var transaction = Transaction()
+        transaction.disablesAnimations = true
+        withTransaction(transaction) {
+            lightboxZoom = .fit
+            lightbox = next
+            lightboxFrame = next
+        }
+    }
+
+    /// Arrow keys step while the lightbox is open. A key repeat keeps
+    /// stepping. They are not a shortcuts-list chord.
+    private func lightboxStepKey(_ press: KeyPress) -> KeyPress.Result {
+        guard lightbox != nil else { return .ignored }
+        guard let direction = LightboxStep.keyAction(
+            key: press.key,
+            command: press.modifiers.contains(.command),
+            control: press.modifiers.contains(.control),
+            option: press.modifiers.contains(.option),
+            shift: press.modifiers.contains(.shift)
+        ) else { return .ignored }
+        if press.phase == .up { return .handled }
+        stepLightbox(direction)
         return .handled
     }
 
@@ -4028,6 +4110,11 @@ private struct MessageBubble: View {
                                                     wrapScope: "\(message.id)#\(offset)",
                                                     showFootnotes: offset == leftBubbles.count - 1
                                                 )
+                                                .environment(
+                                                    \.markdownLightboxScope,
+                                                    LightboxStep.Scope(messageID: message.id, bubble: offset)
+                                                )
+                                                .environment(\.markdownLightboxCounts, LightboxStep.Counts())
                                             } else {
                                                 MidStreamPlaintextView(
                                                     text: part,
