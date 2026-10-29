@@ -38,6 +38,7 @@ export type LightboxStepControl =
   | "next"
   | "zoomOut"
   | "zoomIn"
+  | "copy"
   | "save"
   | "close";
 
@@ -309,7 +310,7 @@ export function lightboxStepAnimates(): boolean {
  * end is left out. Close stays last, after the zoom order.
  */
 export function lightboxStepFocusOrder(input: {
-  zoomOrder: readonly ("zoomOut" | "zoomIn" | "save" | "close")[];
+  zoomOrder: readonly ("zoomOut" | "zoomIn" | "copy" | "save" | "close")[];
   canPrevious: boolean;
   canNext: boolean;
 }): LightboxStepControl[] {

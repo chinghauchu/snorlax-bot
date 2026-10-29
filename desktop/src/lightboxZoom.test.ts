@@ -191,7 +191,7 @@ test("Tab skips a zoom button that is at its limit", () => {
     canZoomOut: true,
     canZoomIn: true,
   });
-  assert.deepEqual(mid, ["zoomOut", "zoomIn", "save", "close"]);
+  assert.deepEqual(mid, ["zoomOut", "zoomIn", "copy", "save", "close"]);
   assert.equal(nextLightboxFocus(mid, "close", false), "zoomOut");
   assert.equal(nextLightboxFocus(mid, "zoomOut", true), "close");
   const fit = lightboxZoomFocusOrder({
@@ -199,7 +199,7 @@ test("Tab skips a zoom button that is at its limit", () => {
     canZoomOut: false,
     canZoomIn: true,
   });
-  assert.deepEqual(fit, ["zoomIn", "save", "close"]);
+  assert.deepEqual(fit, ["zoomIn", "copy", "save", "close"]);
   assert.equal(nextLightboxFocus(fit, null, false), "zoomIn");
   const maxed = lightboxZoomFocusOrder({
     saveOffered: false,

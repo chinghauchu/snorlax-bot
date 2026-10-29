@@ -16,6 +16,9 @@ import UIKit
 /// v2.12: Zoom out and Zoom in sit with Save. Double-tap toggles 1×
 /// and 2×. Pinch zooms between 1× and 4×. A zoomed picture can be
 /// dragged. Swipe-down dismisses only at 1×.
+///
+/// v2.18: Copy sits with Save. It puts the picture already shown on
+/// the pasteboard. Copied lasts 1.2s. The overlay stays open.
 enum ImageLightbox {
     static let close = "Close"
     static let label = "Image"
@@ -103,6 +106,8 @@ struct ImageLightboxOverlay: View {
     @State private var image: UIImage?
     @State private var imageData: Data?
     @State private var shareURL: URL?
+    @State private var copied = false
+    @State private var copyGeneration = 0
     @State private var fitted = CGSize.zero
     @State private var pinchBase: Double = 1
     @State private var pinchActive = false
@@ -166,6 +171,28 @@ struct ImageLightboxOverlay: View {
                         }
                     }
                     if imageData != nil {
+                        Button(copied ? LightboxCopy.copiedLabel : LightboxCopy.label) {
+                            copyImage()
+                        }
+                        .font(.system(size: 12))
+                        .foregroundStyle(.secondary)
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 6)
+                        .background {
+                            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                                .fill(Color(uiColor: .secondarySystemBackground))
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel(
+                            copied
+                                ? LightboxCopy.copiedAccessibility
+                                : LightboxCopy.accessibilityLabel
+                        )
+                        .transaction { transaction in
+                            if !LightboxCopy.animates(reduceMotion: reduceMotion) {
+                                transaction.animation = nil
+                            }
+                        }
                         Button(LightboxSave.label) {
                             saveImage()
                         }
@@ -419,6 +446,23 @@ struct ImageLightboxOverlay: View {
         }
     }
 
+    /// Put the picture already shown on the pasteboard.
+    /// The overlay stays open. Nothing is sent and no chip is removed.
+    private func copyImage() {
+        guard LightboxCopy.keepsOpen() else { return }
+        guard let imageData, LightboxCopy.writeToPasteboard(imageData) else { return }
+        copied = true
+        copyGeneration += 1
+        let generation = copyGeneration
+        let nanos = LightboxCopy.feedbackNanoseconds
+        Task {
+            try? await Task.sleep(nanoseconds: nanos)
+            if generation == copyGeneration {
+                copied = false
+            }
+        }
+    }
+
     /// Write the bytes already shown and present the share sheet.
     /// The overlay stays open. Nothing is sent and no chip is removed.
     private func saveImage() {
@@ -446,6 +490,8 @@ struct ImageLightboxOverlay: View {
         image = nil
         imageData = nil
         shareURL = nil
+        copied = false
+        copyGeneration += 1
         if let local = target.local, !local.isEmpty, let uiImage = UIImage(data: local) {
             imageData = local
             image = uiImage

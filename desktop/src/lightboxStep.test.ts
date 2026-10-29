@@ -234,7 +234,7 @@ test("Tab reaches Previous and Next and still ends on Close", () => {
     canPrevious: true,
     canNext: true,
   });
-  assert.deepEqual(mid, ["previous", "next", "zoomOut", "zoomIn", "save", "close"]);
+  assert.deepEqual(mid, ["previous", "next", "zoomOut", "zoomIn", "copy", "save", "close"]);
   assert.equal(nextLightboxFocus(mid, "close", false), "previous");
   assert.equal(nextLightboxFocus(mid, "previous", true), "close");
   const first = lightboxStepFocusOrder({
@@ -242,7 +242,7 @@ test("Tab reaches Previous and Next and still ends on Close", () => {
     canPrevious: false,
     canNext: true,
   });
-  assert.deepEqual(first, ["next", "zoomOut", "zoomIn", "save", "close"]);
+  assert.deepEqual(first, ["next", "zoomOut", "zoomIn", "copy", "save", "close"]);
   const only = lightboxStepFocusOrder({
     zoomOrder: zoom,
     canPrevious: false,

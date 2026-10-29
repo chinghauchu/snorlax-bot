@@ -33,7 +33,7 @@ export const LIGHTBOX_ZOOM_FIT: LightboxZoom = { scale: 1, x: 0, y: 0 };
 
 export type LightboxZoomAction = "in" | "out" | "fit" | "toggle";
 
-export type LightboxZoomControl = "zoomOut" | "zoomIn" | "save" | "close";
+export type LightboxZoomControl = "zoomOut" | "zoomIn" | "copy" | "save" | "close";
 
 export type LightboxPanLimits = {
   maxX: number;
@@ -241,7 +241,8 @@ export function lightboxZoomTransitionMs(
 
 /**
  * Tab order. A control at its limit is disabled and left out, so Tab
- * does not land on a button that does nothing. Close stays last.
+ * does not land on a button that does nothing. Copy sits just before
+ * Save when that picture can be saved. Close stays last.
  */
 export function lightboxZoomFocusOrder(input: {
   saveOffered: boolean;
@@ -251,7 +252,10 @@ export function lightboxZoomFocusOrder(input: {
   const order: LightboxZoomControl[] = [];
   if (input.canZoomOut) order.push("zoomOut");
   if (input.canZoomIn) order.push("zoomIn");
-  if (input.saveOffered) order.push("save");
+  if (input.saveOffered) {
+    order.push("copy");
+    order.push("save");
+  }
   order.push("close");
   return order;
 }
