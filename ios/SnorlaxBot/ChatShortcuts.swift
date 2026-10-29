@@ -73,6 +73,11 @@ enum ChatShortcuts {
             action: "Insert a quote in the composer"
         ),
         Row(
+            id: "quote-message",
+            keys: "Long-press, then Quote",
+            action: "Quote the whole message"
+        ),
+        Row(
             id: "quote-jump",
             keys: "Tap a sent quote",
             action: QuoteJump.action

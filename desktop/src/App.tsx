@@ -138,6 +138,12 @@ import {
   quoteableText,
 } from "./quoteSelection";
 import {
+  QUOTE_MESSAGE_ARIA,
+  QUOTE_MESSAGE_LABEL,
+  offersQuoteMessage,
+  quoteMessageSourceId,
+} from "./quoteMessage";
+import {
   quoteSelectionBlocked,
   selectionToQuote,
 } from "./quoteSelectionKey";
@@ -1124,6 +1130,12 @@ function MessageActions({
           </span>
         ) : null}
       </span>
+      <QuoteMessageButton
+        content={content}
+        fromUser={false}
+        completed
+        pending={false}
+      />
       <button
         type="button"
         className={`message-action${speaking ? " is-speaking" : ""}`}
@@ -1151,6 +1163,53 @@ function MessageActions({
 const editEarlierMessageRef: { current: (text: string) => void } = {
   current: () => {},
 };
+
+/** v2.17: App assigns this so the action row can quote without a new prop. */
+const quoteMessageRef: {
+  current: (text: string, messageId: string) => void;
+} = {
+  current: () => {},
+};
+
+function QuoteMessageButton({
+  content,
+  fromUser,
+  completed,
+  pending,
+}: {
+  content: string;
+  fromUser: boolean;
+  completed: boolean;
+  pending: boolean;
+}) {
+  if (
+    !offersQuoteMessage({
+      fromUser,
+      kindMessage: true,
+      content,
+      completed,
+      pending,
+    })
+  ) {
+    return null;
+  }
+  return (
+    <button
+      type="button"
+      className="message-action"
+      aria-label={QUOTE_MESSAGE_ARIA}
+      onMouseDown={(event) => event.preventDefault()}
+      onClick={(event) =>
+        quoteMessageRef.current(
+          content,
+          quoteMessageSourceId(event.currentTarget),
+        )
+      }
+    >
+      {QUOTE_MESSAGE_LABEL}
+    </button>
+  );
+}
 
 function UserMessageCopy({ content }: { content: string }) {
   const [copied, setCopied] = useState(false);
@@ -1201,6 +1260,12 @@ function UserMessageCopy({ content }: { content: string }) {
           {EDIT_AS_NEW_MESSAGE}
         </button>
       ) : null}
+      <QuoteMessageButton
+        content={content}
+        fromUser
+        completed
+        pending={false}
+      />
     </div>
   );
 }
@@ -4309,6 +4374,32 @@ export function App() {
       setQuoteJumpEpoch((epoch) => epoch + 1);
     }
   }
+
+  /**
+   * v2.17: quote the whole message into this chat's draft.
+   * The caret lands after the quote and the composer is focused.
+   * Does not send. A selection quote stays on quoteIntoComposer.
+   */
+  function quoteMessageIntoComposer(text: string, messageId: string) {
+    if (takeoverOpen) return;
+    const next = appendQuoteToDraft(draftRef.current, text);
+    if (!next) return;
+    pendingCaret.current = next.caret;
+    draftRef.current = next.text;
+    setDraft(next.text);
+    setRecallArmed((armed) => {
+      const still = recallArmedAfterEdit(next.text, armed);
+      if (!still) recallRestoreRef.current = "";
+      return still;
+    });
+    syncComposerTriggers(next.text, next.caret);
+    if (messageId && active) {
+      quoteJumps.current.note(active.id, threadId, text, messageId);
+      setQuoteJumpEpoch((epoch) => epoch + 1);
+    }
+    window.getSelection()?.removeAllRanges();
+  }
+  quoteMessageRef.current = quoteMessageIntoComposer;
 
   useEffect(() => {
     const onKey = (event: globalThis.KeyboardEvent) => {

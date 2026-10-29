@@ -233,3 +233,4 @@ jobs:
           python3 ios/scripts/test_ios_earlier_messages.py
           python3 ios/scripts/test_ios_edit_earlier_message.py
           python3 ios/scripts/test_ios_user_long_message.py
+          python3 ios/scripts/test_ios_quote_message.py
