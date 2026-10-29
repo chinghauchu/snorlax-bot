@@ -442,6 +442,17 @@ import {
   userCopyPending,
 } from "./messageActions";
 import {
+  browserReplyRatingStorage,
+  offersReplyRating,
+  readReplyRatings,
+  replyRatingAria,
+  replyRatingLabel,
+  replyRatingPressed,
+  toggleReplyRating,
+  writeReplyRatings,
+  type ReplyRating,
+} from "./replyRating";
+import {
   JUMP_CHIP_HIDDEN,
   JUMP_TO_LATEST_LABEL,
   NEAR_BOTTOM_PX,
@@ -1097,6 +1108,9 @@ function MessageActions({
   showRegenerate,
   disabled,
   shortcutCopied,
+  completed,
+  rating,
+  onRate,
   onSpeak,
   onRegenerate,
 }: {
@@ -1106,6 +1120,10 @@ function MessageActions({
   disabled?: boolean;
   /** v1.00: the keyboard shortcut flashed Copied on this message. */
   shortcutCopied?: boolean;
+  /** v2.20: Good / Bad. The row is already a finished assistant reply. */
+  completed: boolean;
+  rating: ReplyRating | null;
+  onRate: (pick: ReplyRating) => void;
   onSpeak: () => void;
   onRegenerate: () => void;
 }) {
@@ -1163,6 +1181,34 @@ function MessageActions({
         >
           Regenerate
         </button>
+      ) : null}
+      {offersReplyRating({
+        fromUser: false,
+        kindMessage: true,
+        completed,
+      }) ? (
+        <>
+          <button
+            type="button"
+            className="message-action"
+            aria-pressed={replyRatingPressed(rating, "good")}
+            aria-label={replyRatingAria("good")}
+            onMouseDown={(event) => event.preventDefault()}
+            onClick={() => onRate("good")}
+          >
+            {replyRatingLabel("good")}
+          </button>
+          <button
+            type="button"
+            className="message-action"
+            aria-pressed={replyRatingPressed(rating, "bad")}
+            aria-label={replyRatingAria("bad")}
+            onMouseDown={(event) => event.preventDefault()}
+            onClick={() => onRate("bad")}
+          >
+            {replyRatingLabel("bad")}
+          </button>
+        </>
       ) : null}
     </div>
   );
@@ -1436,6 +1482,17 @@ export function App() {
   );
   const mutedChatIdsRef = useRef(mutedChatIds);
   mutedChatIdsRef.current = mutedChatIds;
+  // v2.20: Good / Bad on a completed assistant reply. This client only.
+  const [replyRatings, setReplyRatings] = useState(() =>
+    readReplyRatings(browserReplyRatingStorage()),
+  );
+  function onRateReply(id: string, pick: ReplyRating) {
+    setReplyRatings((current) => {
+      const next = toggleReplyRating(current, id, pick);
+      writeReplyRatings(browserReplyRatingStorage(), next);
+      return next;
+    });
+  }
   function onTogglePin(id: string) {
     setContextMenu(null);
     setPinnedChatIds((current) => {
@@ -8833,6 +8890,9 @@ export function App() {
                             })}
                             disabled={busy}
                             shortcutCopied={shortcutCopiedId === message.id}
+                            completed={completed}
+                            rating={replyRatings[message.id] ?? null}
+                            onRate={(pick) => onRateReply(message.id, pick)}
                             onSpeak={() => void toggleSpeak(message.id, message.content)}
                             onRegenerate={() => void onRegenerate()}
                           />

@@ -153,6 +153,10 @@ final class AppModel {
     var transcriptTextPercent: Int = TranscriptTextScale.defaultPercent {
         didSet { TranscriptTextScale.write(transcriptTextPercent) }
     }
+    /// v2.20: Good / Bad on a completed assistant reply. UserDefaults. Not sent.
+    var replyRatings: [String: String] = [:] {
+        didSet { ReplyRating.write(replyRatings) }
+    }
     /// The list, the chat, and the composer can all see one size chord.
     /// The second delivery of that same step inside this window does not step again.
     private var transcriptTextChord = ""
@@ -290,7 +294,13 @@ final class AppModel {
         archivedChatIDs = ChatArchive.read()
         mutedChatIDs = ChatMute.read()
         transcriptTextPercent = TranscriptTextScale.read()
+        replyRatings = ReplyRating.read()
         publishReplyUnread()
+    }
+
+    /// v2.20: mark a reply Good or Bad, or clear it by choosing the same mark.
+    func toggleReplyRating(id: String, pick: String) {
+        replyRatings = ReplyRating.toggled(replyRatings, id: id, pick: pick)
     }
 
     var isConfigured: Bool {
