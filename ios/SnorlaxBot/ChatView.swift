@@ -4254,6 +4254,11 @@ private struct MessageBubble: View {
                                 .buttonStyle(.plain)
                                 .disabled(model.isSending)
                             }
+                            if offersReplyRating {
+                                let rating = model.replyRatings[message.id]
+                                replyRatingControl(ReplyRating.good, current: rating)
+                                replyRatingControl(ReplyRating.bad, current: rating)
+                            }
                         }
                     }
                 }
@@ -4416,6 +4421,8 @@ private struct MessageBubble: View {
             onEditAsNew: { model.editAsNewMessage(message.content) },
             showQuote: canQuote,
             showQuoteMessage: offersWholeQuote,
+            showReplyRating: offersReplyRating,
+            onRate: { model.toggleReplyRating(id: message.id, pick: $0) },
             onRetry: { Task { await model.retryFailedSend(id: message.id) } },
             onRemove: { model.dismissFailedSend(id: message.id) },
             onQuote: { model.quoteIntoComposer($0) },
@@ -4423,6 +4430,32 @@ private struct MessageBubble: View {
                 model.quoteMessageIntoComposer(message.content, sourceId: message.id)
             }
         )
+    }
+
+    /// v2.20: Good / Bad on a finished assistant reply. Not on a user bubble.
+    private var offersReplyRating: Bool {
+        ReplyRating.offers(
+            fromUser: message.isFromUser,
+            kindMessage: message.isKindMessage
+                && !message.isToolLine
+                && !message.isWidget
+                && !message.isConnect
+                && !message.isApprove
+                && !message.isHandoffRoot,
+            completed: completed
+        )
+    }
+
+    private func replyRatingControl(_ pick: String, current: String?) -> some View {
+        let on = ReplyRating.pressed(current: current, pick: pick)
+        return Button(ReplyRating.label(pick)) {
+            model.toggleReplyRating(id: message.id, pick: pick)
+        }
+        .font(.system(size: 12))
+        .foregroundStyle(on ? Color.primary : Color.secondary)
+        .buttonStyle(.plain)
+        .accessibilityLabel(ReplyRating.accessibilityLabel(pick))
+        .accessibilityAddTraits(on ? .isSelected : [])
     }
 
     /// v2.17: the whole message, not a selection. Pending and streaming stay out.
@@ -4487,6 +4520,7 @@ private struct BubbleTimestampMenu: ViewModifier {
     var retryDisabled: Bool = false
     var showQuote: Bool = false
     var showQuoteMessage: Bool = false
+    var showReplyRating: Bool = false
     let onCopy: () -> Void
     let onSpeak: () -> Void
     let onRegenerate: () -> Void
@@ -4495,6 +4529,7 @@ private struct BubbleTimestampMenu: ViewModifier {
     var onRemove: () -> Void = {}
     var onQuote: (String) -> Void = { _ in }
     var onQuoteMessage: () -> Void = {}
+    var onRate: (String) -> Void = { _ in }
 
     @ViewBuilder
     private var failedSendActions: some View {
@@ -4513,6 +4548,17 @@ private struct BubbleTimestampMenu: ViewModifier {
         }
     }
 
+    /// v2.20: Good / Bad in the same long-press menu as Copy.
+    @ViewBuilder
+    private var ratingButtons: some View {
+        if showReplyRating {
+            Button(ReplyRating.goodLabel) { onRate(ReplyRating.good) }
+                .accessibilityLabel(ReplyRating.accessibilityLabel(ReplyRating.good))
+            Button(ReplyRating.badLabel) { onRate(ReplyRating.bad) }
+                .accessibilityLabel(ReplyRating.accessibilityLabel(ReplyRating.bad))
+        }
+    }
+
     /// v2.17: Quote the whole message when nothing in it is selected.
     @ViewBuilder
     private var quoteMessageButton: some View {
@@ -4525,7 +4571,7 @@ private struct BubbleTimestampMenu: ViewModifier {
     func body(content: Content) -> some View {
         if let stamp {
             let selectedQuote = showQuote ? QuoteSelection.menuSelection() : nil
-            let hasActions = showCopy || showSpeak || showRegenerate || showFailedSend || showEditAsNew || selectedQuote != nil || showQuoteMessage
+            let hasActions = showCopy || showSpeak || showRegenerate || showFailedSend || showEditAsNew || selectedQuote != nil || showQuoteMessage || showReplyRating
             if hasActions {
                 content.contextMenu {
                     Section {
@@ -4538,6 +4584,7 @@ private struct BubbleTimestampMenu: ViewModifier {
                         if showRegenerate {
                             Button("Regenerate") { onRegenerate() }
                         }
+                        ratingButtons
                         if showEditAsNew {
                             Button(RecallDraft.editAsNewMessage) { onEditAsNew() }
                         }
@@ -4556,11 +4603,12 @@ private struct BubbleTimestampMenu: ViewModifier {
                         .disabled(true)
                 }
             }
-        } else if showCopy || showFailedSend || showEditAsNew || showQuoteMessage || (showQuote && QuoteSelection.menuSelection() != nil) {
+        } else if showCopy || showFailedSend || showEditAsNew || showQuoteMessage || showReplyRating || (showQuote && QuoteSelection.menuSelection() != nil) {
             content.contextMenu {
                 if showCopy {
                     Button("Copy") { onCopy() }
                 }
+                ratingButtons
                 if showEditAsNew {
                     Button(RecallDraft.editAsNewMessage) { onEditAsNew() }
                 }

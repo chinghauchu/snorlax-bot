@@ -3539,6 +3539,7 @@ pre.md-math-fallback.md-math-block {
 .message-actions {
   display: flex;
   flex-direction: row;
+  flex-wrap: wrap;
   align-items: center;
   gap: 12px;
   margin: 0;
