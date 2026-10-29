@@ -43,6 +43,15 @@ import {
   shouldCollapseCodeBlock,
   showCodeBlockCollapseToggle,
 } from "./codeBlockCollapse";
+import {
+  CODE_BLOCK_SAVE_ARIA,
+  CODE_BLOCK_SAVE_LABEL,
+  codeBlockSaveBody,
+  codeBlockSaveFilename,
+  codeBlockSaveKeepsFence,
+  downloadCodeBlock,
+  showCodeBlockSave,
+} from "./codeBlockSave";
 import { linkHref, splitWebUrls } from "./linkify";
 import { splitIndentedCode } from "./markdownIndentedCode";
 import { prepareAngleAutolinks, safeLinkHref } from "./markdownAutolink";
@@ -1506,6 +1515,11 @@ function FenceBar({
     }, CODE_BLOCK_COPY_MS);
   }
 
+  function onSave() {
+    if (!codeBlockSaveKeepsFence()) return;
+    downloadCodeBlock(codeBlockSaveBody(source), codeBlockSaveFilename(language));
+  }
+
   return (
     <div className="md-fence-bar">
       <span className="md-fence-lang">{language}</span>
@@ -1530,6 +1544,17 @@ function FenceBar({
             onClick={onCopy}
           >
             {codeBlockCopyLabel(copied)}
+          </button>
+        ) : null}
+        {showCodeBlockSave(completed) ? (
+          <button
+            type="button"
+            className="md-fence-save"
+            aria-label={CODE_BLOCK_SAVE_ARIA}
+            onMouseDown={keepCodeBlockFocus}
+            onClick={onSave}
+          >
+            {CODE_BLOCK_SAVE_LABEL}
           </button>
         ) : null}
       </span>
