@@ -2069,6 +2069,109 @@ pre.md-math-fallback.md-math-block {
   }
 }
 
+/* v2.22: Lines sits beside Wrap. The gutter is not part of the code. */
+.md-fence-lines {
+  font-size: 12px;
+  color: var(--text-muted);
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  transition: none;
+  animation: none;
+}
+
+.md-fence-lines:focus-visible {
+  outline: 1px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.md-fence-body.md-fence-body-lines:not(.md-fence-body-wrap) {
+  padding-left: 0;
+  padding-right: 0;
+}
+
+.md-fence-body.md-fence-body-lines:not(.md-fence-body-wrap) code {
+  display: flex;
+  align-items: flex-start;
+  width: max-content;
+  min-width: 100%;
+  white-space: normal;
+}
+
+.md-fence-gutter-col {
+  position: sticky;
+  left: 0;
+  z-index: 1;
+  flex: none;
+  box-sizing: content-box;
+  padding: 0 12px 0 10px;
+  text-align: right;
+  color: var(--text-muted);
+  background: var(--bg-elevated);
+  font-variant-numeric: tabular-nums;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.md-fence-gutter-col .md-fence-gutter,
+.md-fence-code-col .md-fence-line-text {
+  display: block;
+  line-height: 1.45;
+  min-height: 1.45em;
+  white-space: pre;
+}
+
+.md-fence-code-col {
+  flex: none;
+  padding-right: 10px;
+  min-width: 0;
+}
+
+.md-fence-line {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  min-height: 1.45em;
+}
+
+.md-fence-line .md-fence-gutter {
+  flex: none;
+  box-sizing: content-box;
+  text-align: right;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+  line-height: 1.45;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.md-fence-line .md-fence-line-text {
+  flex: 1 1 auto;
+  min-width: 0;
+  white-space: pre;
+  line-height: 1.45;
+}
+
+.md-fence-body.md-fence-body-wrap.md-fence-body-lines code {
+  white-space: normal;
+}
+
+.md-fence-body.md-fence-body-wrap .md-fence-line .md-fence-line-text {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+/* v2.22: Reduce Motion on → the lines toggle is still an instant swap. */
+@media (prefers-reduced-motion: reduce) {
+  .md-fence-lines,
+  .md-fence-gutter,
+  .md-fence-gutter-col {
+    transition: none;
+    animation: none;
+  }
+}
+
 /* v1.37: token colors do not fade in, including when Reduce Motion is off. */
 @media (prefers-reduced-motion: reduce) {
   .md-fence-body .md-tok {
