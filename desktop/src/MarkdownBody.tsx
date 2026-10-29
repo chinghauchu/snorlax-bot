@@ -135,6 +135,13 @@ import {
   type MarkdownTable,
   type TableAlign,
 } from "./markdownTable";
+import {
+  TABLE_CELLS_COPY_MS,
+  showTableCells,
+  tableCellsAriaLabel,
+  tableCellsClipboardText,
+  tableCellsLabel,
+} from "./tableCellsCopy";
 import { listIsLoose } from "./markdownLooseList";
 import {
   listNeedsCmarkOrderedItemStart,
@@ -927,13 +934,29 @@ function MarkdownTableBlock({
   completed: boolean;
 }) {
   const [copied, setCopied] = useState(false);
+  const [cellsCopied, setCellsCopied] = useState(false);
   const timer = useRef<ReturnType<typeof window.setTimeout> | null>(null);
+  const cellsTimer = useRef<ReturnType<typeof window.setTimeout> | null>(null);
 
   useEffect(() => {
     return () => {
       if (timer.current != null) window.clearTimeout(timer.current);
+      if (cellsTimer.current != null) window.clearTimeout(cellsTimer.current);
     };
   }, []);
+
+  useEffect(() => {
+    setCopied(false);
+    setCellsCopied(false);
+    if (timer.current != null) {
+      window.clearTimeout(timer.current);
+      timer.current = null;
+    }
+    if (cellsTimer.current != null) {
+      window.clearTimeout(cellsTimer.current);
+      cellsTimer.current = null;
+    }
+  }, [table.source]);
 
   function onCopy() {
     void copyText(tableClipboardText(table.source));
@@ -945,19 +968,43 @@ function MarkdownTableBlock({
     }, TABLE_COPY_MS);
   }
 
+  function onCells() {
+    void copyText(tableCellsClipboardText(table.header, table.rows));
+    setCellsCopied(true);
+    if (cellsTimer.current != null) window.clearTimeout(cellsTimer.current);
+    cellsTimer.current = window.setTimeout(() => {
+      setCellsCopied(false);
+      cellsTimer.current = null;
+    }, TABLE_CELLS_COPY_MS);
+  }
+
   return (
     <div className="md-table">
       {showTableCopy(completed) ? (
         <div className="md-table-bar">
-          <button
-            type="button"
-            className="md-copy"
-            aria-label={tableCopyAriaLabel(copied)}
-            aria-live="polite"
-            onClick={onCopy}
-          >
-            {tableCopyLabel(copied)}
-          </button>
+          <span className="md-table-actions">
+            {showTableCells(completed) ? (
+              <button
+                type="button"
+                className="md-copy"
+                aria-label={tableCellsAriaLabel(cellsCopied)}
+                aria-live="polite"
+                onMouseDown={keepCodeBlockFocus}
+                onClick={onCells}
+              >
+                {tableCellsLabel(cellsCopied)}
+              </button>
+            ) : null}
+            <button
+              type="button"
+              className="md-copy"
+              aria-label={tableCopyAriaLabel(copied)}
+              aria-live="polite"
+              onClick={onCopy}
+            >
+              {tableCopyLabel(copied)}
+            </button>
+          </span>
         </div>
       ) : null}
       <div className="md-table-scroll">

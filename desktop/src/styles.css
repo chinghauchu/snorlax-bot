@@ -2232,6 +2232,18 @@ pre.md-math-fallback.md-math-block {
   padding: 6px 10px 0;
 }
 
+/* v2.24: Cells sits beside Copy. The label swap is instant. */
+.md-table-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-left: auto;
+}
+
+.md-table-actions .md-copy {
+  margin-left: 0;
+}
+
 .md-table-scroll {
   display: block;
   width: 100%;
@@ -2279,15 +2291,17 @@ pre.md-math-fallback.md-math-block {
 
 .md-table,
 .md-table-scroll,
+.md-table-actions,
 .md-table .md-copy {
   transition: none;
   animation: none;
 }
 
-/* v1.31: Reduce Motion on → the Copy label swap stays instant. */
+/* v1.31 / v2.24: Reduce Motion on → Copy and Cells stay instant. */
 @media (prefers-reduced-motion: reduce) {
   .md-table,
   .md-table-scroll,
+  .md-table-actions,
   .md-table .md-copy {
     transition: none;
     animation: none;
