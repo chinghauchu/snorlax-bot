@@ -1960,6 +1960,36 @@ pre.md-math-fallback.md-math-block {
   white-space: pre;
 }
 
+/* v2.23: Copy sits above a display-math block. The label swap is instant. */
+.md-math-copy {
+  margin: 0.4em 0;
+}
+
+.md-math-copy .md-math-block,
+.md-math-copy pre.md-math-fallback.md-math-block {
+  margin: 0;
+}
+
+.md-math-bar {
+  display: flex;
+  justify-content: flex-end;
+  padding: 0 0 2px;
+}
+
+.md-math-bar .md-copy {
+  transition: none;
+  animation: none;
+}
+
+/* v2.23: Reduce Motion on → the Copy label swap stays instant. */
+@media (prefers-reduced-motion: reduce) {
+  .md-math-bar,
+  .md-math-bar .md-copy {
+    transition: none;
+    animation: none;
+  }
+}
+
 .md-copy {
   margin-left: auto;
   font-size: 12px;

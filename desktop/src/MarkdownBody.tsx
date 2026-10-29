@@ -159,6 +159,13 @@ import {
   splitMathTokens,
   type MathSlot,
 } from "./math";
+import {
+  MATH_BLOCK_COPY_MS,
+  mathBlockClipboardText,
+  mathCopyAriaLabel,
+  mathCopyLabel,
+  showMathBlockCopy,
+} from "./mathBlockCopy";
 import { shouldRenderMermaid, renderMermaidSvg } from "./mermaid";
 import { splitMentions } from "./mentions";
 import { openOsBrowser } from "./openUrl";
@@ -1861,6 +1868,50 @@ function renderTextWithMath(
   });
 }
 
+function MathBlockCopyButton({ tex }: { tex: string }) {
+  const [copied, setCopied] = useState(false);
+  const timer = useRef<ReturnType<typeof window.setTimeout> | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (timer.current != null) window.clearTimeout(timer.current);
+    };
+  }, []);
+
+  useEffect(() => {
+    setCopied(false);
+    if (timer.current != null) {
+      window.clearTimeout(timer.current);
+      timer.current = null;
+    }
+  }, [tex]);
+
+  function onCopy() {
+    void copyText(mathBlockClipboardText(tex));
+    setCopied(true);
+    if (timer.current != null) window.clearTimeout(timer.current);
+    timer.current = window.setTimeout(() => {
+      setCopied(false);
+      timer.current = null;
+    }, MATH_BLOCK_COPY_MS);
+  }
+
+  return (
+    <div className="md-math-bar">
+      <button
+        type="button"
+        className="md-copy"
+        aria-label={mathCopyAriaLabel(copied)}
+        aria-live="polite"
+        onMouseDown={keepCodeBlockFocus}
+        onClick={onCopy}
+      >
+        {mathCopyLabel(copied)}
+      </button>
+    </div>
+  );
+}
+
 function MathNode({
   slot,
   completed,
@@ -1874,31 +1925,43 @@ function MathNode({
   const html = shouldRenderMath({ completed, closed: slot.closed })
     ? renderKatex(slot.tex, display)
     : null;
-  if (html) {
-    return display ? (
-      <div
-        className="md-math-block"
-        // KaTeX HTML from the local engine only
-        dangerouslySetInnerHTML={{ __html: html }}
-      />
-    ) : (
-      <span
-        className="md-math-inline"
-        dangerouslySetInnerHTML={{ __html: html }}
-      />
-    );
-  }
-  if (display) {
+  const showCopy = showMathBlockCopy({
+    completed,
+    closed: slot.closed,
+    block: display,
+  });
+  if (!display) {
+    if (html) {
+      return (
+        <span
+          className="md-math-inline"
+          dangerouslySetInnerHTML={{ __html: html }}
+        />
+      );
+    }
     return (
-      <pre className="md-math-fallback md-math-block">
+      <code className="md-math-fallback">
         <FindText text={slot.raw} query={findQuery} />
-      </pre>
+      </code>
     );
   }
-  return (
-    <code className="md-math-fallback">
+  const equation = html ? (
+    <div
+      className="md-math-block"
+      // KaTeX HTML from the local engine only
+      dangerouslySetInnerHTML={{ __html: html }}
+    />
+  ) : (
+    <pre className="md-math-fallback md-math-block">
       <FindText text={slot.raw} query={findQuery} />
-    </code>
+    </pre>
+  );
+  if (!showCopy) return equation;
+  return (
+    <div className="md-math-copy">
+      <MathBlockCopyButton tex={slot.tex} />
+      {equation}
+    </div>
   );
 }
 
