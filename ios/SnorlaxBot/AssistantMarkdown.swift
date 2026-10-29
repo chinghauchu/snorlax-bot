@@ -899,6 +899,7 @@ private struct FenceBar: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var copied = false
     @State private var pulse = 0
+    @State private var shareURL: URL?
 
     var body: some View {
         HStack {
@@ -935,10 +936,50 @@ private struct FenceBar: View {
                 .accessibilityLabel(CodeBlockCopy.accessibilityLabel(copied: copied))
                 .animation(CodeBlockCopy.animation(reduceMotion: reduceMotion), value: copied)
             }
+            if CodeBlockSave.showsSave(completed: completed) {
+                Button(CodeBlockSave.label) {
+                    saveCode()
+                }
+                .transcriptFont(12)
+                .foregroundStyle(.secondary)
+                .buttonStyle(.plain)
+                .focusable(false)
+                .accessibilityLabel(CodeBlockSave.accessibilityLabel)
+                .animation(CodeBlockSave.animation(reduceMotion: reduceMotion), value: shareURL != nil)
+            }
         }
         .padding(.horizontal, 10)
         .padding(.top, 6)
+        .sheet(isPresented: Binding(
+            get: { shareURL != nil },
+            set: { if !$0 { shareURL = nil } }
+        )) {
+            if let shareURL {
+                CodeBlockShareSheet(url: shareURL)
+            }
+        }
     }
+
+    /// Write the full fence source and present the share sheet.
+    /// The block stays. Nothing is sent and Show more does not change.
+    private func saveCode() {
+        guard CodeBlockSave.keepsFence() else { return }
+        let name = CodeBlockSave.filename(language: language)
+        guard let file = CodeBlockSave.writeFile(source: source, filename: name) else { return }
+        shareURL = file
+    }
+}
+
+/// The system share sheet for one saved code file. Copy and Files are
+/// the system's actions. This view does not request photo-library permission.
+private struct CodeBlockShareSheet: UIViewControllerRepresentable {
+    let url: URL
+
+    func makeUIViewController(context: Context) -> UIActivityViewController {
+        UIActivityViewController(activityItems: [url], applicationActivities: nil)
+    }
+
+    func updateUIViewController(_ uiViewController: UIActivityViewController, context: Context) {}
 }
 
 private struct FenceSource: View {
