@@ -382,7 +382,7 @@ private struct MarkdownListPieces: View {
     }
 }
 
-/// Completed indented code uses the fence chrome (Copy, Wrap, monospace).
+/// Completed indented code uses the fence chrome (Copy, Lines, Wrap, monospace).
 /// There is no info string, so the block stays monochrome. Streaming is
 /// one markdown run. List items are already split out above.
 private struct MarkdownIndentedPieces: View {
@@ -656,6 +656,7 @@ private struct MermaidFence: View {
     @State private var failed: Bool
     @State private var size: CGSize
     @State private var wrapped: Bool
+    @State private var numbered: Bool
     @State private var codeExpanded: Bool
 
     init(language: String, source: String, completed: Bool = true, wrapId: String = "") {
@@ -666,6 +667,7 @@ private struct MermaidFence: View {
         _failed = State(initialValue: false)
         _size = State(initialValue: CGSize(width: 1, height: 1))
         _wrapped = State(initialValue: CodeBlockWrap.isWrapped(id: wrapId))
+        _numbered = State(initialValue: CodeBlockLines.isNumbered(id: wrapId))
         _codeExpanded = State(initialValue: false)
     }
 
@@ -677,7 +679,10 @@ private struct MermaidFence: View {
                 completed: completed,
                 wrapped: wrapped,
                 showsWrap: failed,
-                onToggleWrap: toggleWrap
+                onToggleWrap: toggleWrap,
+                numbered: numbered,
+                showsLines: failed,
+                onToggleLines: toggleLines
             )
             if failed {
                 VStack(alignment: .leading, spacing: 0) {
@@ -722,8 +727,11 @@ private struct MermaidFence: View {
         }
         .clipShape(RoundedRectangle(cornerRadius: 8))
         .animation(CodeBlockWrap.animation(reduceMotion: reduceMotion), value: wrapped)
+        .animation(CodeBlockLines.animation(reduceMotion: reduceMotion), value: numbered)
+        .environment(\.codeBlockNumbered, numbered && CodeBlockLines.showsLines(completed: completed))
         .onChange(of: wrapId) { _, next in
             wrapped = CodeBlockWrap.isWrapped(id: next)
+            numbered = CodeBlockLines.isNumbered(id: next)
         }
     }
 
@@ -773,6 +781,10 @@ private struct MermaidFence: View {
     private func toggleWrap() {
         wrapped = CodeBlockWrap.toggle(id: wrapId, wrapped: wrapped)
     }
+
+    private func toggleLines() {
+        numbered = CodeBlockLines.toggle(id: wrapId, numbered: numbered)
+    }
 }
 
 private struct CodeFence: View {
@@ -783,6 +795,7 @@ private struct CodeFence: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.chatFind) private var find
     @State private var wrapped: Bool
+    @State private var numbered: Bool
     @State private var expanded: Bool
 
     init(language: String, source: String, completed: Bool = true, wrapId: String = "") {
@@ -791,6 +804,7 @@ private struct CodeFence: View {
         self.completed = completed
         self.wrapId = wrapId
         _wrapped = State(initialValue: CodeBlockWrap.isWrapped(id: wrapId))
+        _numbered = State(initialValue: CodeBlockLines.isNumbered(id: wrapId))
         _expanded = State(initialValue: false)
     }
 
@@ -832,7 +846,10 @@ private struct CodeFence: View {
                 completed: completed,
                 wrapped: wrapped,
                 showsWrap: true,
-                onToggleWrap: toggleWrap
+                onToggleWrap: toggleWrap,
+                numbered: numbered,
+                showsLines: true,
+                onToggleLines: toggleLines
             )
             painted(source: CodeBlockCollapse.visibleText(source, collapsed: collapsed))
             FenceMoreButton(show: showToggle, expanded: expanded) {
@@ -850,11 +867,14 @@ private struct CodeFence: View {
         }
         .clipShape(RoundedRectangle(cornerRadius: 8))
         .animation(CodeBlockWrap.animation(reduceMotion: reduceMotion), value: wrapped)
+        .animation(CodeBlockLines.animation(reduceMotion: reduceMotion), value: numbered)
+        .environment(\.codeBlockNumbered, numbered && CodeBlockLines.showsLines(completed: completed))
         .onChange(of: source) { _, _ in
             expanded = false
         }
         .onChange(of: wrapId) { _, next in
             wrapped = CodeBlockWrap.isWrapped(id: next)
+            numbered = CodeBlockLines.isNumbered(id: next)
             expanded = false
         }
     }
@@ -865,6 +885,10 @@ private struct CodeFence: View {
 
     private func toggleWrap() {
         wrapped = CodeBlockWrap.toggle(id: wrapId, wrapped: wrapped)
+    }
+
+    private func toggleLines() {
+        numbered = CodeBlockLines.toggle(id: wrapId, numbered: numbered)
     }
 }
 
@@ -896,6 +920,9 @@ private struct FenceBar: View {
     var wrapped: Bool = false
     var showsWrap: Bool = false
     var onToggleWrap: () -> Void = {}
+    var numbered: Bool = false
+    var showsLines: Bool = false
+    var onToggleLines: () -> Void = {}
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var copied = false
     @State private var pulse = 0
@@ -907,6 +934,17 @@ private struct FenceBar: View {
                 .transcriptFont(12)
                 .foregroundStyle(.secondary)
             Spacer(minLength: 0)
+            if showsLines && CodeBlockLines.showsLines(completed: completed) {
+                Button(CodeBlockLines.label(numbered: numbered)) {
+                    onToggleLines()
+                }
+                .transcriptFont(12)
+                .foregroundStyle(.secondary)
+                .buttonStyle(.plain)
+                .focusable(false)
+                .accessibilityLabel(CodeBlockLines.accessibilityLabel(numbered: numbered))
+                .animation(CodeBlockLines.animation(reduceMotion: reduceMotion), value: numbered)
+            }
             if showsWrap && CodeBlockWrap.showsWrap(completed: completed) {
                 Button(CodeBlockWrap.label(wrapped: wrapped)) {
                     onToggleWrap()
@@ -989,6 +1027,7 @@ private struct FenceSource: View {
     var language: String = ""
     var completed: Bool = true
     @Environment(\.chatFind) private var find
+    @Environment(\.codeBlockNumbered) private var numbered
     @Environment(AppModel.self) private var model
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @Environment(\.transcriptTextPercent) private var transcriptTextPercent
@@ -999,7 +1038,9 @@ private struct FenceSource: View {
 
     var body: some View {
         Group {
-            if CodeBlockWrap.expandsHorizontally(wrapped: wrapped) {
+            if numbered && CodeBlockLines.showsLines(completed: completed) {
+                numberedBlock
+            } else if CodeBlockWrap.expandsHorizontally(wrapped: wrapped) {
                 ScrollView(.horizontal, showsIndicators: true) {
                     sourceText(expandsHorizontally: true)
                         .fixedSize(horizontal: true, vertical: true)
@@ -1011,6 +1052,50 @@ private struct FenceSource: View {
         }
         .padding(.horizontal, 10)
         .padding(.vertical, 8)
+    }
+
+    /// The number stays on its line. Copy still uses the fence body.
+    @ViewBuilder
+    private var numberedBlock: some View {
+        if CodeBlockWrap.expandsHorizontally(wrapped: wrapped) {
+            ScrollView(.horizontal, showsIndicators: true) {
+                numberedRows(expandsHorizontally: true)
+                    .fixedSize(horizontal: true, vertical: true)
+            }
+        } else {
+            numberedRows(expandsHorizontally: false)
+                .frame(maxWidth: .infinity, alignment: .leading)
+        }
+    }
+
+    private func numberedRows(expandsHorizontally: Bool) -> some View {
+        let rows = CodeBlockLines.paintedLines(source, language: language, completed: completed)
+        let width = gutterWidth(count: rows.count)
+        return VStack(alignment: .leading, spacing: 0) {
+            ForEach(Array(rows.enumerated()), id: \.offset) { index, line in
+                HStack(alignment: .firstTextBaseline, spacing: 12) {
+                    Text(CodeBlockLines.gutterLabel(index: index))
+                        .font(.system(size: metrics.fenceFont.pointSize, design: .monospaced))
+                        .foregroundStyle(.secondary)
+                        .frame(minWidth: width, alignment: .trailing)
+                        .accessibilityHidden(true)
+                    QuoteSelectableText(
+                        text: ChatFind.paint(line.characters.isEmpty ? AttributedString("\u{200B}") : line, query: find.query),
+                        quoteEnabled: quoteEnabled,
+                        font: metrics.fenceFont,
+                        expandsHorizontally: expandsHorizontally,
+                        onQuote: { model.quoteIntoComposer($0) }
+                    )
+                }
+            }
+        }
+    }
+
+    private func gutterWidth(count: Int) -> CGFloat {
+        let font = metrics.fenceFont
+        let chars = CodeBlockLines.gutterChars(count: count)
+        let digit = ("0" as NSString).size(withAttributes: [.font: font]).width
+        return ceil(digit * CGFloat(max(chars, 1)))
     }
 
     private func sourceText(expandsHorizontally: Bool) -> some View {

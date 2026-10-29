@@ -25,6 +25,17 @@ import {
   showCodeBlockCopy,
 } from "./codeBlockCopy";
 import {
+  codeBlockLinesAriaLabel,
+  codeBlockLinesClass,
+  codeBlockDisplayRows,
+  codeBlockGutterChars,
+  codeBlockGutterLabel,
+  codeBlockLinesLabel,
+  readCodeBlockLines,
+  showCodeBlockLines,
+  toggleCodeBlockLines,
+} from "./codeBlockLines";
+import {
   codeBlockWrapAriaLabel,
   codeBlockWrapClass,
   codeBlockWrapId,
@@ -1409,18 +1420,21 @@ function FenceChrome({
   wrapId: string;
 }) {
   const [wrapped, setWrapped] = useState(() => readCodeBlockWrap(wrapId));
+  const [numbered, setNumbered] = useState(() => readCodeBlockLines(wrapId));
   const [expanded, setExpanded] = useState(false);
   const activeRowId = useFindRowId();
   const activeRow =
     activeRowId.length > 0 && codeBlockFindRowId(wrapId) === activeRowId;
   useEffect(() => {
     setWrapped(readCodeBlockWrap(wrapId));
+    setNumbered(readCodeBlockLines(wrapId));
     setExpanded(false);
   }, [wrapId]);
   useEffect(() => {
     setExpanded(false);
   }, [source]);
   const wrapOn = showCodeBlockWrap(completed) && wrapped;
+  const linesOn = showCodeBlockLines(completed) && numbered;
   const lineCount = codeBlockLineCount(source);
   const findKeepsOpen = codeBlockFindKeepsOpen({
     activeRow,
@@ -1447,15 +1461,27 @@ function FenceChrome({
         completed={completed}
         wrapped={wrapped}
         onToggleWrap={() => setWrapped(toggleCodeBlockWrap(wrapId, wrapped))}
+        numbered={numbered}
+        onToggleLines={() => setNumbered(toggleCodeBlockLines(wrapId, numbered))}
       />
-      <pre className={codeBlockWrapClass(wrapOn)}>
+      <pre className={codeBlockWrapClass(wrapOn) + codeBlockLinesClass(linesOn)}>
         <code>
-          <HighlightedCode
-            source={shown}
-            language={language}
-            completed={completed}
-            findQuery={findQuery}
-          />
+          {linesOn ? (
+            <NumberedCode
+              source={shown}
+              language={language}
+              completed={completed}
+              findQuery={findQuery}
+              wrapped={wrapOn}
+            />
+          ) : (
+            <HighlightedCode
+              source={shown}
+              language={language}
+              completed={completed}
+              findQuery={findQuery}
+            />
+          )}
         </code>
       </pre>
       {showMore ? (
@@ -1480,12 +1506,16 @@ function FenceBar({
   completed,
   wrapped = false,
   onToggleWrap,
+  numbered = false,
+  onToggleLines,
 }: {
   language: string;
   source: string;
   completed: boolean;
   wrapped?: boolean;
   onToggleWrap?: () => void;
+  numbered?: boolean;
+  onToggleLines?: () => void;
 }) {
   const [copied, setCopied] = useState(false);
   const timer = useRef<ReturnType<typeof window.setTimeout> | null>(null);
@@ -1524,6 +1554,18 @@ function FenceBar({
     <div className="md-fence-bar">
       <span className="md-fence-lang">{language}</span>
       <span className="md-fence-actions">
+        {onToggleLines && showCodeBlockLines(completed) ? (
+          <button
+            type="button"
+            className="md-fence-lines"
+            aria-pressed={numbered}
+            aria-label={codeBlockLinesAriaLabel(numbered)}
+            onMouseDown={keepCodeBlockFocus}
+            onClick={onToggleLines}
+          >
+            {codeBlockLinesLabel(numbered)}
+          </button>
+        ) : null}
         {onToggleWrap && showCodeBlockWrap(completed) ? (
           <button
             type="button"
@@ -1559,6 +1601,69 @@ function FenceBar({
         ) : null}
       </span>
     </div>
+  );
+}
+
+function NumberedCode({
+  source,
+  language,
+  completed,
+  findQuery,
+  wrapped,
+}: {
+  source: string;
+  language: string;
+  completed: boolean;
+  findQuery: string;
+  wrapped: boolean;
+}) {
+  const rows = codeBlockDisplayRows(source, language, completed);
+  const width = `${codeBlockGutterChars(rows.length)}ch`;
+  const paint = (row: ReturnType<typeof codeBlockDisplayRows>[number]) =>
+    row.length === 0 ? (
+      <FindText text={"\u200b"} query={findQuery} />
+    ) : (
+      row.map((span, index) =>
+        span.kind === "plain" ? (
+          <FindText key={index} text={span.text} query={findQuery} />
+        ) : (
+          <span key={index} className={codeHighlightClass(span.kind)}>
+            <FindText text={span.text} query={findQuery} />
+          </span>
+        ),
+      )
+    );
+  if (wrapped) {
+    return (
+      <>
+        {rows.map((row, index) => (
+          <span className="md-fence-line" key={index}>
+            <span className="md-fence-gutter" aria-hidden="true" style={{ width }}>
+              {codeBlockGutterLabel(index)}
+            </span>
+            <span className="md-fence-line-text">{paint(row)}</span>
+          </span>
+        ))}
+      </>
+    );
+  }
+  return (
+    <>
+      <span className="md-fence-gutter-col" aria-hidden="true" style={{ width }}>
+        {rows.map((_, index) => (
+          <span className="md-fence-gutter" key={index}>
+            {codeBlockGutterLabel(index)}
+          </span>
+        ))}
+      </span>
+      <span className="md-fence-code-col">
+        {rows.map((row, index) => (
+          <span className="md-fence-line-text" key={index}>
+            {paint(row)}
+          </span>
+        ))}
+      </span>
+    </>
   );
 }
 

@@ -238,3 +238,4 @@ jobs:
           python3 ios/scripts/test_ios_code_block_collapse.py
           python3 ios/scripts/test_ios_reply_rating.py
           python3 ios/scripts/test_ios_code_block_save.py
+          python3 ios/scripts/test_ios_code_block_lines.py
