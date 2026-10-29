@@ -4415,9 +4415,31 @@ private struct MessageBubble: View {
             onRegenerate: { Task { await model.regenerate() } },
             onEditAsNew: { model.editAsNewMessage(message.content) },
             showQuote: canQuote,
+            showQuoteMessage: offersWholeQuote,
             onRetry: { Task { await model.retryFailedSend(id: message.id) } },
             onRemove: { model.dismissFailedSend(id: message.id) },
-            onQuote: { model.quoteIntoComposer($0) }
+            onQuote: { model.quoteIntoComposer($0) },
+            onQuoteMessage: {
+                model.quoteMessageIntoComposer(message.content, sourceId: message.id)
+            }
+        )
+    }
+
+    /// v2.17: the whole message, not a selection. Pending and streaming stay out.
+    private var offersWholeQuote: Bool {
+        QuoteMessage.offers(
+            fromUser: message.isFromUser,
+            kindMessage: message.isKindMessage
+                && !message.isToolLine
+                && !message.isWidget
+                && !message.isConnect
+                && !message.isApprove
+                && !message.isHandoffRoot,
+            content: message.content,
+            completed: completed,
+            pending: model.isSending
+                && OptimisticSend.isOptimistic(message.id)
+                && model.failedSend(id: message.id) == nil
         )
     }
 
@@ -4464,6 +4486,7 @@ private struct BubbleTimestampMenu: ViewModifier {
     var showFailedSend: Bool = false
     var retryDisabled: Bool = false
     var showQuote: Bool = false
+    var showQuoteMessage: Bool = false
     let onCopy: () -> Void
     let onSpeak: () -> Void
     let onRegenerate: () -> Void
@@ -4471,6 +4494,7 @@ private struct BubbleTimestampMenu: ViewModifier {
     var onRetry: () -> Void = {}
     var onRemove: () -> Void = {}
     var onQuote: (String) -> Void = { _ in }
+    var onQuoteMessage: () -> Void = {}
 
     @ViewBuilder
     private var failedSendActions: some View {
@@ -4489,10 +4513,19 @@ private struct BubbleTimestampMenu: ViewModifier {
         }
     }
 
+    /// v2.17: Quote the whole message when nothing in it is selected.
+    @ViewBuilder
+    private var quoteMessageButton: some View {
+        if showQuoteMessage, QuoteSelection.menuSelection() == nil {
+            Button(QuoteMessage.label) { onQuoteMessage() }
+                .accessibilityLabel(QuoteMessage.accessibilityLabel)
+        }
+    }
+
     func body(content: Content) -> some View {
         if let stamp {
             let selectedQuote = showQuote ? QuoteSelection.menuSelection() : nil
-            let hasActions = showCopy || showSpeak || showRegenerate || showFailedSend || showEditAsNew || selectedQuote != nil
+            let hasActions = showCopy || showSpeak || showRegenerate || showFailedSend || showEditAsNew || selectedQuote != nil || showQuoteMessage
             if hasActions {
                 content.contextMenu {
                     Section {
@@ -4509,6 +4542,7 @@ private struct BubbleTimestampMenu: ViewModifier {
                             Button(RecallDraft.editAsNewMessage) { onEditAsNew() }
                         }
                         quoteButton
+                        quoteMessageButton
                         failedSendActions
                     } header: {
                         Text(stamp)
@@ -4522,7 +4556,7 @@ private struct BubbleTimestampMenu: ViewModifier {
                         .disabled(true)
                 }
             }
-        } else if showCopy || showFailedSend || showEditAsNew || (showQuote && QuoteSelection.menuSelection() != nil) {
+        } else if showCopy || showFailedSend || showEditAsNew || showQuoteMessage || (showQuote && QuoteSelection.menuSelection() != nil) {
             content.contextMenu {
                 if showCopy {
                     Button("Copy") { onCopy() }
@@ -4531,6 +4565,7 @@ private struct BubbleTimestampMenu: ViewModifier {
                     Button(RecallDraft.editAsNewMessage) { onEditAsNew() }
                 }
                 quoteButton
+                quoteMessageButton
                 failedSendActions
             }
         } else {

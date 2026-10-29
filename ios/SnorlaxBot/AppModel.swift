@@ -402,6 +402,24 @@ final class AppModel {
         wantsComposerFocus = true
     }
 
+    /// v2.17: quote a whole message. Does not send.
+    /// A text selection still uses quoteIntoComposer.
+    func quoteMessageIntoComposer(_ text: String, sourceId: String) {
+        guard !computerTakeoverOpen else { return }
+        guard let next = QuoteSelection.append(draft: draft, selection: text) else { return }
+        draft = next.text
+        pendingComposerCaret = next.caret
+        wantsComposerFocus = true
+        if !sourceId.isEmpty, let agent = selectedAgent {
+            quoteJumps.note(
+                agentId: agent.id,
+                threadId: threadID,
+                text: text,
+                sourceId: sourceId
+            )
+        }
+    }
+
     /// Escape restores the snapshot taken when recall was armed.
     /// Up-arrow's snapshot is empty. Stop / pending cards win.
     /// Returns true when this Escape was consumed.
