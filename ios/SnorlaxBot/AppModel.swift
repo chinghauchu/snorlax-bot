@@ -90,6 +90,12 @@ final class AppModel {
             noteChatPreview()
         }
     }
+    /// v2.14: the newest page filled the limit, so older rows may exist.
+    var earlierAvailable = false
+    var earlierLoading = false
+    var earlierError = false
+    /// A prepend should leave the viewport at the top of the new page.
+    var earlierHold = false
     /// v0.80: last preview line per chat, from transcripts already in memory.
     var chatPreviews: [String: String] = [:]
     /// v0.83: latest-message createdAt per chat, already in memory.
@@ -445,6 +451,7 @@ final class AppModel {
             adoptComposerDraft(agentId: Agent.channelID, threadId: nil)
             selectedAgentID = Agent.channelID
             chatOpenHistory = ChatOpenHistory.replace(Agent.channelID)
+            clearEarlier()
             messages = []
             localPreviews = [:]
             navigationPath = []
@@ -468,6 +475,7 @@ final class AppModel {
                 adoptComposerDraft(agentId: nil, threadId: nil)
                 selectedAgentID = nil
                 chatOpenHistory = .empty
+                clearEarlier()
                 messages = []
                 navigationPath = []
                 threadID = nil
@@ -772,6 +780,7 @@ final class AppModel {
         )
         newMessagesAnchorID = nil
         newMessagesReturning = true
+        noteFreshEarlier(rows.count)
         messages = showListed(rows, agentId: id, threadId: thread)
         newMessagesReturning = false
         pendingReadingKey = ReadingPlace.key(agentId: id, threadId: thread)
@@ -885,6 +894,7 @@ final class AppModel {
                     adoptComposerDraft(agentId: nil, threadId: nil)
                     selectedAgentID = nil
                     chatOpenHistory = ChatOpenHistory.noteClosed(chatOpenHistory)
+                    clearEarlier()
                     messages = []
                     navigationPath = []
                     threadID = nil
@@ -1613,7 +1623,7 @@ final class AppModel {
                 if selectedAgentID == originAgentID && threadID == originThreadID {
                     let listed = try await client.listMessages(agentId: originAgentID, threadId: originThreadID)
                     messages = showListed(
-                        OptimisticSend.reconcile(listed: listed),
+                        listedKeepingEarlier(OptimisticSend.reconcile(listed: listed)),
                         agentId: originAgentID,
                         threadId: originThreadID
                     )
@@ -1839,6 +1849,73 @@ final class AppModel {
 
     func failedSend(id: String) -> FailedSendRecord? {
         failedSends.first { $0.id == id }
+    }
+
+    private func noteFreshEarlier(_ count: Int) {
+        earlierAvailable = EarlierMessages.pageMayHaveEarlier(count)
+        earlierLoading = false
+        earlierError = false
+        earlierHold = false
+    }
+
+    private func clearEarlier() {
+        earlierAvailable = false
+        earlierLoading = false
+        earlierError = false
+        earlierHold = false
+    }
+
+    /// Latest-page refresh keeps history already loaded above that window.
+    private func listedKeepingEarlier(_ listed: [Message]) -> [Message] {
+        EarlierMessages.mergeLatest(
+            messages,
+            listed,
+            id: { $0.id },
+            createdAt: { $0.createdAt }
+        )
+    }
+
+    /// v2.14: prepend the next older page. A short page hides the control.
+    func loadEarlier() async {
+        guard earlierAvailable, !earlierLoading else { return }
+        guard isConfigured, let client, let id = selectedAgentID else { return }
+        guard let cursor = EarlierMessages.cursor(ids: messages.map(\.id)) else {
+            earlierAvailable = false
+            return
+        }
+        let generation = readingLoadGeneration
+        let thread = threadID
+        earlierLoading = true
+        earlierError = false
+        defer {
+            if generation == readingLoadGeneration, selectedAgentID == id, threadID == thread {
+                earlierLoading = false
+            }
+        }
+        do {
+            let page = try await client.listMessages(
+                agentId: id,
+                limit: EarlierMessages.pageSize,
+                before: cursor,
+                threadId: thread
+            )
+            guard generation == readingLoadGeneration, selectedAgentID == id, threadID == thread else {
+                return
+            }
+            let merged = EarlierMessages.mergeEarlier(messages, page, id: { $0.id })
+            earlierAvailable = EarlierMessages.stillHasEarlier(
+                pageCount: page.count,
+                added: merged.added
+            )
+            if merged.added > 0 {
+                earlierHold = true
+                messages = showListed(merged.rows, agentId: id, threadId: thread)
+            }
+        } catch {
+            if generation == readingLoadGeneration, selectedAgentID == id, threadID == thread {
+                earlierError = true
+            }
+        }
     }
 
     private func showListed(
@@ -2096,7 +2173,9 @@ final class AppModel {
                 if Task.isCancelled || self.streamEpoch != epoch { return }
                 if selectedAgentID == agent.id {
                     messages = showListed(
-                        try await client.listMessages(agentId: agent.id, threadId: threadID),
+                        listedKeepingEarlier(
+                            try await client.listMessages(agentId: agent.id, threadId: threadID)
+                        ),
                         agentId: agent.id,
                         threadId: threadID
                     )
@@ -2199,7 +2278,9 @@ final class AppModel {
                 if Task.isCancelled || self.streamEpoch != epoch { return }
                 if selectedAgentID == agent.id {
                     messages = showListed(
-                        try await client.listMessages(agentId: agent.id, threadId: threadID),
+                        listedKeepingEarlier(
+                            try await client.listMessages(agentId: agent.id, threadId: threadID)
+                        ),
                         agentId: agent.id,
                         threadId: threadID
                     )
@@ -2231,7 +2312,7 @@ final class AppModel {
         do {
             let rows = try await client.listMessages(agentId: id, threadId: threadID)
             newMessagesReturning = true
-            messages = showListed(rows, agentId: id, threadId: threadID)
+            messages = showListed(listedKeepingEarlier(rows), agentId: id, threadId: threadID)
             newMessagesReturning = false
             prunePreviews()
         } catch {
@@ -2383,6 +2464,7 @@ final class AppModel {
             adoptComposerDraft(agentId: nil, threadId: nil)
             selectedAgentID = nil
             chatOpenHistory = ChatOpenHistory.noteClosed(chatOpenHistory)
+            clearEarlier()
             messages = []
             navigationPath = []
             threadID = nil

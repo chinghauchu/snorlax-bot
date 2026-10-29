@@ -460,6 +460,17 @@ import {
   shouldBlockSend,
 } from "./optimisticSend";
 import {
+  EARLIER_FAILED_LABEL,
+  EARLIER_PAGE_SIZE,
+  LOADING_EARLIER_LABEL,
+  LOAD_EARLIER_LABEL,
+  applyEarlierPage,
+  earlierCursor,
+  mergeLatestPage,
+  pageMayHaveEarlier,
+  showEarlierControl,
+} from "./earlierMessages";
+import {
   FAILED_SEND_COULDNT,
   FAILED_SEND_REMOVE,
   FAILED_SEND_RETRY,
@@ -1490,6 +1501,13 @@ export function App() {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const messagesRef = useRef(messages);
   messagesRef.current = messages;
+  /** v2.14: the newest page filled the limit, so older rows may exist. */
+  const [earlierAvailable, setEarlierAvailable] = useState(false);
+  const [earlierLoading, setEarlierLoading] = useState(false);
+  const [earlierError, setEarlierError] = useState(false);
+  const earlierFlightRef = useRef(false);
+  const earlierHoldRef = useRef(0);
+  const earlierAppliedRef = useRef(0);
   /** v0.80: last preview line per chat, from transcripts already in memory. */
   const [chatPreviews, setChatPreviews] = useState<Record<string, string>>({});
   /** v0.83: latest-message createdAt per chat, already in memory. */
@@ -2514,6 +2532,14 @@ export function App() {
     const visible = active
       ? messages.filter((message) => isTranscriptVisible(message, active))
       : messages;
+    if (earlierHoldRef.current !== earlierAppliedRef.current) {
+      earlierAppliedRef.current = earlierHoldRef.current;
+      const el = scroller.current;
+      if (el) el.scrollTop = 0;
+      applyStick(onUserScroll(stickRef.current, false));
+      lastAssistantSig.current = assistantBubbleSignature(visible);
+      return;
+    }
     if (pending && key && pending.key === key) {
       if (pending.gen !== transcriptGen) return;
       const decision = readingRestoreDecision(
@@ -2653,10 +2679,12 @@ export function App() {
         if (preferred) {
           const listed = await listMessages(next, preferred);
           previewLive.current = true;
+          noteFreshPage(listed.length);
           setMessages(commitTranscript(listed, preferred, null));
           focusComposer();
           placeCaretAtEnd();
         } else {
+          clearEarlier();
           setMessages([]);
         }
         finishNewMessagesLoad(epoch);
@@ -2668,6 +2696,7 @@ export function App() {
         setActiveId(null);
         setThreadId(null);
         const epoch = beginNewMessagesLoad(null, null);
+        clearEarlier();
         setMessages([]);
         finishNewMessagesLoad(epoch);
         setLoadError(describeError(err));
@@ -2695,6 +2724,7 @@ export function App() {
       failedSendsRef.current = [];
       setFailedSends([]);
       hiddenOrphans.current = new Set();
+      clearEarlier();
       setMessages([]);
       setLoadError(null);
       return;
@@ -2775,6 +2805,57 @@ export function App() {
     row.scrollIntoView({ block: "nearest" });
   }
 
+  function noteFreshPage(count: number) {
+    setEarlierAvailable(pageMayHaveEarlier(count));
+    setEarlierError(false);
+    setEarlierLoading(false);
+  }
+
+  function clearEarlier() {
+    setEarlierAvailable(false);
+    setEarlierError(false);
+    setEarlierLoading(false);
+  }
+
+  async function loadEarlier() {
+    if (earlierFlightRef.current || !earlierAvailable || earlierLoading) return;
+    if (!session || !activeId) return;
+    const cursor = earlierCursor(messagesRef.current);
+    if (!cursor) {
+      setEarlierAvailable(false);
+      return;
+    }
+    const agentId = activeId;
+    const thread = threadId;
+    const gen = transcriptGenRef.current;
+    earlierFlightRef.current = true;
+    setEarlierLoading(true);
+    setEarlierError(false);
+    const sameChat = () =>
+      transcriptGenRef.current === gen &&
+      convoRef.current.agentId === agentId &&
+      (convoRef.current.threadId ?? null) === (thread ?? null);
+    try {
+      const page = await listMessages(session, agentId, {
+        ...(thread ? { threadId: thread } : {}),
+        before: cursor,
+        limit: EARLIER_PAGE_SIZE,
+      });
+      if (!sameChat()) return;
+      const merged = applyEarlierPage(messagesRef.current, page);
+      setEarlierAvailable(merged.mayHaveEarlier);
+      if (merged.added > 0) {
+        earlierHoldRef.current += 1;
+        setMessages(commitTranscript(merged.rows, agentId, thread));
+      }
+    } catch {
+      if (sameChat()) setEarlierError(true);
+    } finally {
+      earlierFlightRef.current = false;
+      if (sameChat()) setEarlierLoading(false);
+    }
+  }
+
   async function loadConversation(
     id: string,
     thread: string | null,
@@ -2827,6 +2908,7 @@ export function App() {
     if (!session) {
       if (transcriptGenRef.current !== gen) return;
       previewLive.current = snapshotChatPreview(thread);
+      noteFreshPage(rows.length);
       setMessages(commitTranscript(rows, id, thread));
       setTranscriptGen(gen);
       finishNewMessagesLoad(epoch);
@@ -2844,6 +2926,7 @@ export function App() {
     }
     if (transcriptGenRef.current !== gen) return;
     previewLive.current = snapshotChatPreview(thread);
+    noteFreshPage(rows.length);
     setMessages(commitTranscript(rows, id, thread));
     setTranscriptGen(gen);
     finishNewMessagesLoad(epoch);
@@ -2883,6 +2966,7 @@ export function App() {
       moveComposer(agent.id, null);
       setActiveId(agent.id);
       setThreadId(null);
+      clearEarlier();
       setMessages([]);
       setComposerError(null);
       setProfileOpen(false);
@@ -2916,6 +3000,7 @@ export function App() {
       moveComposer(channel.id, null);
       setActiveId(channel.id);
       setThreadId(null);
+      clearEarlier();
       setMessages([]);
       setComposerError(null);
       setProfileOpen(false);
@@ -3519,6 +3604,8 @@ export function App() {
           setFailedSends(keptFailed);
           const listed = next ? await listMessages(session, next) : [];
           previewLive.current = Boolean(next);
+          if (next) noteFreshPage(listed.length);
+          else clearEarlier();
           setMessages(next ? commitTranscript(listed, next, null) : []);
         } finally {
           finishNewMessagesLoad(epoch);
@@ -3887,7 +3974,10 @@ export function App() {
       if (showsStream()) {
         setStreamMessages(
           commitTranscript(
-            userMsg ? reconcileOptimistic([], userMsg.id, listed) : listed,
+            mergeLatestPage(
+              messagesRef.current,
+              userMsg ? reconcileOptimistic([], userMsg.id, listed) : listed,
+            ),
             streamChatId,
             viewThread,
           ),
@@ -3974,7 +4064,13 @@ export function App() {
               : undefined,
           );
           const viewThread = streamKind === "channel" ? streamThread : null;
-          setStreamMessages(commitTranscript(listed, streamChatId, viewThread));
+          setStreamMessages(
+            commitTranscript(
+              mergeLatestPage(messagesRef.current, listed),
+              streamChatId,
+              viewThread,
+            ),
+          );
         } catch {
           /* keep local transcript */
         }
@@ -7510,6 +7606,7 @@ export function App() {
       }
       return [];
     });
+    clearEarlier();
     setMessages([]);
   }
 
@@ -7990,6 +8087,25 @@ export function App() {
         >
           <FindQueryProvider query={findQueryShown}>
           <div className="transcript-inner">
+            {credsReady &&
+            !loadError &&
+            showEarlierControl(earlierAvailable, messages.length) ? (
+              <div className="load-earlier">
+                <button
+                  type="button"
+                  className="load-earlier-btn"
+                  disabled={earlierLoading}
+                  aria-busy={earlierLoading}
+                  aria-label={LOAD_EARLIER_LABEL}
+                  onClick={() => void loadEarlier()}
+                >
+                  {earlierLoading ? LOADING_EARLIER_LABEL : LOAD_EARLIER_LABEL}
+                </button>
+                {earlierError ? (
+                  <span className="load-earlier-error">{EARLIER_FAILED_LABEL}</span>
+                ) : null}
+              </div>
+            ) : null}
             {!credsReady ? (
               <p className="transcript-line">{MISSING_CREDS}</p>
             ) : loadError ? (

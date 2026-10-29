@@ -313,10 +313,12 @@ export async function deleteUserMemory(
 export async function listMessages(
   session: Session,
   agentId: string,
-  opts?: { threadId?: string },
+  opts?: { threadId?: string; before?: string; limit?: number },
 ): Promise<ChatMessage[]> {
   const params = new URLSearchParams();
   if (opts?.threadId) params.set("threadId", opts.threadId);
+  if (opts?.before) params.set("before", opts.before);
+  if (opts?.limit != null) params.set("limit", String(opts.limit));
   const query = params.toString();
   const response = await fetch(
     `${session.baseUrl}/v1/agents/${encodeURIComponent(agentId)}/messages${query ? `?${query}` : ""}`,
