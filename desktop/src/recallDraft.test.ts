@@ -195,8 +195,7 @@ test("iOS adds Edit as new message beside the timestamp long-press", () => {
   const header = menu.slice(headerStart, headerEnd);
   assert.match(header, /Text\(stamp\)/);
   assert.doesNotMatch(header, /Button/);
-  assert.match(chat, /showEditAsNew: index == recallIdx/);
-  assert.match(chat, /RecallDraft\.latestIndex/);
+  assert.match(chat, /showEditAsNew: EditEarlierMessage\.offers\(/);
   assert.match(chat, /model\.editAsNewMessage\(message\.content\)/);
   assert.match(chat, /clearRecallFromEscape/);
   assert.match(chat, /onArrowUpRecall/);
