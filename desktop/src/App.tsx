@@ -123,10 +123,12 @@ import {
 import { COMPOSER_MAX_PX, composerFrame } from "./composerGrow";
 import {
   arrowUpRecalls,
+  EDIT_AS_NEW_MESSAGE,
   escapeClearsRecall,
   latestUserMessageText,
   recallArmedAfterEdit,
 } from "./recallDraft";
+import { editAsNewDraft, offersEditAsNew } from "./editEarlierMessage";
 import {
   QUOTE_LABEL,
   QUOTE_ROOT_VALUE,
@@ -1142,6 +1144,11 @@ function MessageActions({
   );
 }
 
+/** v2.15: App assigns this so the hover row can edit without a new prop. */
+const editEarlierMessageRef: { current: (text: string) => void } = {
+  current: () => {},
+};
+
 function UserMessageCopy({ content }: { content: string }) {
   const [copied, setCopied] = useState(false);
   const timer = useRef<number | null>(null);
@@ -1176,6 +1183,21 @@ function UserMessageCopy({ content }: { content: string }) {
           </span>
         ) : null}
       </span>
+      {offersEditAsNew({
+        fromUser: true,
+        kindMessage: true,
+        content,
+        pending: false,
+      }) ? (
+        <button
+          type="button"
+          className="message-action"
+          onMouseDown={(event) => event.preventDefault()}
+          onClick={() => editEarlierMessageRef.current(content)}
+        >
+          {EDIT_AS_NEW_MESSAGE}
+        </button>
+      ) : null}
     </div>
   );
 }
@@ -1573,6 +1595,8 @@ export function App() {
   const typeIntoComposerRef = useRef<(character: string) => void>(() => {});
   /** v0.68: composer text came from recalling the latest user message. */
   const [recallArmed, setRecallArmed] = useState(false);
+  /** v2.15: composer text from immediately before Edit as new message. */
+  const recallRestoreRef = useRef("");
   const [dictation, setDictation] = useState<DictationState>("idle");
   const [speakingId, setSpeakingId] = useState<string | null>(null);
   const speakAudio = useRef<HTMLAudioElement | null>(null);
@@ -2147,6 +2171,7 @@ export function App() {
       convoRef.current = { agentId: nextId, threadId: nextThread };
       draftRef.current = nextText;
       setDraft(nextText);
+      recallRestoreRef.current = "";
       setRecallArmed(false);
       setMentionOpen(false);
       setSkillOpen(false);
@@ -4107,6 +4132,7 @@ export function App() {
         if (open) {
           draftRef.current = restored;
           setDraft(restored);
+          recallRestoreRef.current = "";
           setRecallArmed(false);
           setQuoteJumpEpoch((epoch) => epoch + 1);
         }
@@ -4209,6 +4235,7 @@ export function App() {
     pendingCaret.current = text.length;
     draftRef.current = text;
     setDraft(text);
+    recallRestoreRef.current = "";
     setRecallArmed(true);
     syncComposerTriggers(text, text.length);
     if (active) {
@@ -4216,6 +4243,29 @@ export function App() {
       setQuoteJumpEpoch((epoch) => epoch + 1);
     }
   }
+
+  /**
+   * v2.15: put any settled user message in the composer.
+   * Escape restores the text that was already there. Does not send.
+   */
+  function editEarlierIntoComposer(text: string) {
+    if (takeoverOpen) return;
+    const next = editAsNewDraft(draftRef.current, text);
+    if (!next) return;
+    const unchanged = draftRef.current === next.text;
+    recallRestoreRef.current = next.restore;
+    pendingCaret.current = unchanged ? null : next.caret;
+    draftRef.current = next.text;
+    setDraft(next.text);
+    setRecallArmed(true);
+    syncComposerTriggers(next.text, next.caret);
+    if (active) {
+      quoteJumps.current.clearPending(active.id, threadId);
+      setQuoteJumpEpoch((epoch) => epoch + 1);
+    }
+    if (unchanged) placeCaretAtEnd();
+  }
+  editEarlierMessageRef.current = editEarlierIntoComposer;
 
   /** v0.94: quote the selection into this chat's draft. Does not send. */
   function quoteIntoComposer(selection: string) {
@@ -4225,7 +4275,11 @@ export function App() {
     pendingCaret.current = next.caret;
     draftRef.current = next.text;
     setDraft(next.text);
-    setRecallArmed((armed) => recallArmedAfterEdit(next.text, armed));
+    setRecallArmed((armed) => {
+      const still = recallArmedAfterEdit(next.text, armed);
+      if (!still) recallRestoreRef.current = "";
+      return still;
+    });
     syncComposerTriggers(next.text, next.caret);
     const sourceId = readQuoteOffer()?.messageId ?? "";
     if (sourceId && active) {
@@ -4236,13 +4290,17 @@ export function App() {
   }
   quoteKeyRef.current = quoteIntoComposer;
 
-  /** Escape, or a later empty field, leaves the composer empty. */
+  /** Escape restores the snapshot. Up-arrow's snapshot is empty. */
   function clearRecalledDraft() {
-    pendingCaret.current = 0;
-    draftRef.current = "";
-    setDraft("");
+    const restore = recallRestoreRef.current;
+    recallRestoreRef.current = "";
+    const unchanged = draftRef.current === restore;
+    pendingCaret.current = unchanged ? null : restore.length;
+    draftRef.current = restore;
+    setDraft(restore);
     setRecallArmed(false);
-    syncComposerTriggers("", 0);
+    syncComposerTriggers(restore, restore.length);
+    if (unchanged) placeCaretAtEnd();
     if (active) {
       quoteJumps.current.clearPending(active.id, threadId);
       setQuoteJumpEpoch((epoch) => epoch + 1);
@@ -4375,6 +4433,7 @@ export function App() {
     chatDrafts.current.clear(origin.agentId, origin.threadId);
     draftRef.current = "";
     setDraft("");
+    recallRestoreRef.current = "";
     setRecallArmed(false);
     setComposerError(null);
     setAttachError(null);
@@ -4469,6 +4528,7 @@ export function App() {
     chatDrafts.current.clear(active.id, threadId);
     draftRef.current = "";
     setDraft("");
+    recallRestoreRef.current = "";
     setRecallArmed(false);
     setQuoteJumpEpoch((epoch) => epoch + 1);
     resizeComposer(true);
@@ -5605,7 +5665,11 @@ export function App() {
     pendingCaret.current = next.caret;
     draftRef.current = next.text;
     setDraft(next.text);
-    setRecallArmed((armed) => recallArmedAfterEdit(next.text, armed));
+    setRecallArmed((armed) => {
+      const still = recallArmedAfterEdit(next.text, armed);
+      if (!still) recallRestoreRef.current = "";
+      return still;
+    });
     syncComposerTriggers(next.text, next.caret);
   };
 
@@ -6041,6 +6105,7 @@ export function App() {
       pendingCaret.current = 0;
     }
     setDraft("");
+    recallRestoreRef.current = "";
     setRecallArmed(false);
     syncComposerTriggers("", 0);
     setAttachError(null);
@@ -8931,7 +8996,11 @@ export function App() {
                   const value = e.target.value;
                   draftRef.current = value;
                   setDraft(value);
-                  setRecallArmed((armed) => recallArmedAfterEdit(value, armed));
+                  setRecallArmed((armed) => {
+                    const still = recallArmedAfterEdit(value, armed);
+                    if (!still) recallRestoreRef.current = "";
+                    return still;
+                  });
                   syncComposerTriggers(value, e.target.selectionStart);
                   resizeComposer();
                   syncComposerScroll();

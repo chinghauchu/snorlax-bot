@@ -191,7 +191,11 @@ final class AppModel {
             if SkillPicker.query(in: draft) == nil {
                 skillPickerDismissed = false
             }
-            recallArmed = RecallDraft.armedAfterEdit(text: draft, wasArmed: recallArmed)
+            let nextArmed = RecallDraft.armedAfterEdit(text: draft, wasArmed: recallArmed)
+            recallArmed = nextArmed
+            if !nextArmed {
+                recallRestore = ""
+            }
             if !suppressDraftPersist {
                 persistOpenDraft()
             }
@@ -199,6 +203,8 @@ final class AppModel {
     }
     /// v0.68: composer text came from recalling the latest user message.
     var recallArmed = false
+    /// v2.15: composer text from immediately before Edit as new message.
+    var recallRestore = ""
     var pendingAttachments: [PendingChatAttachment] = []
     var attachError: String?
     var attachInFlight = 0
@@ -358,6 +364,7 @@ final class AppModel {
             quoteJumps.clearPending(agentId: agent.id, threadId: threadID)
         }
         draft = text
+        recallRestore = ""
         recallArmed = true
         pendingComposerCaret = (text as NSString).length
     }
@@ -380,20 +387,23 @@ final class AppModel {
         }
     }
 
-    /// v0.68: long-press "Edit as new message" on the latest user bubble.
+    /// v2.15: long-press "Edit as new message" on any settled user bubble.
+    /// Escape restores the composer text from immediately before this action.
     func editAsNewMessage(_ text: String) {
         guard !computerTakeoverOpen else { return }
-        guard !text.isEmpty else { return }
+        guard let next = EditEarlierMessage.draft(current: draft, messageText: text) else { return }
         if let agent = selectedAgent {
             quoteJumps.clearPending(agentId: agent.id, threadId: threadID)
         }
-        draft = text
+        draft = next.text
+        recallRestore = next.restore
         recallArmed = true
-        pendingComposerCaret = (text as NSString).length
+        pendingComposerCaret = next.caret
         wantsComposerFocus = true
     }
 
-    /// Escape restores a recalled draft to empty. Stop / pending cards win.
+    /// Escape restores the snapshot taken when recall was armed.
+    /// Up-arrow's snapshot is empty. Stop / pending cards win.
     /// Returns true when this Escape was consumed.
     @discardableResult
     func clearRecallFromEscape(composing: Bool) -> Bool {
@@ -409,9 +419,11 @@ final class AppModel {
         if let agent = selectedAgent {
             quoteJumps.clearPending(agentId: agent.id, threadId: threadID)
         }
-        draft = ""
+        let restore = recallRestore
+        draft = restore
         recallArmed = false
-        pendingComposerCaret = 0
+        recallRestore = ""
+        pendingComposerCaret = EditEarlierMessage.restoredCaret(restore)
         return true
     }
 
@@ -676,6 +688,7 @@ final class AppModel {
         draft = next
         suppressDraftPersist = false
         recallArmed = false
+        recallRestore = ""
         pendingComposerCaret = next.utf16.count
     }
 
@@ -1744,6 +1757,7 @@ final class AppModel {
         suppressDraftPersist = false
         pendingComposerCaret = 0
         recallArmed = false
+        recallRestore = ""
         wantsComposerFocus = true
     }
 
@@ -1819,6 +1833,7 @@ final class AppModel {
                 suppressDraftPersist = false
                 pendingComposerCaret = (restored as NSString).length
                 recallArmed = false
+                recallRestore = ""
             }
             return
         }

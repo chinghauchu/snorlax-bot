@@ -2439,15 +2439,6 @@ struct ChatView: View {
                             expanded: expandedToolStacks
                         )
                         let showLiveChrome = livePaint.header != nil || !livePaint.lines.isEmpty
-                        let recallIdx = RecallDraft.latestIndex(
-                            in: visible.map { message in
-                                RecallDraft.Row(
-                                    fromUser: message.isFromUser,
-                                    kindMessage: message.isKindMessage,
-                                    content: message.content
-                                )
-                            }
-                        )
                         let dayLabels = DaySeparator.labels(
                             rows: visible.enumerated().map { index, message in
                                 let toolStack = CompactToolTraces.stack(for: index, in: toolStacks)
@@ -2557,7 +2548,14 @@ struct ChatView: View {
                                                 sending: model.isSending
                                             ),
                                             completed: !(model.isSending && index == liveAssistantIdx),
-                                            showEditAsNew: index == recallIdx,
+                                            showEditAsNew: EditEarlierMessage.offers(
+                                                fromUser: message.isFromUser,
+                                                kindMessage: message.isKindMessage,
+                                                content: message.content,
+                                                pending: model.isSending
+                                                    && OptimisticSend.isOptimistic(message.id)
+                                                    && model.failedSend(id: message.id) == nil
+                                            ),
                                             shortcutCopied: message.id == copiedReplyId,
                                             showCaret: StreamingCaretChrome.shouldShow(
                                                 busy: model.isSending,

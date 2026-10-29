@@ -7,9 +7,11 @@ user kind=message as an editable draft, caret at the end. Escape or
 clearing the field restores empty. Do not recall when the composer
 already has text. Stop still wins while generating.
 
-iOS: long-press the user's own most recent bubble and choose
-"Edit as new message" (added beside the v0.65 timestamp row).
-Hardware Up-arrow uses the same empty-composer rule.
+iOS: long-press a settled user bubble and choose "Edit as new
+message" (added beside the v0.65 timestamp row). v2.15 offers
+that item on every such bubble; this file still locks Up-arrow
+to the latest message. Hardware Up-arrow uses the same
+empty-composer rule.
 
 No new HTTP. OpenAPI stays 0.18.0. Never reintroduce computerPane.ts.
 """
@@ -124,8 +126,8 @@ def test_rules_match_desktop() -> None:
 
 
 def test_long_press_keeps_timestamp_and_adds_edit() -> None:
-    assert "RecallDraft.latestIndex" in CHAT
-    assert "showEditAsNew: index == recallIdx" in CHAT
+    assert "EditEarlierMessage.offers(" in CHAT
+    assert "showEditAsNew: EditEarlierMessage.offers(" in CHAT
     assert "model.editAsNewMessage(message.content)" in CHAT
     menu = _slice(CHAT, "struct BubbleTimestampMenu", "struct AttachmentShareSheet")
     assert "Button(stamp)" in menu
