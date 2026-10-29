@@ -235,3 +235,4 @@ jobs:
           python3 ios/scripts/test_ios_user_long_message.py
           python3 ios/scripts/test_ios_quote_message.py
           python3 ios/scripts/test_ios_lightbox_copy.py
+          python3 ios/scripts/test_ios_code_block_collapse.py
