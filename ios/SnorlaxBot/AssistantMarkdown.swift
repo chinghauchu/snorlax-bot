@@ -53,7 +53,12 @@ struct AssistantMarkdown: View {
                     }
                 case .blockMath(let source, let raw, let closed):
                     if completed && closed {
-                        MathBlock(source: source, raw: raw)
+                        MathBlock(
+                            source: source,
+                            raw: raw,
+                            completed: completed,
+                            closed: closed
+                        )
                     } else {
                         MathFallback(raw: raw, block: true, quoteEnabled: completed)
                     }
@@ -1115,25 +1120,55 @@ private struct FenceSource: View {
 private struct MathBlock: View {
     let source: String
     let raw: String
+    var completed: Bool
+    var closed: Bool
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var failed = false
     @State private var size = CGSize(width: 1, height: 1)
+    @State private var copied = false
+    @State private var pulse = 0
 
     var body: some View {
-        Group {
-            if failed {
-                MathFallback(raw: raw, block: true)
-            } else {
-                ScrollView(.horizontal, showsIndicators: true) {
-                    MathWebView(
-                        source: source,
-                        display: true,
-                        text: MermaidColors.hex(UIColor.label),
-                        failed: $failed,
-                        size: $size
-                    )
-                    .frame(width: max(size.width, 1), height: max(size.height, 1), alignment: .topLeading)
+        VStack(alignment: .leading, spacing: 0) {
+            if MathBlockCopy.showsCopy(completed: completed, closed: closed) {
+                HStack {
+                    Spacer(minLength: 0)
+                    Button(MathBlockCopy.label(copied: copied)) {
+                        UIPasteboard.general.string = MathBlockCopy.clipboardText(source)
+                        copied = true
+                        pulse += 1
+                        let ticket = pulse
+                        Task {
+                            try? await Task.sleep(nanoseconds: MathBlockCopy.feedbackNanoseconds)
+                            if ticket == pulse {
+                                copied = false
+                            }
+                        }
+                    }
+                    .transcriptFont(12)
+                    .foregroundStyle(.secondary)
+                    .buttonStyle(.plain)
+                    .focusable(false)
+                    .accessibilityLabel(MathBlockCopy.accessibilityLabel(copied: copied))
+                    .animation(MathBlockCopy.animation(reduceMotion: reduceMotion), value: copied)
                 }
-                .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            Group {
+                if failed {
+                    MathFallback(raw: raw, block: true)
+                } else {
+                    ScrollView(.horizontal, showsIndicators: true) {
+                        MathWebView(
+                            source: source,
+                            display: true,
+                            text: MermaidColors.hex(UIColor.label),
+                            failed: $failed,
+                            size: $size
+                        )
+                        .frame(width: max(size.width, 1), height: max(size.height, 1), alignment: .topLeading)
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                }
             }
         }
     }
