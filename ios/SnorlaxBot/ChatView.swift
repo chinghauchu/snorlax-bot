@@ -4087,19 +4087,35 @@ private struct MessageBubble: View {
                     Spacer(minLength: 48)
                     VStack(alignment: .leading, spacing: 6) {
                         userAttachments
-                        if showsQuoteJump {
-                            userQuoteBody
-                        }
-                        if !showsQuoteJump && !message.content.isEmpty {
-                            MentionLabel(
-                                text: message.displayContent,
-                                names: agents.filter { !$0.isChannel }.map(\.name),
-                                links: true,
-                                findRowId: message.id
-                            )
-                            .transcriptFont(14)
-                            .textSelection(.enabled)
-                            .frame(minWidth: 0, alignment: .leading)
+                        if !message.content.isEmpty {
+                            UserMessageClamp(
+                                settled: UserLongMessage.settled(
+                                    fromUser: message.isFromUser,
+                                    kindMessage: message.isKindMessage,
+                                    hasText: !message.content.isEmpty,
+                                    pending: model.isSending
+                                        && OptimisticSend.isOptimistic(message.id)
+                                        && model.failedSend(id: message.id) == nil
+                                ),
+                                text: message.content,
+                                activeFind: find.activeRowId == message.id
+                                    && ChatFind.queryActive(find.query)
+                            ) {
+                                if showsQuoteJump {
+                                    userQuoteBody
+                                }
+                                if !showsQuoteJump {
+                                    MentionLabel(
+                                        text: message.displayContent,
+                                        names: agents.filter { !$0.isChannel }.map(\.name),
+                                        links: true,
+                                        findRowId: message.id
+                                    )
+                                    .transcriptFont(14)
+                                    .textSelection(.enabled)
+                                    .frame(minWidth: 0, alignment: .leading)
+                                }
+                            }
                         }
                     }
                     .frame(minWidth: 0, maxWidth: .infinity, alignment: .leading)

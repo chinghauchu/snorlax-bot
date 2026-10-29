@@ -1309,6 +1309,12 @@ mark.find-hit.active {
   color: var(--accent);
 }
 
+/* v2.16: the user bubble already gaps its children, so the shared
+   toggle does not add a second 6px margin. */
+.bubble.user .long-message-toggle {
+  margin: 0;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .long-message {
     transition: none;

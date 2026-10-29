@@ -404,6 +404,8 @@ import {
   splitAssistantBubbles,
 } from "./assistantBubbles";
 import { LongMessageBody } from "./LongMessageBody";
+import { UserMessageClamp } from "./UserMessageClamp";
+import { userLongMessageSettled } from "./userLongMessage";
 import { bubbleTimeLabel } from "./bubbleTime";
 import { dayGroups, daySeparatorLabels } from "./daySeparator";
 import {
@@ -427,6 +429,7 @@ import {
   lastCompletedLeftMessageIndex,
   MESSAGE_COPY_FEEDBACK_MS,
   regeneratePostBody,
+  isUserKindMessage,
   showAssistantCopy,
   showAssistantRegenerate,
   showUserCopy,
@@ -8503,7 +8506,21 @@ export function App() {
                           onOpenImage={openImageLightbox}
                         />
                         {message.content ? (
-                          quoteParts ? (
+                          <UserMessageClamp
+                            settled={userLongMessageSettled({
+                              fromUser: mine,
+                              kindMessage: isUserKindMessage(message),
+                              hasText: message.content.length > 0,
+                              pending: userCopyPending({
+                                id: message.id,
+                                busy,
+                                failed: failedSends.some((row) => row.id === message.id),
+                              }),
+                            })}
+                            text={message.content}
+                            activeFind={findRowActive(message.id) === "true"}
+                          >
+                          {quoteParts ? (
                             <div className="user-quote-text">
                               {quoteParts.map((part, partIndex) =>
                                 part.kind === "quote" ? (
@@ -8558,7 +8575,8 @@ export function App() {
                             />
                             </span>
                           </pre>
-                          )
+                          )}
+                          </UserMessageClamp>
                         ) : null}
                       </div>
                       {showUserCopy({
