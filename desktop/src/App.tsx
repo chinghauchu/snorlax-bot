@@ -603,6 +603,15 @@ import {
   pendingImagePreviewTarget,
 } from "./pendingImagePreview";
 import {
+  LIGHTBOX_COPY_MS,
+  lightboxCopyAria,
+  lightboxCopyBlob,
+  lightboxCopyKeepsOpen,
+  lightboxCopyLabel,
+  lightboxCopyMimeType,
+  lightboxCopyOffered,
+} from "./lightboxCopy";
+import {
   LIGHTBOX_SAVE_ARIA,
   LIGHTBOX_SAVE_LABEL,
   downloadLightboxBlob,
@@ -1826,6 +1835,7 @@ export function App() {
   const lightboxTargetRef = useRef<ImageLightboxTarget | null>(null);
   const lightboxReturnRef = useRef<HTMLElement | null>(null);
   const lightboxCloseRef = useRef<HTMLButtonElement>(null);
+  const lightboxCopyRef = useRef<HTMLButtonElement>(null);
   const lightboxSaveRef = useRef<HTMLButtonElement>(null);
   const lightboxZoomInRef = useRef<HTMLButtonElement>(null);
   const lightboxZoomOutRef = useRef<HTMLButtonElement>(null);
@@ -1835,6 +1845,9 @@ export function App() {
   const lightboxBackdropRef = useRef<HTMLDivElement>(null);
   const lightboxZoomFrameRef = useRef<HTMLDivElement>(null);
   const lightboxSaving = useRef(false);
+  const lightboxCopying = useRef(false);
+  const lightboxCopyTimer = useRef<number | null>(null);
+  const [lightboxCopied, setLightboxCopied] = useState(false);
   const lightboxWasOpen = useRef(false);
   const lightboxWheelPending = useRef(0);
   const lightboxPanDrag = useRef<{
@@ -2466,6 +2479,47 @@ export function App() {
     setLightboxZoom((current) => lightboxZoomApplied(current, action, fitted));
   };
 
+  async function copyLightboxImage() {
+    if (!lightboxCopyKeepsOpen()) return;
+    const frame = lightboxFrame;
+    if (!frame || lightboxCopying.current) return;
+    if (!lightboxCopyOffered({ url: frame.url })) return;
+    const frameId = frame.id;
+    lightboxCopying.current = true;
+    try {
+      const blob = await readLightboxImageBlob(
+        frame.url,
+        session ? (target) => fetchAttachmentBlob(session, target) : null,
+      );
+      if (!blob || blob.size === 0) return;
+      if (lightboxTargetRef.current?.id !== frameId) return;
+      const sniffed = sniffImageExtension(
+        new Uint8Array(await blob.slice(0, 16).arrayBuffer()),
+      );
+      const mime = lightboxCopyMimeType({ blobType: blob.type, sniffed });
+      if (!mime) return;
+      const typed = await lightboxCopyBlob(blob, mime);
+      if (!typed || typeof ClipboardItem === "undefined" || !navigator.clipboard?.write) {
+        return;
+      }
+      await navigator.clipboard.write([new ClipboardItem({ [mime]: typed })]);
+      if (lightboxTargetRef.current?.id !== frameId) return;
+      setLightboxCopied(true);
+      if (lightboxCopyTimer.current != null) {
+        window.clearTimeout(lightboxCopyTimer.current);
+      }
+      lightboxCopyTimer.current = window.setTimeout(() => {
+        lightboxCopyTimer.current = null;
+        if (lightboxTargetRef.current?.id !== frameId) return;
+        setLightboxCopied(false);
+      }, LIGHTBOX_COPY_MS);
+    } catch {
+      // A failed read leaves the overlay up and the label as Copy.
+    } finally {
+      lightboxCopying.current = false;
+    }
+  }
+
   async function saveLightboxImage() {
     if (!lightboxSaveKeepsOpen()) return;
     const frame = lightboxFrame;
@@ -2542,6 +2596,11 @@ export function App() {
     lightboxWheelPending.current = 0;
     lightboxPanDrag.current = null;
     setLightboxZoomDragging(false);
+    setLightboxCopied(false);
+    if (lightboxCopyTimer.current != null) {
+      window.clearTimeout(lightboxCopyTimer.current);
+      lightboxCopyTimer.current = null;
+    }
   }, [lightboxFrame?.id]);
 
   useEffect(() => {
@@ -10395,11 +10454,13 @@ export function App() {
                     ? "zoomOut"
                     : active === lightboxZoomInRef.current
                       ? "zoomIn"
-                      : active === lightboxSaveRef.current
-                        ? "save"
-                        : active === lightboxCloseRef.current
-                          ? "close"
-                          : null;
+                      : active === lightboxCopyRef.current
+                        ? "copy"
+                        : active === lightboxSaveRef.current
+                          ? "save"
+                          : active === lightboxCloseRef.current
+                            ? "close"
+                            : null;
             const next = nextLightboxFocus(order, current, event.shiftKey);
             event.preventDefault();
             const node =
@@ -10411,9 +10472,11 @@ export function App() {
                     ? lightboxZoomOutRef.current
                     : next === "zoomIn"
                       ? lightboxZoomInRef.current
-                      : next === "save"
-                        ? lightboxSaveRef.current
-                        : lightboxCloseRef.current;
+                      : next === "copy"
+                        ? lightboxCopyRef.current
+                        : next === "save"
+                          ? lightboxSaveRef.current
+                          : lightboxCloseRef.current;
             node?.focus({ preventScroll: true });
           }}
         >
@@ -10448,6 +10511,18 @@ export function App() {
               >
                 {LIGHTBOX_ZOOM_IN_LABEL}
               </button>
+              {lightboxSaveOffered({ url: lightboxFrame.url }) ? (
+                <button
+                  ref={lightboxCopyRef}
+                  type="button"
+                  className="image-lightbox-copy"
+                  aria-label={lightboxCopyAria(lightboxCopied)}
+                  onMouseDown={(event) => event.stopPropagation()}
+                  onClick={() => void copyLightboxImage()}
+                >
+                  {lightboxCopyLabel(lightboxCopied)}
+                </button>
+              ) : null}
               {lightboxSaveOffered({ url: lightboxFrame.url }) ? (
                 <button
                   ref={lightboxSaveRef}

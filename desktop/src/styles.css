@@ -4380,6 +4380,7 @@ legend {
   cursor: default;
 }
 
+.image-lightbox-copy,
 .image-lightbox-save {
   height: 28px;
   margin: 0;
@@ -4406,6 +4407,7 @@ legend {
 }
 
 .image-lightbox-zoom:hover:not(:disabled),
+.image-lightbox-copy:hover,
 .image-lightbox-save:hover,
 .image-lightbox-close:hover,
 .image-lightbox-step:hover:not([aria-disabled="true"]) {
