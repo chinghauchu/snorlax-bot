@@ -2474,6 +2474,34 @@ struct ChatView: View {
                             ids: visible.map(\.id)
                         )
                         let indexedMessages = Array(visible.enumerated())
+                        if EarlierMessages.showControl(
+                            mayHaveEarlier: model.earlierAvailable,
+                            messageCount: model.messages.count
+                        ) {
+                            VStack(spacing: 2) {
+                                Button(
+                                    model.earlierLoading
+                                        ? EarlierMessages.loadingLabel
+                                        : EarlierMessages.label
+                                ) {
+                                    Task { await model.loadEarlier() }
+                                }
+                                .disabled(model.earlierLoading)
+                                .font(.system(size: 12))
+                                .foregroundStyle(.secondary)
+                                .buttonStyle(.plain)
+                                .frame(maxWidth: .infinity)
+                                .accessibilityLabel(EarlierMessages.label)
+                                if model.earlierError {
+                                    Text(EarlierMessages.failedLabel)
+                                        .font(.system(size: 12))
+                                        .foregroundStyle(.secondary)
+                                }
+                            }
+                            .padding(.top, 8)
+                            .padding(.bottom, 4)
+                            .id(EarlierMessages.controlID)
+                        }
                         ForEach(dayGroups) { group in
                             Section {
                                 ForEach(Array(indexedMessages[group.start..<group.end]), id: \.element.id) { index, message in
@@ -2688,6 +2716,18 @@ struct ChatView: View {
                 followStream(proxy)
             }
             .onChange(of: model.messages.count) { _, _ in
+                if model.earlierHold {
+                    model.earlierHold = false
+                    stick = StickToBottom.onUserScroll(state: stick, nearBottom: false)
+                    DispatchQueue.main.async {
+                        var transaction = Transaction()
+                        transaction.disablesAnimations = true
+                        withTransaction(transaction) {
+                            transcriptPosition.scrollTo(edge: .top)
+                        }
+                    }
+                    return
+                }
                 if model.pendingReadingKey != nil { return }
                 followStream(proxy)
             }

@@ -230,3 +230,4 @@ jobs:
           python3 ios/scripts/test_ios_lightbox_save.py
           python3 ios/scripts/test_ios_lightbox_zoom.py
           python3 ios/scripts/test_ios_lightbox_step.py
+          python3 ios/scripts/test_ios_earlier_messages.py
