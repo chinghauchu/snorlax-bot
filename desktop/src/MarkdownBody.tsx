@@ -33,6 +33,16 @@ import {
   showCodeBlockWrap,
   toggleCodeBlockWrap,
 } from "./codeBlockWrap";
+import {
+  codeBlockCollapseAria,
+  codeBlockCollapseLabel,
+  codeBlockFindKeepsOpen,
+  codeBlockFindRowId,
+  codeBlockLineCount,
+  codeBlockVisibleText,
+  shouldCollapseCodeBlock,
+  showCodeBlockCollapseToggle,
+} from "./codeBlockCollapse";
 import { linkHref, splitWebUrls } from "./linkify";
 import { splitIndentedCode } from "./markdownIndentedCode";
 import { prepareAngleAutolinks, safeLinkHref } from "./markdownAutolink";
@@ -133,7 +143,7 @@ import { shouldRenderMermaid, renderMermaidSvg } from "./mermaid";
 import { splitMentions } from "./mentions";
 import { openOsBrowser } from "./openUrl";
 import { findHits, findQueryActive } from "./chatFind";
-import { FindText, useFindQuery } from "./FindText";
+import { FindText, useFindQuery, useFindRowId } from "./FindText";
 
 type Props = {
   text: string;
@@ -1371,6 +1381,11 @@ function MermaidFence({
   );
 }
 
+/** Mouse-down must not move focus off the composer. Tab can still reach it. */
+function keepCodeBlockFocus(event: MouseEvent<HTMLButtonElement>) {
+  event.preventDefault();
+}
+
 function FenceChrome({
   language,
   source,
@@ -1385,12 +1400,38 @@ function FenceChrome({
   wrapId: string;
 }) {
   const [wrapped, setWrapped] = useState(() => readCodeBlockWrap(wrapId));
+  const [expanded, setExpanded] = useState(false);
+  const activeRowId = useFindRowId();
+  const activeRow =
+    activeRowId.length > 0 && codeBlockFindRowId(wrapId) === activeRowId;
   useEffect(() => {
     setWrapped(readCodeBlockWrap(wrapId));
+    setExpanded(false);
   }, [wrapId]);
+  useEffect(() => {
+    setExpanded(false);
+  }, [source]);
   const wrapOn = showCodeBlockWrap(completed) && wrapped;
+  const lineCount = codeBlockLineCount(source);
+  const findKeepsOpen = codeBlockFindKeepsOpen({
+    activeRow,
+    source,
+    query: findQuery,
+  });
+  const collapsed = shouldCollapseCodeBlock({
+    completed,
+    lineCount,
+    expanded,
+    activeFind: findKeepsOpen,
+  });
+  const shown = codeBlockVisibleText(source, collapsed);
+  const showMore = showCodeBlockCollapseToggle({
+    completed,
+    lineCount,
+    activeFind: findKeepsOpen,
+  });
   return (
-    <div className="md-fence">
+    <div className="md-fence" data-code-collapsed={collapsed ? "true" : "false"}>
       <FenceBar
         language={language}
         source={source}
@@ -1401,13 +1442,25 @@ function FenceChrome({
       <pre className={codeBlockWrapClass(wrapOn)}>
         <code>
           <HighlightedCode
-            source={source}
+            source={shown}
             language={language}
             completed={completed}
             findQuery={findQuery}
           />
         </code>
       </pre>
+      {showMore ? (
+        <button
+          type="button"
+          className="md-fence-more"
+          aria-expanded={expanded}
+          aria-label={codeBlockCollapseAria(expanded)}
+          onMouseDown={keepCodeBlockFocus}
+          onClick={() => setExpanded((value) => !value)}
+        >
+          {codeBlockCollapseLabel(expanded)}
+        </button>
+      ) : null}
     </div>
   );
 }

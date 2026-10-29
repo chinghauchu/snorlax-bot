@@ -1993,6 +1993,32 @@ pre.md-math-fallback.md-math-block {
   outline-offset: 2px;
 }
 
+/* v2.19: long code shows the first 14 lines. The swap is instant. */
+.md-fence-more {
+  display: block;
+  margin: 0;
+  padding: 0 10px 8px;
+  border: 0;
+  background: transparent;
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1.2;
+  color: var(--text-muted);
+  cursor: pointer;
+  text-align: left;
+  transition: none;
+  animation: none;
+}
+
+.md-fence-more:hover {
+  color: var(--accent);
+}
+
+.md-fence-more:focus-visible {
+  outline: 1px solid var(--accent);
+  outline-offset: 2px;
+}
+
 /* v0.66: Reduce Motion on → no animation (the confirmation is a label swap). */
 @media (prefers-reduced-motion: reduce) {
   .md-copy {
@@ -2005,6 +2031,14 @@ pre.md-math-fallback.md-math-block {
 @media (prefers-reduced-motion: reduce) {
   .md-fence-wrap,
   .md-fence-body.md-fence-body-wrap {
+    transition: none;
+    animation: none;
+  }
+}
+
+/* v2.19: Reduce Motion on → Show more is still an instant swap. */
+@media (prefers-reduced-motion: reduce) {
+  .md-fence-more {
     transition: none;
     animation: none;
   }

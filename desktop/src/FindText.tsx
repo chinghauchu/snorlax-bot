@@ -6,21 +6,32 @@ import {
 } from "./chatFind";
 
 const FindQueryContext = createContext("");
+const FindRowContext = createContext("");
 
 export function FindQueryProvider({
   query,
+  rowId = "",
   children,
 }: {
   query: string;
+  /** v2.19: row id of the active in-chat find hit. Empty when none. */
+  rowId?: string;
   children: ReactNode;
 }) {
   return (
-    <FindQueryContext.Provider value={query}>{children}</FindQueryContext.Provider>
+    <FindQueryContext.Provider value={query}>
+      <FindRowContext.Provider value={rowId}>{children}</FindRowContext.Provider>
+    </FindQueryContext.Provider>
   );
 }
 
 export function useFindQuery(): string {
   return useContext(FindQueryContext);
+}
+
+/** Row id of the active find hit. Empty when find is closed or has no hit. */
+export function useFindRowId(): string {
+  return useContext(FindRowContext);
 }
 
 /** Highlight case-insensitive matches. No query leaves the text alone. */

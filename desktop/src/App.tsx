@@ -8303,7 +8303,7 @@ export function App() {
           style={{ ["--transcript-scale" as string]: transcriptScaleFactor(transcriptTextPercent) }}
           onScroll={onTranscriptScroll}
         >
-          <FindQueryProvider query={findQueryShown}>
+          <FindQueryProvider query={findQueryShown} rowId={activeFindHit?.rowId ?? ""}>
           <div className="transcript-inner">
             {credsReady &&
             !loadError &&

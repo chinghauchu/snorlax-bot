@@ -652,9 +652,11 @@ private struct MermaidFence: View {
     var wrapId: String
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.chatFind) private var find
     @State private var failed: Bool
     @State private var size: CGSize
     @State private var wrapped: Bool
+    @State private var codeExpanded: Bool
 
     init(language: String, source: String, completed: Bool = true, wrapId: String = "") {
         self.language = language
@@ -664,6 +666,7 @@ private struct MermaidFence: View {
         _failed = State(initialValue: false)
         _size = State(initialValue: CGSize(width: 1, height: 1))
         _wrapped = State(initialValue: CodeBlockWrap.isWrapped(id: wrapId))
+        _codeExpanded = State(initialValue: false)
     }
 
     var body: some View {
@@ -677,7 +680,18 @@ private struct MermaidFence: View {
                 onToggleWrap: toggleWrap
             )
             if failed {
-                FenceSource(source: source, wrapped: wrapped)
+                VStack(alignment: .leading, spacing: 0) {
+                    failedSource
+                    FenceMoreButton(
+                        show: failedShowToggle,
+                        expanded: codeExpanded
+                    ) {
+                        codeExpanded.toggle()
+                    }
+                }
+                .onChange(of: source) { _, _ in
+                    codeExpanded = false
+                }
             } else {
                 ScrollView(.horizontal, showsIndicators: true) {
                     MermaidWebView(
@@ -713,6 +727,49 @@ private struct MermaidFence: View {
         }
     }
 
+    private var failedKeepsOpen: Bool {
+        CodeBlockCollapse.findKeepsOpen(
+            activeRowId: find.activeRowId,
+            wrapId: wrapId,
+            source: source,
+            query: find.query
+        )
+    }
+
+    private var failedLineCount: Int {
+        CodeBlockCollapse.lineCount(source)
+    }
+
+    private var failedCollapsed: Bool {
+        CodeBlockCollapse.shouldCollapse(
+            completed: completed,
+            lineCount: failedLineCount,
+            expanded: codeExpanded,
+            activeFind: failedKeepsOpen
+        )
+    }
+
+    private var failedShowToggle: Bool {
+        CodeBlockCollapse.showToggle(
+            completed: completed,
+            lineCount: failedLineCount,
+            activeFind: failedKeepsOpen
+        )
+    }
+
+    @ViewBuilder
+    private var failedSource: some View {
+        if failedCollapsed {
+            bareFenceSource(source: CodeBlockCollapse.visibleText(source, collapsed: true))
+        } else {
+            FenceSource(source: source, wrapped: wrapped)
+        }
+    }
+
+    private func bareFenceSource(source: String) -> some View {
+        FenceSource(source: source, wrapped: wrapped)
+    }
+
     private func toggleWrap() {
         wrapped = CodeBlockWrap.toggle(id: wrapId, wrapped: wrapped)
     }
@@ -724,7 +781,9 @@ private struct CodeFence: View {
     var completed: Bool
     var wrapId: String
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.chatFind) private var find
     @State private var wrapped: Bool
+    @State private var expanded: Bool
 
     init(language: String, source: String, completed: Bool = true, wrapId: String = "") {
         self.language = language
@@ -732,6 +791,37 @@ private struct CodeFence: View {
         self.completed = completed
         self.wrapId = wrapId
         _wrapped = State(initialValue: CodeBlockWrap.isWrapped(id: wrapId))
+        _expanded = State(initialValue: false)
+    }
+
+    private var keepsOpen: Bool {
+        CodeBlockCollapse.findKeepsOpen(
+            activeRowId: find.activeRowId,
+            wrapId: wrapId,
+            source: source,
+            query: find.query
+        )
+    }
+
+    private var lineCount: Int {
+        CodeBlockCollapse.lineCount(source)
+    }
+
+    private var collapsed: Bool {
+        CodeBlockCollapse.shouldCollapse(
+            completed: completed,
+            lineCount: lineCount,
+            expanded: expanded,
+            activeFind: keepsOpen
+        )
+    }
+
+    private var showToggle: Bool {
+        CodeBlockCollapse.showToggle(
+            completed: completed,
+            lineCount: lineCount,
+            activeFind: keepsOpen
+        )
     }
 
     var body: some View {
@@ -744,7 +834,10 @@ private struct CodeFence: View {
                 showsWrap: true,
                 onToggleWrap: toggleWrap
             )
-            FenceSource(source: source, wrapped: wrapped, language: language, completed: completed)
+            painted(source: CodeBlockCollapse.visibleText(source, collapsed: collapsed))
+            FenceMoreButton(show: showToggle, expanded: expanded) {
+                expanded.toggle()
+            }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(
@@ -757,13 +850,42 @@ private struct CodeFence: View {
         }
         .clipShape(RoundedRectangle(cornerRadius: 8))
         .animation(CodeBlockWrap.animation(reduceMotion: reduceMotion), value: wrapped)
+        .onChange(of: source) { _, _ in
+            expanded = false
+        }
         .onChange(of: wrapId) { _, next in
             wrapped = CodeBlockWrap.isWrapped(id: next)
+            expanded = false
         }
+    }
+
+    private func painted(source: String) -> some View {
+        FenceSource(source: source, wrapped: wrapped, language: language, completed: completed)
     }
 
     private func toggleWrap() {
         wrapped = CodeBlockWrap.toggle(id: wrapId, wrapped: wrapped)
+    }
+}
+
+/// v2.19: muted Show more under a long code block. Not focusable.
+private struct FenceMoreButton: View {
+    var show: Bool
+    var expanded: Bool
+    var action: () -> Void
+
+    var body: some View {
+        if show {
+            Button(CodeBlockCollapse.label(expanded: expanded), action: action)
+                .buttonStyle(.plain)
+                .font(.system(size: 12, weight: .medium))
+                .foregroundStyle(.secondary)
+                .focusable(false)
+                .accessibilityLabel(CodeBlockCollapse.accessibilityLabel(expanded: expanded))
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.horizontal, 10)
+                .padding(.bottom, 8)
+        }
     }
 }
 
