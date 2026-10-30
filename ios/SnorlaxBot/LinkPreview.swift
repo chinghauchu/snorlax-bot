@@ -19,7 +19,7 @@ enum LinkPreview {
 
     /// Clipboard text is the destination, never the visible label.
     static func copyText(_ url: URL) -> String {
-        destination(url)
+        LinkCopy.clipboardText(destination(url))
     }
 
     /// Preview card above the menu. The URL wraps; it is not truncated.
@@ -89,6 +89,7 @@ enum LinkPreview {
         }
         let copyAction = UIAction(title: copyLink) { _ in
             UIPasteboard.general.string = copyText(url)
+            LinkCopy.noteCopied()
         }
         let menu = UIMenu(title: destination, children: [openAction, copyAction])
         return UITextItem.MenuConfiguration(
