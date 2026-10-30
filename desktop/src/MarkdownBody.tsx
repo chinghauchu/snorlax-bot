@@ -149,6 +149,16 @@ import {
   tableCellsClipboardText,
   tableCellsLabel,
 } from "./tableCellsCopy";
+import {
+  TABLE_CSV_FILENAME,
+  TABLE_CSV_SAVE_MS,
+  downloadTableCsv,
+  showTableCsvSave,
+  tableCsvSaveAriaLabel,
+  tableCsvSaveKeepsTable,
+  tableCsvSaveLabel,
+  tableCsvText,
+} from "./tableCsvSave";
 import { listIsLoose } from "./markdownLooseList";
 import {
   listNeedsCmarkOrderedItemStart,
@@ -952,19 +962,23 @@ function MarkdownTableBlock({
 }) {
   const [copied, setCopied] = useState(false);
   const [cellsCopied, setCellsCopied] = useState(false);
+  const [saved, setSaved] = useState(false);
   const timer = useRef<ReturnType<typeof window.setTimeout> | null>(null);
   const cellsTimer = useRef<ReturnType<typeof window.setTimeout> | null>(null);
+  const saveTimer = useRef<ReturnType<typeof window.setTimeout> | null>(null);
 
   useEffect(() => {
     return () => {
       if (timer.current != null) window.clearTimeout(timer.current);
       if (cellsTimer.current != null) window.clearTimeout(cellsTimer.current);
+      if (saveTimer.current != null) window.clearTimeout(saveTimer.current);
     };
   }, []);
 
   useEffect(() => {
     setCopied(false);
     setCellsCopied(false);
+    setSaved(false);
     if (timer.current != null) {
       window.clearTimeout(timer.current);
       timer.current = null;
@@ -972,6 +986,10 @@ function MarkdownTableBlock({
     if (cellsTimer.current != null) {
       window.clearTimeout(cellsTimer.current);
       cellsTimer.current = null;
+    }
+    if (saveTimer.current != null) {
+      window.clearTimeout(saveTimer.current);
+      saveTimer.current = null;
     }
   }, [table.source]);
 
@@ -993,6 +1011,17 @@ function MarkdownTableBlock({
       setCellsCopied(false);
       cellsTimer.current = null;
     }, TABLE_CELLS_COPY_MS);
+  }
+
+  function onSave() {
+    if (!tableCsvSaveKeepsTable()) return;
+    downloadTableCsv(tableCsvText(table.header, table.rows), TABLE_CSV_FILENAME);
+    setSaved(true);
+    if (saveTimer.current != null) window.clearTimeout(saveTimer.current);
+    saveTimer.current = window.setTimeout(() => {
+      setSaved(false);
+      saveTimer.current = null;
+    }, TABLE_CSV_SAVE_MS);
   }
 
   return (
@@ -1021,6 +1050,18 @@ function MarkdownTableBlock({
             >
               {tableCopyLabel(copied)}
             </button>
+            {showTableCsvSave(completed) ? (
+              <button
+                type="button"
+                className="md-table-save"
+                aria-label={tableCsvSaveAriaLabel(saved)}
+                aria-live="polite"
+                onMouseDown={keepCodeBlockFocus}
+                onClick={onSave}
+              >
+                {tableCsvSaveLabel(saved)}
+              </button>
+            ) : null}
           </span>
         </div>
       ) : null}

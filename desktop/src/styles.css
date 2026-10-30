@@ -2290,6 +2290,23 @@ pre.md-math-fallback.md-math-block {
   margin-left: 0;
 }
 
+/* v2.26: Save sits beside Copy and Cells. The label swap is instant. */
+.md-table-save {
+  font-size: 12px;
+  color: var(--text-muted);
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  transition: none;
+  animation: none;
+}
+
+.md-table-save:focus-visible {
+  outline: 1px solid var(--accent);
+  outline-offset: 2px;
+}
+
 .md-table-scroll {
   display: block;
   width: 100%;
@@ -2338,17 +2355,19 @@ pre.md-math-fallback.md-math-block {
 .md-table,
 .md-table-scroll,
 .md-table-actions,
-.md-table .md-copy {
+.md-table .md-copy,
+.md-table-save {
   transition: none;
   animation: none;
 }
 
-/* v1.31 / v2.24: Reduce Motion on → Copy and Cells stay instant. */
+/* v1.31 / v2.24 / v2.26: Reduce Motion on → Copy, Cells, and Save stay instant. */
 @media (prefers-reduced-motion: reduce) {
   .md-table,
   .md-table-scroll,
   .md-table-actions,
-  .md-table .md-copy {
+  .md-table .md-copy,
+  .md-table-save {
     transition: none;
     animation: none;
   }
