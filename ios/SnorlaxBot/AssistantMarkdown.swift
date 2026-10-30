@@ -1515,6 +1515,8 @@ private struct MarkdownRun: View {
     }
 
     private func wrapping(_ text: AttributedString) -> AttributedString {
+        let codeSpans = InlineCodeCopy.ranges(in: text)
+        let originalUTF16 = (String(text.characters) as NSString).length
         let ns = NSMutableAttributedString(text)
         // SwiftUI.Font set on AttributedString does not survive this
         // UITextView round trip. Apply UIFont from the heading intent
@@ -1542,7 +1544,13 @@ private struct MarkdownRun: View {
             value: style,
             range: NSRange(location: 0, length: ns.length)
         )
-        return AttributedString(ns)
+        var result = AttributedString(ns)
+        // Footnote replacement already ran, so this length stays put.
+        // A change would make the captured ranges land on the wrong text.
+        if ns.length == originalUTF16 {
+            InlineCodeCopy.apply(&result, ranges: codeSpans)
+        }
+        return result
     }
 
     private func attributed(_ raw: String) -> AttributedString {
@@ -1596,7 +1604,10 @@ private struct MarkdownRun: View {
             }
         }
         MarkdownFootnote.applyMarkers(&parsed, baseSize: metrics.body)
-        return ChatFind.paint(parsed, query: find.query)
+        let codeSpans = InlineCodeCopy.ranges(in: parsed)
+        parsed = ChatFind.paint(parsed, query: find.query)
+        InlineCodeCopy.apply(&parsed, ranges: codeSpans)
+        return parsed
     }
 
     /// UIFont on the UIKit scope, so a later NS round trip (find highlight,
@@ -1652,6 +1663,7 @@ private struct MarkdownRun: View {
             parsed[run.range].font = metrics.codeFont
             parsed[run.range].foregroundColor = .accentColor
             parsed[run.range].backgroundColor = Color.accentColor.opacity(0.18)
+            parsed[run.range].snorlaxInlineCode = InlineCodeCopy.mark
         }
     }
 

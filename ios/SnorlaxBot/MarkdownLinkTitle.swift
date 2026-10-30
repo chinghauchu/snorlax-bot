@@ -711,9 +711,15 @@ struct SnorlaxLinkTitleAttribute: AttributedStringKey {
     static let name = "snorlaxLinkTitle"
 }
 
+struct SnorlaxInlineCodeAttribute: AttributedStringKey {
+    typealias Value = String
+    static let name = "snorlaxInlineCode"
+}
+
 extension AttributeScopes {
     struct SnorlaxAttributes: AttributeScope {
         let snorlaxLinkTitle: SnorlaxLinkTitleAttribute
+        let snorlaxInlineCode: SnorlaxInlineCodeAttribute
     }
 
     var snorlax: SnorlaxAttributes.Type { SnorlaxAttributes.self }
@@ -729,4 +735,5 @@ extension AttributeDynamicLookup {
 
 extension NSAttributedString.Key {
     static let snorlaxLinkTitle = NSAttributedString.Key("snorlaxLinkTitle")
+    static let snorlaxInlineCode = NSAttributedString.Key("snorlaxInlineCode")
 }

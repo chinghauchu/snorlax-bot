@@ -51,6 +51,9 @@ struct ChatView: View {
     /// v2.25: muted Copied after Copy Link. Same 1.5s as other copy controls.
     @State private var linkCopied = false
     @State private var linkCopiedPulse = 0
+    /// v2.28: muted Copied after Copy code. Same 1.5s as other copy controls.
+    @State private var inlineCodeCopied = false
+    @State private var inlineCodeCopiedPulse = 0
     /// v1.25: the sent message a keyboard jump just landed on.
     @State private var userJumpHighlightID: String?
     @State private var quoteJumpUnmeasuredID: String?
@@ -1380,6 +1383,19 @@ struct ChatView: View {
             try? await Task.sleep(nanoseconds: LinkCopy.feedbackNanoseconds)
             if pulse == linkCopiedPulse {
                 linkCopied = false
+            }
+        }
+    }
+
+    /// v2.28: Copy code already wrote the span. Confirm for 1.5s.
+    private func noteInlineCodeCopied() {
+        inlineCodeCopied = true
+        inlineCodeCopiedPulse += 1
+        let pulse = inlineCodeCopiedPulse
+        Task {
+            try? await Task.sleep(nanoseconds: InlineCodeCopy.feedbackNanoseconds)
+            if pulse == inlineCodeCopiedPulse {
+                inlineCodeCopied = false
             }
         }
     }
@@ -2828,12 +2844,22 @@ struct ChatView: View {
                             .accessibilityLabel(LinkCopy.copiedAria)
                             .animation(LinkCopy.animation(reduceMotion: reduceMotion), value: linkCopied)
                     }
+                    if inlineCodeCopied {
+                        Text(InlineCodeCopy.copiedLabel)
+                            .font(.system(size: 12))
+                            .foregroundStyle(.secondary)
+                            .accessibilityLabel(InlineCodeCopy.copiedAria)
+                            .animation(InlineCodeCopy.animation(reduceMotion: reduceMotion), value: inlineCodeCopied)
+                    }
                 }
                 .padding(.bottom, 12)
             }
             }
             .onReceive(NotificationCenter.default.publisher(for: LinkCopy.copiedNotification)) { _ in
                 noteLinkCopied()
+            }
+            .onReceive(NotificationCenter.default.publisher(for: InlineCodeCopy.copiedNotification)) { _ in
+                noteInlineCodeCopied()
             }
         }
     }
