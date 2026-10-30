@@ -5,8 +5,9 @@
  * A muted Save sits beside Copy on that fence. Desktop downloads the
  * full source. iOS hands the same bytes to the system share sheet and
  * does not ask for photo-library permission. Hidden lines under Show
- * more are included. A streaming fence hides Save. A math block has
- * no Save. Nothing is sent. No new shortcut. No animation.
+ * more are included. A streaming fence hides Save. A math block uses
+ * its own Save (v2.29), not this control. Nothing is sent. No new
+ * shortcut. No animation.
  * Keep in lockstep with `ios/SnorlaxBot/CodeBlockSave.swift`.
  */
 

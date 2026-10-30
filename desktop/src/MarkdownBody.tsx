@@ -199,6 +199,16 @@ import {
   showMathBlockCopy,
 } from "./mathBlockCopy";
 import {
+  MATH_BLOCK_SAVE_FILENAME,
+  MATH_BLOCK_SAVE_MS,
+  downloadMathBlock,
+  mathBlockSaveAriaLabel,
+  mathBlockSaveBody,
+  mathBlockSaveKeepsBlock,
+  mathBlockSaveLabel,
+  showMathBlockSave,
+} from "./mathBlockSave";
+import {
   MATH_INLINE_COPY_MS,
   mathInlineClipboardText,
   mathInlineCopyAriaLabel,
@@ -2158,19 +2168,33 @@ function InlineMathCopyButton({ tex }: { tex: string }) {
 
 function MathBlockCopyButton({ tex }: { tex: string }) {
   const [copied, setCopied] = useState(false);
+  const [saved, setSaved] = useState(false);
   const timer = useRef<ReturnType<typeof window.setTimeout> | null>(null);
+  const saveTimer = useRef<ReturnType<typeof window.setTimeout> | null>(null);
+  // Mounted only for a finished closed display block. See MathNode.
+  const showSave = showMathBlockSave({
+    completed: true,
+    closed: true,
+    block: true,
+  });
 
   useEffect(() => {
     return () => {
       if (timer.current != null) window.clearTimeout(timer.current);
+      if (saveTimer.current != null) window.clearTimeout(saveTimer.current);
     };
   }, []);
 
   useEffect(() => {
     setCopied(false);
+    setSaved(false);
     if (timer.current != null) {
       window.clearTimeout(timer.current);
       timer.current = null;
+    }
+    if (saveTimer.current != null) {
+      window.clearTimeout(saveTimer.current);
+      saveTimer.current = null;
     }
   }, [tex]);
 
@@ -2182,6 +2206,17 @@ function MathBlockCopyButton({ tex }: { tex: string }) {
       setCopied(false);
       timer.current = null;
     }, MATH_BLOCK_COPY_MS);
+  }
+
+  function onSave() {
+    if (!mathBlockSaveKeepsBlock() || !showSave) return;
+    downloadMathBlock(mathBlockSaveBody(tex), MATH_BLOCK_SAVE_FILENAME);
+    setSaved(true);
+    if (saveTimer.current != null) window.clearTimeout(saveTimer.current);
+    saveTimer.current = window.setTimeout(() => {
+      setSaved(false);
+      saveTimer.current = null;
+    }, MATH_BLOCK_SAVE_MS);
   }
 
   return (
@@ -2196,6 +2231,18 @@ function MathBlockCopyButton({ tex }: { tex: string }) {
       >
         {mathCopyLabel(copied)}
       </button>
+      {showSave ? (
+        <button
+          type="button"
+          className="md-math-save"
+          aria-label={mathBlockSaveAriaLabel(saved)}
+          aria-live="polite"
+          onMouseDown={keepCodeBlockFocus}
+          onClick={onSave}
+        >
+          {mathBlockSaveLabel(saved)}
+        </button>
+      ) : null}
     </div>
   );
 }

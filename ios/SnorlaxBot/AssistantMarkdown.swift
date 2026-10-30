@@ -1205,11 +1205,32 @@ private struct MathBlock: View {
     @State private var size = CGSize(width: 1, height: 1)
     @State private var copied = false
     @State private var pulse = 0
+    @State private var saved = false
+    @State private var savePulse = 0
+    @State private var shareURL: URL?
+
+    /// Write the TeX and present the share sheet.
+    /// The equation stays. Nothing is sent. A failed write presents nothing.
+    private func saveMath() {
+        guard MathBlockSave.keepsBlock() else { return }
+        let tex = MathBlockSave.bodyText(source)
+        guard let file = MathBlockSave.writeFile(tex: tex, filename: MathBlockSave.filename) else { return }
+        shareURL = file
+        saved = true
+        savePulse += 1
+        let ticket = savePulse
+        Task {
+            try? await Task.sleep(nanoseconds: MathBlockSave.feedbackNanoseconds)
+            if ticket == savePulse {
+                saved = false
+            }
+        }
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             if MathBlockCopy.showsCopy(completed: completed, closed: closed) {
-                HStack {
+                HStack(spacing: 12) {
                     Spacer(minLength: 0)
                     Button(MathBlockCopy.label(copied: copied)) {
                         UIPasteboard.general.string = MathBlockCopy.clipboardText(source)
@@ -1229,6 +1250,17 @@ private struct MathBlock: View {
                     .focusable(false)
                     .accessibilityLabel(MathBlockCopy.accessibilityLabel(copied: copied))
                     .animation(MathBlockCopy.animation(reduceMotion: reduceMotion), value: copied)
+                    if MathBlockSave.showsSave(completed: completed, closed: closed) {
+                        Button(MathBlockSave.label(saved: saved)) {
+                            saveMath()
+                        }
+                        .transcriptFont(12)
+                        .foregroundStyle(.secondary)
+                        .buttonStyle(.plain)
+                        .focusable(false)
+                        .accessibilityLabel(MathBlockSave.accessibilityLabel(saved: saved))
+                        .animation(MathBlockSave.animation(reduceMotion: reduceMotion), value: saved)
+                    }
                 }
             }
             Group {
@@ -1249,7 +1281,27 @@ private struct MathBlock: View {
                 }
             }
         }
+        .sheet(isPresented: Binding(
+            get: { shareURL != nil },
+            set: { if !$0 { shareURL = nil } }
+        )) {
+            if let shareURL {
+                MathTexShareSheet(url: shareURL)
+            }
+        }
     }
+}
+
+/// The system share sheet for one saved math block. Copy and Files are
+/// the system's actions. This view does not request photo-library permission.
+private struct MathTexShareSheet: UIViewControllerRepresentable {
+    let url: URL
+
+    func makeUIViewController(context: Context) -> UIActivityViewController {
+        UIActivityViewController(activityItems: [url], applicationActivities: nil)
+    }
+
+    func updateUIViewController(_ uiViewController: UIActivityViewController, context: Context) {}
 }
 
 private struct InlineMathCopyButton: View {
