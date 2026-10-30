@@ -544,7 +544,7 @@ private struct MarkdownRule: View {
 }
 
 /// Horizontal scroll lives on the table, not the bubble. Copy writes the
-/// markdown source. The label swap does not animate.
+/// markdown source. Cells writes the grid as tabs. Neither label swap animates.
 private struct MarkdownTableBlock: View {
     let table: MarkdownTable.Table
     let names: [String]
@@ -552,12 +552,37 @@ private struct MarkdownTableBlock: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var copied = false
     @State private var pulse = 0
+    @State private var cellsCopied = false
+    @State private var cellsPulse = 0
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             if MarkdownTableCopy.showsCopy(completed: completed) {
-                HStack {
+                HStack(spacing: 12) {
                     Spacer(minLength: 0)
+                    if TableCellsCopy.showsCells(completed: completed) {
+                        Button(TableCellsCopy.label(copied: cellsCopied)) {
+                            UIPasteboard.general.string = TableCellsCopy.clipboardText(
+                                header: table.header,
+                                rows: table.rows
+                            )
+                            cellsCopied = true
+                            cellsPulse += 1
+                            let ticket = cellsPulse
+                            Task {
+                                try? await Task.sleep(nanoseconds: TableCellsCopy.feedbackNanoseconds)
+                                if ticket == cellsPulse {
+                                    cellsCopied = false
+                                }
+                            }
+                        }
+                        .font(.system(size: 12))
+                        .foregroundStyle(.secondary)
+                        .buttonStyle(.plain)
+                        .focusable(false)
+                        .accessibilityLabel(TableCellsCopy.accessibilityLabel(copied: cellsCopied))
+                        .animation(TableCellsCopy.animation(reduceMotion: reduceMotion), value: cellsCopied)
+                    }
                     Button(MarkdownTableCopy.label(copied: copied)) {
                         UIPasteboard.general.string = MarkdownTableCopy.clipboardText(table.source)
                         copied = true

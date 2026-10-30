@@ -82,6 +82,7 @@ export function tableCopyAriaLabel(copied: boolean): string {
  * Clipboard text is the table's markdown source, not a tab-separated
  * rewrite. Pasting it back into the composer round-trips, and the
  * other copy controls already copy source.
+ * v2.24 Cells (`tableCellsCopy.ts`) is the tab-separated grid.
  */
 export function tableClipboardText(source: string): string {
   return source;
