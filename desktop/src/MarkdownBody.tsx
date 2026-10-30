@@ -70,6 +70,13 @@ import { prepareLinkDestinations } from "./markdownLinkDest";
 import { prepareSpacedLinkDestinations } from "./markdownReferenceLink";
 import { linkTitleHint, prepareLinkTitleForms } from "./markdownLinkTitle";
 import {
+  LINK_COPY_MS,
+  linkCopyAriaLabel,
+  linkCopyClipboardText,
+  linkCopyLabel,
+  showLinkCopy,
+} from "./linkCopy";
+import {
   linkStatusClearFocus,
   linkStatusClearHover,
   linkStatusFocus,
@@ -227,6 +234,12 @@ function useFootnoteScope(): string {
   return useContext(FootnoteScopeContext);
 }
 
+/** v2.25: Copy link only inside a completed assistant MarkdownBody. */
+const AssistantLinkCopyContext = createContext(false);
+
+/** A link painted inside another link does not grow a second control. */
+const InsideMdLinkContext = createContext(false);
+
 export function MarkdownBody({
   text,
   knownNames,
@@ -289,7 +302,11 @@ export function MarkdownBody({
   ) : (
     body
   );
-  return <MarkdownMediaProvider value={media}>{scoped}</MarkdownMediaProvider>;
+  return (
+    <AssistantLinkCopyContext.Provider value={completed}>
+      <MarkdownMediaProvider value={media}>{scoped}</MarkdownMediaProvider>
+    </AssistantLinkCopyContext.Provider>
+  );
 }
 
 /**
@@ -1134,6 +1151,8 @@ export function MdLink({
   /** Completed message bubbles reveal the destination. Streaming does not. */
   preview?: boolean;
 }) {
+  const assistantCopy = useContext(AssistantLinkCopyContext);
+  const nested = useContext(InsideMdLinkContext);
   const idRef = useRef(0);
   if (idRef.current === 0) idRef.current = nextLinkStatusId();
   // http(s) still go through isSafeWebUrl. A mailto email does too.
@@ -1153,34 +1172,96 @@ export function MdLink({
     return <>{children}</>;
   }
   const id = idRef.current;
-  return (
-    <a
-      href={url}
-      className="md-link"
-      title={hint || undefined}
-      aria-description={hint || undefined}
-      rel="noopener noreferrer"
-      onMouseEnter={reveal ? () => linkStatusHover(id, url) : undefined}
-      onMouseLeave={reveal ? () => linkStatusClearHover(id) : undefined}
-      onFocus={
-        reveal
-          ? (event) => {
-              if (event.currentTarget.matches(":focus-visible")) {
-                linkStatusFocus(id, url);
+  const anchor = (
+    <InsideMdLinkContext.Provider value={true}>
+      <a
+        href={url}
+        className="md-link"
+        title={hint || undefined}
+        aria-description={hint || undefined}
+        rel="noopener noreferrer"
+        onMouseEnter={reveal ? () => linkStatusHover(id, url) : undefined}
+        onMouseLeave={reveal ? () => linkStatusClearHover(id) : undefined}
+        onFocus={
+          reveal
+            ? (event) => {
+                if (event.currentTarget.matches(":focus-visible")) {
+                  linkStatusFocus(id, url);
+                }
               }
-            }
-          : undefined
-      }
-      onBlur={reveal ? () => linkStatusClearFocus(id) : undefined}
-      onClick={(event: MouseEvent<HTMLAnchorElement>) => {
-        event.preventDefault();
-        void openOsBrowser(url);
-      }}
+            : undefined
+        }
+        onBlur={reveal ? () => linkStatusClearFocus(id) : undefined}
+        onClick={(event: MouseEvent<HTMLAnchorElement>) => {
+          event.preventDefault();
+          void openOsBrowser(url);
+        }}
+      >
+        <InMarkdownLink>
+          <FootnoteMarkers>{children}</FootnoteMarkers>
+        </InMarkdownLink>
+      </a>
+    </InsideMdLinkContext.Provider>
+  );
+  if (nested || !showLinkCopy({ completed: assistantCopy, revealed: reveal })) {
+    return anchor;
+  }
+  return (
+    <span className="md-link-wrap">
+      {anchor}
+      <LinkCopyButton id={id} destination={url} />
+    </span>
+  );
+}
+
+function LinkCopyButton({
+  id,
+  destination,
+}: {
+  id: number;
+  destination: string;
+}) {
+  const [copied, setCopied] = useState(false);
+  const timer = useRef<ReturnType<typeof window.setTimeout> | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (timer.current != null) window.clearTimeout(timer.current);
+    };
+  }, []);
+
+  useEffect(() => {
+    setCopied(false);
+    if (timer.current != null) {
+      window.clearTimeout(timer.current);
+      timer.current = null;
+    }
+  }, [destination]);
+
+  function onCopy(event: MouseEvent<HTMLButtonElement>) {
+    event.preventDefault();
+    event.stopPropagation();
+    void copyText(linkCopyClipboardText(destination));
+    setCopied(true);
+    if (timer.current != null) window.clearTimeout(timer.current);
+    timer.current = window.setTimeout(() => {
+      setCopied(false);
+      timer.current = null;
+    }, LINK_COPY_MS);
+  }
+
+  return (
+    <button
+      type="button"
+      className="md-link-copy"
+      aria-label={linkCopyAriaLabel(copied)}
+      aria-live="polite"
+      onMouseDown={keepCodeBlockFocus}
+      onMouseEnter={() => linkStatusHover(id, destination)}
+      onClick={onCopy}
     >
-      <InMarkdownLink>
-        <FootnoteMarkers>{children}</FootnoteMarkers>
-      </InMarkdownLink>
-    </a>
+      {linkCopyLabel(copied)}
+    </button>
   );
 }
 

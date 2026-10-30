@@ -48,6 +48,9 @@ struct ChatView: View {
     /// v1.13: muted Copied beside the chat name after ⌘⇧E. Same 1.2s as Copy.
     @State private var transcriptCopied = false
     @State private var transcriptCopiedPulse = 0
+    /// v2.25: muted Copied after Copy Link. Same 1.5s as other copy controls.
+    @State private var linkCopied = false
+    @State private var linkCopiedPulse = 0
     /// v1.25: the sent message a keyboard jump just landed on.
     @State private var userJumpHighlightID: String?
     @State private var quoteJumpUnmeasuredID: String?
@@ -335,6 +338,7 @@ struct ChatView: View {
             lastAssistantSig = ""
             expandedToolStacks = []
             transcriptCopied = false
+            linkCopied = false
             closeFind()
             guard hasRealAgent || !model.isConfigured else { return }
             if !(model.selectedAgentID == agentID && model.threadID != nil) {
@@ -1363,6 +1367,19 @@ struct ChatView: View {
             try? await Task.sleep(nanoseconds: CopyTranscript.feedbackNanoseconds)
             if pulse == transcriptCopiedPulse {
                 transcriptCopied = false
+            }
+        }
+    }
+
+    /// v2.25: Copy Link already wrote the destination. Confirm for 1.5s.
+    private func noteLinkCopied() {
+        linkCopied = true
+        linkCopiedPulse += 1
+        let pulse = linkCopiedPulse
+        Task {
+            try? await Task.sleep(nanoseconds: LinkCopy.feedbackNanoseconds)
+            if pulse == linkCopiedPulse {
+                linkCopied = false
             }
         }
     }
@@ -2752,7 +2769,7 @@ struct ChatView: View {
                 applyJumpChipPaint(shown: shown)
             }
             .simultaneousGesture(TapGesture().onEnded { model.dismissSkillPicker() })
-            if StopGenerating.shouldOffer(busy: model.isSending) || stick.showJump || jumpPaint.mounted {
+            if StopGenerating.shouldOffer(busy: model.isSending) || stick.showJump || jumpPaint.mounted || linkCopied {
                 VStack(spacing: 6) {
                     if StopGenerating.shouldOffer(busy: model.isSending) {
                         Button(StopGenerating.label) {
@@ -2804,9 +2821,19 @@ struct ChatView: View {
                         .accessibilityLabel(StickToBottom.jumpLabel)
                         .accessibilityHidden(!jumpPaint.shown)
                     }
+                    if linkCopied {
+                        Text(LinkCopy.copiedLabel)
+                            .font(.system(size: 12))
+                            .foregroundStyle(.secondary)
+                            .accessibilityLabel(LinkCopy.copiedAria)
+                            .animation(LinkCopy.animation(reduceMotion: reduceMotion), value: linkCopied)
+                    }
                 }
                 .padding(.bottom, 12)
             }
+            }
+            .onReceive(NotificationCenter.default.publisher(for: LinkCopy.copiedNotification)) { _ in
+                noteLinkCopied()
             }
         }
     }
