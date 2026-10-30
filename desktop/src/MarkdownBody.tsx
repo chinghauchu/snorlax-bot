@@ -190,6 +190,13 @@ import {
   mathCopyLabel,
   showMathBlockCopy,
 } from "./mathBlockCopy";
+import {
+  MATH_INLINE_COPY_MS,
+  mathInlineClipboardText,
+  mathInlineCopyAriaLabel,
+  mathInlineCopyLabel,
+  showMathInlineCopy,
+} from "./mathInlineCopy";
 import { shouldRenderMermaid, renderMermaidSvg } from "./mermaid";
 import { splitMentions } from "./mentions";
 import { openOsBrowser } from "./openUrl";
@@ -2037,6 +2044,50 @@ function renderTextWithMath(
   });
 }
 
+function InlineMathCopyButton({ tex }: { tex: string }) {
+  const [copied, setCopied] = useState(false);
+  const timer = useRef<ReturnType<typeof window.setTimeout> | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (timer.current != null) window.clearTimeout(timer.current);
+    };
+  }, []);
+
+  useEffect(() => {
+    setCopied(false);
+    if (timer.current != null) {
+      window.clearTimeout(timer.current);
+      timer.current = null;
+    }
+  }, [tex]);
+
+  function onCopy(event: MouseEvent<HTMLButtonElement>) {
+    event.preventDefault();
+    event.stopPropagation();
+    void copyText(mathInlineClipboardText(tex));
+    setCopied(true);
+    if (timer.current != null) window.clearTimeout(timer.current);
+    timer.current = window.setTimeout(() => {
+      setCopied(false);
+      timer.current = null;
+    }, MATH_INLINE_COPY_MS);
+  }
+
+  return (
+    <button
+      type="button"
+      className="md-math-inline-copy"
+      aria-label={mathInlineCopyAriaLabel(copied)}
+      aria-live="polite"
+      onMouseDown={keepCodeBlockFocus}
+      onClick={onCopy}
+    >
+      {mathInlineCopyLabel(copied)}
+    </button>
+  );
+}
+
 function MathBlockCopyButton({ tex }: { tex: string }) {
   const [copied, setCopied] = useState(false);
   const timer = useRef<ReturnType<typeof window.setTimeout> | null>(null);
@@ -2100,18 +2151,24 @@ function MathNode({
     block: display,
   });
   if (!display) {
-    if (html) {
-      return (
-        <span
-          className="md-math-inline"
-          dangerouslySetInnerHTML={{ __html: html }}
-        />
-      );
-    }
-    return (
+    const formula = html ? (
+      <span
+        className="md-math-inline"
+        dangerouslySetInnerHTML={{ __html: html }}
+      />
+    ) : (
       <code className="md-math-fallback">
         <FindText text={slot.raw} query={findQuery} />
       </code>
+    );
+    if (!showMathInlineCopy({ completed, closed: slot.closed })) {
+      return formula;
+    }
+    return (
+      <span className="md-math-inline-wrap">
+        {formula}
+        <InlineMathCopyButton tex={slot.tex} />
+      </span>
     );
   }
   const equation = html ? (

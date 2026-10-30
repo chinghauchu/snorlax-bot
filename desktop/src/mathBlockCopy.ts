@@ -3,8 +3,9 @@
 /**
  * v2.23: Copy on a completed assistant display-math block.
  * The control copies the TeX interior (no $$ delimiters), then reads
- * Copied for 1.5s. Inline math has no control. Hidden while streaming
- * and while the closing $$ has not arrived. No animation.
+ * Copied for 1.5s. Inline formulas use mathInlineCopy.ts (v2.27).
+ * Hidden while streaming and while the closing $$ has not arrived.
+ * No animation.
  * Table Copy (v1.31) already copies markdown source and is unchanged.
  */
 

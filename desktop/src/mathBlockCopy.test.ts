@@ -157,7 +157,7 @@ test("desktop button sits above the equation and copies the TeX only", () => {
   assert.doesNotMatch(copyCall, /slot\.raw/);
 });
 
-test("iOS button copies the TeX and inline math stays plain", () => {
+test("iOS display button copies the TeX and does not reuse the inline control", () => {
   const math = sliceFn(markdown, "struct MathBlock", "struct MathInline");
   assert.match(math, /MathBlockCopy\.showsCopy\(completed: completed, closed: closed\)/);
   assert.match(math, /MathBlockCopy\.clipboardText\(source\)/);

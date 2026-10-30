@@ -4,7 +4,8 @@ import SwiftUI
 /// v2.23: Copy on a completed assistant display-math block.
 /// Copies the TeX interior only (no $$ delimiters). Shows Copied for
 /// 1.5s, then reverts. Hidden while streaming, while the closing $$
-/// has not arrived, and on inline math. No animation.
+/// has not arrived. Inline formulas use InlineMathCopy (v2.27).
+/// No animation.
 enum MathBlockCopy {
     static let copyLabel = "Copy"
     static let copiedLabel = "Copied"
