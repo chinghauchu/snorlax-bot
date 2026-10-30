@@ -84,6 +84,14 @@ import {
   nextLinkStatusId,
 } from "./linkStatus";
 import {
+  INLINE_CODE_COPY_MS,
+  inlineCodeClipboardText,
+  inlineCodeCopyAriaLabel,
+  inlineCodeCopyLabel,
+  inlineCodeIsBlock,
+  showInlineCodeCopy,
+} from "./inlineCodeCopy";
+import {
   copyText,
   fenceLanguage,
   stabilizeMarkdown,
@@ -254,6 +262,9 @@ function useFootnoteScope(): string {
 /** v2.25: Copy link only inside a completed assistant MarkdownBody. */
 const AssistantLinkCopyContext = createContext(false);
 
+/** v2.28: Copy on an inline code span only inside a completed assistant body. */
+const AssistantInlineCodeContext = createContext(false);
+
 /** A link painted inside another link does not grow a second control. */
 const InsideMdLinkContext = createContext(false);
 
@@ -321,7 +332,9 @@ export function MarkdownBody({
   );
   return (
     <AssistantLinkCopyContext.Provider value={completed}>
-      <MarkdownMediaProvider value={media}>{scoped}</MarkdownMediaProvider>
+      <AssistantInlineCodeContext.Provider value={completed}>
+        <MarkdownMediaProvider value={media}>{scoped}</MarkdownMediaProvider>
+      </AssistantInlineCodeContext.Provider>
     </AssistantLinkCopyContext.Provider>
   );
 }
@@ -1503,7 +1516,62 @@ function InlineCode({
   className?: string;
   children?: ReactNode;
 }) {
-  return <code className={className}>{children}</code>;
+  const completed = useContext(AssistantInlineCodeContext);
+  const text = codeText(children);
+  const block = inlineCodeIsBlock({ className, text });
+  if (!showInlineCodeCopy({ completed, block, text })) {
+    return <code className={className}>{children}</code>;
+  }
+  return (
+    <span className="md-code-inline-wrap">
+      <code className={className}>{children}</code>
+      <InlineCodeCopyButton text={inlineCodeClipboardText(text)} />
+    </span>
+  );
+}
+
+function InlineCodeCopyButton({ text }: { text: string }) {
+  const [copied, setCopied] = useState(false);
+  const timer = useRef<ReturnType<typeof window.setTimeout> | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (timer.current != null) window.clearTimeout(timer.current);
+    };
+  }, []);
+
+  useEffect(() => {
+    setCopied(false);
+    if (timer.current != null) {
+      window.clearTimeout(timer.current);
+      timer.current = null;
+    }
+  }, [text]);
+
+  function onCopy(event: MouseEvent<HTMLButtonElement>) {
+    event.preventDefault();
+    event.stopPropagation();
+    void copyText(inlineCodeClipboardText(text));
+    setCopied(true);
+    if (timer.current != null) window.clearTimeout(timer.current);
+    timer.current = window.setTimeout(() => {
+      setCopied(false);
+      timer.current = null;
+    }, INLINE_CODE_COPY_MS);
+  }
+
+  return (
+    <button
+      type="button"
+      className="md-code-inline-copy"
+      aria-label={inlineCodeCopyAriaLabel(copied)}
+      aria-live="polite"
+      onMouseDown={keepCodeBlockFocus}
+      onClick={onCopy}
+    >
+      {inlineCodeCopyLabel(copied)}
+    </button>
+  );
 }
 
 function CodeFence({

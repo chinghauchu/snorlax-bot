@@ -244,3 +244,4 @@ jobs:
           python3 ios/scripts/test_ios_link_copy.py
           python3 ios/scripts/test_ios_table_csv_save.py
           python3 ios/scripts/test_ios_inline_math_copy.py
+          python3 ios/scripts/test_ios_inline_code_copy.py

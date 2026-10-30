@@ -186,6 +186,10 @@ struct QuoteSelectableText: UIViewRepresentable {
         for (range, title) in titles where range.location >= 0 && range.location + range.length <= mutable.length {
             mutable.addAttribute(.snorlaxLinkTitle, value: title, range: range)
         }
+        for range in InlineCodeCopy.ranges(in: text)
+        where range.location >= 0 && range.location + range.length <= mutable.length {
+            mutable.addAttribute(.snorlaxInlineCode, value: InlineCodeCopy.mark, range: range)
+        }
         return mutable
     }
 
@@ -323,15 +327,26 @@ extension QuoteSelectableText {
             suggestedActions: [UIMenuElement]
         ) -> UIMenu? {
             guard let view = textView as? QuoteTextView, view.quoteEnabled else { return nil }
+            var extras: [UIMenuElement] = []
+            if let attributed = textView.attributedText,
+               let span = InlineCodeCopy.spanText(in: attributed, selection: range) {
+                let copy = UIAction(title: InlineCodeCopy.menuLabel) { _ in
+                    UIPasteboard.general.string = InlineCodeCopy.clipboardText(span)
+                    InlineCodeCopy.noteCopied()
+                }
+                extras.append(copy)
+            }
             guard range.length > 0, let raw = textView.text, let swift = Range(range, in: raw) else {
-                return nil
+                return extras.isEmpty ? nil : UIMenu(children: extras + suggestedActions)
             }
             let selected = String(raw[swift])
-            guard QuoteSelection.quoteable(selected) != nil else { return nil }
+            guard QuoteSelection.quoteable(selected) != nil else {
+                return extras.isEmpty ? nil : UIMenu(children: extras + suggestedActions)
+            }
             let quote = UIAction(title: QuoteSelection.label) { [weak self] _ in
                 self?.onQuote(selected)
             }
-            return UIMenu(children: [quote] + suggestedActions)
+            return UIMenu(children: extras + [quote] + suggestedActions)
         }
 
         func textView(
