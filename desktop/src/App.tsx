@@ -442,6 +442,16 @@ import {
   userCopyPending,
 } from "./messageActions";
 import {
+  REPLY_MARKDOWN_FILENAME,
+  REPLY_MARKDOWN_SAVE_MS,
+  downloadReplyMarkdown,
+  replyMarkdownSaveAriaLabel,
+  replyMarkdownSaveBody,
+  replyMarkdownSaveKeepsReply,
+  replyMarkdownSaveLabel,
+  showReplyMarkdownSave,
+} from "./replyMarkdownSave";
+import {
   browserReplyRatingStorage,
   offersReplyRating,
   readReplyRatings,
@@ -1128,12 +1138,27 @@ function MessageActions({
   onRegenerate: () => void;
 }) {
   const [copied, setCopied] = useState(false);
+  const [saved, setSaved] = useState(false);
   const timer = useRef<number | null>(null);
+  const saveTimer = useRef<number | null>(null);
+  const showSave = showReplyMarkdownSave({
+    completed,
+    fromUser: false,
+    kindMessage: true,
+  });
   useEffect(() => {
     return () => {
       if (timer.current != null) window.clearTimeout(timer.current);
+      if (saveTimer.current != null) window.clearTimeout(saveTimer.current);
     };
   }, []);
+  useEffect(() => {
+    setSaved(false);
+    if (saveTimer.current != null) {
+      window.clearTimeout(saveTimer.current);
+      saveTimer.current = null;
+    }
+  }, [content]);
   async function onCopy() {
     await copyText(content);
     setCopied(true);
@@ -1142,6 +1167,16 @@ function MessageActions({
       setCopied(false);
       timer.current = null;
     }, MESSAGE_COPY_FEEDBACK_MS);
+  }
+  function onSave() {
+    if (!replyMarkdownSaveKeepsReply() || !showSave) return;
+    downloadReplyMarkdown(replyMarkdownSaveBody(content), REPLY_MARKDOWN_FILENAME);
+    setSaved(true);
+    if (saveTimer.current != null) window.clearTimeout(saveTimer.current);
+    saveTimer.current = window.setTimeout(() => {
+      setSaved(false);
+      saveTimer.current = null;
+    }, REPLY_MARKDOWN_SAVE_MS);
   }
   const speakName = speakLabel(speaking);
   const copiedLabel = copiedFeedbackLabel(Boolean(copied || shortcutCopied));
@@ -1157,6 +1192,18 @@ function MessageActions({
           </span>
         ) : null}
       </span>
+      {showSave ? (
+        <button
+          type="button"
+          className="message-action message-save"
+          aria-label={replyMarkdownSaveAriaLabel(saved)}
+          aria-live="polite"
+          onMouseDown={(event) => event.preventDefault()}
+          onClick={onSave}
+        >
+          {replyMarkdownSaveLabel(saved)}
+        </button>
+      ) : null}
       <QuoteMessageButton
         content={content}
         fromUser={false}

@@ -3951,6 +3951,31 @@ pre.md-math-fallback.md-math-block {
   color: var(--text);
 }
 
+/* v2.30: Save sits beside Copy on a finished assistant reply. The label swap is instant. */
+.message-save {
+  font-size: 12px;
+  color: var(--text-muted);
+  background: transparent;
+  border: 0;
+  padding: 0;
+  cursor: pointer;
+  transition: none;
+  animation: none;
+}
+
+.message-save:focus-visible {
+  outline: 1px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* v2.30: Reduce Motion on → the Save label swap stays instant. */
+@media (prefers-reduced-motion: reduce) {
+  .message-save {
+    transition: none;
+    animation: none;
+  }
+}
+
 /* v0.86: user-RIGHT Copy. Same muted 12px control as LEFT. Hidden
    until the turn is hovered or keyboard-focused. 120ms; keep in
    lockstep with BUBBLE_TIME_FADE_MS. Stays up while Copied is showing. */
