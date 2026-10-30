@@ -242,3 +242,4 @@ jobs:
           python3 ios/scripts/test_ios_math_block_copy.py
           python3 ios/scripts/test_ios_table_cells_copy.py
           python3 ios/scripts/test_ios_link_copy.py
+          python3 ios/scripts/test_ios_table_csv_save.py

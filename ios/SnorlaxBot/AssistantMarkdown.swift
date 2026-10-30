@@ -544,7 +544,8 @@ private struct MarkdownRule: View {
 }
 
 /// Horizontal scroll lives on the table, not the bubble. Copy writes the
-/// markdown source. Cells writes the grid as tabs. Neither label swap animates.
+/// markdown source. Cells writes the grid as tabs. Save writes a CSV file.
+/// None of the label swaps animate.
 private struct MarkdownTableBlock: View {
     let table: MarkdownTable.Table
     let names: [String]
@@ -554,6 +555,9 @@ private struct MarkdownTableBlock: View {
     @State private var pulse = 0
     @State private var cellsCopied = false
     @State private var cellsPulse = 0
+    @State private var saved = false
+    @State private var savePulse = 0
+    @State private var shareURL: URL?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -600,6 +604,17 @@ private struct MarkdownTableBlock: View {
                     .buttonStyle(.plain)
                     .accessibilityLabel(MarkdownTableCopy.accessibilityLabel(copied: copied))
                     .animation(MarkdownTableCopy.animation(reduceMotion: reduceMotion), value: copied)
+                    if TableCsvSave.showsSave(completed: completed) {
+                        Button(TableCsvSave.label(saved: saved)) {
+                            saveTable()
+                        }
+                        .font(.system(size: 12))
+                        .foregroundStyle(.secondary)
+                        .buttonStyle(.plain)
+                        .focusable(false)
+                        .accessibilityLabel(TableCsvSave.accessibilityLabel(saved: saved))
+                        .animation(TableCsvSave.animation(reduceMotion: reduceMotion), value: saved)
+                    }
                 }
                 .padding(.horizontal, 10)
                 .padding(.top, 6)
@@ -637,6 +652,32 @@ private struct MarkdownTableBlock: View {
                 .stroke(Color(uiColor: .separator), lineWidth: 1)
         }
         .clipShape(RoundedRectangle(cornerRadius: 8))
+        .sheet(isPresented: Binding(
+            get: { shareURL != nil },
+            set: { if !$0 { shareURL = nil } }
+        )) {
+            if let shareURL {
+                TableCsvShareSheet(url: shareURL)
+            }
+        }
+    }
+
+    /// Write the painted grid and present the share sheet.
+    /// The table stays. Nothing is sent. A failed write presents nothing.
+    private func saveTable() {
+        guard TableCsvSave.keepsTable() else { return }
+        let csv = TableCsvSave.csvText(header: table.header, rows: table.rows)
+        guard let file = TableCsvSave.writeFile(csv: csv, filename: TableCsvSave.filename) else { return }
+        shareURL = file
+        saved = true
+        savePulse += 1
+        let ticket = savePulse
+        Task {
+            try? await Task.sleep(nanoseconds: TableCsvSave.feedbackNanoseconds)
+            if ticket == savePulse {
+                saved = false
+            }
+        }
     }
 
     private func tableCell(_ text: String, column: Int, header: Bool, last: Bool) -> some View {
@@ -673,6 +714,18 @@ private struct MarkdownTableBlock: View {
         case .right: return .trailing
         }
     }
+}
+
+/// The system share sheet for one saved table CSV. Copy and Files are
+/// the system's actions. This view does not request photo-library permission.
+private struct TableCsvShareSheet: UIViewControllerRepresentable {
+    let url: URL
+
+    func makeUIViewController(context: Context) -> UIActivityViewController {
+        UIActivityViewController(activityItems: [url], applicationActivities: nil)
+    }
+
+    func updateUIViewController(_ uiViewController: UIActivityViewController, context: Context) {}
 }
 
 private struct MermaidFence: View {
