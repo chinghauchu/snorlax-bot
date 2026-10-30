@@ -1252,26 +1252,63 @@ private struct MathBlock: View {
     }
 }
 
+private struct InlineMathCopyButton: View {
+    let tex: String
+    var completed: Bool
+    var closed: Bool
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var copied = false
+    @State private var pulse = 0
+
+    var body: some View {
+        if InlineMathCopy.showsCopy(completed: completed, closed: closed) {
+            Button(InlineMathCopy.label(copied: copied)) {
+                UIPasteboard.general.string = InlineMathCopy.clipboardText(tex)
+                copied = true
+                pulse += 1
+                let ticket = pulse
+                Task {
+                    try? await Task.sleep(nanoseconds: InlineMathCopy.feedbackNanoseconds)
+                    if ticket == pulse {
+                        copied = false
+                    }
+                }
+            }
+            .transcriptFont(12)
+            .foregroundStyle(.secondary)
+            .buttonStyle(.plain)
+            .focusable(false)
+            .accessibilityLabel(InlineMathCopy.accessibilityLabel(copied: copied))
+            .animation(InlineMathCopy.animation(reduceMotion: reduceMotion), value: copied)
+        }
+    }
+}
+
 private struct MathInline: View {
     let source: String
     let raw: String
+    var completed: Bool
+    var closed: Bool
     @State private var failed = false
     @State private var size = CGSize(width: 1, height: 1)
 
     var body: some View {
-        Group {
-            if failed {
-                MathFallback(raw: raw, block: false)
-            } else {
-                MathWebView(
-                    source: source,
-                    display: false,
-                    text: MermaidColors.hex(UIColor.label),
-                    failed: $failed,
-                    size: $size
-                )
-                .frame(width: max(size.width, 1), height: max(size.height, 1), alignment: .center)
+        HStack(alignment: .center, spacing: 4) {
+            Group {
+                if failed {
+                    MathFallback(raw: raw, block: false)
+                } else {
+                    MathWebView(
+                        source: source,
+                        display: false,
+                        text: MermaidColors.hex(UIColor.label),
+                        failed: $failed,
+                        size: $size
+                    )
+                    .frame(width: max(size.width, 1), height: max(size.height, 1), alignment: .center)
+                }
             }
+            InlineMathCopyButton(tex: source, completed: completed, closed: closed)
         }
     }
 }
@@ -1361,7 +1398,12 @@ private struct MarkdownRun: View {
                             markdownText(text)
                         case .inlineMath(let tex, let raw, let closed):
                             if completed && closed {
-                                MathInline(source: tex, raw: raw)
+                                MathInline(
+                                    source: tex,
+                                    raw: raw,
+                                    completed: completed,
+                                    closed: closed
+                                )
                             } else {
                                 MathFallback(raw: raw, block: false, quoteEnabled: completed)
                             }

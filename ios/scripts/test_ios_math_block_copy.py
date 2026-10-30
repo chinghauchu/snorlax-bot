@@ -4,8 +4,9 @@
 
 A completed assistant display-math block offers a muted Copy.
 Tap or click copies the TeX without the $$ delimiters, then the
-label reads Copied for 1.5s. Inline math has no Copy. A streaming
-block, and a block whose closing $$ has not arrived, hide it. A
+label reads Copied for 1.5s. Inline formulas use InlineMathCopy
+(v2.27), not this control. A streaming block, and a block whose
+closing $$ has not arrived, hide it. A
 formula that fails to render still copies its TeX. The control
 does not take composer focus. No new animation. No new shortcut.
 No new HTTP. OpenAPI stays 0.18.0. Never reintroduce computerPane.ts.
