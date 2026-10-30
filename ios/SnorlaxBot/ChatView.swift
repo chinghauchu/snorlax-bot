@@ -3947,6 +3947,8 @@ private struct MessageBubble: View {
     @State private var shareURL: URL?
     @State private var copied = false
     @State private var copyPulse = 0
+    @State private var replySaved = false
+    @State private var replySavePulse = 0
 
     private var isUser: Bool { message.isFromUser }
 
@@ -4287,6 +4289,17 @@ private struct MessageBubble: View {
                                     }
                                 }
                             }
+                            if offersReplySave {
+                                Button(ReplyMarkdownSave.label(saved: replySaved)) {
+                                    saveReply()
+                                }
+                                .font(.system(size: 12))
+                                .foregroundStyle(.secondary)
+                                .buttonStyle(.plain)
+                                .focusable(false)
+                                .accessibilityLabel(ReplyMarkdownSave.accessibilityLabel(saved: replySaved))
+                                .animation(ReplyMarkdownSave.animation(reduceMotion: reduceMotion), value: replySaved)
+                            }
                             if showSpeak {
                                 let speaking = model.speakingMessageId == message.id
                                 Button(Speak.label(speaking)) {
@@ -4462,6 +4475,8 @@ private struct MessageBubble: View {
                 streaming: !completed
             ),
             showCopy: showCopy,
+            showReplySave: offersReplySave,
+            replySaved: replySaved,
             showSpeak: showSpeak,
             showRegenerate: showRegenerate,
             speaking: model.speakingMessageId == message.id,
@@ -4469,6 +4484,7 @@ private struct MessageBubble: View {
             showFailedSend: model.failedSend(id: message.id) != nil,
             retryDisabled: FailedSend.retryBlocked(busy: model.isSending),
             onCopy: { copyMessageText() },
+            onSaveReply: { saveReply() },
             onSpeak: { Task { await model.toggleSpeak(message: message) } },
             onRegenerate: { Task { await model.regenerate() } },
             onEditAsNew: { model.editAsNewMessage(message.content) },
@@ -4482,6 +4498,20 @@ private struct MessageBubble: View {
             onQuoteMessage: {
                 model.quoteMessageIntoComposer(message.content, sourceId: message.id)
             }
+        )
+    }
+
+    /// v2.30: Save writes this reply as reply.md. Not on a user bubble.
+    private var offersReplySave: Bool {
+        ReplyMarkdownSave.showsSave(
+            fromUser: message.isFromUser,
+            kindMessage: message.isKindMessage
+                && !message.isToolLine
+                && !message.isWidget
+                && !message.isConnect
+                && !message.isApprove
+                && !message.isHandoffRoot,
+            completed: completed
         )
     }
 
@@ -4545,6 +4575,24 @@ private struct MessageBubble: View {
         ) && !message.content.isEmpty
     }
 
+    /// Write the reply markdown and present the share sheet.
+    /// The reply stays. Nothing is sent. A failed write presents nothing.
+    private func saveReply() {
+        guard offersReplySave, ReplyMarkdownSave.keepsReply() else { return }
+        let markdown = ReplyMarkdownSave.bodyText(message.content)
+        guard let file = ReplyMarkdownSave.writeFile(markdown: markdown, filename: ReplyMarkdownSave.filename) else { return }
+        shareURL = file
+        replySaved = true
+        replySavePulse += 1
+        let ticket = replySavePulse
+        Task {
+            try? await Task.sleep(nanoseconds: ReplyMarkdownSave.feedbackNanoseconds)
+            if ticket == replySavePulse {
+                replySaved = false
+            }
+        }
+    }
+
     private func copyMessageText() {
         UIPasteboard.general.string = message.content
         copied = true
@@ -4565,6 +4613,8 @@ private struct MessageBubble: View {
 private struct BubbleTimestampMenu: ViewModifier {
     let stamp: String?
     var showCopy: Bool
+    var showReplySave: Bool = false
+    var replySaved: Bool = false
     var showSpeak: Bool
     var showRegenerate: Bool
     var speaking: Bool
@@ -4575,6 +4625,7 @@ private struct BubbleTimestampMenu: ViewModifier {
     var showQuoteMessage: Bool = false
     var showReplyRating: Bool = false
     let onCopy: () -> Void
+    var onSaveReply: () -> Void = {}
     let onSpeak: () -> Void
     let onRegenerate: () -> Void
     let onEditAsNew: () -> Void
@@ -4624,12 +4675,16 @@ private struct BubbleTimestampMenu: ViewModifier {
     func body(content: Content) -> some View {
         if let stamp {
             let selectedQuote = showQuote ? QuoteSelection.menuSelection() : nil
-            let hasActions = showCopy || showSpeak || showRegenerate || showFailedSend || showEditAsNew || selectedQuote != nil || showQuoteMessage || showReplyRating
+            let hasActions = showCopy || showReplySave || showSpeak || showRegenerate || showFailedSend || showEditAsNew || selectedQuote != nil || showQuoteMessage || showReplyRating
             if hasActions {
                 content.contextMenu {
                     Section {
                         if showCopy {
                             Button("Copy") { onCopy() }
+                        }
+                        if showReplySave {
+                            Button(ReplyMarkdownSave.label(saved: replySaved)) { onSaveReply() }
+                                .accessibilityLabel(ReplyMarkdownSave.accessibilityLabel(saved: replySaved))
                         }
                         if showSpeak {
                             Button(Speak.label(speaking)) { onSpeak() }
@@ -4656,10 +4711,14 @@ private struct BubbleTimestampMenu: ViewModifier {
                         .disabled(true)
                 }
             }
-        } else if showCopy || showFailedSend || showEditAsNew || showQuoteMessage || showReplyRating || (showQuote && QuoteSelection.menuSelection() != nil) {
+        } else if showCopy || showReplySave || showFailedSend || showEditAsNew || showQuoteMessage || showReplyRating || (showQuote && QuoteSelection.menuSelection() != nil) {
             content.contextMenu {
                 if showCopy {
                     Button("Copy") { onCopy() }
+                }
+                if showReplySave {
+                    Button(ReplyMarkdownSave.label(saved: replySaved)) { onSaveReply() }
+                        .accessibilityLabel(ReplyMarkdownSave.accessibilityLabel(saved: replySaved))
                 }
                 ratingButtons
                 if showEditAsNew {
