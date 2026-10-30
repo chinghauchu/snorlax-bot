@@ -452,6 +452,16 @@ import {
   showReplyMarkdownSave,
 } from "./replyMarkdownSave";
 import {
+  USER_MESSAGE_FILENAME,
+  USER_MESSAGE_SAVE_MS,
+  downloadUserMessage,
+  showUserMessageSave,
+  userMessageSaveAriaLabel,
+  userMessageSaveBody,
+  userMessageSaveKeepsMessage,
+  userMessageSaveLabel,
+} from "./userMessageSave";
+import {
   browserReplyRatingStorage,
   offersReplyRating,
   readReplyRatings,
@@ -1315,12 +1325,27 @@ function QuoteMessageButton({
 
 function UserMessageCopy({ content }: { content: string }) {
   const [copied, setCopied] = useState(false);
+  const [saved, setSaved] = useState(false);
   const timer = useRef<number | null>(null);
+  const saveTimer = useRef<number | null>(null);
+  const showSave = showUserMessageSave({
+    fromUser: true,
+    kindMessage: true,
+    pending: false,
+  });
   useEffect(() => {
     return () => {
       if (timer.current != null) window.clearTimeout(timer.current);
+      if (saveTimer.current != null) window.clearTimeout(saveTimer.current);
     };
   }, []);
+  useEffect(() => {
+    setSaved(false);
+    if (saveTimer.current != null) {
+      window.clearTimeout(saveTimer.current);
+      saveTimer.current = null;
+    }
+  }, [content]);
   async function onCopy() {
     await copyText(content);
     setCopied(true);
@@ -1330,9 +1355,21 @@ function UserMessageCopy({ content }: { content: string }) {
       timer.current = null;
     }, MESSAGE_COPY_FEEDBACK_MS);
   }
+  function onSave() {
+    if (!userMessageSaveKeepsMessage() || !showSave) return;
+    downloadUserMessage(userMessageSaveBody(content), USER_MESSAGE_FILENAME);
+    setSaved(true);
+    if (saveTimer.current != null) window.clearTimeout(saveTimer.current);
+    saveTimer.current = window.setTimeout(() => {
+      setSaved(false);
+      saveTimer.current = null;
+    }, USER_MESSAGE_SAVE_MS);
+  }
   const copiedLabel = copiedFeedbackLabel(copied);
   return (
-    <div className={`message-actions user-copy${copied ? " is-copied" : ""}`}>
+    <div
+      className={`message-actions user-copy${copied ? " is-copied" : ""}${saved ? " is-saved" : ""}`}
+    >
       <span className="message-copy">
         <button
           type="button"
@@ -1347,6 +1384,18 @@ function UserMessageCopy({ content }: { content: string }) {
           </span>
         ) : null}
       </span>
+      {showSave ? (
+        <button
+          type="button"
+          className="message-action user-save"
+          aria-label={userMessageSaveAriaLabel(saved)}
+          aria-live="polite"
+          onMouseDown={(event) => event.preventDefault()}
+          onClick={onSave}
+        >
+          {userMessageSaveLabel(saved)}
+        </button>
+      ) : null}
       {offersEditAsNew({
         fromUser: true,
         kindMessage: true,

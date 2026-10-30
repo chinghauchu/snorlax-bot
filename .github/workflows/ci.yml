@@ -247,3 +247,4 @@ jobs:
           python3 ios/scripts/test_ios_inline_code_copy.py
           python3 ios/scripts/test_ios_math_block_save.py
           python3 ios/scripts/test_ios_reply_markdown_save.py
+          python3 ios/scripts/test_ios_user_message_save.py

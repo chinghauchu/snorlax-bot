@@ -3949,6 +3949,8 @@ private struct MessageBubble: View {
     @State private var copyPulse = 0
     @State private var replySaved = false
     @State private var replySavePulse = 0
+    @State private var userSaved = false
+    @State private var userSavePulse = 0
 
     private var isUser: Bool { message.isFromUser }
 
@@ -4477,6 +4479,8 @@ private struct MessageBubble: View {
             showCopy: showCopy,
             showReplySave: offersReplySave,
             replySaved: replySaved,
+            showUserSave: offersUserSave,
+            userSaved: userSaved,
             showSpeak: showSpeak,
             showRegenerate: showRegenerate,
             speaking: model.speakingMessageId == message.id,
@@ -4485,6 +4489,7 @@ private struct MessageBubble: View {
             retryDisabled: FailedSend.retryBlocked(busy: model.isSending),
             onCopy: { copyMessageText() },
             onSaveReply: { saveReply() },
+            onSaveUser: { saveUserMessage() },
             onSpeak: { Task { await model.toggleSpeak(message: message) } },
             onRegenerate: { Task { await model.regenerate() } },
             onEditAsNew: { model.editAsNewMessage(message.content) },
@@ -4498,6 +4503,17 @@ private struct MessageBubble: View {
             onQuoteMessage: {
                 model.quoteMessageIntoComposer(message.content, sourceId: message.id)
             }
+        )
+    }
+
+    /// v2.31: Save writes this user message as message.txt. Not on a reply.
+    private var offersUserSave: Bool {
+        UserMessageSave.showsSave(
+            fromUser: message.isFromUser,
+            kindMessage: message.isKindMessage,
+            pending: model.isSending
+                && OptimisticSend.isOptimistic(message.id)
+                && model.failedSend(id: message.id) == nil
         )
     }
 
@@ -4605,16 +4621,37 @@ private struct MessageBubble: View {
             }
         }
     }
+
+    /// Write the user message and present the share sheet.
+    /// The message stays. Nothing is sent. A failed write presents nothing.
+    private func saveUserMessage() {
+        guard offersUserSave, UserMessageSave.keepsMessage() else { return }
+        let text = UserMessageSave.bodyText(message.content)
+        guard let file = UserMessageSave.writeFile(text: text, filename: UserMessageSave.filename) else { return }
+        shareURL = file
+        userSaved = true
+        userSavePulse += 1
+        let ticket = userSavePulse
+        Task {
+            try? await Task.sleep(nanoseconds: UserMessageSave.feedbackNanoseconds)
+            if ticket == userSavePulse {
+                userSaved = false
+            }
+        }
+    }
 }
 
 /// v0.65: timestamp is a non-actionable section header. Copy / Speak /
 /// Regenerate stay beside it when those controls already show. A user
 /// bubble with no actions still reveals the time as a disabled row.
 private struct BubbleTimestampMenu: ViewModifier {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     let stamp: String?
     var showCopy: Bool
     var showReplySave: Bool = false
     var replySaved: Bool = false
+    var showUserSave: Bool = false
+    var userSaved: Bool = false
     var showSpeak: Bool
     var showRegenerate: Bool
     var speaking: Bool
@@ -4626,6 +4663,7 @@ private struct BubbleTimestampMenu: ViewModifier {
     var showReplyRating: Bool = false
     let onCopy: () -> Void
     var onSaveReply: () -> Void = {}
+    var onSaveUser: () -> Void = {}
     let onSpeak: () -> Void
     let onRegenerate: () -> Void
     let onEditAsNew: () -> Void
@@ -4663,6 +4701,16 @@ private struct BubbleTimestampMenu: ViewModifier {
         }
     }
 
+    /// v2.31: Save this user message. Not offered on an assistant reply.
+    @ViewBuilder
+    private var userSaveButton: some View {
+        if showUserSave {
+            Button(UserMessageSave.label(saved: userSaved)) { onSaveUser() }
+                .accessibilityLabel(UserMessageSave.accessibilityLabel(saved: userSaved))
+                .animation(UserMessageSave.animation(reduceMotion: reduceMotion), value: userSaved)
+        }
+    }
+
     /// v2.17: Quote the whole message when nothing in it is selected.
     @ViewBuilder
     private var quoteMessageButton: some View {
@@ -4675,13 +4723,14 @@ private struct BubbleTimestampMenu: ViewModifier {
     func body(content: Content) -> some View {
         if let stamp {
             let selectedQuote = showQuote ? QuoteSelection.menuSelection() : nil
-            let hasActions = showCopy || showReplySave || showSpeak || showRegenerate || showFailedSend || showEditAsNew || selectedQuote != nil || showQuoteMessage || showReplyRating
+            let hasActions = showCopy || showReplySave || showUserSave || showSpeak || showRegenerate || showFailedSend || showEditAsNew || selectedQuote != nil || showQuoteMessage || showReplyRating
             if hasActions {
                 content.contextMenu {
                     Section {
                         if showCopy {
                             Button("Copy") { onCopy() }
                         }
+                        userSaveButton
                         if showReplySave {
                             Button(ReplyMarkdownSave.label(saved: replySaved)) { onSaveReply() }
                                 .accessibilityLabel(ReplyMarkdownSave.accessibilityLabel(saved: replySaved))
@@ -4711,11 +4760,12 @@ private struct BubbleTimestampMenu: ViewModifier {
                         .disabled(true)
                 }
             }
-        } else if showCopy || showReplySave || showFailedSend || showEditAsNew || showQuoteMessage || showReplyRating || (showQuote && QuoteSelection.menuSelection() != nil) {
+        } else if showCopy || showReplySave || showUserSave || showFailedSend || showEditAsNew || showQuoteMessage || showReplyRating || (showQuote && QuoteSelection.menuSelection() != nil) {
             content.contextMenu {
                 if showCopy {
                     Button("Copy") { onCopy() }
                 }
+                userSaveButton
                 if showReplySave {
                     Button(ReplyMarkdownSave.label(saved: replySaved)) { onSaveReply() }
                         .accessibilityLabel(ReplyMarkdownSave.accessibilityLabel(saved: replySaved))
