@@ -5,8 +5,9 @@ import SwiftUI
 /// A muted Save sits beside Copy on that fence. This side writes the
 /// full source and hands that file to the system share sheet. It does
 /// not ask for photo-library permission. Lines hidden by Show more are
-/// included. A streaming fence hides Save. A math block has no Save.
-/// Nothing is sent. No new shortcut. No animation.
+/// included. A streaming fence hides Save. A math block uses its own
+/// Save (v2.29), not this control. Nothing is sent. No new shortcut.
+/// No animation.
 /// Keep in lockstep with `desktop/src/codeBlockSave.ts`.
 enum CodeBlockSave {
     static let label = "Save"
