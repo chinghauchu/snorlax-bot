@@ -175,6 +175,15 @@ import {
   tableFindKeepsOpen,
   tableVisibleRows,
 } from "./tableCollapse";
+import {
+  listCollapseAria,
+  listCollapseLabel,
+  listFindKeepsOpen,
+  listFindText,
+  listVisibleItems,
+  shouldCollapseList,
+  showListCollapseToggle,
+} from "./listCollapse";
 import { listIsLoose } from "./markdownLooseList";
 import {
   listNeedsCmarkOrderedItemStart,
@@ -400,10 +409,14 @@ function QuoteTaskPieces({
         }
         if (block.type === "tasks") {
           return (
-            <ul
+            <CollapsibleList
+              key={`t-${index}`}
+              ordered={false}
               className="md-task-list"
               data-loose={block.loose ? "true" : "false"}
-              key={`t-${index}`}
+              completed={completed}
+              wrapScope={wrapScope}
+              findText={listFindText(block.items.map((item) => item.text))}
             >
               {block.items.map((item, itemIndex) => (
                 <li
@@ -438,7 +451,7 @@ function QuoteTaskPieces({
                   )}
                 </li>
               ))}
-            </ul>
+            </CollapsibleList>
           );
         }
         return (
@@ -832,16 +845,132 @@ function MarkdownListsWithTables({
             </TightParagraphContext.Provider>
           </li>
         ));
-        if (block.list.ordered) {
-          return (
-            <ol key={`list-${index}`} start={block.list.start}>
-              {items}
-            </ol>
-          );
-        }
-        return <ul key={`list-${index}`}>{items}</ul>;
+        return (
+          <CollapsibleList
+            key={`list-${index}`}
+            ordered={block.list.ordered}
+            start={block.list.start}
+            completed={completed}
+            wrapScope={wrapScope}
+            findText={listFindText(block.list.items)}
+          >
+            {items}
+          </CollapsibleList>
+        );
       })}
     </>
+  );
+}
+
+/** Item nodes. Blank text between items is not an item. */
+function listItemNodes(children: ReactNode): ReactNode[] {
+  return Children.toArray(children).filter((node) => {
+    if (typeof node === "string") return node.trim().length > 0;
+    return isValidElement(node);
+  });
+}
+
+/** Rendered text of a list, including nested items that are still in the tree. */
+function reactNodeText(node: ReactNode): string {
+  if (node == null || typeof node === "boolean") return "";
+  if (typeof node === "string" || typeof node === "number") return String(node);
+  if (Array.isArray(node)) return node.map(reactNodeText).filter(Boolean).join("\n");
+  if (!isValidElement(node)) return "";
+  const props = node.props as {
+    children?: ReactNode;
+    text?: unknown;
+    href?: unknown;
+    title?: unknown;
+    alt?: unknown;
+  };
+  const bits: string[] = [];
+  if (typeof props.text === "string") bits.push(props.text);
+  if (typeof props.href === "string") bits.push(props.href);
+  if (typeof props.title === "string") bits.push(props.title);
+  if (typeof props.alt === "string") bits.push(props.alt);
+  const nested = reactNodeText(props.children);
+  if (nested) bits.push(nested);
+  return bits.join("\n");
+}
+
+/**
+ * v2.34: a finished list longer than 8 items shows the first 8 and
+ * Show more. A short list stays the plain ul or ol, so its margins
+ * do not change. The footnote list does not come through here.
+ */
+function CollapsibleList({
+  ordered,
+  start,
+  className,
+  "data-loose": dataLoose,
+  completed,
+  wrapScope,
+  findText,
+  children,
+}: {
+  ordered: boolean;
+  start?: number;
+  className?: string;
+  "data-loose"?: "true" | "false";
+  completed: boolean;
+  wrapScope: string;
+  findText?: string;
+  children?: ReactNode;
+}) {
+  const items = listItemNodes(children);
+  const [expanded, setExpanded] = useState(false);
+  const findQuery = useFindQuery();
+  const activeRowId = useFindRowId();
+  const text = findText ?? items.map(reactNodeText).join("\n");
+  useEffect(() => {
+    setExpanded(false);
+  }, [wrapScope, text]);
+  const findKeepsOpen = listFindKeepsOpen({
+    activeRowId,
+    wrapScope,
+    text,
+    query: findQuery,
+  });
+  const collapsed = shouldCollapseList({
+    completed,
+    itemCount: items.length,
+    expanded,
+    activeFind: findKeepsOpen,
+  });
+  const showToggle = showListCollapseToggle({
+    completed,
+    itemCount: items.length,
+    activeFind: findKeepsOpen,
+  });
+  const shown = listVisibleItems(items, collapsed);
+  const body = showToggle ? shown : children;
+  const looseProps = dataLoose == null ? {} : { "data-loose": dataLoose };
+  const list = ordered ? (
+    typeof start === "number" ? (
+      <ol start={start}>{body}</ol>
+    ) : (
+      <ol>{body}</ol>
+    )
+  ) : (
+    <ul className={className} {...looseProps}>
+      {body}
+    </ul>
+  );
+  if (!showToggle) return list;
+  return (
+    <div className="md-list-block" data-list-collapsed={collapsed ? "true" : "false"}>
+      {list}
+      <button
+        type="button"
+        className="md-list-more"
+        aria-expanded={expanded}
+        aria-label={listCollapseAria(expanded)}
+        onMouseDown={keepCodeBlockFocus}
+        onClick={() => setExpanded((value) => !value)}
+      >
+        {listCollapseLabel(expanded)}
+      </button>
+    </div>
   );
 }
 
@@ -937,12 +1066,26 @@ function MarkdownParsedBody({
         // v1.36: CommonMark already sets `start` when the list does
         // not begin at 1. Forward it so a later custom `ol` cannot
         // drop the number. Nested lists stay inside the item.
-        ol: ({ start, children }) =>
-          typeof start === "number" ? (
-            <ol start={start}>{children}</ol>
-          ) : (
-            <ol>{children}</ol>
-          ),
+        // v2.34: a long list shows the first 8 items.
+        ol: ({ start, children }) => (
+          <CollapsibleList
+            ordered
+            start={start}
+            completed={completed}
+            wrapScope={wrapScope}
+          >
+            {children}
+          </CollapsibleList>
+        ),
+        ul: ({ children }) => (
+          <CollapsibleList
+            ordered={false}
+            completed={completed}
+            wrapScope={wrapScope}
+          >
+            {children}
+          </CollapsibleList>
+        ),
         // v1.59: a list item that starts with `[ ]` / `[x]` / `[X]`
         // shows a read-only glyph. The number or bullet stays.
         // Streaming does not run the marker plugin, so there is no token.

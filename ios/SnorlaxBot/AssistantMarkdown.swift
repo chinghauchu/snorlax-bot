@@ -182,6 +182,7 @@ private struct MarkdownQuoteBlock: View {
 }
 
 /// Read-only checkbox glyphs. Checked rows are muted. Not a toggle.
+/// v2.34: more than 8 items show the first 8 and Show more.
 private struct MarkdownTaskList: View {
     let items: [MarkdownQuoteTask.TaskItem]
     let loose: Bool
@@ -189,22 +190,77 @@ private struct MarkdownTaskList: View {
     var completed: Bool
     var wrapScope: String
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.chatFind) private var find
+    @State private var expanded = false
+
+    private var itemText: String {
+        ListCollapse.findText(items.map(\.text))
+    }
+
+    private var keepsOpen: Bool {
+        ListCollapse.findKeepsOpen(
+            activeRowId: find.activeRowId,
+            wrapScope: wrapScope,
+            text: itemText,
+            query: find.query
+        )
+    }
+
+    private var collapsed: Bool {
+        ListCollapse.shouldCollapse(
+            completed: completed,
+            itemCount: items.count,
+            expanded: expanded,
+            activeFind: keepsOpen
+        )
+    }
+
+    private var collapseShown: Bool {
+        ListCollapse.showsControl(
+            completed: completed,
+            itemCount: items.count,
+            activeFind: keepsOpen
+        )
+    }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: MarkdownLooseList.itemSpacing(loose: loose)) {
-            ForEach(Array(items.enumerated()), id: \.offset) { _, item in
-                MarkdownTaskRow(
-                    item: item,
-                    loose: loose,
-                    names: names,
-                    completed: completed,
-                    wrapScope: wrapScope
-                )
+        let shown = ListCollapse.visibleItems(items, collapsed: collapsed)
+        VStack(alignment: .leading, spacing: 0) {
+            VStack(alignment: .leading, spacing: MarkdownLooseList.itemSpacing(loose: loose)) {
+                ForEach(Array(shown.enumerated()), id: \.offset) { _, item in
+                    MarkdownTaskRow(
+                        item: item,
+                        loose: loose,
+                        names: names,
+                        completed: completed,
+                        wrapScope: wrapScope
+                    )
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .animation(MarkdownQuoteTask.animation(reduceMotion: reduceMotion), value: items)
+            .animation(MarkdownLooseList.animation(reduceMotion: reduceMotion), value: loose)
+            if collapseShown {
+                Button(ListCollapse.label(expanded: expanded)) {
+                    expanded.toggle()
+                }
+                .buttonStyle(.plain)
+                .font(.system(size: 12, weight: .medium))
+                .foregroundStyle(.secondary)
+                .focusable(false)
+                .accessibilityLabel(ListCollapse.accessibilityLabel(expanded: expanded))
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.top, 6)
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .animation(MarkdownQuoteTask.animation(reduceMotion: reduceMotion), value: items)
-        .animation(MarkdownLooseList.animation(reduceMotion: reduceMotion), value: loose)
+        .onChange(of: itemText) { _, _ in
+            expanded = false
+        }
+        .onChange(of: wrapScope) { _, _ in
+            expanded = false
+        }
+        .animation(ListCollapse.animation(reduceMotion: reduceMotion), value: expanded)
     }
 }
 
@@ -435,32 +491,89 @@ private struct MarkdownIndentedPieces: View {
 /// so a nested list indents under this marker.
 /// v1.59: an item that starts with `[ ]` / `[x]` / `[X]` also
 /// shows a read-only checkbox. The number stays.
+/// v2.34: more than 8 items show the first 8 and Show more.
+/// The prefix keeps each item's index, so an ordered start stays.
 private struct MarkdownListBlock: View {
     let group: MarkdownList.Group
     let names: [String]
     var completed: Bool
     var wrapScope: String
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.chatFind) private var find
+    @State private var expanded = false
+
+    private var itemText: String {
+        ListCollapse.findText(group.items)
+    }
+
+    private var keepsOpen: Bool {
+        ListCollapse.findKeepsOpen(
+            activeRowId: find.activeRowId,
+            wrapScope: wrapScope,
+            text: itemText,
+            query: find.query
+        )
+    }
+
+    private var collapsed: Bool {
+        ListCollapse.shouldCollapse(
+            completed: completed,
+            itemCount: group.items.count,
+            expanded: expanded,
+            activeFind: keepsOpen
+        )
+    }
+
+    private var collapseShown: Bool {
+        ListCollapse.showsControl(
+            completed: completed,
+            itemCount: group.items.count,
+            activeFind: keepsOpen
+        )
+    }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: MarkdownLooseList.itemSpacing(loose: group.loose)) {
-            ForEach(Array(group.items.enumerated()), id: \.offset) { index, item in
-                MarkdownListItemRow(
-                    item: item,
-                    index: index,
-                    ordered: group.ordered,
-                    start: group.start,
-                    loose: group.loose,
-                    names: names,
-                    completed: completed,
-                    wrapScope: wrapScope
-                )
+        let shown = ListCollapse.visibleItems(group.items, collapsed: collapsed)
+        VStack(alignment: .leading, spacing: 0) {
+            VStack(alignment: .leading, spacing: MarkdownLooseList.itemSpacing(loose: group.loose)) {
+                ForEach(Array(shown.enumerated()), id: \.offset) { index, item in
+                    MarkdownListItemRow(
+                        item: item,
+                        index: index,
+                        ordered: group.ordered,
+                        start: group.start,
+                        loose: group.loose,
+                        names: names,
+                        completed: completed,
+                        wrapScope: wrapScope
+                    )
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .animation(MarkdownList.animation(reduceMotion: reduceMotion), value: group.items)
+            .animation(MarkdownLooseList.animation(reduceMotion: reduceMotion), value: group.loose)
+            .animation(MarkdownOrderedTask.animation(reduceMotion: reduceMotion), value: group.items)
+            if collapseShown {
+                Button(ListCollapse.label(expanded: expanded)) {
+                    expanded.toggle()
+                }
+                .buttonStyle(.plain)
+                .font(.system(size: 12, weight: .medium))
+                .foregroundStyle(.secondary)
+                .focusable(false)
+                .accessibilityLabel(ListCollapse.accessibilityLabel(expanded: expanded))
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.top, 6)
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .animation(MarkdownList.animation(reduceMotion: reduceMotion), value: group.items)
-        .animation(MarkdownLooseList.animation(reduceMotion: reduceMotion), value: group.loose)
-        .animation(MarkdownOrderedTask.animation(reduceMotion: reduceMotion), value: group.items)
+        .onChange(of: itemText) { _, _ in
+            expanded = false
+        }
+        .onChange(of: wrapScope) { _, _ in
+            expanded = false
+        }
+        .animation(ListCollapse.animation(reduceMotion: reduceMotion), value: expanded)
     }
 }
 

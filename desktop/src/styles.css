@@ -2531,6 +2531,59 @@ pre.md-math-fallback.md-math-block {
   }
 }
 
+/* v2.34: a long list shows the first 8 items. The swap is instant.
+   The wrapper only exists while Show more is on screen, and it takes
+   the margin the ul or ol used to have. */
+.assistant-md .md-list-block {
+  align-self: stretch;
+  box-sizing: border-box;
+  max-width: 100%;
+  min-width: 0;
+  margin: 0 0 8px;
+}
+
+.assistant-md .md-list-block:last-child {
+  margin-bottom: 0;
+}
+
+.assistant-md .md-list-block > ul,
+.assistant-md .md-list-block > ol {
+  margin: 0;
+}
+
+.md-list-more {
+  display: block;
+  margin: 6px 0 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1.2;
+  color: var(--text-muted);
+  cursor: pointer;
+  text-align: left;
+  transition: none;
+  animation: none;
+}
+
+.md-list-more:hover {
+  color: var(--accent);
+}
+
+.md-list-more:focus-visible {
+  outline: 1px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* v2.34: Reduce Motion on → Show more is still an instant swap. */
+@media (prefers-reduced-motion: reduce) {
+  .md-list-more {
+    transition: none;
+    animation: none;
+  }
+}
+
 .mention {
   color: var(--accent);
   font-weight: 600;
