@@ -167,6 +167,14 @@ import {
   tableCsvSaveLabel,
   tableCsvText,
 } from "./tableCsvSave";
+import {
+  shouldCollapseTable,
+  showTableCollapseToggle,
+  tableCollapseAria,
+  tableCollapseLabel,
+  tableFindKeepsOpen,
+  tableVisibleRows,
+} from "./tableCollapse";
 import { listIsLoose } from "./markdownLooseList";
 import {
   listNeedsCmarkOrderedItemStart,
@@ -314,6 +322,7 @@ export function MarkdownBody({
             table={segment.table}
             knownNames={knownNames}
             completed={completed}
+            wrapScope={wrapScope}
           />
         ) : (
           <QuoteTaskPieces
@@ -985,14 +994,19 @@ function MarkdownTableBlock({
   table,
   knownNames,
   completed,
+  wrapScope,
 }: {
   table: MarkdownTable;
   knownNames: string[];
   completed: boolean;
+  wrapScope: string;
 }) {
   const [copied, setCopied] = useState(false);
   const [cellsCopied, setCellsCopied] = useState(false);
   const [saved, setSaved] = useState(false);
+  const [expanded, setExpanded] = useState(false);
+  const findQuery = useFindQuery();
+  const activeRowId = useFindRowId();
   const timer = useRef<ReturnType<typeof window.setTimeout> | null>(null);
   const cellsTimer = useRef<ReturnType<typeof window.setTimeout> | null>(null);
   const saveTimer = useRef<ReturnType<typeof window.setTimeout> | null>(null);
@@ -1021,7 +1035,8 @@ function MarkdownTableBlock({
       window.clearTimeout(saveTimer.current);
       saveTimer.current = null;
     }
-  }, [table.source]);
+    setExpanded(false);
+  }, [table.source, wrapScope]);
 
   function onCopy() {
     void copyText(tableClipboardText(table.source));
@@ -1054,8 +1069,29 @@ function MarkdownTableBlock({
     }, TABLE_CSV_SAVE_MS);
   }
 
+  const rowCount = table.rows.length;
+  const findKeepsOpen = tableFindKeepsOpen({
+    activeRowId,
+    wrapScope,
+    header: table.header,
+    rows: table.rows,
+    query: findQuery,
+  });
+  const collapsed = shouldCollapseTable({
+    completed,
+    rowCount,
+    expanded,
+    activeFind: findKeepsOpen,
+  });
+  const shownRows = tableVisibleRows(table.rows, collapsed);
+  const showMore = showTableCollapseToggle({
+    completed,
+    rowCount,
+    activeFind: findKeepsOpen,
+  });
+
   return (
-    <div className="md-table">
+    <div className="md-table" data-table-collapsed={collapsed ? "true" : "false"}>
       {showTableCopy(completed) ? (
         <div className="md-table-bar">
           <span className="md-table-actions">
@@ -1107,7 +1143,7 @@ function MarkdownTableBlock({
             </tr>
           </thead>
           <tbody>
-            {table.rows.map((row, rowIndex) => (
+            {shownRows.map((row, rowIndex) => (
               <tr key={rowIndex}>
                 {row.map((cell, index) => (
                   <td key={index} className={tableAlignClass(table.align[index])}>
@@ -1119,6 +1155,18 @@ function MarkdownTableBlock({
           </tbody>
         </table>
       </div>
+      {showMore ? (
+        <button
+          type="button"
+          className="md-table-more"
+          aria-expanded={expanded}
+          aria-label={tableCollapseAria(expanded)}
+          onMouseDown={keepCodeBlockFocus}
+          onClick={() => setExpanded((value) => !value)}
+        >
+          {tableCollapseLabel(expanded)}
+        </button>
+      ) : null}
     </div>
   );
 }

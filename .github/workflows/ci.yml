@@ -249,3 +249,4 @@ jobs:
           python3 ios/scripts/test_ios_reply_markdown_save.py
           python3 ios/scripts/test_ios_user_message_save.py
           python3 ios/scripts/test_ios_transcript_save.py
+          python3 ios/scripts/test_ios_table_collapse.py

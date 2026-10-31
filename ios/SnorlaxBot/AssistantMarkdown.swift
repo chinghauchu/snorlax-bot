@@ -97,7 +97,12 @@ private struct MarkdownTablePieces: View {
                         wrapScope: wrapScope
                     )
                 case .table(let table):
-                    MarkdownTableBlock(table: table, names: names, completed: completed)
+                    MarkdownTableBlock(
+                        table: table,
+                        names: names,
+                        completed: completed,
+                        wrapScope: wrapScope
+                    )
                 }
             }
         }
@@ -550,7 +555,9 @@ private struct MarkdownTableBlock: View {
     let table: MarkdownTable.Table
     let names: [String]
     var completed: Bool
+    var wrapScope: String = ""
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.chatFind) private var find
     @State private var copied = false
     @State private var pulse = 0
     @State private var cellsCopied = false
@@ -558,6 +565,38 @@ private struct MarkdownTableBlock: View {
     @State private var saved = false
     @State private var savePulse = 0
     @State private var shareURL: URL?
+    @State private var expanded = false
+
+    private var keepsOpen: Bool {
+        TableCollapse.findKeepsOpen(
+            activeRowId: find.activeRowId,
+            wrapScope: wrapScope,
+            header: table.header,
+            rows: table.rows,
+            query: find.query
+        )
+    }
+
+    private var collapsed: Bool {
+        TableCollapse.shouldCollapse(
+            completed: completed,
+            rowCount: table.rows.count,
+            expanded: expanded,
+            activeFind: keepsOpen
+        )
+    }
+
+    private var showToggle: Bool {
+        TableCollapse.showToggle(
+            completed: completed,
+            rowCount: table.rows.count,
+            activeFind: keepsOpen
+        )
+    }
+
+    private var shownRows: [[String]] {
+        TableCollapse.visibleRows(table.rows, collapsed: collapsed)
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -623,23 +662,36 @@ private struct MarkdownTableBlock: View {
                 Grid(alignment: .leading, horizontalSpacing: 0, verticalSpacing: 0) {
                     GridRow {
                         ForEach(Array(table.header.enumerated()), id: \.offset) { index, cell in
-                            tableCell(cell, column: index, header: true, last: table.rows.isEmpty)
+                            tableCell(cell, column: index, header: true, last: shownRows.isEmpty)
                         }
                     }
-                    ForEach(Array(table.rows.enumerated()), id: \.offset) { rowIndex, row in
+                    ForEach(Array(shownRows.enumerated()), id: \.offset) { rowIndex, row in
                         GridRow {
                             ForEach(Array(row.enumerated()), id: \.offset) { index, cell in
                                 tableCell(
                                     cell,
                                     column: index,
                                     header: false,
-                                    last: rowIndex == table.rows.count - 1
+                                    last: rowIndex == shownRows.count - 1
                                 )
                             }
                         }
                     }
                 }
                 .fixedSize(horizontal: true, vertical: true)
+            }
+            if showToggle {
+                Button(TableCollapse.label(expanded: expanded)) {
+                    expanded.toggle()
+                }
+                .buttonStyle(.plain)
+                .font(.system(size: 12, weight: .medium))
+                .foregroundStyle(.secondary)
+                .focusable(false)
+                .accessibilityLabel(TableCollapse.accessibilityLabel(expanded: expanded))
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.horizontal, 10)
+                .padding(.bottom, 8)
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -652,6 +704,13 @@ private struct MarkdownTableBlock: View {
                 .stroke(Color(uiColor: .separator), lineWidth: 1)
         }
         .clipShape(RoundedRectangle(cornerRadius: 8))
+        .onChange(of: table.source) { _, _ in
+            expanded = false
+        }
+        .onChange(of: wrapScope) { _, _ in
+            expanded = false
+        }
+        .animation(TableCollapse.animation(reduceMotion: reduceMotion), value: expanded)
         .sheet(isPresented: Binding(
             get: { shareURL != nil },
             set: { if !$0 { shareURL = nil } }
