@@ -133,6 +133,13 @@ import {
   taskGlyphLabel,
 } from "./markdownQuoteTask";
 import {
+  QUOTE_COPY_MS,
+  quoteClipboardText,
+  quoteCopyAriaLabel,
+  quoteCopyLabel,
+  showQuoteCopy,
+} from "./quoteCopy";
+import {
   orderedTaskAnimates,
   peelOrderedTaskChildren,
   remarkOrderedTaskMarkers,
@@ -368,6 +375,55 @@ export function MarkdownBody({
 }
 
 /**
+ * v2.35: Copy sits at the top-right of a finished quote. Hover or
+ * keyboard focus reveals it. Copied stays up for 1.5s. The lines
+ * copied are the quote source, not the inner display text.
+ */
+function QuoteCopyButton({ source }: { source: string }) {
+  const [copied, setCopied] = useState(false);
+  const timer = useRef<ReturnType<typeof window.setTimeout> | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (timer.current != null) window.clearTimeout(timer.current);
+    };
+  }, []);
+
+  useEffect(() => {
+    setCopied(false);
+    if (timer.current != null) {
+      window.clearTimeout(timer.current);
+      timer.current = null;
+    }
+  }, [source]);
+
+  function onCopy(event: MouseEvent<HTMLButtonElement>) {
+    event.preventDefault();
+    event.stopPropagation();
+    void copyText(quoteClipboardText(source));
+    setCopied(true);
+    if (timer.current != null) window.clearTimeout(timer.current);
+    timer.current = window.setTimeout(() => {
+      setCopied(false);
+      timer.current = null;
+    }, QUOTE_COPY_MS);
+  }
+
+  return (
+    <button
+      type="button"
+      className={copied ? "md-quote-copy is-copied" : "md-quote-copy"}
+      aria-label={quoteCopyAriaLabel(copied)}
+      aria-live="polite"
+      onMouseDown={keepCodeBlockFocus}
+      onClick={onCopy}
+    >
+      {quoteCopyLabel(copied)}
+    </button>
+  );
+}
+
+/**
  * Completed replies pull quotes and task lists out before the
  * commonmark renderer. Streaming (`completed: false`) is one
  * markdown run, the same bubble as today. Glyphs are static.
@@ -397,6 +453,9 @@ function QuoteTaskPieces({
               key={`q-${index}`}
               data-animate={animate ? "1" : undefined}
             >
+              {showQuoteCopy({ completed, source: block.source }) ? (
+                <QuoteCopyButton source={block.source} />
+              ) : null}
               <MarkdownBody
                 text={block.text}
                 knownNames={knownNames}

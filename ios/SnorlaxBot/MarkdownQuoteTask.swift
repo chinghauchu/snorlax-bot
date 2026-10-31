@@ -20,7 +20,10 @@ import SwiftUI
 /// inside it. A margin line ends the item. Streaming stays the
 /// markdown string. Copy controls keep markdown source — this
 /// type only splits text for display and does not write the
-/// pasteboard. No animation. No new HTTP.
+/// pasteboard. v2.35: a quote block also keeps `source`, the
+/// lines this quote was split from, so Quote Copy can paste
+/// that quote back. The display text is still the inner
+/// markdown. No animation. No new HTTP.
 /// v1.51: a task list is loose or tight by the CommonMark rule.
 /// v1.59: an ordered list (`1.` / `1)`) is not a bullet task list.
 /// Its lines, including a nested `- [ ]`, stay in the markdown so
@@ -59,7 +62,8 @@ enum MarkdownQuoteTask {
 
     enum Block: Equatable {
         case markdown(String)
-        case quote(String)
+        /// Display text, then the lines this quote was split from.
+        case quote(String, source: String)
         /// `loose` follows CommonMark: a blank between items, or between
         /// an item's own blocks, loosens the whole task list.
         case tasks([TaskItem], loose: Bool)
@@ -151,7 +155,8 @@ enum MarkdownQuoteTask {
                     index += 1
                 }
                 pushMarkdown(start)
-                blocks.append(.quote(inner.joined(separator: "\n")))
+                let quoteSource = lines[start..<index].joined(separator: "\n")
+                blocks.append(.quote(inner.joined(separator: "\n"), source: quoteSource))
                 mdStart = index
                 continue
             }
