@@ -286,6 +286,16 @@ import {
   transcriptPlainText,
 } from "./copyTranscript";
 import {
+  TRANSCRIPT_FILENAME,
+  TRANSCRIPT_SAVE_MS,
+  downloadTranscript,
+  showTranscriptSave,
+  transcriptSaveAriaLabel,
+  transcriptSaveBody,
+  transcriptSaveKeepsChat,
+  transcriptSaveLabel,
+} from "./transcriptSave";
+import {
   isToolTraceGroupsChord,
   overlayTextFieldOwnsToolTraceGroups,
   toolTraceGroupsBlocked,
@@ -1937,6 +1947,8 @@ export function App() {
   const shortcutCopyTimer = useRef<number | null>(null);
   const [transcriptCopiedId, setTranscriptCopiedId] = useState<string | null>(null);
   const transcriptCopyTimer = useRef<number | null>(null);
+  const [transcriptSaved, setTranscriptSaved] = useState(false);
+  const transcriptSaveTimer = useRef<number | null>(null);
   const copyLastReplyRef = useRef<() => void>(() => {});
   const copyTranscriptRef = useRef<() => void>(() => {});
   const toggleToolTracesRef = useRef<() => void>(() => {});
@@ -1965,6 +1977,9 @@ export function App() {
       }
       if (transcriptCopyTimer.current != null) {
         window.clearTimeout(transcriptCopyTimer.current);
+      }
+      if (transcriptSaveTimer.current != null) {
+        window.clearTimeout(transcriptSaveTimer.current);
       }
     };
   }, []);
@@ -2085,6 +2100,13 @@ export function App() {
     () => agents.find((a) => a.id === activeId) ?? null,
     [agents, activeId],
   );
+  useEffect(() => {
+    setTranscriptSaved(false);
+    if (transcriptSaveTimer.current != null) {
+      window.clearTimeout(transcriptSaveTimer.current);
+      transcriptSaveTimer.current = null;
+    }
+  }, [active?.id]);
   const activeLabel = active ? visibleName(active) : "";
   const profileOpenRef = useRef(profileOpen);
   profileOpenRef.current = profileOpen;
@@ -6787,6 +6809,22 @@ export function App() {
     }, MESSAGE_COPY_FEEDBACK_MS);
   };
 
+  function onSaveTranscript() {
+    // Writes the same loaded plain text. The copy chord above still only copies.
+    if (!transcriptSaveKeepsChat() || !active) return;
+    const text = transcriptPlainText(visibleMessages);
+    if (!text || !showTranscriptSave({ chatOpen: true, text })) return;
+    downloadTranscript(transcriptSaveBody(text), TRANSCRIPT_FILENAME);
+    setTranscriptSaved(true);
+    if (transcriptSaveTimer.current != null) {
+      window.clearTimeout(transcriptSaveTimer.current);
+    }
+    transcriptSaveTimer.current = window.setTimeout(() => {
+      setTranscriptSaved(false);
+      transcriptSaveTimer.current = null;
+    }, TRANSCRIPT_SAVE_MS);
+  }
+
   // v1.14: Cmd/Ctrl-Shift-G toggles every compact tool-trace group.
   // If any group is expanded, collapse all. If every group is collapsed,
   // expand all. A single tool line is not a group. No groups is a no-op.
@@ -8379,6 +8417,21 @@ export function App() {
                   </span>
                 ) : null}
               </button>
+              {showTranscriptSave({
+                chatOpen: true,
+                text: transcriptPlainText(visibleMessages),
+              }) ? (
+                <button
+                  type="button"
+                  className="message-action transcript-save"
+                  aria-label={transcriptSaveAriaLabel(transcriptSaved)}
+                  aria-live="polite"
+                  onMouseDown={(event) => event.preventDefault()}
+                  onClick={onSaveTranscript}
+                >
+                  {transcriptSaveLabel(transcriptSaved)}
+                </button>
+              ) : null}
             </>
           ) : (
             <span className="chat-who muted">Snorlax-Bot</span>

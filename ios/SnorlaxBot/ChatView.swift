@@ -48,6 +48,10 @@ struct ChatView: View {
     /// v1.13: muted Copied beside the chat name after ⌘⇧E. Same 1.2s as Copy.
     @State private var transcriptCopied = false
     @State private var transcriptCopiedPulse = 0
+    /// v2.32: muted Saved on the header Save after writing transcript.txt.
+    @State private var transcriptSaved = false
+    @State private var transcriptSavePulse = 0
+    @State private var transcriptShareURL: URL?
     /// v2.25: muted Copied after Copy Link. Same 1.5s as other copy controls.
     @State private var linkCopied = false
     @State private var linkCopiedPulse = 0
@@ -73,6 +77,13 @@ struct ChatView: View {
     /// speakers stay on the server name.
     private var chatTitle: String {
         model.chatDisplayName(for: agent)
+    }
+
+    /// v2.32: header Save when the copy chord would have text to copy.
+    private var offersTranscriptSave: Bool {
+        guard hasRealAgent else { return false }
+        let text = CopyTranscript.plainText(messages: model.visibleMessages(for: agent))
+        return TranscriptSave.showsSave(chatOpen: true, text: text)
     }
 
     var body: some View {
@@ -234,6 +245,18 @@ struct ChatView: View {
         .navigationBarTitleDisplayMode(.inline)
         .navigationBarBackButtonHidden(model.threadID != nil && agent.isChannel)
         .toolbar {
+            if offersTranscriptSave {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button(TranscriptSave.label(saved: transcriptSaved)) {
+                        saveOpenTranscript()
+                    }
+                    .buttonStyle(.plain)
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundStyle(.secondary)
+                    .accessibilityLabel(TranscriptSave.accessibilityLabel(saved: transcriptSaved))
+                    .animation(TranscriptSave.animation(reduceMotion: reduceMotion), value: transcriptSaved)
+                }
+            }
             if model.threadID != nil, agent.isChannel {
                 ToolbarItem(placement: .topBarLeading) {
                     Button {
@@ -299,6 +322,16 @@ struct ChatView: View {
         .sheet(isPresented: $shortcutsOpen) {
             ChatShortcutsSheet()
         }
+        .sheet(
+            isPresented: Binding(
+                get: { transcriptShareURL != nil },
+                set: { if !$0 { transcriptShareURL = nil } }
+            )
+        ) {
+            if let transcriptShareURL {
+                AttachmentShareSheet(url: transcriptShareURL)
+            }
+        }
         .confirmationDialog(
             pendingDeleteAgent.map { row in
                 DeleteOpenChat.confirmTitle(
@@ -341,6 +374,9 @@ struct ChatView: View {
             lastAssistantSig = ""
             expandedToolStacks = []
             transcriptCopied = false
+            transcriptSaved = false
+            transcriptSavePulse += 1
+            transcriptShareURL = nil
             linkCopied = false
             closeFind()
             guard hasRealAgent || !model.isConfigured else { return }
@@ -1703,6 +1739,27 @@ struct ChatView: View {
     private func openPreviousUnread() {
         if previousUnreadBlocked() { return }
         model.openPreviousUnreadChat()
+    }
+
+    /// v2.32: Save writes the loaded transcript as transcript.txt.
+    /// The copy chord still copies and does not write this file.
+    private func saveOpenTranscript() {
+        guard TranscriptSave.keepsChat(), hasRealAgent else { return }
+        let visible = model.visibleMessages(for: agent)
+        guard let text = CopyTranscript.plainText(messages: visible) else { return }
+        guard TranscriptSave.showsSave(chatOpen: true, text: text) else { return }
+        let body = TranscriptSave.bodyText(text)
+        guard let file = TranscriptSave.writeFile(text: body, filename: TranscriptSave.filename) else { return }
+        transcriptShareURL = file
+        transcriptSaved = true
+        transcriptSavePulse += 1
+        let pulse = transcriptSavePulse
+        Task {
+            try? await Task.sleep(nanoseconds: TranscriptSave.feedbackNanoseconds)
+            if pulse == transcriptSavePulse {
+                transcriptSaved = false
+            }
+        }
     }
 
     /// Hardware Option+Up / Option+Down when the composer is not first
