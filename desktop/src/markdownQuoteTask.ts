@@ -24,6 +24,10 @@
  * v2.35: a quote block also keeps `source`, the lines this quote
  * was split from, so that control can paste the quote back.
  * The display `text` is still the inner markdown.
+ * v2.39: a task block also keeps `source`, the lines this task
+ * list was split from, markers included. The item text is still
+ * the display text after the marker. A nested task list's lines
+ * are that item's text after the parent indent was removed.
  * No animation. No new HTTP.
  * v1.51: a task list is loose when a blank line separates its items
  * or two blocks of an item, and tight otherwise. Nested task lists
@@ -84,7 +88,18 @@ export type TaskItem = {
 export type QuoteTaskBlock =
   | { type: "markdown"; text: string }
   | { type: "quote"; text: string; source: string }
-  | { type: "tasks"; items: TaskItem[]; loose: boolean };
+  | {
+      type: "tasks";
+      items: TaskItem[];
+      loose: boolean;
+      /**
+       * v2.39: lines this task list was split from, markers included.
+       * A nested task list's lines are the item text after the parent
+       * indent was removed, so the nested marker remains. The blank
+       * line that ends the list is not included.
+       */
+      source: string;
+    };
 
 /** Never animate, including when Reduce Motion is off. */
 export function quoteTaskAnimates(reduceMotion: boolean): boolean {
@@ -206,10 +221,12 @@ export function splitQuoteAndTasks(
         i = item.next;
       }
       pushMarkdown(start);
+      const taskSource = lines.slice(start, i).join("\n");
       blocks.push({
         type: "tasks",
         items,
-        loose: listIsLoose(lines.slice(start, i).join("\n")),
+        loose: listIsLoose(taskSource),
+        source: taskSource,
       });
       mdStart = i;
       continue;
