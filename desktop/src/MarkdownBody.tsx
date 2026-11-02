@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 import {
   Children,
+  Fragment,
   cloneElement,
   createContext,
   isValidElement,
@@ -167,6 +168,27 @@ import {
   showListSave,
 } from "./listSave";
 import {
+  partitionHeadingBubble,
+  type HeadingSection,
+} from "./headingSection";
+import {
+  SECTION_COPY_MS,
+  sectionClipboardText,
+  sectionCopyAriaLabel,
+  sectionCopyLabel,
+  showSectionCopy,
+} from "./sectionCopy";
+import {
+  SECTION_SAVE_FILENAME,
+  SECTION_SAVE_MS,
+  downloadSectionMarkdown,
+  sectionSaveAriaLabel,
+  sectionSaveBody,
+  sectionSaveKeepsSection,
+  sectionSaveLabel,
+  showSectionSave,
+} from "./sectionSave";
+import {
   orderedTaskAnimates,
   peelOrderedTaskChildren,
   remarkOrderedTaskMarkers,
@@ -288,6 +310,12 @@ type Props = {
   session?: Session | null;
   /** v0.79 lightbox. An image inside a link does not use this. */
   onOpenImage?: (target: ImageLightboxTarget, trigger: HTMLElement) => void;
+  /**
+   * v2.38: heading sections whose heading line sits in this bubble.
+   * The source may continue in later bubbles. Nested markdown does
+   * not receive this, so a heading is wrapped once.
+   */
+  headingSections?: HeadingSection[];
 };
 
 type FenceOrder = { n: number };
@@ -338,6 +366,7 @@ export function MarkdownBody({
   footnotes,
   session,
   onOpenImage,
+  headingSections,
 }: Props) {
   const parentMedia = useMarkdownMedia();
   const lightbox = parentMedia.lightboxURLCounts
@@ -352,12 +381,43 @@ export function MarkdownBody({
     onOpenImage: onOpenImage ?? parentMedia.onOpenImage,
     ...lightbox,
   };
-  const stable = stabilizeMarkdown(text);
-  const segments = splitMarkdownTables(stable, completed);
+  const sectionPieces =
+    completed && headingSections && headingSections.length > 0
+      ? partitionHeadingBubble(text, headingSections)
+      : null;
+  const partitioned =
+    sectionPieces?.some((piece) => piece.type === "section") ?? false;
+  const stable = partitioned ? text : stabilizeMarkdown(text);
+  const segments = partitioned ? [] : splitMarkdownTables(stable, completed);
   const order: FenceOrder = fenceOrder ?? { n: 0 };
+  const sectionBody =
+    partitioned && sectionPieces
+      ? sectionPieces.map((piece, index) => {
+          const inner = (
+            <MarkdownBody
+              text={piece.text}
+              knownNames={knownNames}
+              completed={completed}
+              wrapScope={`${wrapScope}\u0000section${index}`}
+              fenceOrder={order}
+              footnoteScope={footnoteScope}
+              session={session}
+              onOpenImage={onOpenImage}
+            />
+          );
+          if (piece.type !== "section") return <Fragment key={index}>{inner}</Fragment>;
+          return (
+            <div className="md-section-frame" key={index}>
+              <SectionActions source={piece.section.source} />
+              {inner}
+            </div>
+          );
+        })
+      : null;
   const body = (
     <>
-      {segments.map((segment, index) =>
+      {sectionBody ??
+        segments.map((segment, index) =>
         segment.type === "table" ? (
           <MarkdownTableBlock
             key={`table-${index}`}
@@ -1016,6 +1076,96 @@ function reactNodeText(node: ReactNode): string {
   const nested = reactNodeText(props.children);
   if (nested) bits.push(nested);
   return bits.join("\n");
+}
+
+/**
+ * v2.38: Copy and Save sit at the top-right of a finished heading
+ * section. Hover or keyboard focus reveals them. Copied and Saved
+ * stay up for 1.5s. The lines are the heading plus the content
+ * under it, not the display text. Saving downloads section.md.
+ * The section stays on screen.
+ */
+function SectionActions({ source }: { source: string }) {
+  const [copied, setCopied] = useState(false);
+  const [saved, setSaved] = useState(false);
+  const timer = useRef<ReturnType<typeof window.setTimeout> | null>(null);
+  const saveTimer = useRef<ReturnType<typeof window.setTimeout> | null>(null);
+  const showCopy = showSectionCopy({ completed: true, source });
+  const showSave = showSectionSave({ completed: true, source });
+
+  useEffect(() => {
+    return () => {
+      if (timer.current != null) window.clearTimeout(timer.current);
+      if (saveTimer.current != null) window.clearTimeout(saveTimer.current);
+    };
+  }, []);
+
+  useEffect(() => {
+    setCopied(false);
+    setSaved(false);
+    if (timer.current != null) {
+      window.clearTimeout(timer.current);
+      timer.current = null;
+    }
+    if (saveTimer.current != null) {
+      window.clearTimeout(saveTimer.current);
+      saveTimer.current = null;
+    }
+  }, [source]);
+
+  function onCopy(event: MouseEvent<HTMLButtonElement>) {
+    event.preventDefault();
+    event.stopPropagation();
+    void copyText(sectionClipboardText(source));
+    setCopied(true);
+    if (timer.current != null) window.clearTimeout(timer.current);
+    timer.current = window.setTimeout(() => {
+      setCopied(false);
+      timer.current = null;
+    }, SECTION_COPY_MS);
+  }
+
+  function onSave(event: MouseEvent<HTMLButtonElement>) {
+    event.preventDefault();
+    event.stopPropagation();
+    if (!sectionSaveKeepsSection() || !showSave) return;
+    downloadSectionMarkdown(sectionSaveBody(source), SECTION_SAVE_FILENAME);
+    setSaved(true);
+    if (saveTimer.current != null) window.clearTimeout(saveTimer.current);
+    saveTimer.current = window.setTimeout(() => {
+      setSaved(false);
+      saveTimer.current = null;
+    }, SECTION_SAVE_MS);
+  }
+
+  return (
+    <span className="md-section-actions">
+      {showCopy ? (
+        <button
+          type="button"
+          className={copied ? "md-section-copy is-copied" : "md-section-copy"}
+          aria-label={sectionCopyAriaLabel(copied)}
+          aria-live="polite"
+          onMouseDown={keepCodeBlockFocus}
+          onClick={onCopy}
+        >
+          {sectionCopyLabel(copied)}
+        </button>
+      ) : null}
+      {showSave ? (
+        <button
+          type="button"
+          className={saved ? "md-section-save is-saved" : "md-section-save"}
+          aria-label={sectionSaveAriaLabel(saved)}
+          aria-live="polite"
+          onMouseDown={keepCodeBlockFocus}
+          onClick={onSave}
+        >
+          {sectionSaveLabel(saved)}
+        </button>
+      ) : null}
+    </span>
+  );
 }
 
 /**

@@ -18,9 +18,56 @@ struct AssistantMarkdown: View {
     var wrapScope: String = ""
     /// The last bubble of a message draws the footnotes list.
     var showFootnotes: Bool = false
+    /// v2.38: sections whose heading line sits in this bubble.
+    var headingSections: [HeadingSection.Section] = []
     @Environment(\.markdownFootnotes) private var markdownFootnotes
 
     var body: some View {
+        if HeadingSection.hasSection(text, sections: headingSections, completed: completed) {
+            sectionedBody
+        } else {
+            plainBody
+        }
+    }
+
+    /// Heading sections in this bubble get Copy and Save. The rest of
+    /// the bubble stays the plain markdown run. Nested calls do not
+    /// receive `headingSections`, so a heading is wrapped once.
+    private var sectionedBody: some View {
+        let pieces = HeadingSection.partition(text, sections: headingSections, completed: completed)
+        VStack(alignment: .leading, spacing: 8) {
+            ForEach(Array(pieces.enumerated()), id: \.offset) { index, piece in
+                switch piece {
+                case .text(let source):
+                    AssistantMarkdown(
+                        text: source,
+                        names: names,
+                        completed: completed,
+                        wrapScope: wrapScope + "\u{0}section\(index)",
+                        showFootnotes: false
+                    )
+                case .section(let source, let owned):
+                    HeadingSectionBlock(
+                        markdown: owned.source,
+                        content: source,
+                        names: names,
+                        completed: completed,
+                        wrapScope: wrapScope + "\u{0}section\(index)"
+                    )
+                }
+            }
+            if showFootnotes && !markdownFootnotes.isEmpty {
+                MarkdownFootnoteList(
+                    notes: markdownFootnotes,
+                    names: names,
+                    completed: completed
+                )
+            }
+        }
+        .transcriptFont(14)
+    }
+
+    private var plainBody: some View {
         VStack(alignment: .leading, spacing: 8) {
             ForEach(Array(MarkdownSplit.segments(in: MarkdownSplit.stabilize(text)).enumerated()), id: \.offset) { index, segment in
                 switch segment {
@@ -74,6 +121,127 @@ struct AssistantMarkdown: View {
         }
         .transcriptFont(14)
     }
+}
+
+/// v2.38: Copy and Save at the top-right of a finished heading section.
+/// Save writes section.md and shares the file. Copy writes the same lines.
+private struct HeadingSectionBlock: View {
+    /// Heading line plus the lines under it, including later bubbles.
+    let markdown: String
+    /// The lines of this section that sit in the current bubble.
+    let content: String
+    let names: [String]
+    var completed: Bool
+    var wrapScope: String
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var copied = false
+    @State private var pulse = 0
+    @State private var saved = false
+    @State private var savePulse = 0
+    @State private var shareURL: URL?
+
+    private var showsChrome: Bool {
+        SectionCopy.showsCopy(completed: completed, source: markdown)
+            || SectionSave.showsSave(completed: completed, source: markdown)
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            if showsChrome {
+                HStack(spacing: 12) {
+                    Spacer(minLength: 0)
+                    if SectionCopy.showsCopy(completed: completed, source: markdown) {
+                        Button(SectionCopy.label(copied: copied)) {
+                            copySection()
+                        }
+                        .buttonStyle(.plain)
+                        .font(.system(size: 12))
+                        .foregroundStyle(.secondary)
+                        .focusable(false)
+                        .accessibilityLabel(SectionCopy.accessibilityLabel(copied: copied))
+                        .animation(SectionCopy.animation(reduceMotion: reduceMotion), value: copied)
+                    }
+                    if SectionSave.showsSave(completed: completed, source: markdown) {
+                        Button(SectionSave.label(saved: saved)) {
+                            saveSection()
+                        }
+                        .buttonStyle(.plain)
+                        .font(.system(size: 12))
+                        .foregroundStyle(.secondary)
+                        .focusable(false)
+                        .accessibilityLabel(SectionSave.accessibilityLabel(saved: saved))
+                        .animation(SectionSave.animation(reduceMotion: reduceMotion), value: saved)
+                    }
+                }
+            }
+            AssistantMarkdown(
+                text: content,
+                names: names,
+                completed: completed,
+                wrapScope: wrapScope,
+                showFootnotes: false
+            )
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .onChange(of: markdown) { _, _ in
+            copied = false
+            saved = false
+        }
+        .sheet(isPresented: Binding(
+            get: { shareURL != nil },
+            set: { if !$0 { shareURL = nil } }
+        )) {
+            if let shareURL {
+                SectionMarkdownShareSheet(url: shareURL)
+            }
+        }
+    }
+
+    /// Writes the section lines. An empty source does not touch the pasteboard.
+    private func copySection() {
+        let text = SectionCopy.clipboardText(markdown)
+        guard SectionCopy.showsCopy(completed: completed, source: text) else { return }
+        UIPasteboard.general.string = text
+        copied = true
+        pulse += 1
+        let ticket = pulse
+        Task {
+            try? await Task.sleep(nanoseconds: SectionCopy.feedbackNanoseconds)
+            if ticket == pulse {
+                copied = false
+            }
+        }
+    }
+
+    /// Write the section lines and present the share sheet.
+    /// The section stays. Nothing is sent. A failed write presents nothing.
+    private func saveSection() {
+        guard SectionSave.keepsSection() else { return }
+        let text = SectionSave.bodyText(markdown)
+        guard let file = SectionSave.writeFile(markdown: text, filename: SectionSave.filename) else { return }
+        shareURL = file
+        saved = true
+        savePulse += 1
+        let ticket = savePulse
+        Task {
+            try? await Task.sleep(nanoseconds: SectionSave.feedbackNanoseconds)
+            if ticket == savePulse {
+                saved = false
+            }
+        }
+    }
+}
+
+/// The system share sheet for one saved section. Copy and Files are
+/// the system's actions. This view does not request photo-library permission.
+private struct SectionMarkdownShareSheet: UIViewControllerRepresentable {
+    let url: URL
+
+    func makeUIViewController(context: Context) -> UIActivityViewController {
+        UIActivityViewController(activityItems: [url], applicationActivities: nil)
+    }
+
+    func updateUIViewController(_ uiViewController: UIActivityViewController, context: Context) {}
 }
 
 /// Completed pipe tables render here. Streaming passes `completed: false`
