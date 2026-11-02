@@ -296,6 +296,17 @@ import {
   transcriptSaveLabel,
 } from "./transcriptSave";
 import {
+  CONVERSATION_FILENAME,
+  CONVERSATION_SAVE_MS,
+  conversationMarkdown,
+  conversationSaveAriaLabel,
+  conversationSaveBody,
+  conversationSaveKeepsChat,
+  conversationSaveLabel,
+  downloadConversation,
+  showConversationSave,
+} from "./conversationSave";
+import {
   isToolTraceGroupsChord,
   overlayTextFieldOwnsToolTraceGroups,
   toolTraceGroupsBlocked,
@@ -2034,6 +2045,8 @@ export function App() {
   const transcriptCopyTimer = useRef<number | null>(null);
   const [transcriptSaved, setTranscriptSaved] = useState(false);
   const transcriptSaveTimer = useRef<number | null>(null);
+  const [conversationSaved, setConversationSaved] = useState(false);
+  const conversationSaveTimer = useRef<number | null>(null);
   const copyLastReplyRef = useRef<() => void>(() => {});
   const copyTranscriptRef = useRef<() => void>(() => {});
   const toggleToolTracesRef = useRef<() => void>(() => {});
@@ -2065,6 +2078,9 @@ export function App() {
       }
       if (transcriptSaveTimer.current != null) {
         window.clearTimeout(transcriptSaveTimer.current);
+      }
+      if (conversationSaveTimer.current != null) {
+        window.clearTimeout(conversationSaveTimer.current);
       }
     };
   }, []);
@@ -2190,6 +2206,11 @@ export function App() {
     if (transcriptSaveTimer.current != null) {
       window.clearTimeout(transcriptSaveTimer.current);
       transcriptSaveTimer.current = null;
+    }
+    setConversationSaved(false);
+    if (conversationSaveTimer.current != null) {
+      window.clearTimeout(conversationSaveTimer.current);
+      conversationSaveTimer.current = null;
     }
   }, [active?.id]);
   const activeLabel = active ? visibleName(active) : "";
@@ -6910,6 +6931,22 @@ export function App() {
     }, TRANSCRIPT_SAVE_MS);
   }
 
+  function onSaveConversation() {
+    // Writes labeled turns. Transcript Save above still writes its own file.
+    if (!conversationSaveKeepsChat() || !active) return;
+    const text = conversationMarkdown(visibleMessages);
+    if (!text || !showConversationSave({ chatOpen: true, text })) return;
+    downloadConversation(conversationSaveBody(text), CONVERSATION_FILENAME);
+    setConversationSaved(true);
+    if (conversationSaveTimer.current != null) {
+      window.clearTimeout(conversationSaveTimer.current);
+    }
+    conversationSaveTimer.current = window.setTimeout(() => {
+      setConversationSaved(false);
+      conversationSaveTimer.current = null;
+    }, CONVERSATION_SAVE_MS);
+  }
+
   // v1.14: Cmd/Ctrl-Shift-G toggles every compact tool-trace group.
   // If any group is expanded, collapse all. If every group is collapsed,
   // expand all. A single tool line is not a group. No groups is a no-op.
@@ -8515,6 +8552,21 @@ export function App() {
                   onClick={onSaveTranscript}
                 >
                   {transcriptSaveLabel(transcriptSaved)}
+                </button>
+              ) : null}
+              {showConversationSave({
+                chatOpen: true,
+                text: conversationMarkdown(visibleMessages),
+              }) ? (
+                <button
+                  type="button"
+                  className="message-action conversation-save"
+                  aria-label={conversationSaveAriaLabel(conversationSaved)}
+                  aria-live="polite"
+                  onMouseDown={(event) => event.preventDefault()}
+                  onClick={onSaveConversation}
+                >
+                  {conversationSaveLabel(conversationSaved)}
                 </button>
               ) : null}
             </>

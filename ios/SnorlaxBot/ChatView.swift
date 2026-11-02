@@ -52,6 +52,10 @@ struct ChatView: View {
     @State private var transcriptSaved = false
     @State private var transcriptSavePulse = 0
     @State private var transcriptShareURL: URL?
+    /// v2.42: muted Saved on the header control after writing conversation.md.
+    @State private var conversationSaved = false
+    @State private var conversationSavePulse = 0
+    @State private var conversationShareURL: URL?
     /// v2.25: muted Copied after Copy Link. Same 1.5s as other copy controls.
     @State private var linkCopied = false
     @State private var linkCopiedPulse = 0
@@ -84,6 +88,26 @@ struct ChatView: View {
         guard hasRealAgent else { return false }
         let text = CopyTranscript.plainText(messages: model.visibleMessages(for: agent))
         return TranscriptSave.showsSave(chatOpen: true, text: text)
+    }
+
+    /// v2.42: header Save when a loaded turn would write conversation.md.
+    private var offersConversationSave: Bool {
+        guard hasRealAgent else { return false }
+        let text = ConversationSave.markdown(turns: conversationTurns())
+        return ConversationSave.showsSave(chatOpen: true, text: text)
+    }
+
+    private func conversationTurns() -> [ConversationTurn] {
+        model.visibleMessages(for: agent).map { message in
+            ConversationTurn(
+                kind: message.kind,
+                role: message.role,
+                senderId: message.senderId,
+                senderName: message.senderName,
+                content: message.content,
+                createdAt: message.createdAt
+            )
+        }
     }
 
     var body: some View {
@@ -257,6 +281,19 @@ struct ChatView: View {
                     .animation(TranscriptSave.animation(reduceMotion: reduceMotion), value: transcriptSaved)
                 }
             }
+            if offersConversationSave {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button(ConversationSave.label(saved: conversationSaved)) {
+                        saveOpenConversation()
+                    }
+                    .buttonStyle(.plain)
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                    .accessibilityLabel(ConversationSave.accessibilityLabel(saved: conversationSaved))
+                    .animation(ConversationSave.animation(reduceMotion: reduceMotion), value: conversationSaved)
+                }
+            }
             if model.threadID != nil, agent.isChannel {
                 ToolbarItem(placement: .topBarLeading) {
                     Button {
@@ -332,6 +369,16 @@ struct ChatView: View {
                 AttachmentShareSheet(url: transcriptShareURL)
             }
         }
+        .sheet(
+            isPresented: Binding(
+                get: { conversationShareURL != nil },
+                set: { if !$0 { conversationShareURL = nil } }
+            )
+        ) {
+            if let conversationShareURL {
+                AttachmentShareSheet(url: conversationShareURL)
+            }
+        }
         .confirmationDialog(
             pendingDeleteAgent.map { row in
                 DeleteOpenChat.confirmTitle(
@@ -377,6 +424,9 @@ struct ChatView: View {
             transcriptSaved = false
             transcriptSavePulse += 1
             transcriptShareURL = nil
+            conversationSaved = false
+            conversationSavePulse += 1
+            conversationShareURL = nil
             linkCopied = false
             closeFind()
             guard hasRealAgent || !model.isConfigured else { return }
@@ -1758,6 +1808,26 @@ struct ChatView: View {
             try? await Task.sleep(nanoseconds: TranscriptSave.feedbackNanoseconds)
             if pulse == transcriptSavePulse {
                 transcriptSaved = false
+            }
+        }
+    }
+
+    /// v2.42: Save writes the loaded turns with speaker labels and clocks.
+    /// Transcript Save still writes transcript.txt and does not write this file.
+    private func saveOpenConversation() {
+        guard ConversationSave.keepsChat(), hasRealAgent else { return }
+        guard let text = ConversationSave.markdown(turns: conversationTurns()) else { return }
+        guard ConversationSave.showsSave(chatOpen: true, text: text) else { return }
+        let body = ConversationSave.bodyText(text)
+        guard let file = ConversationSave.writeFile(text: body, filename: ConversationSave.filename) else { return }
+        conversationShareURL = file
+        conversationSaved = true
+        conversationSavePulse += 1
+        let pulse = conversationSavePulse
+        Task {
+            try? await Task.sleep(nanoseconds: ConversationSave.feedbackNanoseconds)
+            if pulse == conversationSavePulse {
+                conversationSaved = false
             }
         }
     }
