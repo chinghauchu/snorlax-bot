@@ -169,6 +169,59 @@ export function renderedInlineLinks(text: string): InlineLink[] {
   return inlineLinks(text).filter((link) => safeLinkHref(link.dest).length > 0);
 }
 
+/** An inline link or image, with indexes into the newline-normalized source. */
+export type InlineLinkSpan = InlineLink & {
+  start: number;
+  end: number;
+  image: boolean;
+};
+
+/**
+ * Same scan as `inlineLinks`, plus images, and with source spans.
+ * An image is not a link. Callers mask both so a destination URL is
+ * not also collected as an autolink. Indexes refer to `\n` newlines.
+ */
+export function inlineLinkSpans(text: string): InlineLinkSpan[] {
+  if (!text || !text.includes("[")) return [];
+  const src = text.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
+  const blocked = blockedRanges(src);
+  const links: InlineLinkSpan[] = [];
+  let i = 0;
+  while (i < src.length) {
+    if (inRange(i, blocked)) {
+      i += 1;
+      continue;
+    }
+    const image = src[i] === "!" && src[i + 1] === "[" && !isEscaped(src, i);
+    const bracketAt = image ? i + 1 : src[i] === "[" && !isEscaped(src, i) ? i : -1;
+    if (bracketAt >= 0) {
+      const parsed = parseInlineLink(src, bracketAt, blocked);
+      if (parsed) {
+        links.push({
+          ...parsed.link,
+          start: image ? i : bracketAt,
+          end: parsed.end,
+          image,
+        });
+        i = parsed.end;
+        continue;
+      }
+    }
+    i += 1;
+  }
+  return links;
+}
+
+/**
+ * Code, indented code, and math the inline-link scan skips.
+ * Indexes refer to `\n` newlines. Link destinations are not included.
+ */
+export function inlineLinkBlockedRanges(text: string): Range[] {
+  if (!text) return [];
+  const src = text.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
+  return blockedRanges(src);
+}
+
 function parseInlineLink(
   src: string,
   start: number,

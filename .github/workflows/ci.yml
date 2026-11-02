@@ -256,3 +256,4 @@ jobs:
           python3 ios/scripts/test_ios_list_save.py
           python3 ios/scripts/test_ios_section_save.py
           python3 ios/scripts/test_ios_task_save.py
+          python3 ios/scripts/test_ios_message_links.py

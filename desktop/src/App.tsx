@@ -457,6 +457,18 @@ import {
   userCopyPending,
 } from "./messageActions";
 import {
+  MESSAGE_LINKS_FILENAME,
+  MESSAGE_LINKS_MS,
+  downloadMessageLinks,
+  messageLinksBody,
+  messageLinksCopyAriaLabel,
+  messageLinksCopyLabel,
+  messageLinksKeepsReply,
+  messageLinksSaveAriaLabel,
+  messageLinksSaveLabel,
+  showMessageLinks,
+} from "./messageLinks";
+import {
   REPLY_MARKDOWN_FILENAME,
   REPLY_MARKDOWN_SAVE_MS,
   downloadReplyMarkdown,
@@ -1164,24 +1176,46 @@ function MessageActions({
 }) {
   const [copied, setCopied] = useState(false);
   const [saved, setSaved] = useState(false);
+  const [linksCopied, setLinksCopied] = useState(false);
+  const [linksSaved, setLinksSaved] = useState(false);
   const timer = useRef<number | null>(null);
   const saveTimer = useRef<number | null>(null);
+  const linksTimer = useRef<number | null>(null);
+  const linksSaveTimer = useRef<number | null>(null);
   const showSave = showReplyMarkdownSave({
     completed,
     fromUser: false,
     kindMessage: true,
   });
+  const showLinks = showMessageLinks({
+    completed,
+    fromUser: false,
+    kindMessage: true,
+    markdown: content,
+  });
   useEffect(() => {
     return () => {
       if (timer.current != null) window.clearTimeout(timer.current);
       if (saveTimer.current != null) window.clearTimeout(saveTimer.current);
+      if (linksTimer.current != null) window.clearTimeout(linksTimer.current);
+      if (linksSaveTimer.current != null) window.clearTimeout(linksSaveTimer.current);
     };
   }, []);
   useEffect(() => {
     setSaved(false);
+    setLinksCopied(false);
+    setLinksSaved(false);
     if (saveTimer.current != null) {
       window.clearTimeout(saveTimer.current);
       saveTimer.current = null;
+    }
+    if (linksTimer.current != null) {
+      window.clearTimeout(linksTimer.current);
+      linksTimer.current = null;
+    }
+    if (linksSaveTimer.current != null) {
+      window.clearTimeout(linksSaveTimer.current);
+      linksSaveTimer.current = null;
     }
   }, [content]);
   async function onCopy() {
@@ -1205,6 +1239,26 @@ function MessageActions({
   }
   const speakName = speakLabel(speaking);
   const copiedLabel = copiedFeedbackLabel(Boolean(copied || shortcutCopied));
+  function onCopyLinks() {
+    if (!showLinks) return;
+    void copyText(messageLinksBody(content));
+    setLinksCopied(true);
+    if (linksTimer.current != null) window.clearTimeout(linksTimer.current);
+    linksTimer.current = window.setTimeout(() => {
+      setLinksCopied(false);
+      linksTimer.current = null;
+    }, MESSAGE_LINKS_MS);
+  }
+  function onSaveLinks() {
+    if (!messageLinksKeepsReply() || !showLinks) return;
+    downloadMessageLinks(content, MESSAGE_LINKS_FILENAME);
+    setLinksSaved(true);
+    if (linksSaveTimer.current != null) window.clearTimeout(linksSaveTimer.current);
+    linksSaveTimer.current = window.setTimeout(() => {
+      setLinksSaved(false);
+      linksSaveTimer.current = null;
+    }, MESSAGE_LINKS_MS);
+  }
   return (
     <div className="message-actions">
       <span className="message-copy">
@@ -1228,6 +1282,32 @@ function MessageActions({
         >
           {replyMarkdownSaveLabel(saved)}
         </button>
+      ) : null}
+      {showLinks ? (
+        <span
+          className={`message-links${linksCopied ? " is-copied" : ""}${linksSaved ? " is-saved" : ""}`}
+        >
+          <button
+            type="button"
+            className="message-action message-links-copy"
+            aria-label={messageLinksCopyAriaLabel(linksCopied)}
+            aria-live="polite"
+            onMouseDown={(event) => event.preventDefault()}
+            onClick={onCopyLinks}
+          >
+            {messageLinksCopyLabel(linksCopied)}
+          </button>
+          <button
+            type="button"
+            className="message-action message-links-save"
+            aria-label={messageLinksSaveAriaLabel(linksSaved)}
+            aria-live="polite"
+            onMouseDown={(event) => event.preventDefault()}
+            onClick={onSaveLinks}
+          >
+            {messageLinksSaveLabel(linksSaved)}
+          </button>
+        </span>
       ) : null}
       <QuoteMessageButton
         content={content}
