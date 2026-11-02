@@ -376,7 +376,11 @@ import { composerInert } from "./computerSession";
 import { WidgetCard } from "./WidgetCard";
 import { ApproveCard } from "./ApproveCard";
 import { ConnectCard } from "./ConnectCard";
-import { HttpsText, MarkdownBody } from "./MarkdownBody";
+import {
+  HeadingBubbleSectionsProvider,
+  HttpsText,
+  MarkdownBody,
+} from "./MarkdownBody";
 import { MarkdownMediaProvider } from "./markdownImageView";
 import { LinkStatusPill } from "./linkStatusPill";
 import { FindQueryProvider, FindText, useFindQuery } from "./FindText";
@@ -419,6 +423,7 @@ import {
   assistantBubbleWide,
   splitAssistantBubbles,
 } from "./assistantBubbles";
+import { headingSectionsByBubble } from "./headingSection";
 import { LongMessageBody } from "./LongMessageBody";
 import { UserMessageClamp } from "./UserMessageClamp";
 import { userLongMessageSettled } from "./userLongMessage";
@@ -8584,9 +8589,18 @@ export function App() {
                 );
                 const linked = resolveReferenceLinks(replyBody, completed);
                 const footnoted = extractFootnotes(linked, completed);
-                const leftBubbles = footnoted.notes.length
-                  ? splitAssistantBubbles(footnoted.text, completed)
-                  : splitAssistantBubbles(linked, completed);
+                const sectionDocument = footnoted.notes.length
+                  ? footnoted.text
+                  : linked;
+                const leftBubbles = splitAssistantBubbles(
+                  sectionDocument,
+                  completed,
+                );
+                const headingByBubble = headingSectionsByBubble(
+                  sectionDocument,
+                  leftBubbles,
+                  completed,
+                );
                 const quoteLoadedIds = new Set(messages.map((row) => row.id));
                 const quoteTargets =
                   quoteJumpEpoch >= 0 && active && mine
@@ -8950,6 +8964,7 @@ export function App() {
                       <MarkdownMediaProvider
                         value={{ session, onOpenImage: openImageLightbox }}
                       >
+                      <HeadingBubbleSectionsProvider bubbles={headingByBubble}>
                       <div className="assistant-md">
                         <MessageAttachmentChrome
                           message={message}
@@ -9047,6 +9062,7 @@ export function App() {
                           />
                         ) : null}
                       </div>
+                      </HeadingBubbleSectionsProvider>
                       </MarkdownMediaProvider>
                     )}
                     {mine && failedSends.some((row) => row.id === message.id) ? (

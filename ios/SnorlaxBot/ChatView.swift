@@ -4080,12 +4080,30 @@ private struct MessageBubble: View {
         MarkdownFootnote.extract(referenceBody, completed: completed)
     }
 
+    private var sectionDocument: String {
+        let prepared = footnotePrepared
+        if prepared.notes.isEmpty && referenceBody == message.displayContent {
+            return message.displayContent
+        }
+        return prepared.text
+    }
+
     private var leftBubbles: [String] {
         let prepared = footnotePrepared
         if prepared.notes.isEmpty && referenceBody == message.displayContent {
             return MarkdownSplit.bubbles(in: message.displayContent, completed: completed)
         }
         return MarkdownSplit.bubbles(in: prepared.text, completed: completed)
+    }
+
+    /// v2.38: one list of heading sections per bubble. A heading bubble
+    /// keeps the lines under it, including lines in later bubbles.
+    private var headingByBubble: [[HeadingSection.Section]] {
+        HeadingSection.assign(
+            document: sectionDocument,
+            bubbles: leftBubbles,
+            completed: completed
+        )
     }
 
     private var senderAgent: Agent? {
@@ -4276,7 +4294,10 @@ private struct MessageBubble: View {
                                                     names: agents.filter { !$0.isChannel }.map(\.name),
                                                     completed: completed,
                                                     wrapScope: "\(message.id)#\(offset)",
-                                                    showFootnotes: offset == leftBubbles.count - 1
+                                                    showFootnotes: offset == leftBubbles.count - 1,
+                                                    headingSections: offset < headingByBubble.count
+                                                        ? headingByBubble[offset]
+                                                        : []
                                                 )
                                                 .environment(
                                                     \.markdownLightboxScope,

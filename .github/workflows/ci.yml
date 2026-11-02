@@ -254,3 +254,4 @@ jobs:
           python3 ios/scripts/test_ios_quote_copy.py
           python3 ios/scripts/test_ios_quote_save.py
           python3 ios/scripts/test_ios_list_save.py
+          python3 ios/scripts/test_ios_section_save.py
