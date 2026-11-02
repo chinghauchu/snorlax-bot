@@ -648,14 +648,53 @@ extension EnvironmentValues {
 }
 
 /// Muted numbered list at the end of a completed assistant message.
+/// v2.41: Copy and Save at the top-right. Save writes notes.md and
+/// shares the file. Copy writes the same definitions.
 struct MarkdownFootnoteList: View {
     let notes: [MarkdownFootnote.Note]
     var names: [String]
     var completed: Bool
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var copied = false
+    @State private var pulse = 0
+    @State private var saved = false
+    @State private var savePulse = 0
+    @State private var shareURL: URL?
+
+    private var showsChrome: Bool {
+        FootnoteCopy.showsCopy(completed: completed, notes: notes)
+            || FootnoteSave.showsSave(completed: completed, notes: notes)
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
+            if showsChrome {
+                HStack(spacing: 12) {
+                    Spacer(minLength: 0)
+                    if FootnoteCopy.showsCopy(completed: completed, notes: notes) {
+                        Button(FootnoteCopy.label(copied: copied)) {
+                            copyNotes()
+                        }
+                        .buttonStyle(.plain)
+                        .font(.system(size: 12))
+                        .foregroundStyle(.secondary)
+                        .focusable(false)
+                        .accessibilityLabel(FootnoteCopy.accessibilityLabel(copied: copied))
+                        .animation(FootnoteCopy.animation(reduceMotion: reduceMotion), value: copied)
+                    }
+                    if FootnoteSave.showsSave(completed: completed, notes: notes) {
+                        Button(FootnoteSave.label(saved: saved)) {
+                            saveNotes()
+                        }
+                        .buttonStyle(.plain)
+                        .font(.system(size: 12))
+                        .foregroundStyle(.secondary)
+                        .focusable(false)
+                        .accessibilityLabel(FootnoteSave.accessibilityLabel(saved: saved))
+                        .animation(FootnoteSave.animation(reduceMotion: reduceMotion), value: saved)
+                    }
+                }
+            }
             Text(MarkdownFootnote.title)
                 .font(.system(size: 12, weight: .semibold))
                 .foregroundStyle(.secondary)
@@ -678,7 +717,64 @@ struct MarkdownFootnoteList: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .animation(MarkdownFootnote.animation(reduceMotion: reduceMotion), value: notes)
+        .onChange(of: notes) { _, _ in
+            copied = false
+            saved = false
+        }
+        .sheet(isPresented: Binding(
+            get: { shareURL != nil },
+            set: { if !$0 { shareURL = nil } }
+        )) {
+            if let shareURL {
+                FootnoteMarkdownShareSheet(url: shareURL)
+            }
+        }
     }
+
+    /// Writes the definitions. An empty body does not touch the pasteboard.
+    private func copyNotes() {
+        let text = FootnoteCopy.clipboardText(notes)
+        guard FootnoteCopy.showsCopy(completed: completed, notes: notes) else { return }
+        FootnoteCopy.writeClipboard(text)
+        copied = true
+        pulse += 1
+        let ticket = pulse
+        Task {
+            try? await Task.sleep(nanoseconds: FootnoteCopy.feedbackNanoseconds)
+            if ticket == pulse {
+                copied = false
+            }
+        }
+    }
+
+    /// Write the definitions and present the share sheet.
+    /// The list stays. Nothing is sent. A failed write presents nothing.
+    private func saveNotes() {
+        guard FootnoteSave.keepsList() else { return }
+        guard let file = FootnoteSave.writeFile(notes: notes, filename: FootnoteSave.filename) else { return }
+        shareURL = file
+        saved = true
+        savePulse += 1
+        let ticket = savePulse
+        Task {
+            try? await Task.sleep(nanoseconds: FootnoteSave.feedbackNanoseconds)
+            if ticket == savePulse {
+                saved = false
+            }
+        }
+    }
+}
+
+/// The system share sheet for one saved footnotes list. Copy and Files
+/// are the system's actions. This view does not request photo-library permission.
+private struct FootnoteMarkdownShareSheet: UIViewControllerRepresentable {
+    let url: URL
+
+    func makeUIViewController(context: Context) -> UIActivityViewController {
+        UIActivityViewController(activityItems: [url], applicationActivities: nil)
+    }
+
+    func updateUIViewController(_ uiViewController: UIActivityViewController, context: Context) {}
 }
 
 /// Tap a marker to read its note. http(s) links do not come through here.

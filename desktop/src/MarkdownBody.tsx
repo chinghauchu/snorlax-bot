@@ -266,6 +266,23 @@ import {
   splitMarkdownLists,
 } from "./markdownList";
 import {
+  FOOTNOTE_COPY_MS,
+  footnoteClipboardText,
+  footnoteCopyAriaLabel,
+  footnoteCopyLabel,
+  showFootnoteCopy,
+} from "./footnoteCopy";
+import {
+  FOOTNOTE_SAVE_FILENAME,
+  FOOTNOTE_SAVE_MS,
+  downloadFootnoteMarkdown,
+  footnoteSaveAriaLabel,
+  footnoteSaveBody,
+  footnoteSaveKeepsList,
+  footnoteSaveLabel,
+  showFootnoteSave,
+} from "./footnoteSave";
+import {
   FOOTNOTES_TITLE,
   focusFootnote,
   footnoteBackLabel,
@@ -496,6 +513,7 @@ export function MarkdownBody({
           notes={footnotes}
           scope={footnoteScope}
           knownNames={knownNames}
+          completed={completed}
         />
       ) : null}
     </>
@@ -3083,21 +3101,123 @@ function FootnoteRefButton({
   );
 }
 
+/**
+ * v2.41: Copy and Save sit at the top-right of a finished Footnotes
+ * list. Hover or keyboard focus reveals them. Copied and Saved stay
+ * up for 1.5s. The text is one definition per rendered note, not the
+ * title or the painted numbers. Saving downloads notes.md. The list
+ * stays on screen.
+ */
+function FootnoteActions({
+  notes,
+  completed,
+}: {
+  notes: Footnote[];
+  completed: boolean;
+}) {
+  const [copied, setCopied] = useState(false);
+  const [saved, setSaved] = useState(false);
+  const timer = useRef<ReturnType<typeof window.setTimeout> | null>(null);
+  const saveTimer = useRef<ReturnType<typeof window.setTimeout> | null>(null);
+  const source = footnoteSaveBody(notes);
+  const showCopy = showFootnoteCopy({ completed, notes });
+  const showSave = showFootnoteSave({ completed, notes });
+
+  useEffect(() => {
+    return () => {
+      if (timer.current != null) window.clearTimeout(timer.current);
+      if (saveTimer.current != null) window.clearTimeout(saveTimer.current);
+    };
+  }, []);
+
+  useEffect(() => {
+    setCopied(false);
+    setSaved(false);
+    if (timer.current != null) {
+      window.clearTimeout(timer.current);
+      timer.current = null;
+    }
+    if (saveTimer.current != null) {
+      window.clearTimeout(saveTimer.current);
+      saveTimer.current = null;
+    }
+  }, [source]);
+
+  function onCopy(event: MouseEvent<HTMLButtonElement>) {
+    event.preventDefault();
+    event.stopPropagation();
+    void copyText(footnoteClipboardText(notes));
+    setCopied(true);
+    if (timer.current != null) window.clearTimeout(timer.current);
+    timer.current = window.setTimeout(() => {
+      setCopied(false);
+      timer.current = null;
+    }, FOOTNOTE_COPY_MS);
+  }
+
+  function onSave(event: MouseEvent<HTMLButtonElement>) {
+    event.preventDefault();
+    event.stopPropagation();
+    if (!footnoteSaveKeepsList() || !showSave) return;
+    downloadFootnoteMarkdown(notes, FOOTNOTE_SAVE_FILENAME);
+    setSaved(true);
+    if (saveTimer.current != null) window.clearTimeout(saveTimer.current);
+    saveTimer.current = window.setTimeout(() => {
+      setSaved(false);
+      saveTimer.current = null;
+    }, FOOTNOTE_SAVE_MS);
+  }
+
+  if (!showCopy && !showSave) return null;
+  return (
+    <span className="md-fn-actions">
+      {showCopy ? (
+        <button
+          type="button"
+          className={copied ? "md-fn-copy is-copied" : "md-fn-copy"}
+          aria-label={footnoteCopyAriaLabel(copied)}
+          aria-live="polite"
+          onMouseDown={keepCodeBlockFocus}
+          onClick={onCopy}
+        >
+          {footnoteCopyLabel(copied)}
+        </button>
+      ) : null}
+      {showSave ? (
+        <button
+          type="button"
+          className={saved ? "md-fn-save is-saved" : "md-fn-save"}
+          aria-label={footnoteSaveAriaLabel(saved)}
+          aria-live="polite"
+          onMouseDown={keepCodeBlockFocus}
+          onClick={onSave}
+        >
+          {footnoteSaveLabel(saved)}
+        </button>
+      ) : null}
+    </span>
+  );
+}
+
 /** Muted numbered list. The back-link returns to the first marker. */
 export function FootnotesList({
   notes,
   scope,
   knownNames,
+  completed = true,
 }: {
   notes: Footnote[];
   scope: string;
   knownNames: string[];
+  completed?: boolean;
 }) {
   if (!notes.length) return null;
   return (
     <section className="md-footnotes" aria-label={FOOTNOTES_TITLE}>
-      <p className="md-fn-title">{FOOTNOTES_TITLE}</p>
-      <ol className="md-fn-list">
+      <div className="md-fn-frame">
+        <FootnoteActions notes={notes} completed={completed} />
+        <p className="md-fn-title">{FOOTNOTES_TITLE}</p>
+        <ol className="md-fn-list">
         {notes.map((note) => (
           <li
             key={note.number}
@@ -3119,7 +3239,8 @@ export function FootnotesList({
             </button>
           </li>
         ))}
-      </ol>
+        </ol>
+      </div>
     </section>
   );
 }
