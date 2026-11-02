@@ -596,6 +596,8 @@ private struct MarkdownIndentedPieces: View {
 /// shows a read-only checkbox. The number stays.
 /// v2.34: more than 8 items show the first 8 and Show more.
 /// The prefix keeps each item's index, so an ordered start stays.
+/// v2.37: Copy and Save at the top-right. Save writes list.md and
+/// shares the file. Copy writes the same lines.
 private struct MarkdownListBlock: View {
     let group: MarkdownList.Group
     let names: [String]
@@ -604,6 +606,16 @@ private struct MarkdownListBlock: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.chatFind) private var find
     @State private var expanded = false
+    @State private var copied = false
+    @State private var pulse = 0
+    @State private var saved = false
+    @State private var savePulse = 0
+    @State private var shareURL: URL?
+
+    private var showsChrome: Bool {
+        ListCopy.showsCopy(completed: completed, source: group.source)
+            || ListSave.showsSave(completed: completed, source: group.source)
+    }
 
     private var itemText: String {
         ListCollapse.findText(group.items)
@@ -638,6 +650,33 @@ private struct MarkdownListBlock: View {
     var body: some View {
         let shown = ListCollapse.visibleItems(group.items, collapsed: collapsed)
         VStack(alignment: .leading, spacing: 0) {
+            if showsChrome {
+                HStack(spacing: 12) {
+                    Spacer(minLength: 0)
+                    if ListCopy.showsCopy(completed: completed, source: group.source) {
+                        Button(ListCopy.label(copied: copied)) {
+                            copyList()
+                        }
+                        .buttonStyle(.plain)
+                        .font(.system(size: 12))
+                        .foregroundStyle(.secondary)
+                        .focusable(false)
+                        .accessibilityLabel(ListCopy.accessibilityLabel(copied: copied))
+                        .animation(ListCopy.animation(reduceMotion: reduceMotion), value: copied)
+                    }
+                    if ListSave.showsSave(completed: completed, source: group.source) {
+                        Button(ListSave.label(saved: saved)) {
+                            saveList()
+                        }
+                        .buttonStyle(.plain)
+                        .font(.system(size: 12))
+                        .foregroundStyle(.secondary)
+                        .focusable(false)
+                        .accessibilityLabel(ListSave.accessibilityLabel(saved: saved))
+                        .animation(ListSave.animation(reduceMotion: reduceMotion), value: saved)
+                    }
+                }
+            }
             VStack(alignment: .leading, spacing: MarkdownLooseList.itemSpacing(loose: group.loose)) {
                 ForEach(Array(shown.enumerated()), id: \.offset) { index, item in
                     MarkdownListItemRow(
@@ -676,8 +715,66 @@ private struct MarkdownListBlock: View {
         .onChange(of: wrapScope) { _, _ in
             expanded = false
         }
+        .onChange(of: group.source) { _, _ in
+            copied = false
+            saved = false
+        }
         .animation(ListCollapse.animation(reduceMotion: reduceMotion), value: expanded)
+        .sheet(isPresented: Binding(
+            get: { shareURL != nil },
+            set: { if !$0 { shareURL = nil } }
+        )) {
+            if let shareURL {
+                ListMarkdownShareSheet(url: shareURL)
+            }
+        }
     }
+
+    /// Writes the list lines. An empty source does not touch the pasteboard.
+    private func copyList() {
+        let text = ListCopy.clipboardText(group.source)
+        guard ListCopy.showsCopy(completed: completed, source: text) else { return }
+        UIPasteboard.general.string = text
+        copied = true
+        pulse += 1
+        let ticket = pulse
+        Task {
+            try? await Task.sleep(nanoseconds: ListCopy.feedbackNanoseconds)
+            if ticket == pulse {
+                copied = false
+            }
+        }
+    }
+
+    /// Write the list lines and present the share sheet.
+    /// The list stays. Nothing is sent. A failed write presents nothing.
+    private func saveList() {
+        guard ListSave.keepsList() else { return }
+        let text = ListSave.bodyText(group.source)
+        guard let file = ListSave.writeFile(markdown: text, filename: ListSave.filename) else { return }
+        shareURL = file
+        saved = true
+        savePulse += 1
+        let ticket = savePulse
+        Task {
+            try? await Task.sleep(nanoseconds: ListSave.feedbackNanoseconds)
+            if ticket == savePulse {
+                saved = false
+            }
+        }
+    }
+}
+
+/// The system share sheet for one saved list. Copy and Files are
+/// the system's actions. This view does not request photo-library permission.
+private struct ListMarkdownShareSheet: UIViewControllerRepresentable {
+    let url: URL
+
+    func makeUIViewController(context: Context) -> UIActivityViewController {
+        UIActivityViewController(activityItems: [url], applicationActivities: nil)
+    }
+
+    func updateUIViewController(_ uiViewController: UIActivityViewController, context: Context) {}
 }
 
 /// One list row. A task marker becomes a glyph; the rest is markdown.
