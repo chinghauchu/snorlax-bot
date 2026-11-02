@@ -168,6 +168,23 @@ import {
   showListSave,
 } from "./listSave";
 import {
+  TASK_COPY_MS,
+  taskClipboardText,
+  taskCopyAriaLabel,
+  taskCopyLabel,
+  showTaskCopy,
+} from "./taskCopy";
+import {
+  TASK_SAVE_FILENAME,
+  TASK_SAVE_MS,
+  downloadTaskMarkdown,
+  taskSaveAriaLabel,
+  taskSaveBody,
+  taskSaveKeepsTasks,
+  taskSaveLabel,
+  showTaskSave,
+} from "./taskSave";
+import {
   partitionHeadingBubble,
   type HeadingSection,
 } from "./headingSection";
@@ -628,9 +645,12 @@ function QuoteTaskPieces({
           );
         }
         if (block.type === "tasks") {
-          return (
+          const taskLines = block.source;
+          const showTasks =
+            showTaskCopy({ completed, source: taskLines }) ||
+            showTaskSave({ completed, source: taskLines });
+          const list = (
             <CollapsibleList
-              key={`t-${index}`}
               ordered={false}
               className="md-task-list"
               data-loose={block.loose ? "true" : "false"}
@@ -672,6 +692,15 @@ function QuoteTaskPieces({
                 </li>
               ))}
             </CollapsibleList>
+          );
+          if (!showTasks) {
+            return <Fragment key={`t-${index}`}>{list}</Fragment>;
+          }
+          return (
+            <div className="md-task-frame" key={`t-${index}`}>
+              <TaskActions markdown={taskLines} />
+              {list}
+            </div>
           );
         }
         return (
@@ -1288,6 +1317,95 @@ function ListActions({ source }: { source: string }) {
           onClick={onSave}
         >
           {listSaveLabel(saved)}
+        </button>
+      ) : null}
+    </span>
+  );
+}
+
+/**
+ * v2.39: Copy and Save sit at the top-right of a finished task list.
+ * Hover or keyboard focus reveals them. Copied and Saved stay up
+ * for 1.5s. The lines are the task source, not the display text.
+ * Saving downloads tasks.md. The task list stays on screen.
+ */
+function TaskActions({ markdown }: { markdown: string }) {
+  const [copied, setCopied] = useState(false);
+  const [saved, setSaved] = useState(false);
+  const timer = useRef<ReturnType<typeof window.setTimeout> | null>(null);
+  const saveTimer = useRef<ReturnType<typeof window.setTimeout> | null>(null);
+  const showCopy = showTaskCopy({ completed: true, source: markdown });
+  const showSave = showTaskSave({ completed: true, source: markdown });
+
+  useEffect(() => {
+    return () => {
+      if (timer.current != null) window.clearTimeout(timer.current);
+      if (saveTimer.current != null) window.clearTimeout(saveTimer.current);
+    };
+  }, []);
+
+  useEffect(() => {
+    setCopied(false);
+    setSaved(false);
+    if (timer.current != null) {
+      window.clearTimeout(timer.current);
+      timer.current = null;
+    }
+    if (saveTimer.current != null) {
+      window.clearTimeout(saveTimer.current);
+      saveTimer.current = null;
+    }
+  }, [markdown]);
+
+  function onCopy(event: MouseEvent<HTMLButtonElement>) {
+    event.preventDefault();
+    event.stopPropagation();
+    void copyText(taskClipboardText(markdown));
+    setCopied(true);
+    if (timer.current != null) window.clearTimeout(timer.current);
+    timer.current = window.setTimeout(() => {
+      setCopied(false);
+      timer.current = null;
+    }, TASK_COPY_MS);
+  }
+
+  function onSave(event: MouseEvent<HTMLButtonElement>) {
+    event.preventDefault();
+    event.stopPropagation();
+    if (!taskSaveKeepsTasks() || !showSave) return;
+    downloadTaskMarkdown(taskSaveBody(markdown), TASK_SAVE_FILENAME);
+    setSaved(true);
+    if (saveTimer.current != null) window.clearTimeout(saveTimer.current);
+    saveTimer.current = window.setTimeout(() => {
+      setSaved(false);
+      saveTimer.current = null;
+    }, TASK_SAVE_MS);
+  }
+
+  return (
+    <span className="md-task-actions">
+      {showCopy ? (
+        <button
+          type="button"
+          className={copied ? "md-task-copy is-copied" : "md-task-copy"}
+          aria-label={taskCopyAriaLabel(copied)}
+          aria-live="polite"
+          onMouseDown={keepCodeBlockFocus}
+          onClick={onCopy}
+        >
+          {taskCopyLabel(copied)}
+        </button>
+      ) : null}
+      {showSave ? (
+        <button
+          type="button"
+          className={saved ? "md-task-save is-saved" : "md-task-save"}
+          aria-label={taskSaveAriaLabel(saved)}
+          aria-live="polite"
+          onMouseDown={keepCodeBlockFocus}
+          onClick={onSave}
+        >
+          {taskSaveLabel(saved)}
         </button>
       ) : null}
     </span>

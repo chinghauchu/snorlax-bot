@@ -307,10 +307,11 @@ private struct MarkdownQuoteTaskPieces: View {
                         completed: completed,
                         wrapScope: wrapScope
                     )
-                case .tasks(let items, let loose):
+                case .tasks(let items, let loose, let taskLines):
                     MarkdownTaskList(
                         items: items,
                         loose: loose,
+                        markdown: taskLines,
                         names: names,
                         completed: completed,
                         wrapScope: wrapScope
@@ -454,15 +455,29 @@ private struct QuoteMarkdownShareSheet: UIViewControllerRepresentable {
 
 /// Read-only checkbox glyphs. Checked rows are muted. Not a toggle.
 /// v2.34: more than 8 items show the first 8 and Show more.
+/// v2.39: Copy and Save at the top-right. Save writes tasks.md and
+/// shares the file. Copy writes the same lines.
 private struct MarkdownTaskList: View {
     let items: [MarkdownQuoteTask.TaskItem]
     let loose: Bool
+    /// Lines this task list was split from. Not the display text.
+    let markdown: String
     let names: [String]
     var completed: Bool
     var wrapScope: String
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.chatFind) private var find
     @State private var expanded = false
+    @State private var copied = false
+    @State private var pulse = 0
+    @State private var saved = false
+    @State private var savePulse = 0
+    @State private var shareURL: URL?
+
+    private var showsChrome: Bool {
+        TaskCopy.showsCopy(completed: completed, source: markdown)
+            || TaskSave.showsSave(completed: completed, source: markdown)
+    }
 
     private var itemText: String {
         ListCollapse.findText(items.map(\.text))
@@ -497,6 +512,33 @@ private struct MarkdownTaskList: View {
     var body: some View {
         let shown = ListCollapse.visibleItems(items, collapsed: collapsed)
         VStack(alignment: .leading, spacing: 0) {
+            if showsChrome {
+                HStack(spacing: 12) {
+                    Spacer(minLength: 0)
+                    if TaskCopy.showsCopy(completed: completed, source: markdown) {
+                        Button(TaskCopy.label(copied: copied)) {
+                            copyTasks()
+                        }
+                        .buttonStyle(.plain)
+                        .font(.system(size: 12))
+                        .foregroundStyle(.secondary)
+                        .focusable(false)
+                        .accessibilityLabel(TaskCopy.accessibilityLabel(copied: copied))
+                        .animation(TaskCopy.animation(reduceMotion: reduceMotion), value: copied)
+                    }
+                    if TaskSave.showsSave(completed: completed, source: markdown) {
+                        Button(TaskSave.label(saved: saved)) {
+                            saveTasks()
+                        }
+                        .buttonStyle(.plain)
+                        .font(.system(size: 12))
+                        .foregroundStyle(.secondary)
+                        .focusable(false)
+                        .accessibilityLabel(TaskSave.accessibilityLabel(saved: saved))
+                        .animation(TaskSave.animation(reduceMotion: reduceMotion), value: saved)
+                    }
+                }
+            }
             VStack(alignment: .leading, spacing: MarkdownLooseList.itemSpacing(loose: loose)) {
                 ForEach(Array(shown.enumerated()), id: \.offset) { _, item in
                     MarkdownTaskRow(
@@ -531,8 +573,66 @@ private struct MarkdownTaskList: View {
         .onChange(of: wrapScope) { _, _ in
             expanded = false
         }
+        .onChange(of: markdown) { _, _ in
+            copied = false
+            saved = false
+        }
         .animation(ListCollapse.animation(reduceMotion: reduceMotion), value: expanded)
+        .sheet(isPresented: Binding(
+            get: { shareURL != nil },
+            set: { if !$0 { shareURL = nil } }
+        )) {
+            if let shareURL {
+                TaskMarkdownShareSheet(url: shareURL)
+            }
+        }
     }
+
+    /// Writes the task lines. An empty source does not touch the pasteboard.
+    private func copyTasks() {
+        let text = TaskCopy.clipboardText(markdown)
+        guard TaskCopy.showsCopy(completed: completed, source: text) else { return }
+        UIPasteboard.general.string = text
+        copied = true
+        pulse += 1
+        let ticket = pulse
+        Task {
+            try? await Task.sleep(nanoseconds: TaskCopy.feedbackNanoseconds)
+            if ticket == pulse {
+                copied = false
+            }
+        }
+    }
+
+    /// Write the task lines and present the share sheet.
+    /// The task list stays. Nothing is sent. A failed write presents nothing.
+    private func saveTasks() {
+        guard TaskSave.keepsTasks() else { return }
+        let text = TaskSave.bodyText(markdown)
+        guard let file = TaskSave.writeFile(markdown: text, filename: TaskSave.filename) else { return }
+        shareURL = file
+        saved = true
+        savePulse += 1
+        let ticket = savePulse
+        Task {
+            try? await Task.sleep(nanoseconds: TaskSave.feedbackNanoseconds)
+            if ticket == savePulse {
+                saved = false
+            }
+        }
+    }
+}
+
+/// The system share sheet for one saved task list. Copy and Files are
+/// the system's actions. This view does not request photo-library permission.
+private struct TaskMarkdownShareSheet: UIViewControllerRepresentable {
+    let url: URL
+
+    func makeUIViewController(context: Context) -> UIActivityViewController {
+        UIActivityViewController(activityItems: [url], applicationActivities: nil)
+    }
+
+    func updateUIViewController(_ uiViewController: UIActivityViewController, context: Context) {}
 }
 
 private struct MarkdownTaskRow: View {

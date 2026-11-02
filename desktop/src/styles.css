@@ -2866,6 +2866,83 @@ pre.md-math-fallback.md-math-block {
   }
 }
 
+/* v2.39: Copy and Save sit at the top-right of a finished task list.
+   Both stay hidden until hover or focus. Copied or Saved keeps the
+   pair visible. 12px muted. No fade. A short task list does not grow. */
+.md-task-frame {
+  position: relative;
+  align-self: stretch;
+  box-sizing: border-box;
+  max-width: 100%;
+  min-width: 0;
+  margin: 0;
+}
+
+.assistant-md .md-task-frame:last-child > ul,
+.assistant-md .md-task-frame:last-child > .md-list-block {
+  margin-bottom: 0;
+}
+
+.md-task-actions {
+  position: absolute;
+  top: 0;
+  right: 0;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 0;
+  padding: 0;
+  background: var(--bg);
+  opacity: 0;
+  pointer-events: none;
+  user-select: none;
+  transition: none;
+  animation: none;
+}
+
+.md-task-frame:hover > .md-task-actions,
+.md-task-frame:focus-within > .md-task-actions,
+.md-task-actions:has(.is-copied),
+.md-task-actions:has(.is-saved) {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.md-task-copy,
+.md-task-save {
+  margin: 0;
+  padding: 0 2px;
+  border: 0;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 12px;
+  line-height: 1.3;
+  font-family: inherit;
+  white-space: nowrap;
+  cursor: pointer;
+  user-select: none;
+  transition: none;
+  animation: none;
+}
+
+.md-task-copy:focus-visible,
+.md-task-save:focus-visible {
+  outline: 1px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* v2.39: Reduce Motion on → the Save label swap stays instant. */
+@media (prefers-reduced-motion: reduce) {
+  .md-task-actions,
+  .md-task-copy,
+  .md-task-save,
+  .md-task-frame > .md-task-actions {
+    transition: none;
+    animation: none;
+  }
+}
+
 .mention {
   color: var(--accent);
   font-weight: 600;

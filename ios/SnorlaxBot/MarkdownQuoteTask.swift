@@ -23,7 +23,11 @@ import SwiftUI
 /// pasteboard. v2.35: a quote block also keeps `source`, the
 /// lines this quote was split from, so Quote Copy can paste
 /// that quote back. The display text is still the inner
-/// markdown. No animation. No new HTTP.
+/// markdown. v2.39: a task block also keeps `source`, the lines
+/// this task list was split from, markers included. The item
+/// text is still the display text after the marker. A nested
+/// task list's lines are that item's text after the parent
+/// indent was removed. No animation. No new HTTP.
 /// v1.51: a task list is loose or tight by the CommonMark rule.
 /// v1.59: an ordered list (`1.` / `1)`) is not a bullet task list.
 /// Its lines, including a nested `- [ ]`, stay in the markdown so
@@ -66,7 +70,8 @@ enum MarkdownQuoteTask {
         case quote(String, source: String)
         /// `loose` follows CommonMark: a blank between items, or between
         /// an item's own blocks, loosens the whole task list.
-        case tasks([TaskItem], loose: Bool)
+        /// `source` is the lines this task list was split from.
+        case tasks([TaskItem], loose: Bool, source: String)
     }
 
     static func glyph(checked: Bool) -> String {
@@ -186,7 +191,11 @@ enum MarkdownQuoteTask {
                 }
                 pushMarkdown(start)
                 let slice = lines[start..<index].joined(separator: "\n")
-                blocks.append(.tasks(items, loose: MarkdownLooseList.isLoose(slice, completed: true)))
+                blocks.append(.tasks(
+                    items,
+                    loose: MarkdownLooseList.isLoose(slice, completed: true),
+                    source: slice
+                ))
                 mdStart = index
                 continue
             }
