@@ -4619,6 +4619,32 @@ pre.md-math-fallback.md-math-block {
   }
 }
 
+/* v2.42: Save the loaded conversation from the chat header. Muted 12px. No motion. */
+.conversation-save {
+  flex: none;
+  font-size: 12px;
+  color: var(--text-muted);
+  background: transparent;
+  border: 0;
+  padding: 0;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: none;
+  animation: none;
+}
+
+.conversation-save:focus-visible {
+  outline: 1px solid var(--accent);
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .conversation-save {
+    transition: none;
+    animation: none;
+  }
+}
+
 /* v0.94: only message text is selectable for Quote. Chips and the stamp stay out. */
 [data-quote="message"] {
   user-select: text;
