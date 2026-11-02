@@ -704,6 +704,69 @@ enum MarkdownLinkTitle {
         }
         return out
     }
+
+    /// v2.40: inline links and images, with character indexes into the
+    /// newline-normalized source. An image is not a link. Callers mask
+    /// both so a destination URL is not also an autolink.
+    struct ListedSpan {
+        var label: String
+        var dest: String
+        var start: Int
+        var end: Int
+        var image: Bool
+    }
+
+    static func listedSpans(_ source: String) -> [ListedSpan] {
+        let src = source
+            .replacingOccurrences(of: "\r\n", with: "\n")
+            .replacingOccurrences(of: "\r", with: "\n")
+        guard src.contains("[") else { return [] }
+        let chars = Array(src)
+        let blocked = blockedRanges(chars)
+        var links: [ListedSpan] = []
+        var index = 0
+        while index < chars.count {
+            if inSpan(index, blocked) {
+                index += 1
+                continue
+            }
+            let image = chars[index] == "!"
+                && index + 1 < chars.count
+                && chars[index + 1] == "["
+                && !isEscaped(chars, index)
+            let bracketAt: Int
+            if image {
+                bracketAt = index + 1
+            } else if chars[index] == "[", !isEscaped(chars, index) {
+                bracketAt = index
+            } else {
+                bracketAt = -1
+            }
+            if bracketAt >= 0, let parsed = parseInlineLink(chars, bracketAt, blocked) {
+                links.append(ListedSpan(
+                    label: parsed.label,
+                    dest: parsed.dest,
+                    start: image ? index : bracketAt,
+                    end: parsed.end,
+                    image: image
+                ))
+                index = parsed.end
+                continue
+            }
+            index += 1
+        }
+        return links
+    }
+
+    /// Code, indented code, and math the inline-link scan skips.
+    /// Indexes refer to the newline-normalized source.
+    static func protectedSpans(_ source: String) -> [(start: Int, end: Int)] {
+        let src = source
+            .replacingOccurrences(of: "\r\n", with: "\n")
+            .replacingOccurrences(of: "\r", with: "\n")
+        guard !src.isEmpty else { return [] }
+        return blockedRanges(Array(src)).map { (start: $0.start, end: $0.end) }
+    }
 }
 
 struct SnorlaxLinkTitleAttribute: AttributedStringKey {

@@ -4008,6 +4008,10 @@ private struct MessageBubble: View {
     @State private var replySavePulse = 0
     @State private var userSaved = false
     @State private var userSavePulse = 0
+    @State private var linksCopied = false
+    @State private var linksCopyPulse = 0
+    @State private var linksSaved = false
+    @State private var linksSavePulse = 0
 
     private var isUser: Bool { message.isFromUser }
 
@@ -4343,7 +4347,7 @@ private struct MessageBubble: View {
                             Spacer(minLength: 48)
                         }
                     }
-                    if showCopy || showSpeak {
+                    if showCopy || showSpeak || offersMessageLinks {
                         HStack(spacing: 12) {
                             if showCopy {
                                 HStack(spacing: 6) {
@@ -4379,6 +4383,26 @@ private struct MessageBubble: View {
                                 .focusable(false)
                                 .accessibilityLabel(ReplyMarkdownSave.accessibilityLabel(saved: replySaved))
                                 .animation(ReplyMarkdownSave.animation(reduceMotion: reduceMotion), value: replySaved)
+                            }
+                            if offersMessageLinks {
+                                Button(MessageLinks.label(copied: linksCopied)) {
+                                    copyLinks()
+                                }
+                                .font(.system(size: 12))
+                                .foregroundStyle(.secondary)
+                                .buttonStyle(.plain)
+                                .focusable(false)
+                                .accessibilityLabel(MessageLinks.copyAccessibilityLabel(copied: linksCopied))
+                                .animation(MessageLinks.animation(reduceMotion: reduceMotion), value: linksCopied)
+                                Button(MessageLinks.fileLabel(saved: linksSaved)) {
+                                    saveLinks()
+                                }
+                                .font(.system(size: 12))
+                                .foregroundStyle(.secondary)
+                                .buttonStyle(.plain)
+                                .focusable(false)
+                                .accessibilityLabel(MessageLinks.saveAccessibilityLabel(saved: linksSaved))
+                                .animation(MessageLinks.animation(reduceMotion: reduceMotion), value: linksSaved)
                             }
                             if showSpeak {
                                 let speaking = model.speakingMessageId == message.id
@@ -4557,6 +4581,9 @@ private struct MessageBubble: View {
             showCopy: showCopy,
             showReplySave: offersReplySave,
             replySaved: replySaved,
+            showMessageLinks: offersMessageLinks,
+            linksCopied: linksCopied,
+            linksSaved: linksSaved,
             showUserSave: offersUserSave,
             userSaved: userSaved,
             showSpeak: showSpeak,
@@ -4567,6 +4594,8 @@ private struct MessageBubble: View {
             retryDisabled: FailedSend.retryBlocked(busy: model.isSending),
             onCopy: { copyMessageText() },
             onSaveReply: { saveReply() },
+            onCopyLinks: { copyLinks() },
+            onSaveLinks: { saveLinks() },
             onSaveUser: { saveUserMessage() },
             onSpeak: { Task { await model.toggleSpeak(message: message) } },
             onRegenerate: { Task { await model.regenerate() } },
@@ -4592,6 +4621,21 @@ private struct MessageBubble: View {
             pending: model.isSending
                 && OptimisticSend.isOptimistic(message.id)
                 && model.failedSend(id: message.id) == nil
+        )
+    }
+
+    /// v2.40: Copy links and Save as links.md. Not on a user bubble.
+    private var offersMessageLinks: Bool {
+        MessageLinks.shows(
+            fromUser: message.isFromUser,
+            kindMessage: message.isKindMessage
+                && !message.isToolLine
+                && !message.isWidget
+                && !message.isConnect
+                && !message.isApprove
+                && !message.isHandoffRoot,
+            completed: completed,
+            markdown: message.content
         )
     }
 
@@ -4669,6 +4713,42 @@ private struct MessageBubble: View {
         ) && !message.content.isEmpty
     }
 
+    /// Copy the link list. The reply stays. Nothing is sent.
+    private func copyLinks() {
+        guard offersMessageLinks else { return }
+        let text = MessageLinks.clipboardText(message.content)
+        guard !text.isEmpty else { return }
+        UIPasteboard.general.string = text
+        linksCopied = true
+        linksCopyPulse += 1
+        let ticket = linksCopyPulse
+        Task {
+            try? await Task.sleep(nanoseconds: MessageLinks.feedbackNanoseconds)
+            if ticket == linksCopyPulse {
+                linksCopied = false
+            }
+        }
+    }
+
+    /// Write links.md and present the share sheet.
+    /// The reply stays. Nothing is sent. A failed write presents nothing.
+    private func saveLinks() {
+        guard offersMessageLinks, MessageLinks.keepsReply() else { return }
+        let markdown = MessageLinks.bodyText(message.content)
+        guard !markdown.isEmpty else { return }
+        guard let file = MessageLinks.writeFile(markdown: markdown, filename: MessageLinks.filename) else { return }
+        shareURL = file
+        linksSaved = true
+        linksSavePulse += 1
+        let ticket = linksSavePulse
+        Task {
+            try? await Task.sleep(nanoseconds: MessageLinks.feedbackNanoseconds)
+            if ticket == linksSavePulse {
+                linksSaved = false
+            }
+        }
+    }
+
     /// Write the reply markdown and present the share sheet.
     /// The reply stays. Nothing is sent. A failed write presents nothing.
     private func saveReply() {
@@ -4728,6 +4808,9 @@ private struct BubbleTimestampMenu: ViewModifier {
     var showCopy: Bool
     var showReplySave: Bool = false
     var replySaved: Bool = false
+    var showMessageLinks: Bool = false
+    var linksCopied: Bool = false
+    var linksSaved: Bool = false
     var showUserSave: Bool = false
     var userSaved: Bool = false
     var showSpeak: Bool
@@ -4741,6 +4824,8 @@ private struct BubbleTimestampMenu: ViewModifier {
     var showReplyRating: Bool = false
     let onCopy: () -> Void
     var onSaveReply: () -> Void = {}
+    var onCopyLinks: () -> Void = {}
+    var onSaveLinks: () -> Void = {}
     var onSaveUser: () -> Void = {}
     let onSpeak: () -> Void
     let onRegenerate: () -> Void
@@ -4801,7 +4886,7 @@ private struct BubbleTimestampMenu: ViewModifier {
     func body(content: Content) -> some View {
         if let stamp {
             let selectedQuote = showQuote ? QuoteSelection.menuSelection() : nil
-            let hasActions = showCopy || showReplySave || showUserSave || showSpeak || showRegenerate || showFailedSend || showEditAsNew || selectedQuote != nil || showQuoteMessage || showReplyRating
+            let hasActions = showCopy || showReplySave || showMessageLinks || showUserSave || showSpeak || showRegenerate || showFailedSend || showEditAsNew || selectedQuote != nil || showQuoteMessage || showReplyRating
             if hasActions {
                 content.contextMenu {
                     Section {
@@ -4812,6 +4897,12 @@ private struct BubbleTimestampMenu: ViewModifier {
                         if showReplySave {
                             Button(ReplyMarkdownSave.label(saved: replySaved)) { onSaveReply() }
                                 .accessibilityLabel(ReplyMarkdownSave.accessibilityLabel(saved: replySaved))
+                        }
+                        if showMessageLinks {
+                            Button(MessageLinks.label(copied: linksCopied)) { onCopyLinks() }
+                                .accessibilityLabel(MessageLinks.copyAccessibilityLabel(copied: linksCopied))
+                            Button(MessageLinks.fileLabel(saved: linksSaved)) { onSaveLinks() }
+                                .accessibilityLabel(MessageLinks.saveAccessibilityLabel(saved: linksSaved))
                         }
                         if showSpeak {
                             Button(Speak.label(speaking)) { onSpeak() }
@@ -4838,7 +4929,7 @@ private struct BubbleTimestampMenu: ViewModifier {
                         .disabled(true)
                 }
             }
-        } else if showCopy || showReplySave || showUserSave || showFailedSend || showEditAsNew || showQuoteMessage || showReplyRating || (showQuote && QuoteSelection.menuSelection() != nil) {
+        } else if showCopy || showReplySave || showMessageLinks || showUserSave || showFailedSend || showEditAsNew || showQuoteMessage || showReplyRating || (showQuote && QuoteSelection.menuSelection() != nil) {
             content.contextMenu {
                 if showCopy {
                     Button("Copy") { onCopy() }
@@ -4847,6 +4938,12 @@ private struct BubbleTimestampMenu: ViewModifier {
                 if showReplySave {
                     Button(ReplyMarkdownSave.label(saved: replySaved)) { onSaveReply() }
                         .accessibilityLabel(ReplyMarkdownSave.accessibilityLabel(saved: replySaved))
+                }
+                if showMessageLinks {
+                    Button(MessageLinks.label(copied: linksCopied)) { onCopyLinks() }
+                        .accessibilityLabel(MessageLinks.copyAccessibilityLabel(copied: linksCopied))
+                    Button(MessageLinks.fileLabel(saved: linksSaved)) { onSaveLinks() }
+                        .accessibilityLabel(MessageLinks.saveAccessibilityLabel(saved: linksSaved))
                 }
                 ratingButtons
                 if showEditAsNew {

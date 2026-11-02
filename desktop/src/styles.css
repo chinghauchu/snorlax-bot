@@ -4422,6 +4422,60 @@ pre.md-math-fallback.md-math-block {
   }
 }
 
+/* v2.40: Copy links and Save as links.md. Hidden until the turn is
+   hovered or focused. Stay up while either label reads Copied or
+   Saved. The swap is instant. */
+.turn.left .message-links {
+  display: none;
+  flex-direction: row;
+  align-items: center;
+  gap: 12px;
+  max-height: 0;
+  opacity: 0;
+  overflow: hidden;
+  pointer-events: none;
+  transition: none;
+  animation: none;
+}
+
+.turn.left:hover .message-links,
+.turn.left:focus-within .message-links,
+.turn.left .message-links.is-copied,
+.turn.left .message-links.is-saved {
+  display: flex;
+  max-height: 48px;
+  opacity: 1;
+  overflow: visible;
+  pointer-events: auto;
+}
+
+.message-links-copy,
+.message-links-save {
+  font-size: 12px;
+  color: var(--text-muted);
+  background: transparent;
+  border: 0;
+  padding: 0;
+  cursor: pointer;
+  transition: none;
+  animation: none;
+}
+
+.message-links-copy:focus-visible,
+.message-links-save:focus-visible {
+  outline: 1px solid var(--accent);
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .message-links,
+  .message-links-copy,
+  .message-links-save {
+    transition: none;
+    animation: none;
+  }
+}
+
 /* v0.86: user-RIGHT Copy. Same muted 12px control as LEFT. Hidden
    until the turn is hovered or keyboard-focused. 120ms; keep in
    lockstep with BUBBLE_TIME_FADE_MS. Stays up while Copied is showing. */
