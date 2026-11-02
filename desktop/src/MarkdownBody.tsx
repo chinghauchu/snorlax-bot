@@ -140,6 +140,16 @@ import {
   showQuoteCopy,
 } from "./quoteCopy";
 import {
+  QUOTE_SAVE_FILENAME,
+  QUOTE_SAVE_MS,
+  downloadQuoteMarkdown,
+  quoteSaveAriaLabel,
+  quoteSaveBody,
+  quoteSaveKeepsQuote,
+  quoteSaveLabel,
+  showQuoteSave,
+} from "./quoteSave";
+import {
   orderedTaskAnimates,
   peelOrderedTaskChildren,
   remarkOrderedTaskMarkers,
@@ -378,22 +388,33 @@ export function MarkdownBody({
  * v2.35: Copy sits at the top-right of a finished quote. Hover or
  * keyboard focus reveals it. Copied stays up for 1.5s. The lines
  * copied are the quote source, not the inner display text.
+ * v2.36: Save sits beside Copy and downloads those same lines as
+ * quote.md. Saved stays up for 1.5s. The quote stays on screen.
  */
 function QuoteCopyButton({ source }: { source: string }) {
   const [copied, setCopied] = useState(false);
+  const [saved, setSaved] = useState(false);
   const timer = useRef<ReturnType<typeof window.setTimeout> | null>(null);
+  const saveTimer = useRef<ReturnType<typeof window.setTimeout> | null>(null);
+  const showSave = showQuoteSave({ completed: true, source });
 
   useEffect(() => {
     return () => {
       if (timer.current != null) window.clearTimeout(timer.current);
+      if (saveTimer.current != null) window.clearTimeout(saveTimer.current);
     };
   }, []);
 
   useEffect(() => {
     setCopied(false);
+    setSaved(false);
     if (timer.current != null) {
       window.clearTimeout(timer.current);
       timer.current = null;
+    }
+    if (saveTimer.current != null) {
+      window.clearTimeout(saveTimer.current);
+      saveTimer.current = null;
     }
   }, [source]);
 
@@ -409,17 +430,44 @@ function QuoteCopyButton({ source }: { source: string }) {
     }, QUOTE_COPY_MS);
   }
 
+  function onSave(event: MouseEvent<HTMLButtonElement>) {
+    event.preventDefault();
+    event.stopPropagation();
+    if (!quoteSaveKeepsQuote() || !showSave) return;
+    downloadQuoteMarkdown(quoteSaveBody(source), QUOTE_SAVE_FILENAME);
+    setSaved(true);
+    if (saveTimer.current != null) window.clearTimeout(saveTimer.current);
+    saveTimer.current = window.setTimeout(() => {
+      setSaved(false);
+      saveTimer.current = null;
+    }, QUOTE_SAVE_MS);
+  }
+
   return (
-    <button
-      type="button"
-      className={copied ? "md-quote-copy is-copied" : "md-quote-copy"}
-      aria-label={quoteCopyAriaLabel(copied)}
-      aria-live="polite"
-      onMouseDown={keepCodeBlockFocus}
-      onClick={onCopy}
-    >
-      {quoteCopyLabel(copied)}
-    </button>
+    <span className="md-quote-actions">
+      <button
+        type="button"
+        className={copied ? "md-quote-copy is-copied" : "md-quote-copy"}
+        aria-label={quoteCopyAriaLabel(copied)}
+        aria-live="polite"
+        onMouseDown={keepCodeBlockFocus}
+        onClick={onCopy}
+      >
+        {quoteCopyLabel(copied)}
+      </button>
+      {showSave ? (
+        <button
+          type="button"
+          className={saved ? "md-quote-save is-saved" : "md-quote-save"}
+          aria-label={quoteSaveAriaLabel(saved)}
+          aria-live="polite"
+          onMouseDown={keepCodeBlockFocus}
+          onClick={onSave}
+        >
+          {quoteSaveLabel(saved)}
+        </button>
+      ) : null}
+    </span>
   );
 }
 

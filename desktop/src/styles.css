@@ -1496,6 +1496,73 @@ mark.find-hit.active {
   }
 }
 
+/* v2.36: Save sits beside Copy at the top-right of a finished quote.
+   Both stay hidden until hover or focus. Copied or Saved keeps the
+   pair visible. 12px muted. No fade. */
+.md-quote-actions {
+  position: absolute;
+  top: 0;
+  right: 0;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 0;
+  padding: 0;
+  background: var(--bg);
+  opacity: 0;
+  pointer-events: none;
+  user-select: none;
+  transition: none;
+  animation: none;
+}
+
+.assistant-md blockquote.md-quote:hover > .md-quote-actions,
+.assistant-md blockquote.md-quote:focus-within > .md-quote-actions,
+.md-quote-actions:has(.is-copied),
+.md-quote-actions:has(.is-saved) {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.md-quote-actions .md-quote-copy,
+.md-quote-actions .md-quote-save {
+  position: static;
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.md-quote-save {
+  margin: 0;
+  padding: 0 2px;
+  border: 0;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 12px;
+  line-height: 1.3;
+  font-family: inherit;
+  white-space: nowrap;
+  cursor: pointer;
+  user-select: none;
+  transition: none;
+  animation: none;
+}
+
+.md-quote-save:focus-visible {
+  outline: 1px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* v2.36: Reduce Motion on → the Save label swap stays instant. */
+@media (prefers-reduced-motion: reduce) {
+  .md-quote-actions,
+  .md-quote-save,
+  .assistant-md blockquote.md-quote > .md-quote-actions {
+    transition: none;
+    animation: none;
+  }
+}
+
 .assistant-md .md-task-list {
   align-self: stretch;
   max-width: 100%;
