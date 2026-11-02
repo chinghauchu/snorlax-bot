@@ -155,6 +155,7 @@ private struct MarkdownQuoteTaskPieces: View {
 
 /// Muted left rule and indent. Nested `>>` is another quote inside.
 /// v2.35: Copy at the top-right copies the quote lines, then reads Copied.
+/// v2.36: Save beside Copy writes those lines as quote.md and shares the file.
 private struct MarkdownQuoteBlock: View {
     let source: String
     /// Lines this quote was split from. Not the inner display text.
@@ -165,21 +166,42 @@ private struct MarkdownQuoteBlock: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var copied = false
     @State private var pulse = 0
+    @State private var saved = false
+    @State private var savePulse = 0
+    @State private var shareURL: URL?
+
+    private var showsChrome: Bool {
+        QuoteCopy.showsCopy(completed: completed, source: markdown)
+            || QuoteSave.showsSave(completed: completed, source: markdown)
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            if QuoteCopy.showsCopy(completed: completed, source: markdown) {
-                HStack(spacing: 0) {
+            if showsChrome {
+                HStack(spacing: 12) {
                     Spacer(minLength: 0)
-                    Button(QuoteCopy.label(copied: copied)) {
-                        copyQuote()
+                    if QuoteCopy.showsCopy(completed: completed, source: markdown) {
+                        Button(QuoteCopy.label(copied: copied)) {
+                            copyQuote()
+                        }
+                        .buttonStyle(.plain)
+                        .font(.system(size: 12))
+                        .foregroundStyle(.secondary)
+                        .focusable(false)
+                        .accessibilityLabel(QuoteCopy.accessibilityLabel(copied: copied))
+                        .animation(QuoteCopy.animation(reduceMotion: reduceMotion), value: copied)
                     }
-                    .buttonStyle(.plain)
-                    .font(.system(size: 12))
-                    .foregroundStyle(.secondary)
-                    .focusable(false)
-                    .accessibilityLabel(QuoteCopy.accessibilityLabel(copied: copied))
-                    .animation(QuoteCopy.animation(reduceMotion: reduceMotion), value: copied)
+                    if QuoteSave.showsSave(completed: completed, source: markdown) {
+                        Button(QuoteSave.label(saved: saved)) {
+                            saveQuote()
+                        }
+                        .buttonStyle(.plain)
+                        .font(.system(size: 12))
+                        .foregroundStyle(.secondary)
+                        .focusable(false)
+                        .accessibilityLabel(QuoteSave.accessibilityLabel(saved: saved))
+                        .animation(QuoteSave.animation(reduceMotion: reduceMotion), value: saved)
+                    }
                 }
             }
             AssistantMarkdown(
@@ -203,6 +225,15 @@ private struct MarkdownQuoteBlock: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .onChange(of: markdown) { _, _ in
             copied = false
+            saved = false
+        }
+        .sheet(isPresented: Binding(
+            get: { shareURL != nil },
+            set: { if !$0 { shareURL = nil } }
+        )) {
+            if let shareURL {
+                QuoteMarkdownShareSheet(url: shareURL)
+            }
         }
     }
 
@@ -221,6 +252,36 @@ private struct MarkdownQuoteBlock: View {
             }
         }
     }
+
+    /// Write the quote lines and present the share sheet.
+    /// The quote stays. Nothing is sent. A failed write presents nothing.
+    private func saveQuote() {
+        guard QuoteSave.keepsQuote() else { return }
+        let text = QuoteSave.bodyText(markdown)
+        guard let file = QuoteSave.writeFile(markdown: text, filename: QuoteSave.filename) else { return }
+        shareURL = file
+        saved = true
+        savePulse += 1
+        let ticket = savePulse
+        Task {
+            try? await Task.sleep(nanoseconds: QuoteSave.feedbackNanoseconds)
+            if ticket == savePulse {
+                saved = false
+            }
+        }
+    }
+}
+
+/// The system share sheet for one saved blockquote. Copy and Files are
+/// the system's actions. This view does not request photo-library permission.
+private struct QuoteMarkdownShareSheet: UIViewControllerRepresentable {
+    let url: URL
+
+    func makeUIViewController(context: Context) -> UIActivityViewController {
+        UIActivityViewController(activityItems: [url], applicationActivities: nil)
+    }
+
+    func updateUIViewController(_ uiViewController: UIActivityViewController, context: Context) {}
 }
 
 /// Read-only checkbox glyphs. Checked rows are muted. Not a toggle.
