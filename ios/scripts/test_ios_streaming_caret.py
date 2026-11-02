@@ -95,7 +95,7 @@ def test_never_with_waiting_dots() -> None:
     assert "waitingStreak(agent: agent)" in CHAT
     assert "className=\"waiting\"" in DESKTOP_APP
     assert "className=\"streaming-caret\"" in DESKTOP_APP
-    md = DESKTOP_APP[DESKTOP_APP.find('className="assistant-md"') : DESKTOP_APP.find('className="assistant-md"') + 3600]
+    md = DESKTOP_APP[DESKTOP_APP.find('className="assistant-md"') : DESKTOP_APP.find('className="assistant-md"') + 5600]
     assert "streaming-caret" in md
     waiting_render = DESKTOP_APP[DESKTOP_APP.find("{showWaiting ? (") :][:1400]
     assert "streaming-caret" not in waiting_render

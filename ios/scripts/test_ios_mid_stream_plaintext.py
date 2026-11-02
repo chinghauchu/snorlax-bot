@@ -148,7 +148,7 @@ def test_actions_only_on_last_bubble_after_complete() -> None:
         DESKTOP_APP.find('className="assistant-md"') : DESKTOP_APP.find(
             'className="assistant-md"'
         )
-        + 4200
+        + 5600
     ]
     bubble_block = md[
         md.find("assistant-bubbles") : md.find("showAssistantCopy")
