@@ -2701,6 +2701,98 @@ pre.md-math-fallback.md-math-block {
   }
 }
 
+/* v2.37: Copy and Save sit at the top-right of a finished list.
+   Both stay hidden until hover or focus. Copied or Saved keeps the
+   pair visible. 12px muted. No fade. A short list does not grow. */
+.md-list-frame {
+  position: relative;
+  align-self: stretch;
+  box-sizing: border-box;
+  max-width: 100%;
+  min-width: 0;
+  margin: 0;
+}
+
+.assistant-md .md-list-frame:last-child > ul,
+.assistant-md .md-list-frame:last-child > ol,
+.assistant-md .md-list-frame:last-child > .md-list-block {
+  margin-bottom: 0;
+}
+
+.md-list-actions {
+  position: absolute;
+  top: 0;
+  right: 0;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 0;
+  padding: 0;
+  background: var(--bg);
+  opacity: 0;
+  pointer-events: none;
+  user-select: none;
+  transition: none;
+  animation: none;
+}
+
+.md-list-frame:hover > .md-list-actions,
+.md-list-frame:focus-within > .md-list-actions,
+.md-list-actions:has(.is-copied),
+.md-list-actions:has(.is-saved) {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.md-list-copy {
+  margin: 0;
+  padding: 0 2px;
+  border: 0;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 12px;
+  line-height: 1.3;
+  font-family: inherit;
+  white-space: nowrap;
+  cursor: pointer;
+  user-select: none;
+  transition: none;
+  animation: none;
+}
+
+.md-list-save {
+  margin: 0;
+  padding: 0 2px;
+  border: 0;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 12px;
+  line-height: 1.3;
+  font-family: inherit;
+  white-space: nowrap;
+  cursor: pointer;
+  user-select: none;
+  transition: none;
+  animation: none;
+}
+
+.md-list-copy:focus-visible,
+.md-list-save:focus-visible {
+  outline: 1px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* v2.37: Reduce Motion on → the Save label swap stays instant. */
+@media (prefers-reduced-motion: reduce) {
+  .md-list-actions,
+  .md-list-save,
+  .md-list-frame > .md-list-actions {
+    transition: none;
+    animation: none;
+  }
+}
+
 .mention {
   color: var(--accent);
   font-weight: 600;

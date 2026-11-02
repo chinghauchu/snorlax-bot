@@ -150,6 +150,23 @@ import {
   showQuoteSave,
 } from "./quoteSave";
 import {
+  LIST_COPY_MS,
+  listClipboardText,
+  listCopyAriaLabel,
+  listCopyLabel,
+  showListCopy,
+} from "./listCopy";
+import {
+  LIST_SAVE_FILENAME,
+  LIST_SAVE_MS,
+  downloadListMarkdown,
+  listSaveAriaLabel,
+  listSaveBody,
+  listSaveKeepsList,
+  listSaveLabel,
+  showListSave,
+} from "./listSave";
+import {
   orderedTaskAnimates,
   peelOrderedTaskChildren,
   remarkOrderedTaskMarkers,
@@ -207,7 +224,6 @@ import {
   listNeedsCmarkOrderedOne,
   listSplitByCmarkHtml,
   listSplitByTabFence,
-  markdownListLineRanges,
   splitMarkdownLists,
 } from "./markdownList";
 import {
@@ -833,7 +849,8 @@ function MarkdownParsed({
       listSplitByCmarkHtml(sourceText) ||
       listNeedsCmarkOrderedOne(sourceText) ||
       listNeedsCmarkOrderedItemStart(sourceText) ||
-      listSplitByTabFence(sourceText))
+      listSplitByTabFence(sourceText) ||
+      textHasMarkdownList(sourceText))
   ) {
     return (
       <MarkdownListsWithTables
@@ -869,6 +886,11 @@ function textHasTableInList(text: string): boolean {
   );
 }
 
+/** v2.37: a finished bulleted or numbered list keeps its source lines. */
+function textHasMarkdownList(text: string): boolean {
+  return splitMarkdownLists(text, true).some((block) => block.type === "list");
+}
+
 /**
  * v1.86: react-markdown has no GFM tables. A list whose item
  * contains a table is drawn here so the table stays inside the
@@ -901,9 +923,6 @@ function MarkdownListsWithTables({
   unwrapParagraphs: boolean;
 }) {
   const blocks = splitMarkdownLists(text, true);
-  const ranges = markdownListLineRanges(text, true);
-  const lines = text.replace(/\r\n/g, "\n").replace(/\r/g, "\n").split("\n");
-  let listN = 0;
   return (
     <>
       {blocks.map((block, index) => {
@@ -934,11 +953,9 @@ function MarkdownListsWithTables({
             />
           );
         }
-        const range = ranges[listN] ?? null;
-        listN += 1;
-        const slice =
-          range == null ? "" : lines.slice(range.start, range.end).join("\n");
-        const loose = slice ? listIsLoose(slice, true) : false;
+        const loose = block.list.source
+          ? listIsLoose(block.list.source, true)
+          : false;
         const items = block.list.items.map((item, itemIndex) => (
           <li key={`item-${itemIndex}`}>
             <TightParagraphContext.Provider value={!loose}>
@@ -960,6 +977,7 @@ function MarkdownListsWithTables({
             completed={completed}
             wrapScope={wrapScope}
             findText={listFindText(block.list.items)}
+            source={block.list.source}
           >
             {items}
           </CollapsibleList>
@@ -1001,9 +1019,99 @@ function reactNodeText(node: ReactNode): string {
 }
 
 /**
+ * v2.37: Copy and Save sit at the top-right of a finished list.
+ * Hover or keyboard focus reveals them. Copied and Saved stay up
+ * for 1.5s. The lines are the list source, not the display text.
+ * Saving downloads list.md. The list stays on screen.
+ */
+function ListActions({ source }: { source: string }) {
+  const [copied, setCopied] = useState(false);
+  const [saved, setSaved] = useState(false);
+  const timer = useRef<ReturnType<typeof window.setTimeout> | null>(null);
+  const saveTimer = useRef<ReturnType<typeof window.setTimeout> | null>(null);
+  const showCopy = showListCopy({ completed: true, source });
+  const showSave = showListSave({ completed: true, source });
+
+  useEffect(() => {
+    return () => {
+      if (timer.current != null) window.clearTimeout(timer.current);
+      if (saveTimer.current != null) window.clearTimeout(saveTimer.current);
+    };
+  }, []);
+
+  useEffect(() => {
+    setCopied(false);
+    setSaved(false);
+    if (timer.current != null) {
+      window.clearTimeout(timer.current);
+      timer.current = null;
+    }
+    if (saveTimer.current != null) {
+      window.clearTimeout(saveTimer.current);
+      saveTimer.current = null;
+    }
+  }, [source]);
+
+  function onCopy(event: MouseEvent<HTMLButtonElement>) {
+    event.preventDefault();
+    event.stopPropagation();
+    void copyText(listClipboardText(source));
+    setCopied(true);
+    if (timer.current != null) window.clearTimeout(timer.current);
+    timer.current = window.setTimeout(() => {
+      setCopied(false);
+      timer.current = null;
+    }, LIST_COPY_MS);
+  }
+
+  function onSave(event: MouseEvent<HTMLButtonElement>) {
+    event.preventDefault();
+    event.stopPropagation();
+    if (!listSaveKeepsList() || !showSave) return;
+    downloadListMarkdown(listSaveBody(source), LIST_SAVE_FILENAME);
+    setSaved(true);
+    if (saveTimer.current != null) window.clearTimeout(saveTimer.current);
+    saveTimer.current = window.setTimeout(() => {
+      setSaved(false);
+      saveTimer.current = null;
+    }, LIST_SAVE_MS);
+  }
+
+  return (
+    <span className="md-list-actions">
+      {showCopy ? (
+        <button
+          type="button"
+          className={copied ? "md-list-copy is-copied" : "md-list-copy"}
+          aria-label={listCopyAriaLabel(copied)}
+          aria-live="polite"
+          onMouseDown={keepCodeBlockFocus}
+          onClick={onCopy}
+        >
+          {listCopyLabel(copied)}
+        </button>
+      ) : null}
+      {showSave ? (
+        <button
+          type="button"
+          className={saved ? "md-list-save is-saved" : "md-list-save"}
+          aria-label={listSaveAriaLabel(saved)}
+          aria-live="polite"
+          onMouseDown={keepCodeBlockFocus}
+          onClick={onSave}
+        >
+          {listSaveLabel(saved)}
+        </button>
+      ) : null}
+    </span>
+  );
+}
+
+/**
  * v2.34: a finished list longer than 8 items shows the first 8 and
  * Show more. A short list stays the plain ul or ol, so its margins
  * do not change. The footnote list does not come through here.
+ * v2.37: a list with source lines also offers Copy and Save.
  */
 function CollapsibleList({
   ordered,
@@ -1013,6 +1121,7 @@ function CollapsibleList({
   completed,
   wrapScope,
   findText,
+  source = "",
   children,
 }: {
   ordered: boolean;
@@ -1022,6 +1131,7 @@ function CollapsibleList({
   completed: boolean;
   wrapScope: string;
   findText?: string;
+  source?: string;
   children?: ReactNode;
 }) {
   const items = listItemNodes(children);
@@ -1063,8 +1173,9 @@ function CollapsibleList({
       {body}
     </ul>
   );
-  if (!showToggle) return list;
-  return (
+  const showActions =
+    showListSave({ completed, source }) || showListCopy({ completed, source });
+  const listNode = showToggle ? (
     <div className="md-list-block" data-list-collapsed={collapsed ? "true" : "false"}>
       {list}
       <button
@@ -1077,6 +1188,15 @@ function CollapsibleList({
       >
         {listCollapseLabel(expanded)}
       </button>
+    </div>
+  ) : (
+    list
+  );
+  if (!showActions) return listNode;
+  return (
+    <div className="md-list-frame">
+      <ListActions source={source} />
+      {listNode}
     </div>
   );
 }

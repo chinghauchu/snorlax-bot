@@ -182,6 +182,13 @@ export type MarkdownListGroup = {
   /** `.` or `)` for an ordered list. Bullets use "". */
   delimiter: "." | ")" | "";
   items: string[];
+  /**
+   * v2.37: lines this list was split from, markers included.
+   * A nested list's lines are the item text after the parent
+   * indent was removed, so the nested marker remains. The
+   * blank line that ends the list is not included.
+   */
+  source: string;
 };
 
 export type ListBlock =
@@ -503,6 +510,7 @@ function readList(
       start: first.number,
       delimiter: first.delimiter,
       items,
+      source: lines.slice(start, i).join("\n"),
     },
     next: i,
   };

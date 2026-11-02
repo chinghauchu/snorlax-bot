@@ -92,6 +92,11 @@ enum MarkdownList {
         var items: [String]
         /// CommonMark loose list. Tight lists stay compact.
         var loose: Bool
+        /// v2.37: lines this list was split from, markers included.
+        /// A nested list's lines are the item text after the parent
+        /// indent was removed, so the nested marker remains. The
+        /// blank line that ends the list is not included.
+        var source: String
     }
 
     enum Block: Equatable {
@@ -261,7 +266,8 @@ enum MarkdownList {
                 start: first.number,
                 delimiter: first.delimiter,
                 items: items,
-                loose: loose
+                loose: loose,
+                source: slice
             ),
             next: index
         )
