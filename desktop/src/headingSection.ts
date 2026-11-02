@@ -287,9 +287,17 @@ function skipQuote(lines: string[], start: number): number {
   return i;
 }
 
+/** Offsets of each bubble inside the normalized document. Missing text is -1. */
+export function headingBubbleSpans(
+  documentText: string,
+  bubbles: readonly string[],
+): { start: number; end: number }[] {
+  return bubbleSpans(normalize(documentText), bubbles);
+}
+
 function bubbleSpans(
   src: string,
-  bubbles: string[],
+  bubbles: readonly string[],
 ): { start: number; end: number }[] {
   let cursor = 0;
   return bubbles.map((bubble) => {
