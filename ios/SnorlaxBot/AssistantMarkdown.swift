@@ -131,9 +131,10 @@ private struct MarkdownQuoteTaskPieces: View {
                         completed: completed,
                         wrapScope: wrapScope
                     )
-                case .quote(let text):
+                case .quote(let text, let source):
                     MarkdownQuoteBlock(
                         source: text,
+                        markdown: source,
                         names: names,
                         completed: completed,
                         wrapScope: wrapScope
@@ -153,31 +154,72 @@ private struct MarkdownQuoteTaskPieces: View {
 }
 
 /// Muted left rule and indent. Nested `>>` is another quote inside.
+/// v2.35: Copy at the top-right copies the quote lines, then reads Copied.
 private struct MarkdownQuoteBlock: View {
     let source: String
+    /// Lines this quote was split from. Not the inner display text.
+    let markdown: String
     let names: [String]
     var completed: Bool
     var wrapScope: String
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var copied = false
+    @State private var pulse = 0
 
     var body: some View {
-        AssistantMarkdown(
-            text: source,
-            names: names,
-            completed: completed,
-            wrapScope: wrapScope
-        )
-        .environment(\.markdownListLoose, nil as Bool?)
-        .foregroundStyle(.secondary)
-        .padding(.leading, 10)
-        .overlay(alignment: .leading) {
-            Rectangle()
-                .fill(Color(uiColor: .separator))
-                .frame(width: 2)
-                .accessibilityHidden(true)
+        VStack(alignment: .leading, spacing: 0) {
+            if QuoteCopy.showsCopy(completed: completed, source: markdown) {
+                HStack(spacing: 0) {
+                    Spacer(minLength: 0)
+                    Button(QuoteCopy.label(copied: copied)) {
+                        copyQuote()
+                    }
+                    .buttonStyle(.plain)
+                    .font(.system(size: 12))
+                    .foregroundStyle(.secondary)
+                    .focusable(false)
+                    .accessibilityLabel(QuoteCopy.accessibilityLabel(copied: copied))
+                    .animation(QuoteCopy.animation(reduceMotion: reduceMotion), value: copied)
+                }
+            }
+            AssistantMarkdown(
+                text: source,
+                names: names,
+                completed: completed,
+                wrapScope: wrapScope
+            )
+            .environment(\.markdownListLoose, nil as Bool?)
+            .foregroundStyle(.secondary)
+            .padding(.leading, 10)
+            .overlay(alignment: .leading) {
+                Rectangle()
+                    .fill(Color(uiColor: .separator))
+                    .frame(width: 2)
+                    .accessibilityHidden(true)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .animation(MarkdownQuoteTask.animation(reduceMotion: reduceMotion), value: source)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .animation(MarkdownQuoteTask.animation(reduceMotion: reduceMotion), value: source)
+        .onChange(of: markdown) { _, _ in
+            copied = false
+        }
+    }
+
+    /// Writes the quote lines. An empty source does not touch the pasteboard.
+    private func copyQuote() {
+        let text = QuoteCopy.clipboardText(markdown)
+        guard QuoteCopy.showsCopy(completed: completed, source: text) else { return }
+        UIPasteboard.general.string = text
+        copied = true
+        pulse += 1
+        let ticket = pulse
+        Task {
+            try? await Task.sleep(nanoseconds: QuoteCopy.feedbackNanoseconds)
+            if ticket == pulse {
+                copied = false
+            }
+        }
     }
 }
 

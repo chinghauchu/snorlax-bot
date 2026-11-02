@@ -251,3 +251,4 @@ jobs:
           python3 ios/scripts/test_ios_transcript_save.py
           python3 ios/scripts/test_ios_table_collapse.py
           python3 ios/scripts/test_ios_list_collapse.py
+          python3 ios/scripts/test_ios_quote_copy.py

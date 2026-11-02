@@ -1446,6 +1446,56 @@ mark.find-hit.active {
   color: var(--text-muted);
 }
 
+/* v2.35: Copy sits at the top-right of a finished quote. Hidden
+   until hover or focus so the first line stays clear. Copied stays
+   visible for the confirmation window. 12px muted. No fade. */
+.assistant-md blockquote.md-quote {
+  position: relative;
+}
+
+.md-quote-copy {
+  position: absolute;
+  top: 0;
+  right: 0;
+  z-index: 2;
+  margin: 0;
+  padding: 0 2px;
+  border: 0;
+  background: var(--bg);
+  color: var(--text-muted);
+  font-size: 12px;
+  line-height: 1.3;
+  font-family: inherit;
+  white-space: nowrap;
+  cursor: pointer;
+  opacity: 0;
+  pointer-events: none;
+  user-select: none;
+  transition: none;
+  animation: none;
+}
+
+.assistant-md blockquote.md-quote:hover > .md-quote-copy,
+.assistant-md blockquote.md-quote:focus-within > .md-quote-copy,
+.md-quote-copy.is-copied {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.md-quote-copy:focus-visible {
+  outline: 1px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* v2.35: Reduce Motion on → the Copy label swap stays instant. */
+@media (prefers-reduced-motion: reduce) {
+  .md-quote-copy,
+  .assistant-md blockquote.md-quote > .md-quote-copy {
+    transition: none;
+    animation: none;
+  }
+}
+
 .assistant-md .md-task-list {
   align-self: stretch;
   max-width: 100%;
