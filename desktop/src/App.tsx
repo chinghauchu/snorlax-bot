@@ -376,7 +376,11 @@ import { composerInert } from "./computerSession";
 import { WidgetCard } from "./WidgetCard";
 import { ApproveCard } from "./ApproveCard";
 import { ConnectCard } from "./ConnectCard";
-import { HttpsText, MarkdownBody } from "./MarkdownBody";
+import {
+  HeadingBubbleSectionsProvider,
+  HttpsText,
+  MarkdownBody,
+} from "./MarkdownBody";
 import { MarkdownMediaProvider } from "./markdownImageView";
 import { LinkStatusPill } from "./linkStatusPill";
 import { FindQueryProvider, FindText, useFindQuery } from "./FindText";
@@ -8960,6 +8964,7 @@ export function App() {
                       <MarkdownMediaProvider
                         value={{ session, onOpenImage: openImageLightbox }}
                       >
+                      <HeadingBubbleSectionsProvider bubbles={headingByBubble}>
                       <div className="assistant-md">
                         <MessageAttachmentChrome
                           message={message}
@@ -9011,7 +9016,6 @@ export function App() {
                                         wrapScope={bubbleRowId}
                                         footnoteScope={message.id}
                                         footnotes={bubbleIdx===leftBubbles.length-1?footnoted.notes:[]}
-                                        headingSections={headingByBubble[bubbleIdx]}
                                       />
                                     ) : (
                                       <pre className="assistant-plain">
@@ -9058,6 +9062,7 @@ export function App() {
                           />
                         ) : null}
                       </div>
+                      </HeadingBubbleSectionsProvider>
                       </MarkdownMediaProvider>
                     )}
                     {mine && failedSends.some((row) => row.id === message.id) ? (

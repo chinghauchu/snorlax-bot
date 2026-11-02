@@ -347,6 +347,41 @@ function useFootnoteScope(): string {
   return useContext(FootnoteScopeContext);
 }
 
+/**
+ * v2.38: sections for every bubble of one message. The provider sits
+ * outside the assistant markdown node. A nested render appends a NUL
+ * to wrapScope and does not take the sections again.
+ */
+const HeadingBubbleSectionsContext = createContext<HeadingSection[][] | null>(
+  null,
+);
+
+export function HeadingBubbleSectionsProvider({
+  bubbles,
+  children,
+}: {
+  bubbles: HeadingSection[][];
+  children: ReactNode;
+}) {
+  return (
+    <HeadingBubbleSectionsContext.Provider value={bubbles}>
+      {children}
+    </HeadingBubbleSectionsContext.Provider>
+  );
+}
+
+function useHeadingSectionsForScope(
+  wrapScope: string,
+): HeadingSection[] | undefined {
+  const bubbles = useContext(HeadingBubbleSectionsContext);
+  if (!bubbles || wrapScope.includes("\u0000")) return undefined;
+  const colon = wrapScope.lastIndexOf(":");
+  if (colon < 0) return undefined;
+  const index = Number(wrapScope.slice(colon + 1));
+  if (!Number.isInteger(index) || index < 0) return undefined;
+  return bubbles[index];
+}
+
 /** v2.25: Copy link only inside a completed assistant MarkdownBody. */
 const AssistantLinkCopyContext = createContext(false);
 
@@ -369,6 +404,8 @@ export function MarkdownBody({
   headingSections,
 }: Props) {
   const parentMedia = useMarkdownMedia();
+  const scopeSections = useHeadingSectionsForScope(wrapScope);
+  const resolvedSections = headingSections ?? scopeSections;
   const lightbox = parentMedia.lightboxURLCounts
     ? {
         lightboxMessageId: parentMedia.lightboxMessageId,
@@ -382,8 +419,8 @@ export function MarkdownBody({
     ...lightbox,
   };
   const sectionPieces =
-    completed && headingSections && headingSections.length > 0
-      ? partitionHeadingBubble(text, headingSections)
+    completed && resolvedSections && resolvedSections.length > 0
+      ? partitionHeadingBubble(text, resolvedSections)
       : null;
   const partitioned =
     sectionPieces?.some((piece) => piece.type === "section") ?? false;

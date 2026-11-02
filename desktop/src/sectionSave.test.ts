@@ -320,9 +320,9 @@ test("Save sits beside Copy and does not replace it", () => {
   assert.match(reduce, /\.md-section-save/);
   assert.match(reduce, /transition:\s*none/);
   assert.match(reduce, /animation:\s*none/);
-  assert.match(body, /headingSections=\{headingByBubble\[bubbleIdx\]\}|headingSections\?/);
+  assert.match(body, /useHeadingSectionsForScope\(wrapScope\)/);
   assert.match(app, /headingSectionsByBubble/);
-  assert.match(app, /headingSections=\{headingByBubble\[bubbleIdx\]\}/);
+  assert.match(app, /HeadingBubbleSectionsProvider bubbles=\{headingByBubble\}/);
   const user = sliceFn(app, 'className="bubble user"', 'className="assistant-md"');
   assert.doesNotMatch(user, /sectionSave/);
   assert.doesNotMatch(user, /md-section-save/);

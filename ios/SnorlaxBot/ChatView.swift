@@ -4089,7 +4089,11 @@ private struct MessageBubble: View {
     }
 
     private var leftBubbles: [String] {
-        MarkdownSplit.bubbles(in: sectionDocument, completed: completed)
+        let prepared = footnotePrepared
+        if prepared.notes.isEmpty && referenceBody == message.displayContent {
+            return MarkdownSplit.bubbles(in: message.displayContent, completed: completed)
+        }
+        return MarkdownSplit.bubbles(in: prepared.text, completed: completed)
     }
 
     /// v2.38: one list of heading sections per bubble. A heading bubble
