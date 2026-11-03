@@ -4082,6 +4082,8 @@ private struct MessageBubble: View {
     @State private var linksCopyPulse = 0
     @State private var linksSaved = false
     @State private var linksSavePulse = 0
+    /// v2.43: heading offsets the reader opened. Not saved. Not sent.
+    @State private var expandedSections: Set<Int> = []
 
     private var isUser: Bool { message.isFromUser }
 
@@ -4178,6 +4180,36 @@ private struct MessageBubble: View {
             bubbles: leftBubbles,
             completed: completed
         )
+    }
+
+    /// v2.43: long heading sections fold. Find inside a section keeps it open.
+    private var sectionPlan: SectionCollapse.Plan {
+        SectionCollapse.plan(
+            document: sectionDocument,
+            bubbles: leftBubbles,
+            completed: completed,
+            expanded: expandedSections,
+            activeBubble: SectionCollapse.findBubble(
+                messageId: message.id,
+                rowId: find.activeRowId,
+                separator: "#"
+            ),
+            activeStart: find.activeStart
+        )
+    }
+
+    /// Footnotes stay on the last painted bubble, so a folded section does not hide them.
+    private var footnoteBubble: Int {
+        let painted = SectionCollapse.lastPaintedBubble(
+            count: leftBubbles.count,
+            hidden: sectionPlan.hidden
+        )
+        if painted >= 0 { return painted }
+        return leftBubbles.count - 1
+    }
+
+    private var sectionCatalog: [HeadingSection.Section] {
+        HeadingSection.split(sectionDocument, completed: completed)
     }
 
     private var senderAgent: Agent? {
@@ -4356,6 +4388,7 @@ private struct MessageBubble: View {
                         HStack(alignment: .top, spacing: 0) {
                             VStack(alignment: .leading, spacing: AssistantBubbleGap.sameTurn) {
                                 ForEach(Array(leftBubbles.enumerated()), id: \.offset) { offset, part in
+                                    if !sectionPlan.hidden.contains(offset) {
                                     LongMessageBody(
                                         completed: completed,
                                         text: part,
@@ -4368,10 +4401,21 @@ private struct MessageBubble: View {
                                                     names: agents.filter { !$0.isChannel }.map(\.name),
                                                     completed: completed,
                                                     wrapScope: "\(message.id)#\(offset)",
-                                                    showFootnotes: offset == leftBubbles.count - 1,
+                                                    showFootnotes: offset == footnoteBubble,
                                                     headingSections: offset < headingByBubble.count
                                                         ? headingByBubble[offset]
-                                                        : []
+                                                        : [],
+                                                    sectionCatalog: sectionCatalog,
+                                                    collapsedSections: sectionPlan.collapsed,
+                                                    toggleSections: sectionPlan.toggles,
+                                                    expandedSections: expandedSections,
+                                                    onToggleSection: { sectionOffset in
+                                                        if expandedSections.contains(sectionOffset) {
+                                                            expandedSections.remove(sectionOffset)
+                                                        } else {
+                                                            expandedSections.insert(sectionOffset)
+                                                        }
+                                                    }
                                                 )
                                                 .environment(
                                                     \.markdownLightboxScope,
@@ -4412,8 +4456,13 @@ private struct MessageBubble: View {
                                         value: jumpHighlight
                                     )
                                     .modifier(timeMenu)
+                                    }
                                 }
                             }
+                            .animation(
+                                SectionCollapse.animation(reduceMotion: reduceMotion),
+                                value: expandedSections
+                            )
                             Spacer(minLength: 48)
                         }
                     }
@@ -4547,6 +4596,12 @@ private struct MessageBubble: View {
         .frame(maxWidth: .infinity, alignment: isUser ? .trailing : .leading)
         .accessibilityElement(children: .combine)
         .accessibilityLabel(isUser ? "You" : message.senderName)
+        .onChange(of: message.id) { _, _ in
+            expandedSections = []
+        }
+        .onChange(of: sectionDocument) { _, _ in
+            expandedSections = []
+        }
         .sheet(isPresented: Binding(
             get: { shareURL != nil },
             set: { if !$0 { shareURL = nil } }

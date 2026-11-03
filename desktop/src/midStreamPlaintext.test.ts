@@ -39,7 +39,7 @@ function block(selector: string): string {
 function assistantMdSlice(): string {
   const start = app.indexOf('className="assistant-md"');
   assert.ok(start >= 0);
-  return app.slice(start, start + 4200);
+  return app.slice(start, start + 5600);
 }
 
 test("mid-stream LEFT kind=message is plaintext — no markdown, mermaid, or math", () => {

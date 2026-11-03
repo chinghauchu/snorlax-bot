@@ -228,6 +228,11 @@ enum HeadingSection {
         return i
     }
 
+    /// Offsets of each bubble inside the normalized document. Missing text is -1.
+    static func spans(document: String, bubbles: [String]) -> [(start: Int, end: Int)] {
+        bubbleSpans(normalize(document), bubbles)
+    }
+
     private static func bubbleSpans(_ src: String, _ bubbles: [String]) -> [(start: Int, end: Int)] {
         var cursor = src.startIndex
         var spans: [(start: Int, end: Int)] = []

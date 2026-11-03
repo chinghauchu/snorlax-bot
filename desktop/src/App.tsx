@@ -391,6 +391,7 @@ import {
   HeadingBubbleSectionsProvider,
   HttpsText,
   MarkdownBody,
+  SectionCollapseProvider,
 } from "./MarkdownBody";
 import { MarkdownMediaProvider } from "./markdownImageView";
 import { LinkStatusPill } from "./linkStatusPill";
@@ -435,6 +436,10 @@ import {
   splitAssistantBubbles,
 } from "./assistantBubbles";
 import { headingSectionsByBubble } from "./headingSection";
+import {
+  lastPaintedBubble,
+  sectionFindBubble,
+} from "./sectionCollapse";
 import { LongMessageBody } from "./LongMessageBody";
 import { UserMessageClamp } from "./UserMessageClamp";
 import { userLongMessageSettled } from "./userLongMessage";
@@ -8733,6 +8738,11 @@ export function App() {
                   leftBubbles,
                   completed,
                 );
+                const sectionActive = sectionFindBubble(
+                  message.id,
+                  activeFindHit?.rowId ?? "",
+                  ":",
+                );
                 const quoteLoadedIds = new Set(messages.map((row) => row.id));
                 const quoteTargets =
                   quoteJumpEpoch >= 0 && active && mine
@@ -9105,8 +9115,19 @@ export function App() {
                           onOpenImage={openImageLightbox}
                         />
                         {leftBubbles.length ? (
+                          <SectionCollapseProvider
+                            documentText={sectionDocument}
+                            bubbles={leftBubbles}
+                            completed={completed}
+                            activeBubble={sectionActive}
+                            activeStart={sectionActive == null ? null : (activeFindHit?.start ?? null)}
+                          >
+                          {(plan) => {
+                          const painted = lastPaintedBubble(leftBubbles.length, plan.hidden);
+                          return (
                           <div className="assistant-bubbles">
                             {leftBubbles.map((part, bubbleIdx) => {
+                              if (plan.hidden.has(bubbleIdx)) return null;
                               const showCaret =
                                 bubbleIdx === leftBubbles.length - 1 &&
                                 showStreamingCaret({
@@ -9147,7 +9168,7 @@ export function App() {
                                         completed={completed}
                                         wrapScope={bubbleRowId}
                                         footnoteScope={message.id}
-                                        footnotes={bubbleIdx===leftBubbles.length-1?footnoted.notes:[]}
+                                        footnotes={bubbleIdx===painted?footnoted.notes:[]}
                                       />
                                     ) : (
                                       <pre className="assistant-plain">
@@ -9169,6 +9190,9 @@ export function App() {
                               );
                             })}
                           </div>
+                          );
+                          }}
+                          </SectionCollapseProvider>
                         ) : null}
                         {showAssistantCopy({
                           message,

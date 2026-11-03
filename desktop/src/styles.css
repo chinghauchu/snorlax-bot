@@ -2933,6 +2933,40 @@ pre.md-math-fallback.md-math-block {
   }
 }
 
+/* v2.43: a long heading section shows the heading and Show more. The swap is instant. */
+.md-section-more {
+  display: block;
+  margin: 2px 0 4px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1.2;
+  color: var(--text-muted);
+  cursor: pointer;
+  text-align: left;
+  transition: none;
+  animation: none;
+}
+
+.md-section-more:hover {
+  color: var(--accent);
+}
+
+.md-section-more:focus-visible {
+  outline: 1px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* v2.43: Reduce Motion on → Show more is still an instant swap. */
+@media (prefers-reduced-motion: reduce) {
+  .md-section-more {
+    transition: none;
+    animation: none;
+  }
+}
+
 /* v2.39: Copy and Save sit at the top-right of a finished task list.
    Both stay hidden until hover or focus. Copied or Saved keeps the
    pair visible. 12px muted. No fade. A short task list does not grow. */

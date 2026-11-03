@@ -49,7 +49,7 @@ def test_actions_only_on_last_bubble() -> None:
     assert bubbles_for > 0
     # v2.13 stamps a lightbox scope on each bubble inside the ForEach.
     # Copy / Speak / Regenerate stay after that loop.
-    chunk = CHAT[bubbles_for : bubbles_for + 4200]
+    chunk = CHAT[bubbles_for : bubbles_for + 6000]
     actions = chunk.find("if showCopy || showSpeak")
     assert actions > 0
     for_each = chunk[:actions]

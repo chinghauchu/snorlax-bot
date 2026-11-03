@@ -20,6 +20,13 @@ struct AssistantMarkdown: View {
     var showFootnotes: Bool = false
     /// v2.38: sections whose heading line sits in this bubble.
     var headingSections: [HeadingSection.Section] = []
+    /// v2.43: document-level sections, so a nested heading inside a
+    /// collapsed ancestor can be skipped even when it shares this bubble.
+    var sectionCatalog: [HeadingSection.Section] = []
+    var collapsedSections: Set<Int> = []
+    var toggleSections: Set<Int> = []
+    var expandedSections: Set<Int> = []
+    var onToggleSection: (Int) -> Void = { _ in }
     @Environment(\.markdownFootnotes) private var markdownFootnotes
 
     var body: some View {
@@ -47,13 +54,25 @@ struct AssistantMarkdown: View {
                         showFootnotes: false
                     )
                 case .section(let source, let owned):
-                    HeadingSectionBlock(
-                        markdown: owned.source,
-                        content: source,
-                        names: names,
-                        completed: completed,
-                        wrapScope: wrapScope + "\u{0}section\(index)"
-                    )
+                    if SectionCollapse.pieceHidden(
+                        offset: owned.offset,
+                        sections: sectionCatalog,
+                        collapsed: collapsedSections
+                    ) {
+                        EmptyView()
+                    } else {
+                        HeadingSectionBlock(
+                            markdown: owned.source,
+                            content: source,
+                            names: names,
+                            completed: completed,
+                            wrapScope: wrapScope + "\u{0}section\(index)",
+                            collapsed: collapsedSections.contains(owned.offset),
+                            showToggle: toggleSections.contains(owned.offset),
+                            expanded: expandedSections.contains(owned.offset),
+                            onToggle: { onToggleSection(owned.offset) }
+                        )
+                    }
                 }
             }
             if showFootnotes && !markdownFootnotes.isEmpty {
@@ -133,6 +152,10 @@ private struct HeadingSectionBlock: View {
     let names: [String]
     var completed: Bool
     var wrapScope: String
+    var collapsed = false
+    var showToggle = false
+    var expanded = false
+    var onToggle: () -> Void = {}
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var copied = false
     @State private var pulse = 0
@@ -143,6 +166,16 @@ private struct HeadingSectionBlock: View {
     private var showsChrome: Bool {
         SectionCopy.showsCopy(completed: completed, source: markdown)
             || SectionSave.showsSave(completed: completed, source: markdown)
+    }
+
+    /// The heading line of the saved section. The bubble's content starts with it.
+    private var headingLine: String {
+        markdown.split(separator: "\n", omittingEmptySubsequences: false).first.map(String.init) ?? markdown
+    }
+
+    /// Lines of this bubble under the heading. Later bubbles are separate.
+    private var sectionTail: String {
+        SectionCollapse.tail(bubbleText: content, headingLine: headingLine)
     }
 
     var body: some View {
@@ -174,13 +207,45 @@ private struct HeadingSectionBlock: View {
                     }
                 }
             }
-            AssistantMarkdown(
-                text: content,
-                names: names,
-                completed: completed,
-                wrapScope: wrapScope,
-                showFootnotes: false
-            )
+            if showToggle {
+                AssistantMarkdown(
+                    text: SectionCollapse.visibleText(
+                        bubbleText: content,
+                        headingLine: headingLine,
+                        collapsed: true
+                    ),
+                    names: names,
+                    completed: completed,
+                    wrapScope: wrapScope + "h",
+                    showFootnotes: false
+                )
+                Button(SectionCollapse.label(expanded: expanded)) {
+                    onToggle()
+                }
+                .buttonStyle(.plain)
+                .font(.system(size: 12, weight: .medium))
+                .foregroundStyle(.secondary)
+                .focusable(false)
+                .accessibilityLabel(SectionCollapse.accessibilityLabel(expanded: expanded))
+                .animation(SectionCollapse.animation(reduceMotion: reduceMotion), value: expanded)
+                if !collapsed && !sectionTail.isEmpty {
+                    AssistantMarkdown(
+                        text: sectionTail,
+                        names: names,
+                        completed: completed,
+                        wrapScope: wrapScope + "b",
+                        showFootnotes: false
+                    )
+                }
+            } else {
+                AssistantMarkdown(
+                    text: content,
+                    names: names,
+                    completed: completed,
+                    wrapScope: wrapScope,
+                    showFootnotes: false
+                )
+            }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .onChange(of: markdown) { _, _ in

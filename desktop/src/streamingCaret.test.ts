@@ -147,7 +147,7 @@ test("desktop wires a 12px muted blinking caret on the growing LEFT bubble", () 
   assert.match(app, /showStreamingCaret/);
   assert.match(app, /className="streaming-caret"/);
   const mdStart = app.indexOf('className="assistant-md"');
-  const md = app.slice(mdStart, mdStart + 3600);
+  const md = app.slice(mdStart, mdStart + 5600);
   assert.match(md, /showStreamingCaret/);
   assert.match(md, /className="streaming-caret"/);
   assert.match(app, /splitAssistantBubbles/);

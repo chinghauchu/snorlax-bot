@@ -189,6 +189,13 @@ import {
   type HeadingSection,
 } from "./headingSection";
 import {
+  planSectionCollapse,
+  sectionCollapseAria,
+  sectionCollapseLabel,
+  sectionTail,
+  type SectionCollapsePlan,
+} from "./sectionCollapse";
+import {
   SECTION_COPY_MS,
   sectionClipboardText,
   sectionCopyAriaLabel,
@@ -404,6 +411,69 @@ export function HeadingBubbleSectionsProvider({
   );
 }
 
+/**
+ * v2.43: which long heading sections are folded. The provider sits
+ * outside the bubbles of one assistant reply. A missing provider
+ * leaves every section open, which is how a nested render behaves.
+ */
+type SectionCollapseValue = {
+  collapsed: ReadonlySet<number>;
+  toggles: ReadonlySet<number>;
+  hiddenPieces: ReadonlySet<number>;
+  expanded: ReadonlySet<number>;
+  toggle: (offset: number) => void;
+};
+
+const SectionCollapseContext = createContext<SectionCollapseValue | null>(null);
+
+export function SectionCollapseProvider({
+  documentText,
+  bubbles,
+  completed,
+  activeBubble,
+  activeStart,
+  children,
+}: {
+  documentText: string;
+  bubbles: readonly string[];
+  completed: boolean;
+  activeBubble: number | null;
+  activeStart: number | null;
+  children: (plan: SectionCollapsePlan) => ReactNode;
+}) {
+  const [expanded, setExpanded] = useState<Set<number>>(() => new Set());
+  useEffect(() => {
+    setExpanded(new Set());
+  }, [documentText]);
+  const plan = planSectionCollapse({
+    documentText,
+    bubbles,
+    completed,
+    expanded,
+    activeBubble,
+    activeStart,
+  });
+  const value: SectionCollapseValue = {
+    collapsed: plan.collapsed,
+    toggles: plan.toggles,
+    hiddenPieces: plan.hiddenPieces,
+    expanded: plan.expanded,
+    toggle(offset: number) {
+      setExpanded((prev) => {
+        const next = new Set(prev);
+        if (next.has(offset)) next.delete(offset);
+        else next.add(offset);
+        return next;
+      });
+    },
+  };
+  return (
+    <SectionCollapseContext.Provider value={value}>
+      {children(plan)}
+    </SectionCollapseContext.Provider>
+  );
+}
+
 function useHeadingSectionsForScope(
   wrapScope: string,
 ): HeadingSection[] | undefined {
@@ -438,6 +508,7 @@ export function MarkdownBody({
   headingSections,
 }: Props) {
   const parentMedia = useMarkdownMedia();
+  const sectionCollapse = useContext(SectionCollapseContext);
   const scopeSections = useHeadingSectionsForScope(wrapScope);
   const resolvedSections = headingSections ?? scopeSections;
   const lightbox = parentMedia.lightboxURLCounts
@@ -464,23 +535,52 @@ export function MarkdownBody({
   const sectionBody =
     partitioned && sectionPieces
       ? sectionPieces.map((piece, index) => {
-          const inner = (
+          const renderPiece = (source: string, suffix: string) => (
             <MarkdownBody
-              text={piece.text}
+              text={source}
               knownNames={knownNames}
               completed={completed}
-              wrapScope={`${wrapScope}\u0000section${index}`}
+              wrapScope={`${wrapScope}\u0000section${index}${suffix}`}
               fenceOrder={order}
               footnoteScope={footnoteScope}
               session={session}
               onOpenImage={onOpenImage}
             />
           );
-          if (piece.type !== "section") return <Fragment key={index}>{inner}</Fragment>;
+          if (piece.type !== "section") {
+            return <Fragment key={index}>{renderPiece(piece.text, "")}</Fragment>;
+          }
+          const offset = piece.section.offset;
+          if (sectionCollapse?.hiddenPieces.has(offset)) return null;
+          const collapsed = sectionCollapse?.collapsed.has(offset) ?? false;
+          const showToggle = sectionCollapse?.toggles.has(offset) ?? false;
+          const opened = sectionCollapse?.expanded.has(offset) ?? false;
+          const tail = sectionTail(piece.text, piece.section.headingLine);
           return (
-            <div className="md-section-frame" key={index}>
+            <div
+              className="md-section-frame"
+              key={index}
+              data-section-collapsed={collapsed ? "true" : "false"}
+            >
               <SectionActions source={piece.section.source} />
-              {inner}
+              {showToggle ? (
+                <>
+                  {renderPiece(piece.section.headingLine, "h")}
+                  <button
+                    type="button"
+                    className="md-section-more"
+                    aria-expanded={opened}
+                    aria-label={sectionCollapseAria(opened)}
+                    onMouseDown={keepCodeBlockFocus}
+                    onClick={() => sectionCollapse?.toggle(offset)}
+                  >
+                    {sectionCollapseLabel(opened)}
+                  </button>
+                  {!collapsed && tail ? renderPiece(tail, "b") : null}
+                </>
+              ) : (
+                renderPiece(piece.text, "")
+              )}
             </div>
           );
         })
