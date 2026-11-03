@@ -188,6 +188,7 @@ import {
   partitionHeadingBubble,
   type HeadingSection,
 } from "./headingSection";
+import { contentsAnchorForWrap } from "./replyContents.ts";
 import {
   planSectionCollapse,
   sectionCollapseAria,
@@ -424,6 +425,18 @@ type SectionCollapseValue = {
   toggle: (offset: number) => void;
 };
 
+export type SectionCollapseView = {
+  plan: SectionCollapsePlan;
+  /** Open these heading offsets. Already-open offsets stay open. */
+  open: (offsets: readonly number[]) => void;
+  /**
+   * Bubble to unclamp for a Contents jump, plus a token that
+   * increases on every jump so a later jump opens it again.
+   */
+  contentsJump: { bubble: number; token: number } | null;
+  revealContents: (bubble: number | null) => void;
+};
+
 const SectionCollapseContext = createContext<SectionCollapseValue | null>(null);
 
 export function SectionCollapseProvider({
@@ -439,11 +452,16 @@ export function SectionCollapseProvider({
   completed: boolean;
   activeBubble: number | null;
   activeStart: number | null;
-  children: (plan: SectionCollapsePlan) => ReactNode;
+  children: (view: SectionCollapseView) => ReactNode;
 }) {
   const [expanded, setExpanded] = useState<Set<number>>(() => new Set());
+  const [contentsJump, setContentsJump] = useState<{
+    bubble: number;
+    token: number;
+  } | null>(null);
   useEffect(() => {
     setExpanded(new Set());
+    setContentsJump(null);
   }, [documentText]);
   const plan = planSectionCollapse({
     documentText,
@@ -467,9 +485,33 @@ export function SectionCollapseProvider({
       });
     },
   };
+  const view: SectionCollapseView = {
+    plan,
+    open(offsets: readonly number[]) {
+      if (offsets.length === 0) return;
+      setExpanded((prev) => {
+        let changed = false;
+        const next = new Set(prev);
+        for (const offset of offsets) {
+          if (next.has(offset)) continue;
+          next.add(offset);
+          changed = true;
+        }
+        return changed ? next : prev;
+      });
+    },
+    contentsJump,
+    revealContents(bubble: number | null) {
+      if (bubble == null) return;
+      setContentsJump((prev) => ({
+        bubble,
+        token: (prev?.token ?? 0) + 1,
+      }));
+    },
+  };
   return (
     <SectionCollapseContext.Provider value={value}>
-      {children(plan)}
+      {children(view)}
     </SectionCollapseContext.Provider>
   );
 }
@@ -556,12 +598,19 @@ export function MarkdownBody({
           const showToggle = sectionCollapse?.toggles.has(offset) ?? false;
           const opened = sectionCollapse?.expanded.has(offset) ?? false;
           const tail = sectionTail(piece.text, piece.section.headingLine);
+          const contentsAnchor = contentsAnchorForWrap(wrapScope, offset);
           return (
             <div
               className="md-section-frame"
               key={index}
               data-section-collapsed={collapsed ? "true" : "false"}
             >
+              {contentsAnchor ? (
+                <span
+                  className="reply-contents-anchor"
+                  data-contents-anchor={contentsAnchor}
+                />
+              ) : null}
               <SectionActions source={piece.section.source} />
               {showToggle ? (
                 <>

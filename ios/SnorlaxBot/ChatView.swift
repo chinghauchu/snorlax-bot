@@ -2765,6 +2765,12 @@ struct ChatView: View {
                 .coordinateSpace(name: ReadingPlace.coordinateSpace)
             }
             .scrollPosition($transcriptPosition)
+            .environment(\.replyContentsScroll, ReplyContentsScroll { anchor in
+                let transaction = TranscriptScroll.transaction(reduceMotion: reduceMotion)
+                withTransaction(transaction) {
+                    proxy.scrollTo(anchor, anchor: ReplyContents.scrollAnchor)
+                }
+            })
             .onScrollGeometryChange(for: Bool.self) { geo in
                 StickToBottom.isNearBottom(
                     contentHeight: geo.contentSize.height,
@@ -4084,6 +4090,10 @@ private struct MessageBubble: View {
     @State private var linksSavePulse = 0
     /// v2.43: heading offsets the reader opened. Not saved. Not sent.
     @State private var expandedSections: Set<Int> = []
+    /// v2.44: which bubble a Contents jump opened, and a token so a later jump opens it again.
+    @State private var contentsOpenBubble: Int? = nil
+    @State private var contentsOpenToken = 0
+    @Environment(\.replyContentsScroll) private var replyContentsScroll
 
     private var isUser: Bool { message.isFromUser }
 
@@ -4210,6 +4220,33 @@ private struct MessageBubble: View {
 
     private var sectionCatalog: [HeadingSection.Section] {
         HeadingSection.split(sectionDocument, completed: completed)
+    }
+
+    /// v2.44: headings for the Contents list. Empty while streaming and under three headings.
+    private var contentsEntries: [ReplyContents.Entry] {
+        ReplyContents.entries(sectionDocument, completed: completed)
+    }
+
+    /// Open a folded ancestor and the clamped bubble, then scroll to the heading.
+    private func jumpToContents(_ entry: ReplyContents.Entry) {
+        let ancestors = ReplyContents.ancestorsToOpen(
+            sections: sectionCatalog,
+            offset: entry.offset,
+            collapsed: sectionPlan.collapsed
+        )
+        if !ancestors.isEmpty {
+            expandedSections.formUnion(ancestors)
+        }
+        if let bubble = ReplyContents.bubbleIndex(headingByBubble, offset: entry.offset) {
+            contentsOpenBubble = bubble
+            contentsOpenToken += 1
+        }
+        let anchor = ReplyContents.anchor(messageId: message.id, offset: entry.offset)
+        DispatchQueue.main.async {
+            DispatchQueue.main.async {
+                replyContentsScroll.scroll(anchor)
+            }
+        }
     }
 
     private var senderAgent: Agent? {
@@ -4387,12 +4424,21 @@ private struct MessageBubble: View {
                     if !leftBubbles.isEmpty {
                         HStack(alignment: .top, spacing: 0) {
                             VStack(alignment: .leading, spacing: AssistantBubbleGap.sameTurn) {
+                                if !contentsEntries.isEmpty {
+                                    ReplyContentsList(entries: contentsEntries) { entry in
+                                        jumpToContents(entry)
+                                    }
+                                    .padding(.horizontal, 12)
+                                }
                                 ForEach(Array(leftBubbles.enumerated()), id: \.offset) { offset, part in
                                     if !sectionPlan.hidden.contains(offset) {
                                     LongMessageBody(
                                         completed: completed,
                                         text: part,
-                                        activeFind: find.activeRowId == "\(message.id)#\(offset)"
+                                        activeFind: find.activeRowId == "\(message.id)#\(offset)",
+                                        contentsOpenToken: contentsOpenBubble == offset
+                                            ? contentsOpenToken
+                                            : 0
                                     ) {
                                         HStack(alignment: .lastTextBaseline, spacing: 2) {
                                             if MidStreamPlaintext.shouldRenderMarkdown(completed: completed) {
@@ -4409,6 +4455,7 @@ private struct MessageBubble: View {
                                                     collapsedSections: sectionPlan.collapsed,
                                                     toggleSections: sectionPlan.toggles,
                                                     expandedSections: expandedSections,
+                                                    contentsMessageId: message.id,
                                                     onToggleSection: { sectionOffset in
                                                         if expandedSections.contains(sectionOffset) {
                                                             expandedSections.remove(sectionOffset)
@@ -4598,9 +4645,13 @@ private struct MessageBubble: View {
         .accessibilityLabel(isUser ? "You" : message.senderName)
         .onChange(of: message.id) { _, _ in
             expandedSections = []
+            contentsOpenBubble = nil
+            contentsOpenToken = 0
         }
         .onChange(of: sectionDocument) { _, _ in
             expandedSections = []
+            contentsOpenBubble = nil
+            contentsOpenToken = 0
         }
         .sheet(isPresented: Binding(
             get: { shareURL != nil },
