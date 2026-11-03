@@ -27,6 +27,8 @@ struct AssistantMarkdown: View {
     var toggleSections: Set<Int> = []
     var expandedSections: Set<Int> = []
     var onToggleSection: (Int) -> Void = { _ in }
+    /// v2.44: message id for a Contents jump. Empty skips the anchor.
+    var contentsMessageId: String = ""
     @Environment(\.markdownFootnotes) private var markdownFootnotes
 
     var body: some View {
@@ -70,7 +72,13 @@ struct AssistantMarkdown: View {
                             collapsed: collapsedSections.contains(owned.offset),
                             showToggle: toggleSections.contains(owned.offset),
                             expanded: expandedSections.contains(owned.offset),
-                            onToggle: { onToggleSection(owned.offset) }
+                            onToggle: { onToggleSection(owned.offset) },
+                            contentsAnchor: contentsMessageId.isEmpty
+                                ? ""
+                                : ReplyContents.anchor(
+                                    messageId: contentsMessageId,
+                                    offset: owned.offset
+                                )
                         )
                     }
                 }
@@ -156,6 +164,8 @@ private struct HeadingSectionBlock: View {
     var showToggle = false
     var expanded = false
     var onToggle: () -> Void = {}
+    /// v2.44: scroll target for this heading. Empty when Contents is off.
+    var contentsAnchor: String = ""
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var copied = false
     @State private var pulse = 0
@@ -180,6 +190,12 @@ private struct HeadingSectionBlock: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
+            if !contentsAnchor.isEmpty {
+                Color.clear
+                    .frame(height: 1)
+                    .accessibilityHidden(true)
+                    .id(contentsAnchor)
+            }
             if showsChrome {
                 HStack(spacing: 12) {
                     Spacer(minLength: 0)

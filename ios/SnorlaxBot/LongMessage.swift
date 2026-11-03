@@ -66,6 +66,8 @@ struct LongMessageBody<Content: View>: View {
     var completed: Bool
     var text: String
     var activeFind: Bool
+    /// v2.44: increases when Contents jumps into this bubble. Opens the clamp once, with no animation.
+    var contentsOpenToken: Int = 0
     @ViewBuilder var content: () -> Content
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -136,6 +138,14 @@ struct LongMessageBody<Content: View>: View {
         .onPreferenceChange(LongMessageHeightKey.self) { fullHeight = $0 }
         .onChange(of: text) { _, _ in
             expanded = false
+        }
+        .onChange(of: contentsOpenToken) { _, token in
+            guard token > 0 else { return }
+            var transaction = Transaction()
+            transaction.disablesAnimations = true
+            withTransaction(transaction) {
+                expanded = true
+            }
         }
         .transaction { transaction in
             if reduceMotion {

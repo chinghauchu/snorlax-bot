@@ -260,3 +260,4 @@ jobs:
           python3 ios/scripts/test_ios_footnote_save.py
           python3 ios/scripts/test_ios_conversation_save.py
           python3 ios/scripts/test_ios_section_collapse.py
+          python3 ios/scripts/test_ios_reply_contents.py

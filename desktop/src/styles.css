@@ -2967,6 +2967,79 @@ pre.md-math-fallback.md-math-block {
   }
 }
 
+/* v2.44: Contents sits above the first bubble. Rows are the headings.
+   A jump opens a clamped bubble without the Show more animation. */
+.reply-contents {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  width: fit-content;
+  max-width: 100%;
+  min-width: 0;
+  margin: 0 0 6px;
+  padding: 0 12px;
+  transition: none;
+  animation: none;
+}
+
+.reply-contents-label {
+  margin: 0;
+  padding: 0;
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1.2;
+  color: var(--text-muted);
+}
+
+.reply-contents-jump {
+  display: block;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--text);
+  font-size: 13px;
+  line-height: 1.3;
+  font-family: inherit;
+  text-align: left;
+  cursor: pointer;
+  max-width: 100%;
+  transition: none;
+  animation: none;
+}
+
+.reply-contents-jump:hover {
+  color: var(--accent);
+}
+
+.reply-contents-jump:focus-visible {
+  outline: 1px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.reply-contents-anchor {
+  display: block;
+  width: 0;
+  height: 0;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.long-message[data-contents-open="true"] {
+  transition: none;
+  animation: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .reply-contents,
+  .reply-contents-jump,
+  .long-message[data-contents-open="true"] {
+    transition: none;
+    animation: none;
+  }
+}
+
 /* v2.39: Copy and Save sit at the top-right of a finished task list.
    Both stay hidden until hover or focus. Copied or Saved keeps the
    pair visible. 12px muted. No fade. A short task list does not grow. */

@@ -440,6 +440,7 @@ import {
   lastPaintedBubble,
   sectionFindBubble,
 } from "./sectionCollapse";
+import { ReplyContentsList } from "./replyContentsList";
 import { LongMessageBody } from "./LongMessageBody";
 import { UserMessageClamp } from "./UserMessageClamp";
 import { userLongMessageSettled } from "./userLongMessage";
@@ -9122,10 +9123,12 @@ export function App() {
                             activeBubble={sectionActive}
                             activeStart={sectionActive == null ? null : (activeFindHit?.start ?? null)}
                           >
-                          {(plan) => {
+                          {(view) => {
+                          const plan = view.plan;
                           const painted = lastPaintedBubble(leftBubbles.length, plan.hidden);
                           return (
                           <div className="assistant-bubbles">
+                            <ReplyContentsList messageId={message.id} text={sectionDocument} completed={completed} collapsed={plan.collapsed} bubbles={headingByBubble} open={view.open} reveal={view.revealContents} />
                             {leftBubbles.map((part, bubbleIdx) => {
                               if (plan.hidden.has(bubbleIdx)) return null;
                               const showCaret =
@@ -9160,6 +9163,7 @@ export function App() {
                                     activeFind={
                                       findRowActive(bubbleRowId) === "true"
                                     }
+                                    contentsOpenToken={view.contentsJump?.bubble===bubbleIdx?view.contentsJump.token:0}
                                   >
                                     {shouldRenderMarkdown({ completed }) ? (
                                       <MarkdownBody

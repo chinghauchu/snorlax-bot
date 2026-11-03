@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 import {
+  useEffect,
   useLayoutEffect,
   useRef,
   useState,
@@ -19,6 +20,12 @@ type Props = {
   text: string;
   /** The active in-chat find hit is in this bubble. */
   activeFind: boolean;
+  /**
+   * v2.44: increases when Contents jumps to a heading in this bubble.
+   * That jump opens the clamp once, without the Show more animation.
+   * A later Show less still folds it.
+   */
+  contentsOpenToken?: number;
   /** v0.94: `message` marks completed message text as quotable. */
   quote?: string;
   /** v1.27: message the selection was quoted from. */
@@ -38,12 +45,20 @@ export function LongMessageBody({
   completed,
   text,
   activeFind,
+  contentsOpenToken = 0,
   quote,
   quoteId,
   children,
 }: Props) {
   const bodyRef = useRef<HTMLDivElement>(null);
   const [expanded, setExpanded] = useState(false);
+  const [appliedContentsToken, setAppliedContentsToken] = useState(0);
+  const [instantContentsOpen, setInstantContentsOpen] = useState(false);
+  if (contentsOpenToken > appliedContentsToken) {
+    setAppliedContentsToken(contentsOpenToken);
+    setExpanded(true);
+    setInstantContentsOpen(true);
+  }
   const [overflows, setOverflows] = useState(false);
   const [fullPx, setFullPx] = useState(0);
   const [scale, setScale] = useState(1);
@@ -69,6 +84,12 @@ export function LongMessageBody({
     return () => observer.disconnect();
   }, [completed, text, expanded, activeFind]);
 
+  useEffect(() => {
+    if (!instantContentsOpen) return;
+    const id = window.requestAnimationFrame(() => setInstantContentsOpen(false));
+    return () => window.cancelAnimationFrame(id);
+  }, [instantContentsOpen]);
+
   const clamp = shouldClampLongMessage({
     completed,
     overflows,
@@ -91,6 +112,7 @@ export function LongMessageBody({
       <div
         className="long-message"
         data-collapsed={clamp ? "true" : "false"}
+        data-contents-open={instantContentsOpen ? "true" : "false"}
         style={maxHeight == null ? undefined : { maxHeight }}
       >
         <div
